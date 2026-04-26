@@ -13,6 +13,7 @@ Opinionated observability for FastAPI applications. Product scope, architecture,
 | `docs/cursor/` | Editor-specific development notes |
 
 Contributor entry point: **[AGENTS.md](./AGENTS.md)**.
+Execution guide: **[docs/DEVELOPMENT_PROCESS.md](./docs/DEVELOPMENT_PROCESS.md)**.
 
 ## Tooling
 
