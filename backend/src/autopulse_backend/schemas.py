@@ -43,5 +43,43 @@ class IngestBatchResponse(BaseModel):
     accepted: int
 
 
+class DashboardOverviewBucket(BaseModel):
+    minute: datetime
+    request_count: int
+    error_count: int
+    avg_latency_ms: float
+
+
+class DashboardOverviewResponse(BaseModel):
+    from_timestamp: datetime
+    to_timestamp: datetime
+    request_count: int
+    error_count: int
+    error_rate: float
+    avg_latency_ms: float
+    requests_per_minute: float
+    series: list[DashboardOverviewBucket]
+
+
+class DashboardRequestItem(BaseModel):
+    timestamp: datetime
+    method: str
+    path: str
+    status_code: int
+    latency_ms: float
+    service_name: str
+    environment: str
+    request_id: str | None = None
+
+
+class DashboardRequestsResponse(BaseModel):
+    from_timestamp: datetime
+    to_timestamp: datetime
+    total: int
+    limit: int
+    offset: int
+    items: list[DashboardRequestItem]
+
+
 def event_payload(event: IngestEvent) -> dict[str, Any]:
     return event.model_dump(mode="json")
