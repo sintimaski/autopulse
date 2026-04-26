@@ -182,6 +182,14 @@ uv run mypy
 uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 ```
 
+**Operational run modes (M5)**
+
+- One-off alert evaluation (cron/external scheduler): `uv run python -m autopulse_backend.jobs alerts-once`
+- One-off retention cleanup (cron/external scheduler): `uv run python -m autopulse_backend.jobs retention-once`
+- Optional local/dev in-process scheduler: set `JOBS_ENABLE_SCHEDULER=true` and tune intervals with
+  `JOBS_ALERT_INTERVAL_SECONDS` and `JOBS_RETENTION_INTERVAL_SECONDS`.
+- SDK benchmark command: `uv run pytest sdk/tests/test_benchmarks.py`
+
 ---
 
 ### M3 - Read API and dashboard shell (Build Order 9-11)

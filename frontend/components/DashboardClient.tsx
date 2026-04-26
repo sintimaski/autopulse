@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import {
+  computeOperationalSignals,
+  M5_ALERT_DEFAULTS,
+  resolveSparklineSeries,
+} from "../utils/dashboardData";
+
 type OverviewBucket = {
   minute: string;
   request_count: number;
@@ -66,6 +72,8 @@ const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY;
 const WINDOW_OPTIONS = [15, 60, 240, 1440];
 const METHOD_OPTIONS = ["ALL", "GET", "POST", "PUT", "PATCH", "DELETE"];
 const STATUS_CLASS_OPTIONS = ["ALL", "2", "4", "5"];
+const REQUEST_LIMIT_OPTIONS = [50, 100, 200];
+const ERROR_GROUP_LIMIT_OPTIONS = [10, 25, 50];
 const GROUP_OPTIONS = [
   { value: "none", label: "No grouping" },
   { value: "path", label: "Path" },
@@ -102,31 +110,49 @@ function Sparkline({ series }: { series: OverviewBucket[] }) {
       </div>
     );
   }
-  const max = Math.max(...series.map((b) => b.request_count), 1);
+  const max = Math.max(...series.map((b) => Number(b.request_count || 0)), 0);
+  if (max <= 0) {
+    return (
+      <div className="flex h-14 items-center rounded-xl border border-slate-200/80 bg-white/60 px-3 text-sm text-slate-500">
+        No request volume buckets in this window.
+      </div>
+    );
+  }
+  const barWidth = 6;
+  const barGap = 2;
+  const chartHeight = 44;
+  const plotWidth = Math.max(series.length * (barWidth + barGap), 120);
+
   return (
     <div
-      className="flex h-14 items-end gap-px rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-2"
+      className="overflow-x-auto rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-2"
       role="img"
       aria-label="Requests per minute buckets"
     >
-      {series.map((bucket) => {
-        const h = Math.round((bucket.request_count / max) * 100);
-        const errRatio = bucket.request_count ? bucket.error_count / bucket.request_count : 0;
-        const barColor =
-          errRatio > 0.25 ? "bg-rose-500/80" : errRatio > 0 ? "bg-amber-400/90" : "bg-sky-500/80";
-        return (
-          <div
-            key={bucket.minute}
-            className="group relative min-w-[3px] flex-1"
-            title={`${bucket.request_count} req, ${bucket.error_count} err`}
-          >
-            <div
-              className={`w-full rounded-sm ${barColor} transition-all group-hover:opacity-90`}
-              style={{ height: `${Math.max(h, 8)}%` }}
-            />
-          </div>
-        );
-      })}
+      <svg width={plotWidth} height={chartHeight} className="block">
+        {series.map((bucket, index) => {
+          const requestCount = Number(bucket.request_count || 0);
+          const errorCount = Number(bucket.error_count || 0);
+          const errRatio = requestCount ? errorCount / requestCount : 0;
+          const barColor = errRatio > 0.25 ? "#e11d48" : errRatio > 0 ? "#f59e0b" : "#0284c7";
+          const barHeight = Math.max(Math.round((requestCount / max) * chartHeight), 2);
+          const x = index * (barWidth + barGap);
+          const y = chartHeight - barHeight;
+          return (
+            <rect
+              key={bucket.minute}
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barHeight}
+              rx={1}
+              fill={barColor}
+            >
+              <title>{`${requestCount} req, ${errorCount} err`}</title>
+            </rect>
+          );
+        })}
+      </svg>
     </div>
   );
 }
@@ -143,6 +169,10 @@ export default function DashboardClient() {
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [method, setMethod] = useState("ALL");
   const [statusClass, setStatusClass] = useState("ALL");
+  const [requestLimit, setRequestLimit] = useState(100);
+  const [requestPage, setRequestPage] = useState(0);
+  const [errorGroupLimit, setErrorGroupLimit] = useState(25);
+  const [errorGroupPage, setErrorGroupPage] = useState(0);
   const [pathQuery, setPathQuery] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
@@ -181,7 +211,8 @@ export default function DashboardClient() {
         const requestsParams = new URLSearchParams({
           from_timestamp: toIsoWindow.from,
           to_timestamp: toIsoWindow.to,
-          limit: "200",
+          limit: String(requestLimit),
+          offset: String(requestPage * requestLimit),
         });
         if (method !== "ALL") {
           requestsParams.set("method", method);
@@ -190,10 +221,17 @@ export default function DashboardClient() {
           requestsParams.set("status_class", statusClass);
         }
 
+        const errorGroupsParams = new URLSearchParams({
+          from_timestamp: toIsoWindow.from,
+          to_timestamp: toIsoWindow.to,
+          limit: String(errorGroupLimit),
+          offset: String(errorGroupPage * errorGroupLimit),
+        });
+
         const [overviewResponse, requestsResponse, errorGroupsResponse] = await Promise.all([
           fetch(`${apiBaseUrl}/dashboard/overview?${overviewParams.toString()}`, { headers }),
           fetch(`${apiBaseUrl}/dashboard/requests?${requestsParams.toString()}`, { headers }),
-          fetch(`${apiBaseUrl}/dashboard/error-groups?${overviewParams.toString()}&limit=25`, {
+          fetch(`${apiBaseUrl}/dashboard/error-groups?${errorGroupsParams.toString()}`, {
             headers,
           }),
         ]);
@@ -216,7 +254,21 @@ export default function DashboardClient() {
     };
 
     void run();
-  }, [method, statusClass, toIsoWindow, refreshToken]);
+  }, [
+    method,
+    statusClass,
+    toIsoWindow,
+    refreshToken,
+    requestLimit,
+    requestPage,
+    errorGroupLimit,
+    errorGroupPage,
+  ]);
+
+  useEffect(() => {
+    setRequestPage(0);
+    setErrorGroupPage(0);
+  }, [windowMinutes, method, statusClass]);
 
   const rawItems = requests?.items ?? [];
 
@@ -374,6 +426,16 @@ export default function DashboardClient() {
     }));
   }, [filteredSorted, groupBy]);
 
+  const sparklineSeries = useMemo(
+    () => resolveSparklineSeries(overview, requests),
+    [overview, requests],
+  );
+
+  const operationalSignals = useMemo(
+    () => computeOperationalSignals(overview, M5_ALERT_DEFAULTS),
+    [overview],
+  );
+
   if (!apiKey) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-14 text-slate-100">
@@ -484,6 +546,40 @@ export default function DashboardClient() {
                   ))}
                 </select>
               </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                Request limit
+                <select
+                  value={requestLimit}
+                  onChange={(e) => {
+                    setRequestLimit(Number(e.target.value));
+                    setRequestPage(0);
+                  }}
+                  className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2"
+                >
+                  {REQUEST_LIMIT_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                Error group limit
+                <select
+                  value={errorGroupLimit}
+                  onChange={(e) => {
+                    setErrorGroupLimit(Number(e.target.value));
+                    setErrorGroupPage(0);
+                  }}
+                  className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2"
+                >
+                  {ERROR_GROUP_LIMIT_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
         </section>
@@ -544,8 +640,14 @@ export default function DashboardClient() {
                 </p>
               </div>
               <div className="mt-3">
-                <Sparkline series={overview.series} />
+                <Sparkline series={sparklineSeries} />
               </div>
+              {overview.series.length === 0 && sparklineSeries.length > 0 && (
+                <p className="mt-2 text-xs text-amber-700">
+                  Backend minute series is empty for this range; showing a fallback sparkline from the
+                  loaded request page.
+                </p>
+              )}
             </section>
 
             <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
@@ -605,6 +707,78 @@ export default function DashboardClient() {
                       ))}
                     </ul>
                   )}
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">Operations (M5)</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Frontend preview of backend alert heuristics and retention defaults.
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                  Stub delivery mode
+                </span>
+              </div>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Alert heuristic preview
+                  </h3>
+                  <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                    <li className="flex items-start justify-between gap-3">
+                      <span>Error spike candidate</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          operationalSignals.errorSpikeCandidate
+                            ? "bg-rose-500/15 text-rose-800"
+                            : "bg-emerald-500/15 text-emerald-800"
+                        }`}
+                      >
+                        {operationalSignals.errorSpikeCandidate ? "Likely trigger" : "Within threshold"}
+                      </span>
+                    </li>
+                    <li className="flex items-start justify-between gap-3">
+                      <span>Possible outage candidate</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          operationalSignals.outageCandidate
+                            ? "bg-rose-500/15 text-rose-800"
+                            : "bg-emerald-500/15 text-emerald-800"
+                        }`}
+                      >
+                        {operationalSignals.outageCandidate ? "Likely trigger" : "No outage signal"}
+                      </span>
+                    </li>
+                  </ul>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Based on current window: {overview.request_count} requests,{" "}
+                    {operationalSignals.successfulRequests} successful, {(overview.error_rate * 100).toFixed(1)}%
+                    error rate.
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Runbook shortcuts
+                  </h3>
+                  <ul className="mt-3 space-y-2 text-xs text-slate-700">
+                    <li>
+                      <code className="rounded bg-slate-200/70 px-1.5 py-0.5">
+                        uv run python -m autopulse_backend.jobs alerts-once
+                      </code>
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-200/70 px-1.5 py-0.5">
+                        uv run python -m autopulse_backend.jobs retention-once
+                      </code>
+                    </li>
+                    <li>
+                      Raw events retention target: {M5_ALERT_DEFAULTS.retentionRawDays} days.
+                    </li>
+                  </ul>
                 </div>
               </div>
             </section>
@@ -699,6 +873,29 @@ export default function DashboardClient() {
                   </table>
                 </div>
               )}
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+                <p>
+                  Page {errorGroupPage + 1} · Offset {errorGroupPage * errorGroupLimit}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={errorGroupPage === 0}
+                    onClick={() => setErrorGroupPage((p) => Math.max(0, p - 1))}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    disabled={(errorGroupPage + 1) * errorGroupLimit >= errorGroups.total}
+                    onClick={() => setErrorGroupPage((p) => p + 1)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </section>
 
             <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
@@ -902,6 +1099,29 @@ export default function DashboardClient() {
                   ))}
                 </div>
               )}
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+                <p>
+                  Page {requestPage + 1} · Offset {requestPage * requestLimit}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={requestPage === 0}
+                    onClick={() => setRequestPage((p) => Math.max(0, p - 1))}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    disabled={(requestPage + 1) * requestLimit >= requests.total}
+                    onClick={() => setRequestPage((p) => p + 1)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </section>
           </>
         )}

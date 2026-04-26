@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -60,6 +61,37 @@ class _FailingClient:
             raise httpx.ConnectError("temporary failure")
         request = httpx.Request("POST", url)
         return httpx.Response(200, request=request, json={"accepted": len(json.get("events", []))})
+
+
+@dataclass
+class _AlwaysFailingClient:
+    calls: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any],
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        self.calls += 1
+        raise httpx.ConnectError("backend unavailable")
+
+
+@dataclass
+class _ErrorStatusClient:
+    calls: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any],
+        headers: dict[str, str],
+    ) -> httpx.Response:
+        self.calls += 1
+        request = httpx.Request("POST", url)
+        return httpx.Response(503, request=request, json={"detail": "unavailable"})
 
 
 def test_monitor_is_noop_for_non_fastapi_object() -> None:
@@ -158,6 +190,28 @@ def test_send_batch_retries_then_succeeds() -> None:
     asyncio.run(run())
 
 
+def test_send_batch_drops_after_retries_exhausted() -> None:
+    async def run() -> None:
+        config = _make_config(max_retries=2, retry_backoff_s=0.0)
+        client = _AlwaysFailingClient()
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert client.calls == 3
+
+    asyncio.run(run())
+
+
+def test_send_batch_retries_on_http_error_status() -> None:
+    async def run() -> None:
+        config = _make_config(max_retries=1, retry_backoff_s=0.0)
+        client = _ErrorStatusClient()
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert client.calls == 2
+
+    asyncio.run(run())
+
+
 def test_sender_loop_flushes_on_batch_size() -> None:
     async def run() -> None:
         config = _make_config(batch_size=2, flush_interval_s=10.0)
@@ -174,6 +228,31 @@ def test_sender_loop_flushes_on_batch_size() -> None:
         assert events[0]["headers"]["authorization"] == "[REDACTED]"
 
     asyncio.run(run())
+
+
+def test_monitor_request_path_remains_healthy_when_backend_is_down() -> None:
+    app = FastAPI()
+    failing_client = _AlwaysFailingClient()
+    monitor(
+        app,
+        api_key="ap_live_xxx_secret",
+        ingest_url="https://example.test/ingest",
+        http_client=failing_client,
+        batch_size=1,
+        flush_interval_s=0.01,
+        max_retries=1,
+        retry_backoff_s=0.0,
+    )
+
+    @app.get("/health")
+    async def health() -> dict[str, bool]:
+        return {"ok": True}
+
+    with TestClient(app) as client:
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        time.sleep(0.05)
 
 
 def test_stable_error_hash_ignores_stack_line_numbers() -> None:

@@ -115,6 +115,8 @@ def test_migration_creates_tables_and_indexes(backend_test_database_url: str) ->
     assert "ix_events_project_timestamp_desc" in indexes
     assert "ix_events_project_type_timestamp_desc" in indexes
     assert "ix_events_project_path_timestamp_desc" in indexes
+    assert "ix_alert_dispatches_project_triggered_at" in indexes
+    assert "ix_alert_dispatches_project_type_triggered_at" in indexes
 
 
 def test_ingest_rejects_missing_auth_header(backend_test_database_url: str) -> None:
