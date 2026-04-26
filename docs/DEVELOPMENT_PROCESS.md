@@ -26,7 +26,7 @@ uv sync --group dev
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse
+uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 uv run pytest
 ```
 
@@ -51,7 +51,9 @@ Use this workflow for every feature/fix, aligned with `agents/implement-task.md`
 3. Sketch smallest viable design and rollback path.
 4. Implement in one vertical slice where possible.
 5. Verify with targeted tests and full static checks.
-6. Handoff with clear risk notes and verification evidence.
+6. Prepare handoff with clear risk notes and verification evidence.
+7. Present a concise user update covering all changed files and the main points before finalizing.
+8. Commit only after implementation is complete and verification checks pass.
 
 When to use specialized playbooks:
 
@@ -63,8 +65,8 @@ When to use specialized playbooks:
 
 Milestone mapping from `DEVELOPMENT.md` build order:
 
-- **M1 - SDK core foundation:** steps 1-5
-- **M2 - Ingest and persistence:** steps 6-8
+- **M1 - SDK core foundation:** steps 1-5 (completed)
+- **M2 - Ingest and persistence:** steps 6-8 (completed)
 - **M3 - Read API and dashboard shell:** steps 9-11
 - **M4 - Errors and aggregation intelligence:** steps 12-13
 - **M5 - Alerts, retention, and hardening:** steps 14-16
@@ -95,6 +97,10 @@ Delivery note:
 Use the structure below for each milestone. Keep each checklist tied to explicit build-order steps.
 
 ### M1 - SDK core foundation (Build Order 1-5)
+
+**Status**
+
+- Completed.
 
 **Goal**
 
@@ -136,6 +142,10 @@ uv run mypy
 
 ### M2 - Ingest and persistence (Build Order 6-8)
 
+**Status**
+
+- Completed.
+
 **Goal**
 
 - Authenticated batch ingest accepts valid events and stores normalized raw data.
@@ -157,7 +167,7 @@ uv run mypy
 
 **Tests**
 
-- `backend/tests` (once backend package exists): auth rejection/acceptance matrix.
+- `backend/tests`: auth rejection/acceptance matrix.
 - `backend/tests`: payload validation and partial-failure behavior.
 - `backend/tests`: metadata attachment and persistence assertions.
 - Contract tests for `POST /ingest` response shape and status codes.
@@ -169,7 +179,7 @@ uv run mypy
 uv run pytest
 uv run ruff check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse
+uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 ```
 
 ---
@@ -278,20 +288,20 @@ uv run mypy
 uv run pytest
 uv run ruff check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse
+uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 ```
 
 ## 6) Test Strategy by Repository Phase
 
 Current repository state:
 
-- Active test package: `sdk/tests`.
-- `backend/` and `frontend/` are planned placeholders.
+- Active test packages: `sdk/tests` and `backend/tests`.
+- `frontend/` is a planned placeholder.
 
 Scaling strategy:
 
 - Keep SDK behavioral tests in `sdk/tests` from day one.
-- Add `backend/tests` when ingest/read APIs are introduced.
+- Continue expanding `backend/tests` alongside ingest/read API growth.
 - Add frontend test setup when dashboard pages become executable code.
 - Preserve root-level CI as the global gate while allowing local targeted loops.
 

@@ -46,6 +46,8 @@ Answer briefly:
 
 - PR description: **what**, **why**, **how verified**, **risk** (one line).
 - If behavior changed for integrators, say so explicitly.
+- Provide a concise end-of-task summary of all changed files and key outcomes so maintainers can catch up quickly.
+- Treat commit creation as a post-implementation step: commit only after code and verification are complete.
 
 ## Checklist (quick)
 
