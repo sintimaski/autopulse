@@ -1,0 +1,29 @@
+---
+description: AutoPulse engineering constraints for SDK and backend
+alwaysApply: true
+---
+
+# AutoPulse engineering constraints
+
+## SDK (Python)
+
+- **Never** break the user's app if AutoPulse is misconfigured, down, or slow.
+- **Async, non-blocking** hot path; bounded in-memory queue (drop events when full — document behavior).
+- **Background batch sender** with batch size and time-based flush; retries with backoff and a **low max**; drop batch after exhaustion.
+- **Silent failure** by default (no noisy logs in user apps); optional debug mode for troubleshooting.
+- **Scrub sensitive data by default** before send; see DEVELOPMENT.md default scrub keys.
+- On exceptions in middleware: capture details, then **re-raise the original exception**.
+
+## Backend
+
+- Ingest endpoint (`POST /ingest`) must be **fast**; push expensive work to workers as the product grows.
+- **Authenticate** API keys; store keys **hashed**, not plaintext.
+- Validate and normalize events; attach server metadata (project id, received time, SDK version).
+
+## Security defaults
+
+HTTPS in production; conservative capture (no full bodies by default in MVP unless explicitly enabled).
+
+## Implementation style
+
+Prefer **small, focused changes**. Match existing naming and patterns. Do not expand scope beyond the task without explicit product approval.

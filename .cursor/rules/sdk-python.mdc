@@ -1,0 +1,11 @@
+---
+description: Python SDK conventions under sdk/
+globs: sdk/**/*.py
+alwaysApply: false
+---
+
+# SDK (`sdk/`)
+
+- Public API surface stays small; prefer stable names (`monitor`, middleware) aligned with `DEVELOPMENT.md`.
+- Type hints on public functions; avoid heavy dependencies on the hot path.
+- Tests live under `sdk/tests/`; keep tests deterministic and offline by default.

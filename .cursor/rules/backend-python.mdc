@@ -1,0 +1,11 @@
+---
+description: Backend API and workers (FastAPI, Postgres)
+globs: backend/**/*.py
+alwaysApply: false
+---
+
+# Backend
+
+- Keep `POST /ingest` fast; defer heavy work to workers as the product grows.
+- Authenticate every ingest request; scope all reads and writes by project.
+- Validate payloads with Pydantic; normalize timestamps and attach server metadata per `DEVELOPMENT.md`.

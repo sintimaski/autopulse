@@ -1,0 +1,34 @@
+---
+description: AutoPulse product context and MVP boundaries
+alwaysApply: true
+---
+
+# AutoPulse product context
+
+AutoPulse is an opinionated, **FastAPI-native** observability product for solo developers and small backend teams (1–5). It is **not** a full Grafana/Datadog/Sentry replacement for the MVP.
+
+## Core promise
+
+Useful visibility into a FastAPI app in **~two minutes**, without learning observability infrastructure.
+
+## Product rule
+
+If a feature makes the user think like an **observability engineer**, it does **not** belong in the MVP.
+
+## MVP must answer
+
+What broke, when did it break, and what requests led to it?
+
+## Explicit non-goals (MVP)
+
+Distributed tracing, custom dashboard builder, query language, complex alert rules, Kubernetes/multi-cloud integrations, log transformation pipelines, full APM agent behavior, enterprise permissions and audit logs.
+
+## Dashboard principle
+
+Optimize for **fast diagnosis**, not configurability. Target: understand what is broken in **~five seconds** on the overview.
+
+## Positioning anchor
+
+The user **refuses to configure observability** — guide product, docs, dashboard, SDK defaults, and pricing simplicity accordingly.
+
+When scope is ambiguous, prefer **DEVELOPMENT.md** at the repo root as source of truth.

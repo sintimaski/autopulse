@@ -1,0 +1,21 @@
+---
+description: Which docs to load; documentation change approval
+alwaysApply: true
+---
+
+# Documentation context and change policy
+
+## Read when relevant
+
+- **Product, MVP, architecture, events, security:** `DEVELOPMENT.md`
+- **Editing docs or playbooks:** `docs/DOCUMENTATION_GOVERNANCE.md`
+- **Cursor layout and workflow index:** `docs/cursor/CURSOR_DEVELOPMENT.md`, `docs/cursor/WORKFLOWS.md`
+- **Agent procedures:** `AGENTS.md`, `agents/README.md`, and the specific playbook under `agents/`
+
+## Governed changes
+
+Material updates to governed documents (see `docs/DOCUMENTATION_GOVERNANCE.md`) require **explicit maintainer approval** before treating them as final. Do not rewrite canonical specs or rules on assumption.
+
+## Chat usage
+
+When the task touches scope, security, or repo conventions, the user should **attach** `@DEVELOPMENT.md` and the relevant `agents/*.md` file in Cursor so the session matches repository intent.

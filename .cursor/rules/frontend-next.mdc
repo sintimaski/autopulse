@@ -1,0 +1,11 @@
+---
+description: Dashboard UI (Next.js, TypeScript)
+globs: frontend/**/*.{ts,tsx,js,jsx}
+alwaysApply: false
+---
+
+# Frontend
+
+- Optimize for **fast diagnosis** on the overview; avoid configurability that belongs in enterprise APM.
+- Accessible defaults: contrast, keyboard navigation, clear empty and error states.
+- Align visible fields with MVP tables and error grouping in `DEVELOPMENT.md`.
