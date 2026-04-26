@@ -81,5 +81,25 @@ class DashboardRequestsResponse(BaseModel):
     items: list[DashboardRequestItem]
 
 
+class DashboardErrorGroupItem(BaseModel):
+    group_key: str
+    exception_type: str | None
+    message: str | None
+    path: str
+    count: int
+    first_seen: datetime
+    last_seen: datetime
+    sample_stack_trace: str | None
+
+
+class DashboardErrorGroupsResponse(BaseModel):
+    from_timestamp: datetime
+    to_timestamp: datetime
+    total: int
+    limit: int
+    offset: int
+    items: list[DashboardErrorGroupItem]
+
+
 def event_payload(event: IngestEvent) -> dict[str, Any]:
     return event.model_dump(mode="json")

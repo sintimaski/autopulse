@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -28,19 +29,32 @@ def _build_events(now: datetime, service_name: str, environment: str) -> list[di
     for idx, (method, path, status_code, latency_ms) in enumerate(specs):
         timestamp = now - timedelta(minutes=(len(specs) - idx))
         event_type = "error" if status_code >= 500 else "request"
-        events.append(
-            {
-                "type": event_type,
-                "timestamp": _iso(timestamp),
-                "service_name": service_name,
-                "environment": environment,
-                "method": method,
-                "path": path,
-                "status_code": status_code,
-                "latency_ms": latency_ms,
-                "request_id": f"manual-{idx + 1:02d}",
-            }
-        )
+        row: dict[str, Any] = {
+            "type": event_type,
+            "timestamp": _iso(timestamp),
+            "service_name": service_name,
+            "environment": environment,
+            "method": method,
+            "path": path,
+            "status_code": status_code,
+            "latency_ms": latency_ms,
+            "request_id": f"manual-{idx + 1:02d}",
+        }
+        if event_type == "error":
+            exc_type = "ManualTestError"
+            exc_msg = f"Simulated failure for {method} {path} ({status_code})"
+            stack = f"Traceback (manual test):\n  {path}:{status_code}\n"
+            digest = hashlib.sha256()
+            digest.update(exc_type.encode())
+            digest.update(b"|")
+            digest.update(exc_msg.encode())
+            digest.update(b"|")
+            digest.update(stack.encode())
+            row["exception_type"] = exc_type
+            row["exception_message"] = exc_msg
+            row["stack_trace"] = stack
+            row["error_hash"] = digest.hexdigest()
+        events.append(row)
     return events
 
 

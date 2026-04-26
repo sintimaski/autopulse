@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 import sys
 import traceback
 from collections.abc import Awaitable, Callable, Mapping
@@ -65,12 +66,14 @@ def _sdk_version() -> str:
 
 
 def _stable_error_hash(exception_type: str, exception_message: str, stack_trace: str) -> str:
+    # Keep grouping stable across equivalent traces where only line numbers differ.
+    normalized_stack_trace = re.sub(r"line \d+", "line ?", stack_trace)
     digest = hashlib.sha256()
     digest.update(exception_type.encode("utf-8"))
     digest.update(b"|")
     digest.update(exception_message.encode("utf-8"))
     digest.update(b"|")
-    digest.update(stack_trace.encode("utf-8"))
+    digest.update(normalized_stack_trace.encode("utf-8"))
     return digest.hexdigest()
 
 

@@ -40,6 +40,26 @@ type RequestsResponse = {
   items: RequestItem[];
 };
 
+type ErrorGroupItem = {
+  group_key: string;
+  exception_type: string | null;
+  message: string | null;
+  path: string;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  sample_stack_trace: string | null;
+};
+
+type ErrorGroupsResponse = {
+  from_timestamp: string;
+  to_timestamp: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: ErrorGroupItem[];
+};
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? "http://localhost:8000";
 const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY;
 
@@ -131,6 +151,8 @@ export default function DashboardClient() {
   const [serviceTags, setServiceTags] = useState<Set<string>>(new Set());
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [requests, setRequests] = useState<RequestsResponse | null>(null);
+  const [errorGroups, setErrorGroups] = useState<ErrorGroupsResponse | null>(null);
+  const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -168,17 +190,22 @@ export default function DashboardClient() {
           requestsParams.set("status_class", statusClass);
         }
 
-        const [overviewResponse, requestsResponse] = await Promise.all([
+        const [overviewResponse, requestsResponse, errorGroupsResponse] = await Promise.all([
           fetch(`${apiBaseUrl}/dashboard/overview?${overviewParams.toString()}`, { headers }),
           fetch(`${apiBaseUrl}/dashboard/requests?${requestsParams.toString()}`, { headers }),
+          fetch(`${apiBaseUrl}/dashboard/error-groups?${overviewParams.toString()}&limit=25`, {
+            headers,
+          }),
         ]);
-        if (!overviewResponse.ok || !requestsResponse.ok) {
+        if (!overviewResponse.ok || !requestsResponse.ok || !errorGroupsResponse.ok) {
           throw new Error("Dashboard API request failed. Check API URL/key and backend status.");
         }
         const overviewData = (await overviewResponse.json()) as OverviewResponse;
         const requestsData = (await requestsResponse.json()) as RequestsResponse;
+        const errorGroupsData = (await errorGroupsResponse.json()) as ErrorGroupsResponse;
         setOverview(overviewData);
         setRequests(requestsData);
+        setErrorGroups(errorGroupsData);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "Unexpected dashboard loading failure.";
@@ -276,6 +303,57 @@ export default function DashboardClient() {
     return rows;
   }, [rawItems, pathQuery, envTags, serviceTags, sortKey, sortDir]);
 
+  const topFailingRoutes = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of rawItems) {
+      if (item.status_code >= 500) {
+        counts.set(item.path, (counts.get(item.path) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [rawItems]);
+
+  const recentErrorsPreview = useMemo(() => {
+    const items = errorGroups?.items;
+    if (!items?.length) {
+      return [];
+    }
+    return [...items]
+      .sort(
+        (a, b) =>
+          new Date(b.last_seen).getTime() -
+          new Date(a.last_seen).getTime(),
+      )
+      .slice(0, 5);
+  }, [errorGroups]);
+
+  const displayedErrorGroups = useMemo(() => {
+    const source = errorGroups?.items;
+    if (!source?.length) {
+      return [];
+    }
+    const items = [...source];
+    if (errorGroupSort === "count") {
+      items.sort((a, b) => {
+        if (b.count !== a.count) {
+          return b.count - a.count;
+        }
+        return new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime();
+      });
+    } else {
+      items.sort((a, b) => {
+        const t = new Date(b.last_seen).getTime() - new Date(a.last_seen).getTime();
+        if (t !== 0) {
+          return t;
+        }
+        return b.count - a.count;
+      });
+    }
+    return items;
+  }, [errorGroups, errorGroupSort]);
+
   const grouped = useMemo(() => {
     if (groupBy === "none") {
       return [{ key: "all", label: "All traffic", items: filteredSorted }];
@@ -324,11 +402,25 @@ export default function DashboardClient() {
             </p>
             <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">Traffic overview</h1>
             <p className="mt-2 max-w-xl text-sm text-slate-300">
-              Scan rate, errors, and latency in seconds. Tune server filters, then slice client-side
-              by path, service, and environment.
+              Scan rate, errors, latency, and grouped failures in seconds. Tune server filters, then
+              slice requests client-side by path, service, and environment.
+            </p>
+            <p className="mt-3 text-xs text-slate-400">
+              <a
+                href="#grouped-errors"
+                className="font-medium text-sky-300 underline-offset-2 hover:text-sky-200 hover:underline"
+              >
+                Jump to grouped errors
+              </a>
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <a
+              href="#grouped-errors"
+              className="rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur transition hover:bg-white/20"
+            >
+              Grouped errors
+            </a>
             <button
               type="button"
               onClick={() => setRefreshToken((n) => n + 1)}
@@ -412,7 +504,7 @@ export default function DashboardClient() {
           </section>
         )}
 
-        {!loading && !errorMessage && overview && requests && (
+        {!loading && !errorMessage && overview && requests && errorGroups && (
           <>
             <section className="grid gap-4 sm:grid-cols-3">
               <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
@@ -454,6 +546,159 @@ export default function DashboardClient() {
               <div className="mt-3">
                 <Sparkline series={overview.series} />
               </div>
+            </section>
+
+            <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
+              <h2 className="text-sm font-semibold text-slate-800">Quick diagnosis</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Recent errors from grouped API; top routes from 5xx rows in the loaded request
+                sample (up to {requests.limit} rows).
+              </p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Recent errors
+                  </h3>
+                  {recentErrorsPreview.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-600">None in this window.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {recentErrorsPreview.map((item) => (
+                        <li key={item.group_key}>
+                          <a
+                            href="#grouped-errors"
+                            className="block rounded-lg border border-transparent px-1 py-1 text-sm transition hover:border-slate-200 hover:bg-white"
+                          >
+                            <span className="font-medium text-slate-900">
+                              {item.exception_type ?? "Error"}
+                            </span>
+                            <span className="text-slate-500"> · </span>
+                            <span className="font-mono text-xs text-slate-700">{item.path}</span>
+                            <span className="mt-0.5 block text-xs text-slate-500">
+                              {item.message ? `${item.message.slice(0, 80)}${item.message.length > 80 ? "…" : ""}` : "—"}{" "}
+                              <span className="tabular-nums text-rose-700">×{item.count}</span>
+                            </span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Top failing routes
+                  </h3>
+                  {topFailingRoutes.length === 0 ? (
+                    <p className="mt-2 text-sm text-slate-600">No 5xx in loaded requests.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {topFailingRoutes.map(([path, count]) => (
+                        <li
+                          key={path}
+                          className="flex items-start justify-between gap-2 text-sm text-slate-800"
+                        >
+                          <span className="min-w-0 truncate font-mono text-xs">{path}</span>
+                          <span className="shrink-0 tabular-nums font-semibold text-rose-700">
+                            {count}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section
+              id="grouped-errors"
+              className="scroll-mt-24 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-800">Grouped errors</h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Same time window as overview. Full stack traces may contain sensitive data;
+                    scrub at the SDK.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+                    Sort by
+                    <select
+                      value={errorGroupSort}
+                      onChange={(e) =>
+                        setErrorGroupSort(e.target.value as "last_seen" | "count")
+                      }
+                      className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2"
+                    >
+                      <option value="last_seen">Last seen</option>
+                      <option value="count">Count</option>
+                    </select>
+                  </label>
+                  <p className="text-xs text-slate-500 sm:pb-2">
+                    Showing {displayedErrorGroups.length} of {errorGroups.total} groups
+                  </p>
+                </div>
+              </div>
+              {errorGroups.items.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-600">
+                  No grouped errors in this time window.
+                </p>
+              ) : (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Exception</th>
+                        <th className="px-3 py-2">Message</th>
+                        <th className="px-3 py-2">Route</th>
+                        <th className="px-3 py-2">Count</th>
+                        <th className="px-3 py-2">First seen</th>
+                        <th className="px-3 py-2">Last seen</th>
+                        <th className="px-3 py-2">Sample stack</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {displayedErrorGroups.map((item) => (
+                        <tr key={item.group_key} className="align-top hover:bg-slate-50/80">
+                          <td className="px-3 py-2 font-medium text-slate-900">
+                            {item.exception_type ?? "(unknown)"}
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-2 text-slate-700 sm:max-w-md">
+                            {item.message ?? "(no message)"}
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-2 font-mono text-xs text-slate-800 sm:max-w-md">
+                            {item.path}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums text-slate-700">{item.count}</td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                            {formatTimestamp(item.first_seen)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-600">
+                            {formatTimestamp(item.last_seen)}
+                          </td>
+                          <td className="px-3 py-2">
+                            {item.sample_stack_trace ? (
+                              <details className="max-w-[420px]">
+                                <summary className="cursor-pointer text-xs font-medium text-sky-700">
+                                  View stack
+                                </summary>
+                                <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-slate-950 p-2 text-[11px] leading-5 text-slate-100">
+                                  {item.sample_stack_trace}
+                                </pre>
+                              </details>
+                            ) : (
+                              <span className="text-xs text-slate-500">
+                                No stack trace (event had no exception payload).
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
 
             <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">

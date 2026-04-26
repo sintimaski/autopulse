@@ -7,7 +7,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from autopulse._monitor import _AutoPulseMiddleware, _EventDispatcher, _MonitorConfig, monitor
+from autopulse._monitor import (
+    _AutoPulseMiddleware,
+    _EventDispatcher,
+    _MonitorConfig,
+    _stable_error_hash,
+    monitor,
+)
 
 
 def _make_config(**overrides: Any) -> _MonitorConfig:
@@ -168,3 +174,19 @@ def test_sender_loop_flushes_on_batch_size() -> None:
         assert events[0]["headers"]["authorization"] == "[REDACTED]"
 
     asyncio.run(run())
+
+
+def test_stable_error_hash_ignores_stack_line_numbers() -> None:
+    stack_a = """Traceback (most recent call last):
+  File "/app/api.py", line 12, in endpoint
+    do_work()
+ValueError: boom
+"""
+    stack_b = """Traceback (most recent call last):
+  File "/app/api.py", line 98, in endpoint
+    do_work()
+ValueError: boom
+"""
+    hash_a = _stable_error_hash("ValueError", "boom", stack_a)
+    hash_b = _stable_error_hash("ValueError", "boom", stack_b)
+    assert hash_a == hash_b
