@@ -86,6 +86,23 @@ def test_dashboard_reads_require_auth(backend_test_database_url: str) -> None:
     assert requests_response.status_code == 401
 
 
+def test_dashboard_preflight_returns_cors_headers(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    app = create_app()
+    with TestClient(app) as client:
+        preflight = client.options(
+            "/dashboard/overview",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+    assert preflight.status_code == 200
+    assert preflight.headers.get("access-control-allow-origin") == "http://localhost:3000"
+    assert "authorization" in preflight.headers.get("access-control-allow-headers", "").lower()
+
+
 def test_dashboard_overview_returns_project_scoped_metrics(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project One")

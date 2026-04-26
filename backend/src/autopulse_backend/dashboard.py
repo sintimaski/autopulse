@@ -41,6 +41,10 @@ def _resolve_time_window(
     return resolved_from, resolved_to
 
 
+def _minute_bucket(dt: datetime) -> datetime:
+    return dt.astimezone(UTC).replace(second=0, microsecond=0)
+
+
 @router.get("/overview", response_model=DashboardOverviewResponse)
 async def get_dashboard_overview(
     context: Annotated[ProjectContext, Depends(authenticate_project)],
@@ -70,36 +74,70 @@ async def get_dashboard_overview(
     error_rate = (error_total / request_total) if request_total else 0.0
     requests_per_minute = request_total / window_minutes
 
-    series_query = (
-        select(
-            func.date_trunc("minute", Event.timestamp).label("minute_bucket"),
-            func.count(Event.id),
-            func.sum(case((error_condition, 1), else_=0)),
-            func.avg(Event.latency_ms),
+    dialect_name = session.bind.dialect.name if session.bind is not None else ""
+    if dialect_name == "sqlite":
+        series_rows = await session.execute(
+            select(Event.timestamp, Event.type, Event.status_code, Event.latency_ms).where(
+                Event.project_id == context.project_id,
+                Event.timestamp >= resolved_from,
+                Event.timestamp <= resolved_to,
+            )
         )
-        .where(
-            Event.project_id == context.project_id,
-            Event.timestamp >= resolved_from,
-            Event.timestamp <= resolved_to,
+        buckets: dict[datetime, dict[str, float | int]] = {}
+        for timestamp, event_type, status_code, latency_ms in series_rows:
+            bucket = _minute_bucket(timestamp)
+            current = buckets.setdefault(
+                bucket,
+                {"request_count": 0, "error_count": 0, "latency_sum": 0.0},
+            )
+            current["request_count"] += 1
+            if event_type == "error" or status_code >= 500:
+                current["error_count"] += 1
+            current["latency_sum"] += float(latency_ms)
+        series = [
+            DashboardOverviewBucket(
+                minute=bucket,
+                request_count=int(data["request_count"]),
+                error_count=int(data["error_count"]),
+                avg_latency_ms=(
+                    float(data["latency_sum"]) / int(data["request_count"])
+                    if int(data["request_count"]) > 0
+                    else 0.0
+                ),
+            )
+            for bucket, data in sorted(buckets.items(), key=lambda item: item[0])
+        ]
+    else:
+        series_query = (
+            select(
+                func.date_trunc("minute", Event.timestamp).label("minute_bucket"),
+                func.count(Event.id),
+                func.sum(case((error_condition, 1), else_=0)),
+                func.avg(Event.latency_ms),
+            )
+            .where(
+                Event.project_id == context.project_id,
+                Event.timestamp >= resolved_from,
+                Event.timestamp <= resolved_to,
+            )
+            .group_by("minute_bucket")
+            .order_by("minute_bucket")
         )
-        .group_by("minute_bucket")
-        .order_by("minute_bucket")
-    )
-    series_result = await session.execute(series_query)
-    series = [
-        DashboardOverviewBucket(
-            minute=minute_bucket.astimezone(UTC),
-            request_count=int(bucket_request_count or 0),
-            error_count=int(bucket_error_count or 0),
-            avg_latency_ms=float(bucket_avg_latency or 0.0),
-        )
-        for (
-            minute_bucket,
-            bucket_request_count,
-            bucket_error_count,
-            bucket_avg_latency,
-        ) in series_result
-    ]
+        series_result = await session.execute(series_query)
+        series = [
+            DashboardOverviewBucket(
+                minute=minute_bucket.astimezone(UTC),
+                request_count=int(bucket_request_count or 0),
+                error_count=int(bucket_error_count or 0),
+                avg_latency_ms=float(bucket_avg_latency or 0.0),
+            )
+            for (
+                minute_bucket,
+                bucket_request_count,
+                bucket_error_count,
+                bucket_avg_latency,
+            ) in series_result
+        ]
 
     return DashboardOverviewResponse(
         from_timestamp=resolved_from,

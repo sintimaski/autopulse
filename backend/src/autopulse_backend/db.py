@@ -14,12 +14,17 @@ from autopulse_backend.config import get_settings
 _engines: dict[str, AsyncEngine] = {}
 
 
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    settings = get_settings()
-    engine = _engines.get(settings.database_url)
+def get_engine(database_url: str | None = None) -> AsyncEngine:
+    resolved_database_url = database_url or get_settings().database_url
+    engine = _engines.get(resolved_database_url)
     if engine is None:
-        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-        _engines[settings.database_url] = engine
+        engine = create_async_engine(resolved_database_url, pool_pre_ping=True)
+        _engines[resolved_database_url] = engine
+    return engine
+
+
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    engine = get_engine()
     session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     async with session_maker() as session:
         yield session
