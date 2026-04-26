@@ -39,6 +39,7 @@ node_modules/
 .next/
 out/
 .turbo/
+*.tsbuildinfo
 
 # OS / editors
 .DS_Store
