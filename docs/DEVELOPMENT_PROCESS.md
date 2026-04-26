@@ -303,14 +303,14 @@ uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_ba
 
 Current repository state:
 
-- Active test packages: `sdk/tests` and `backend/tests`.
-- `frontend/` is a planned placeholder.
+- Active test packages: `sdk/tests`, `backend/tests`, and `frontend` Vitest suites.
+- `frontend/` is an active Next.js dashboard application with overview/logs/diagnosis/alerts routes.
 
 Scaling strategy:
 
 - Keep SDK behavioral tests in `sdk/tests` from day one.
 - Continue expanding `backend/tests` alongside ingest/read API growth.
-- Add frontend test setup when dashboard pages become executable code.
+- Keep frontend unit/smoke tests in `frontend/` and expand coverage as dashboard UX grows.
 - Preserve root-level CI as the global gate while allowing local targeted loops.
 
 Test taxonomy used across milestones:

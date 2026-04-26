@@ -4,8 +4,11 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AutoPulse Dashboard",
-  description: "M3 dashboard shell for AutoPulse",
+  title: {
+    default: "AutoPulse Dashboard",
+    template: "%s | AutoPulse Dashboard",
+  },
+  description: "Fast diagnosis dashboard for AutoPulse MVP.",
 };
 
 export default function RootLayout({

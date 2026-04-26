@@ -76,6 +76,65 @@ export function maxBucketRequestCount(series: OverviewBucket[]): number {
   return Math.max(...series.map((b) => Number(b.request_count || 0)));
 }
 
+/** Keep only buckets whose minute falls in the last `lastMinutes` of the series span. */
+export function trimSeriesToLastMinutes(
+  series: OverviewBucket[],
+  lastMinutes: number,
+): OverviewBucket[] {
+  if (!series.length || lastMinutes <= 0) {
+    return series;
+  }
+  const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
+  const lastTs = new Date(sorted[sorted.length - 1].minute).getTime();
+  const cutoff = lastTs - lastMinutes * 60 * 1000;
+  return sorted.filter((b) => new Date(b.minute).getTime() >= cutoff);
+}
+
+/**
+ * Merge consecutive minute buckets into wider buckets of `stepMinutes` length
+ * (UTC epoch-aligned). Latency is a request-count-weighted average per bucket.
+ */
+export function aggregateSeriesByStep(
+  series: OverviewBucket[],
+  stepMinutes: number,
+): OverviewBucket[] {
+  if (!series.length) {
+    return [];
+  }
+  const step = Math.max(1, Math.floor(stepMinutes));
+  if (step === 1) {
+    return [...series].sort((a, b) => a.minute.localeCompare(b.minute));
+  }
+  const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
+  const spanMs = step * 60 * 1000;
+  type Acc = { rc: number; ec: number; latWeighted: number };
+  const map = new Map<string, Acc>();
+  for (const b of sorted) {
+    const t = new Date(b.minute).getTime();
+    const bucketStart = Math.floor(t / spanMs) * spanMs;
+    const key = new Date(bucketStart).toISOString();
+    const rc = Number(b.request_count || 0);
+    const ec = Number(b.error_count || 0);
+    const lat = Number(b.avg_latency_ms || 0);
+    const existing = map.get(key);
+    if (existing) {
+      existing.rc += rc;
+      existing.ec += ec;
+      existing.latWeighted += lat * rc;
+    } else {
+      map.set(key, { rc, ec, latWeighted: lat * rc });
+    }
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([minute, acc]) => ({
+      minute,
+      request_count: acc.rc,
+      error_count: acc.ec,
+      avg_latency_ms: acc.rc > 0 ? acc.latWeighted / acc.rc : 0,
+    }));
+}
+
 export function computeOperationalSignals(
   overview: OverviewForSignals,
   defaults: {

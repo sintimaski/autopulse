@@ -5,32 +5,13 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from autopulse_backend.alerts import StubAlertSender, evaluate_alerts_once
 from autopulse_backend.config import get_settings
 from autopulse_backend.models import Event, Project
-
-
-def _truncate_tables(database_url: str) -> None:
-    async def run() -> None:
-        engine = create_async_engine(database_url, pool_pre_ping=True)
-        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
-        try:
-            async with session_maker() as session:
-                await session.execute(
-                    text(
-                        "TRUNCATE TABLE alert_dispatches, project_alert_settings, "
-                        "events, api_keys, projects "
-                        "RESTART IDENTITY CASCADE"
-                    )
-                )
-                await session.commit()
-        finally:
-            await engine.dispose()
-
-    asyncio.run(run())
 
 
 def _seed_request_events(
@@ -84,6 +65,7 @@ def _run_alert_job(
     error_spike_ratio_threshold: float,
     outage_min_requests: int,
     cooldown_minutes: int,
+    alerts_enabled: bool = True,
 ) -> tuple[int, int]:
     async def run() -> tuple[int, int]:
         engine = create_async_engine(database_url, pool_pre_ping=True)
@@ -94,7 +76,7 @@ def _run_alert_job(
                 base_settings = get_settings()
                 settings = replace(
                     base_settings,
-                    alerts_enabled=True,
+                    alerts_enabled=alerts_enabled,
                     alert_default_destination_email="ops@example.com",
                     alert_error_spike_min_requests=error_spike_min_requests,
                     alert_error_spike_ratio_threshold=error_spike_ratio_threshold,
@@ -119,7 +101,7 @@ def _run_alert_job(
 def test_alert_job_triggers_error_spike_and_suppresses_inside_cooldown(
     backend_test_database_url: str,
 ) -> None:
-    _truncate_tables(backend_test_database_url)
+    truncate_full_schema(backend_test_database_url)
     base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
     _seed_request_events(
         backend_test_database_url,
@@ -154,7 +136,7 @@ def test_alert_job_triggers_error_spike_and_suppresses_inside_cooldown(
 def test_alert_job_triggers_outage_when_no_success_requests(
     backend_test_database_url: str,
 ) -> None:
-    _truncate_tables(backend_test_database_url)
+    truncate_full_schema(backend_test_database_url)
     base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
     _seed_request_events(
         backend_test_database_url,
@@ -174,3 +156,71 @@ def test_alert_job_triggers_outage_when_no_success_requests(
 
     assert triggered == 1
     assert stored == 1
+
+
+def test_evaluate_alerts_returns_zero_when_alerts_disabled(
+    backend_test_database_url: str,
+) -> None:
+    truncate_full_schema(backend_test_database_url)
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    _seed_request_events(
+        backend_test_database_url,
+        request_count=30,
+        error_count=25,
+        base_time=base_time,
+    )
+
+    triggered, stored = _run_alert_job(
+        backend_test_database_url,
+        now=base_time + timedelta(minutes=1),
+        error_spike_min_requests=5,
+        error_spike_ratio_threshold=0.5,
+        outage_min_requests=50,
+        cooldown_minutes=30,
+        alerts_enabled=False,
+    )
+
+    assert triggered == 0
+    assert stored == 0
+
+
+def test_evaluate_alerts_returns_zero_when_no_projects(backend_test_database_url: str) -> None:
+    truncate_full_schema(backend_test_database_url)
+
+    triggered, stored = _run_alert_job(
+        backend_test_database_url,
+        now=datetime.now(tz=UTC),
+        error_spike_min_requests=1,
+        error_spike_ratio_threshold=0.01,
+        outage_min_requests=1,
+        cooldown_minutes=1,
+    )
+
+    assert triggered == 0
+    assert stored == 0
+
+
+def test_evaluate_alerts_returns_zero_below_min_request_threshold(
+    backend_test_database_url: str,
+) -> None:
+    """Default-style spike rule needs enough volume; sparse traffic should not dispatch."""
+    truncate_full_schema(backend_test_database_url)
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    _seed_request_events(
+        backend_test_database_url,
+        request_count=15,
+        error_count=15,
+        base_time=base_time,
+    )
+
+    triggered, stored = _run_alert_job(
+        backend_test_database_url,
+        now=base_time + timedelta(minutes=1),
+        error_spike_min_requests=20,
+        error_spike_ratio_threshold=0.4,
+        outage_min_requests=50,
+        cooldown_minutes=30,
+    )
+
+    assert triggered == 0
+    assert stored == 0

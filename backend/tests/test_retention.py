@@ -5,32 +5,13 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from autopulse_backend.config import get_settings
 from autopulse_backend.models import Event, Project
 from autopulse_backend.retention import run_retention_cleanup_once
-
-
-def _truncate_tables(database_url: str) -> None:
-    async def run() -> None:
-        engine = create_async_engine(database_url, pool_pre_ping=True)
-        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
-        try:
-            async with session_maker() as session:
-                await session.execute(
-                    text(
-                        "TRUNCATE TABLE alert_dispatches, project_alert_settings, "
-                        "events, api_keys, projects "
-                        "RESTART IDENTITY CASCADE"
-                    )
-                )
-                await session.commit()
-        finally:
-            await engine.dispose()
-
-    asyncio.run(run())
 
 
 def _seed_old_and_fresh_events(database_url: str, now: datetime) -> None:
@@ -106,7 +87,7 @@ def test_retention_cleanup_deletes_only_rows_older_than_window(
     backend_test_database_url: str,
 ) -> None:
     now = datetime.now(tz=UTC)
-    _truncate_tables(backend_test_database_url)
+    truncate_full_schema(backend_test_database_url)
     _seed_old_and_fresh_events(backend_test_database_url, now)
 
     deleted, remaining = _run_retention(backend_test_database_url, now)
