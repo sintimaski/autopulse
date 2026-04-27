@@ -59,6 +59,8 @@ class Settings:
     jobs_enable_scheduler: bool = False
     jobs_alert_interval_seconds: float = 60.0
     jobs_retention_interval_seconds: float = 3600.0
+    alert_sender_mode: str = "stub"
+    alert_webhook_url: str | None = None
 
 
 def get_settings() -> Settings:
@@ -123,4 +125,6 @@ def get_settings() -> Settings:
             3600.0,
             minimum=30.0,
         ),
+        alert_sender_mode=getenv("ALERT_SENDER_MODE", "stub").strip().lower() or "stub",
+        alert_webhook_url=getenv("ALERT_WEBHOOK_URL"),
     )

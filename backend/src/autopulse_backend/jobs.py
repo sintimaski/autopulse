@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from autopulse_backend.alerts import AlertSender, evaluate_alerts_once
+from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
 from autopulse_backend.config import Settings, get_settings
 from autopulse_backend.db import get_engine
 from autopulse_backend.retention import run_retention_cleanup_once
@@ -32,10 +32,11 @@ async def run_alerts_once(
     sender: AlertSender | None = None,
 ) -> int:
     resolved_settings = settings or get_settings()
+    resolved_sender = sender or build_alert_sender(resolved_settings)
     engine = get_engine(resolved_settings.database_url)
     session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     async with session_maker() as session:
-        return await evaluate_alerts_once(session, resolved_settings, sender=sender)
+        return await evaluate_alerts_once(session, resolved_settings, sender=resolved_sender)
 
 
 async def run_retention_once(*, settings: Settings | None = None) -> int:

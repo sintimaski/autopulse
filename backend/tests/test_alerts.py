@@ -224,3 +224,13 @@ def test_evaluate_alerts_returns_zero_below_min_request_threshold(
 
     assert triggered == 0
     assert stored == 0
+
+
+def test_alert_sender_defaults_to_stub_when_webhook_mode_missing_url() -> None:
+    from dataclasses import replace
+
+    from autopulse_backend.alerts import StubAlertSender, build_alert_sender
+
+    settings = replace(get_settings(), alert_sender_mode="webhook", alert_webhook_url=None)
+    sender = build_alert_sender(settings)
+    assert isinstance(sender, StubAlertSender)

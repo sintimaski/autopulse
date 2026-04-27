@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
+import httpx
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,48 @@ class StubAlertSender:
 
     async def send(self, signal: AlertSignal) -> None:
         self.sent.append(signal)
+
+
+@dataclass(slots=True)
+class CompositeAlertSender:
+    senders: list[AlertSender]
+    delivery_kind: str = "composite"
+
+    async def send(self, signal: AlertSignal) -> None:
+        for sender in self.senders:
+            await sender.send(signal)
+
+
+@dataclass(slots=True)
+class WebhookAlertSender:
+    webhook_url: str
+    timeout_seconds: float = 3.0
+    delivery_kind: str = "webhook"
+
+    async def send(self, signal: AlertSignal) -> None:
+        payload = {
+            "alert_type": signal.alert_type,
+            "project_id": str(signal.project_id),
+            "triggered_at": signal.triggered_at.isoformat(),
+            "window_start": signal.window_start.isoformat(),
+            "window_end": signal.window_end.isoformat(),
+            "destination_email": signal.destination_email,
+            "detail": signal.detail,
+        }
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            response = await client.post(self.webhook_url, json=payload)
+            response.raise_for_status()
+
+
+def build_alert_sender(settings: Settings) -> AlertSender:
+    mode = (settings.alert_sender_mode or "stub").strip().lower()
+    if mode == "webhook":
+        if settings.alert_webhook_url:
+            return WebhookAlertSender(webhook_url=settings.alert_webhook_url)
+        return StubAlertSender()
+    if mode == "stub":
+        return StubAlertSender()
+    return StubAlertSender()
 
 
 def _as_utc(value: datetime) -> datetime:
