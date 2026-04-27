@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from autopulse_backend.scenario_events import (
+from autopulse_backend.ingestion.scenario_events import (
     generate_manual_batch_events,
     split_csv_values,
 )

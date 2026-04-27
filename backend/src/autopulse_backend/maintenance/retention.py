@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.config import Settings
+from autopulse_backend.core.config import Settings
 from autopulse_backend.models import Event, ProjectUiSettings
 
 

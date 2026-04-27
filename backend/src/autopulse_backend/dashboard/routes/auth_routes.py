@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from autopulse_backend.auth import (
+    clear_session_cookie,
+    create_magic_link_token,
+    get_dashboard_auth_session,
+    revoke_current_dashboard_session,
+    verify_magic_link_and_create_session,
+)
+from autopulse_backend.config import get_settings
+from autopulse_backend.database import get_db_session
+from autopulse_backend.schemas import (
+    DashboardMagicLinkRequest,
+    DashboardMagicLinkRequestResponse,
+    DashboardMagicLinkVerifyRequest,
+    DashboardSessionResponse,
+)
+
+router = APIRouter()
+
+
+@router.post("/auth/magic-link/request", response_model=DashboardMagicLinkRequestResponse)
+async def request_dashboard_magic_link(
+    payload: DashboardMagicLinkRequest,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardMagicLinkRequestResponse:
+    settings = get_settings()
+    token = await create_magic_link_token(
+        session=session,
+        settings=settings,
+        email=payload.email,
+    )
+    return DashboardMagicLinkRequestResponse(
+        accepted=True,
+        expires_in_seconds=max(60, settings.dashboard_auth_magic_link_ttl_minutes * 60),
+        dev_magic_link_token=token if settings.dashboard_auth_magic_link_dev_expose_token else None,
+    )
+
+
+@router.post("/auth/magic-link/verify", response_model=DashboardSessionResponse)
+async def verify_dashboard_magic_link(
+    payload: DashboardMagicLinkVerifyRequest,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    auth_session = await verify_magic_link_and_create_session(
+        session=session,
+        response=response,
+        settings=settings,
+        token=payload.token,
+    )
+    return DashboardSessionResponse(
+        authenticated=True,
+        email=auth_session.email,
+        expires_at=auth_session.expires_at,
+    )
+
+
+@router.get("/auth/session", response_model=DashboardSessionResponse)
+async def get_dashboard_session(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    auth_session = await get_dashboard_auth_session(
+        session=session,
+        settings=settings,
+        request=request,
+    )
+    if auth_session is None:
+        return DashboardSessionResponse(authenticated=False)
+    return DashboardSessionResponse(
+        authenticated=True,
+        email=auth_session.email,
+        expires_at=auth_session.expires_at,
+    )
+
+
+@router.post("/auth/logout", response_model=DashboardSessionResponse)
+async def logout_dashboard_session(
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    await revoke_current_dashboard_session(
+        request=request,
+        session=session,
+        settings=settings,
+    )
+    clear_session_cookie(response, settings)
+    return DashboardSessionResponse(authenticated=False)

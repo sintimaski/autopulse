@@ -19,3 +19,5 @@ class ServiceMetrics:
 
 
 service_metrics = ServiceMetrics()
+
+__all__ = ["ServiceMetrics", "service_metrics"]

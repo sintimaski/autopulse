@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 
 _engines: dict[str, AsyncEngine] = {}
 

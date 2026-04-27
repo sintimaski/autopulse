@@ -1,4 +1,4 @@
-"""Compatibility shim: settings live in `autopulse_backend.core.config`."""
+"""Cross-cutting application concerns (config, security hooks, etc.)."""
 
 from __future__ import annotations
 

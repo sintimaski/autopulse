@@ -27,8 +27,8 @@ from autopulse_backend.dashboard.time_window import (
     minute_bucket,
     resolve_time_window,
 )
-from autopulse_backend.db import get_db_session
-from autopulse_backend.exclude_autopulse import (
+from autopulse_backend.database import get_db_session
+from autopulse_backend.ingestion.exclude_autopulse import (
     append_exclude_autopulse_event_filters,
     resolve_exclude_autopulse_traffic,
 )

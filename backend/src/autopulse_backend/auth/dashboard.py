@@ -12,8 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
-from autopulse_backend.config import Settings, get_settings
-from autopulse_backend.db import get_db_session
+from autopulse_backend.core.config import Settings, get_settings
+from autopulse_backend.database import get_db_session
 from autopulse_backend.models import DashboardMagicLink, DashboardSession, DashboardUser, Project
 
 

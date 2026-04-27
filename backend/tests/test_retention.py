@@ -10,8 +10,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from autopulse_backend.config import get_settings
+from autopulse_backend.maintenance import run_retention_cleanup_once
 from autopulse_backend.models import Event, Project, ProjectUiSettings
-from autopulse_backend.retention import run_retention_cleanup_once
 
 
 def _seed_old_and_fresh_events(database_url: str, now: datetime) -> None:

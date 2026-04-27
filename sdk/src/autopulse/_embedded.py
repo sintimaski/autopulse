@@ -50,7 +50,7 @@ async def _ensure_embedded_project_and_key(
     *, database_url: str, project_name: str, api_key: str
 ) -> None:
     from autopulse_backend.auth import build_api_key_record
-    from autopulse_backend.db import get_engine
+    from autopulse_backend.database import get_engine
     from autopulse_backend.models import ApiKey, Base, Project
 
     key_record = build_api_key_record(api_key)

@@ -3,54 +3,21 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_project
 from autopulse_backend.config import get_settings
-from autopulse_backend.db import get_db_session
-from autopulse_backend.ingest_limits import ingest_rate_limiter
-from autopulse_backend.models import Event
+from autopulse_backend.database import get_db_session
+from autopulse_backend.ingestion.limits import ingest_rate_limiter
+from autopulse_backend.metrics import service_metrics
 from autopulse_backend.realtime import IngestBroadcastMessage, project_websocket_hub
-from autopulse_backend.schemas import IngestBatchRequest, IngestBatchResponse, event_payload
-from autopulse_backend.service_metrics import service_metrics
+from autopulse_backend.schemas import IngestBatchRequest, IngestBatchResponse
+from autopulse_backend.services.ingest_service import persist_ingest_batch
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-async def persist_ingest_batch(
-    *,
-    session: AsyncSession,
-    project_id: UUID,
-    batch: IngestBatchRequest,
-    received_at: datetime,
-) -> int:
-    settings = get_settings()
-    sdk_version = batch.sdk_version or settings.default_sdk_version
-    rows = [
-        Event(
-            project_id=project_id,
-            timestamp=event.timestamp,
-            received_at=received_at,
-            sdk_version=sdk_version,
-            type=event.type,
-            service_name=event.service_name,
-            environment=event.environment,
-            method=event.method,
-            path=event.path,
-            status_code=event.status_code,
-            latency_ms=event.latency_ms,
-            payload=event_payload(event),
-            request_id=event.request_id,
-        )
-        for event in batch.events
-    ]
-    session.add_all(rows)
-    await session.commit()
-    return len(rows)
 
 
 @router.post("/ingest", response_model=IngestBatchResponse, status_code=status.HTTP_200_OK)

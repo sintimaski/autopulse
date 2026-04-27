@@ -11,9 +11,9 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.config import get_settings
-from autopulse_backend.dashboard_auth import get_dashboard_auth_session
-from autopulse_backend.db import get_db_session
+from autopulse_backend.auth.dashboard import get_dashboard_auth_session
+from autopulse_backend.core.config import get_settings
+from autopulse_backend.database import get_db_session
 from autopulse_backend.models import ApiKey
 
 _API_KEY_PREFIX: Final[str] = "ap_live"

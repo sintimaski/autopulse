@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
-from autopulse_backend.config import Settings, get_settings
-from autopulse_backend.db import get_engine
-from autopulse_backend.retention import run_retention_cleanup_once
+from autopulse_backend.core.config import Settings, get_settings
+from autopulse_backend.database import get_engine
+from autopulse_backend.maintenance.retention import run_retention_cleanup_once
 
 
 @dataclass(slots=True)

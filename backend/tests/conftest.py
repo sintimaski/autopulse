@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from autopulse_backend.migrations import upgrade_to_head
+from autopulse_backend.database import upgrade_to_head
 
 
 @pytest.fixture(scope="session")
