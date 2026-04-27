@@ -12,17 +12,28 @@ export function LogsContent() {
     return null;
   }
 
+  const filteredCount = d.filteredSorted.length;
+  const serverWindowTotal = requests.total;
+  const errorRows = d.filteredSorted.filter((item) => item.status_code >= 500).length;
+  const slowRows = d.filteredSorted.filter((item) => item.latency_ms >= 300).length;
+  const p95LatencyMs = (() => {
+    if (d.filteredSorted.length === 0) {
+      return 0;
+    }
+    const sorted = [...d.filteredSorted].sort((a, b) => a.latency_ms - b.latency_ms);
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+    return sorted[idx]?.latency_ms ?? 0;
+  })();
+  const activeClientControls = d.envTags.size + d.serviceTags.size + (d.groupBy !== "none" ? 1 : 0);
+
   return (
     <>
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">
-              Client filters & grouping
-            </h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-neutral-100">Logs triage flow</h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-              Applies to the current rows loaded for this page. Use the header server query filters for
-              full-dataset filtering and pagination.
+              1) Scope in the header, 2) refine this page view, 3) open rows to inspect exact requests.
             </p>
           </div>
           <button
@@ -30,166 +41,136 @@ export function LogsContent() {
             onClick={d.clearClientFilters}
             className="self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
           >
-            Clear client filters
+            Reset all filters
           </button>
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-            Path contains
-            <input
-              type="search"
-              value={d.pathQuery}
-              onChange={(e) => d.setPathQuery(e.target.value)}
-              placeholder="/users, /health, …"
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 placeholder:text-neutral-500 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:placeholder:text-neutral-500 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-            Group rows by
-            <select
-              value={d.groupBy}
-              onChange={(e) => d.setGroupBy(e.target.value as GroupBy)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-            >
-              {GROUP_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-800/70">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+              Loaded rows
+            </p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-neutral-100">
+              {filteredCount}
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">From {serverWindowTotal} in window</p>
+          </div>
+          <div className="rounded-xl border border-red-200/70 bg-red-50/70 p-3 dark:border-red-900/40 dark:bg-red-950/20">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-red-600 dark:text-red-300">
+              Errors (5xx)
+            </p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-red-700 dark:text-red-200">{errorRows}</p>
+            <p className="mt-1 text-xs text-red-600/80 dark:text-red-300/80">Prioritize these first</p>
+          </div>
+          <div className="rounded-xl border border-amber-200/70 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              Slow (300ms+)
+            </p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-amber-700 dark:text-amber-200">
+              {slowRows}
+            </p>
+            <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Potential regressions</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-800/70">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+              p95 latency
+            </p>
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-neutral-100">
+              {p95LatencyMs.toFixed(1)} ms
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">On the currently visible set</p>
+          </div>
         </div>
 
-        {d.availableEnvironments.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">Environment tags</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {d.availableEnvironments.map((env) => {
-                const on = d.envTags.has(env);
-                return (
-                  <button
-                    key={env}
-                    type="button"
-                    onClick={() => d.toggleEnv(env)}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                      on
-                        ? "border-sky-500 bg-sky-500 text-white shadow-sm dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-50"
-                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-neutral-500"
-                    }`}
-                  >
-                    {env}
-                  </button>
-                );
-              })}
-            </div>
+        <div className="mt-4 rounded-xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/70">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+              Local view controls
+            </p>
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
+              {activeClientControls} active
+            </span>
           </div>
-        )}
+          <div className="mt-3 grid gap-4 lg:grid-cols-[220px_1fr_1fr]">
+            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+              Group rows by
+              <select
+                value={d.groupBy}
+                onChange={(e) => d.setGroupBy(e.target.value as GroupBy)}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              >
+                {GROUP_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        {d.availableServices.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">Service tags</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {d.availableServices.map((svc) => {
-                const on = d.serviceTags.has(svc);
-                return (
-                  <button
-                    key={svc}
-                    type="button"
-                    onClick={() => d.toggleService(svc)}
-                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                      on
-                        ? "border-violet-500 bg-violet-600 text-white shadow-sm dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-50"
-                        : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:border-neutral-500"
-                    }`}
-                  >
-                    {svc}
-                  </button>
-                );
-              })}
+            <div>
+              <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">Environment tags</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {d.availableEnvironments.length === 0 ? (
+                  <p className="text-xs text-slate-500 dark:text-neutral-400">No environment tags in this slice.</p>
+                ) : (
+                  d.availableEnvironments.map((env) => {
+                    const on = d.envTags.has(env);
+                    return (
+                      <button
+                        key={env}
+                        type="button"
+                        onClick={() => d.toggleEnv(env)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          on
+                            ? "border-sky-500 bg-sky-500 text-white shadow-sm dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-50"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-500"
+                        }`}
+                      >
+                        {env}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">Service tags</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {d.availableServices.length === 0 ? (
+                  <p className="text-xs text-slate-500 dark:text-neutral-400">No service tags in this slice.</p>
+                ) : (
+                  d.availableServices.map((svc) => {
+                    const on = d.serviceTags.has(svc);
+                    return (
+                      <button
+                        key={svc}
+                        type="button"
+                        onClick={() => d.toggleService(svc)}
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                          on
+                            ? "border-violet-500 bg-violet-600 text-white shadow-sm dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-50"
+                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-500"
+                        }`}
+                      >
+                        {svc}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Requests</h2>
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Request rows</h2>
           <p className="text-xs text-slate-500 dark:text-neutral-400">
             Showing <span className="font-semibold text-slate-800 dark:text-neutral-100">{d.filteredSorted.length}</span> of{" "}
             {d.rawItems.length} loaded (total in window: {requests.total})
           </p>
-        </div>
-
-        <div className="mt-4 rounded-xl border border-slate-200/90 bg-slate-50/80 p-4 dark:border-neutral-700 dark:bg-neutral-800/80">
-          <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">
-            Server query (same as header bar)
-          </p>
-          <p className="mt-0.5 text-[11px] text-slate-500 dark:text-neutral-400">
-            Backend supports time range, method, status class, path contains, latency bounds, service tags,
-            environment tags, limit, and offset (pagination below).
-          </p>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-              Time window
-              <select
-                value={d.windowMinutes}
-                onChange={(e) => d.onServerWindowChange(Number(e.target.value))}
-                className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-              >
-                {d.WINDOW_OPTIONS.map((minutes) => (
-                  <option key={minutes} value={minutes}>
-                    Last {minutes}m
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-              Method
-              <select
-                value={d.method}
-                onChange={(e) => d.onServerMethodChange(e.target.value)}
-                className="min-w-[100px] rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-              >
-                {d.METHOD_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-              Status class
-              <select
-                value={d.statusClass}
-                onChange={(e) => d.onServerStatusClassChange(e.target.value)}
-                className="min-w-[100px] rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-              >
-                {d.STATUS_CLASS_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value === "ALL" ? value : `${value}xx`}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-              Page size
-              <select
-                value={d.requestLimit}
-                onChange={(e) => {
-                  d.setRequestLimit(Number(e.target.value));
-                  d.setRequestPage(0);
-                }}
-                className="min-w-[100px] rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-              >
-                {d.REQUEST_LIMIT_OPTIONS.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
         </div>
 
         {d.rawItems.length === 0 ? (
@@ -221,7 +202,7 @@ export function LogsContent() {
                 )}
                 <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+                    <thead className="sticky top-0 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
                       <tr>
                         <th className="w-10 px-2 py-2" aria-label="Expand row" />
                         {(
@@ -366,8 +347,8 @@ export function LogsContent() {
                                     </div>
                                   </dl>
                                   <p className="mt-3 text-[11px] text-slate-500 dark:text-neutral-400">
-                                    Click the row again to collapse. Sorting uses the client-side slice after
-                                    server filters.
+                                    Click the row again to collapse. This detail view is ideal for sharing exact
+                                    failing request context with your team.
                                   </p>
                                 </td>
                               </tr>

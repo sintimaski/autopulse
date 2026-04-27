@@ -24,26 +24,30 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   },
   "/logs": {
     title: "Logs",
-    subtitle: "Request rows with client-side filters.",
+    subtitle: "Scope traffic fast, then inspect request-level evidence.",
   },
 };
 
 function ShellWithData({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const d = useDashboardData();
-  const [isDark, setIsDark] = useState<boolean>(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    const stored = window.localStorage.getItem("autopulse-theme");
-    if (stored === "dark") {
-      return true;
-    }
-    if (stored === "light") {
-      return false;
-    }
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
-  });
+  const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const stored = window.localStorage.getItem("autopulse-theme");
+      if (stored === "dark") {
+        setIsDark(true);
+        return;
+      }
+      if (stored === "light") {
+        setIsDark(false);
+        return;
+      }
+      setIsDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     window.localStorage.setItem("autopulse-theme", isDark ? "dark" : "light");
@@ -54,6 +58,18 @@ function ShellWithData({ children }: { children: ReactNode }) {
   }
 
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
+  const showServerScope = pathname === "/dashboard" || pathname === "/diagnosis" || pathname === "/logs";
+  const resetServerFilters = () => {
+    d.onServerMethodChange("ALL");
+    d.onServerStatusClassChange("ALL");
+    d.setPathQuery("");
+    d.setMinLatencyMs("");
+    d.setMaxLatencyMs("");
+    d.setServerEnvironmentQuery("");
+    d.setServerServiceQuery("");
+    d.setRequestPage(0);
+    d.setErrorGroupPage(0);
+  };
 
   return (
     <DashboardAppShell
@@ -63,7 +79,10 @@ function ShellWithData({ children }: { children: ReactNode }) {
       isDark={isDark}
       onToggleTheme={() => setIsDark((prev) => !prev)}
       onRefresh={() => d.setRefreshToken((n) => n + 1)}
-      filterToolbar={<ServerQueryToolbar />}
+      filterToolbarAutoCollapse={showServerScope}
+      filterToolbarCompactLabel="Server scope"
+      onResetServerFilters={showServerScope ? resetServerFilters : undefined}
+      filterToolbar={showServerScope ? <ServerQueryToolbar /> : null}
     >
       {children}
     </DashboardAppShell>
