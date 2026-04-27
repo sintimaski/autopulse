@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -83,6 +83,25 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+def _dashboard_request_log_message(event_type: str, payload: Any) -> str | None:
+    """Human-readable diagnostic text for dashboard request rows (error events only)."""
+    if not isinstance(payload, dict):
+        return None
+    if event_type != "error":
+        return None
+    raw = payload.get("exception_message")
+    if raw is None:
+        raw = payload.get("message")
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    return text[:4000]
+
+
 _FROM_TIMESTAMP_QUERY = Query(default=None)
 _TO_TIMESTAMP_QUERY = Query(default=None)
 _METHOD_QUERY = Query(default=None)
@@ -1106,6 +1125,8 @@ async def get_dashboard_requests(
             Event.service_name,
             Event.environment,
             Event.request_id,
+            Event.type,
+            Event.payload,
         )
         .where(*filters)
         .order_by(Event.timestamp.desc())
@@ -1123,6 +1144,7 @@ async def get_dashboard_requests(
             service_name=service_name,
             environment=environment,
             request_id=request_id,
+            log_message=_dashboard_request_log_message(event_type, payload),
         )
         for (
             timestamp,
@@ -1133,6 +1155,8 @@ async def get_dashboard_requests(
             service_name,
             environment,
             request_id,
+            event_type,
+            payload,
         ) in requests_result
     ]
     return DashboardRequestsResponse(

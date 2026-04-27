@@ -60,6 +60,7 @@ import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import {
   mergePersistedScopedSession,
   readPersistedDashboardSession,
+  type PersistedLogsClientSlice,
 } from "./dashboardPersistentScope";
 import { normalizeCommaSeparated, splitCommaSeparated, type DashboardScopedQueryState } from "./dashboardQueryState";
 import {
@@ -140,6 +141,8 @@ export type DashboardDataContextValue = {
   toggleEnv: (value: string) => void;
   toggleService: (value: string) => void;
   clearClientFilters: () => void;
+  /** Replace logs page client filters (group/sort/tags) from URL or defaults. */
+  hydrateLogsViewFromUrl: (next: PersistedLogsClientSlice) => void;
   copyRunbookCommand: (command: string, label: string) => Promise<void>;
   saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
   saveThemePreference: (next: ThemePreference) => Promise<boolean>;
@@ -868,7 +871,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     };
   }, [hasApiKey]);
 
-  const rawItems = useMemo(() => requests?.items ?? [], [requests]);
+  const rawItems = useMemo(
+    () =>
+      (requests?.items ?? []).map((item) => ({
+        ...item,
+        log_message: item.log_message ?? null,
+      })),
+    [requests],
+  );
 
   const onServerWindowChange = useCallback((minutes: number) => {
     setAbsoluteWindowState(null);
@@ -1006,6 +1016,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setGroupBy("none");
     setSortKey("timestamp");
     setSortDir("desc");
+  }, []);
+
+  const hydrateLogsViewFromUrl = useCallback((next: PersistedLogsClientSlice) => {
+    setGroupBy(next.groupBy);
+    setSortKey(next.sortKey);
+    setSortDir(next.sortDir);
+    setEnvTags(new Set(next.envTags));
+    setServiceTags(new Set(next.serviceTags));
   }, []);
 
   const copyRunbookCommand = useCallback(async (command: string, label: string) => {
@@ -1231,7 +1249,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setSortDir((d) => (d === "asc" ? "desc" : "asc"));
       } else {
         setSortKey(key);
-        setSortDir(key === "timestamp" || key === "status_code" || key === "latency_ms" ? "desc" : "asc");
+        setSortDir(
+          key === "timestamp" || key === "status_code" || key === "latency_ms"
+            ? "desc"
+            : "asc",
+        );
       }
     },
     [sortKey],
@@ -1259,6 +1281,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const ta = new Date(va as string).getTime();
         const tb = new Date(vb as string).getTime();
         return sortDir === "asc" ? ta - tb : tb - ta;
+      }
+      if (sortKey === "log_message") {
+        return compareValues(a.log_message ?? "", b.log_message ?? "", sortDir);
       }
       return compareValues(va as string | number, vb as string | number, sortDir);
     });
@@ -1480,6 +1505,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       toggleEnv,
       toggleService,
       clearClientFilters,
+      hydrateLogsViewFromUrl,
       copyRunbookCommand,
       saveAlertSettings,
       saveThemePreference,
@@ -1576,6 +1602,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       toggleEnv,
       toggleService,
       clearClientFilters,
+      hydrateLogsViewFromUrl,
       copyRunbookCommand,
       saveAlertSettings,
       saveThemePreference,

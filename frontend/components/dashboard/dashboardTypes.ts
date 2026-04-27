@@ -51,6 +51,8 @@ export type RequestItem = {
   service_name: string;
   environment: string;
   request_id: string | null;
+  /** Error / diagnostic text from the stored event payload (e.g. `exception_message`). */
+  log_message: string | null;
 };
 
 export type RequestsResponse = {
@@ -270,10 +272,21 @@ export const GROUP_OPTIONS = [
 ] as const;
 
 export type GroupBy = (typeof GROUP_OPTIONS)[number]["value"];
-export type SortKey = keyof Pick<
-  RequestItem,
-  "timestamp" | "method" | "path" | "status_code" | "latency_ms" | "service_name" | "environment"
->;
+
+export const LOGS_TABLE_SORT_KEYS = [
+  "timestamp",
+  "method",
+  "path",
+  "status_code",
+  "latency_ms",
+  "service_name",
+  "environment",
+  "log_message",
+] as const satisfies readonly (keyof RequestItem)[];
+
+export type SortKey = (typeof LOGS_TABLE_SORT_KEYS)[number];
+
+export const LOGS_TABLE_SORT_KEY_SET = new Set<string>(LOGS_TABLE_SORT_KEYS);
 export type SortDir = "asc" | "desc";
 
 export const RUNBOOK_ALERTS_CMD = [
@@ -293,9 +306,9 @@ export function statusTone(code: number): string {
     return "bg-rose-500/15 text-rose-800 ring-rose-500/25 dark:bg-rose-900/40 dark:text-rose-300 dark:ring-rose-700/50";
   }
   if (code >= 400) {
-    return "bg-amber-500/15 text-amber-900 ring-amber-500/25 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-700/50";
+    return "bg-orange-500/12 text-orange-950 ring-orange-500/20 dark:bg-orange-950/45 dark:text-orange-200 dark:ring-orange-500/30";
   }
-  return "bg-emerald-500/15 text-emerald-900 ring-emerald-500/25 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-700/50";
+  return "bg-neutral-200/90 text-neutral-900 ring-neutral-300/70 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/50";
 }
 
 export function compareValues(a: string | number, b: string | number, dir: SortDir): number {

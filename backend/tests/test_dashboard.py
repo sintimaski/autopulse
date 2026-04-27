@@ -195,6 +195,41 @@ def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_u
     assert series_by_minute[second_minute]["count_5xx"] == 0
 
 
+def test_dashboard_requests_include_log_message_for_error_events(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Log Msg")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            500,
+            "GET",
+            "/boom",
+            event_type="error",
+            payload_overrides={
+                "exception_type": "RuntimeError",
+                "exception_message": "something failed",
+            },
+        )
+        response = client.get(
+            "/dashboard/requests",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["log_message"] == "something failed"
+
+
 def test_dashboard_requests_support_filters_and_pagination(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project Filters")

@@ -1,5 +1,6 @@
 import {
   GROUP_OPTIONS,
+  LOGS_TABLE_SORT_KEY_SET,
   type GroupBy,
   type SortDir,
   type SortKey,
@@ -14,17 +15,7 @@ const STORAGE_KEY = "autopulse.dashboard.session.v1";
 
 const GROUP_VALUES = new Set<string>(GROUP_OPTIONS.map((o) => o.value));
 
-const SORT_KEYS: SortKey[] = [
-  "timestamp",
-  "method",
-  "path",
-  "status_code",
-  "latency_ms",
-  "service_name",
-  "environment",
-];
-
-const SORT_KEY_SET = new Set<string>(SORT_KEYS);
+const SORT_KEY_SET = LOGS_TABLE_SORT_KEY_SET;
 
 export type PersistedLogsClientSlice = {
   groupBy: GroupBy;
@@ -32,6 +23,14 @@ export type PersistedLogsClientSlice = {
   sortDir: SortDir;
   envTags: string[];
   serviceTags: string[];
+};
+
+export const DEFAULT_LOGS_VIEW_CLIENT: PersistedLogsClientSlice = {
+  groupBy: "none",
+  sortKey: "timestamp",
+  sortDir: "desc",
+  envTags: [],
+  serviceTags: [],
 };
 
 /** v2: Diagnosis and Logs keep independent server-scope query strings. */
@@ -68,14 +67,6 @@ function parseScopedFromQueryString(q: string): DashboardScopedQueryState {
   return parseScopedQuery(new URLSearchParams(q));
 }
 
-const DEFAULT_LOGS_CLIENT: PersistedLogsClientSlice = {
-  groupBy: "none",
-  sortKey: "timestamp",
-  sortDir: "desc",
-  envTags: [],
-  serviceTags: [],
-};
-
 export function readPersistedDashboardSession(): {
   diagnosisScoped: DashboardScopedQueryState;
   logsScoped: DashboardScopedQueryState;
@@ -91,7 +82,7 @@ export function readPersistedDashboardSession(): {
     }
     const parsed = JSON.parse(raw) as Partial<PersistedDashboardSession> & Partial<PersistedDashboardSessionV1>;
     const logsClient =
-      normalizeLogsClient(parsed.logsClient) ?? ({ ...DEFAULT_LOGS_CLIENT } satisfies PersistedLogsClientSlice);
+      normalizeLogsClient(parsed.logsClient) ?? ({ ...DEFAULT_LOGS_VIEW_CLIENT } satisfies PersistedLogsClientSlice);
 
     if (parsed.v === 2 && typeof parsed.diagnosisScopedQueryString === "string" && typeof parsed.logsScopedQueryString === "string") {
       return {
@@ -150,7 +141,7 @@ export function readPersistedSessionRecord(): PersistedDashboardSession | null {
     }
     const parsed = JSON.parse(raw) as Partial<PersistedDashboardSession> & Partial<PersistedDashboardSessionV1>;
     const logsClient =
-      normalizeLogsClient(parsed.logsClient) ?? ({ ...DEFAULT_LOGS_CLIENT } satisfies PersistedLogsClientSlice);
+      normalizeLogsClient(parsed.logsClient) ?? ({ ...DEFAULT_LOGS_VIEW_CLIENT } satisfies PersistedLogsClientSlice);
 
     if (parsed.v === 2 && typeof parsed.diagnosisScopedQueryString === "string" && typeof parsed.logsScopedQueryString === "string") {
       return {

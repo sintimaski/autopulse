@@ -8,6 +8,7 @@ import { buildLogsPageHref, type DashboardScopedQueryState } from "../dashboardQ
 import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
+import { MetricCard } from "../MetricCard";
 
 export function DiagnosisContent() {
   const d = useDashboardData();
@@ -75,47 +76,31 @@ export function DiagnosisContent() {
   return (
     <>
       <section className="grid gap-4 lg:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Incident summary</h2>
-          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
-            {failures.items.reduce((sum, item) => sum + item.failure_count, 0)}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-neutral-400">Total failures in selected window</p>
-        </article>
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Timeline buckets</h2>
-          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
-            {timeline.buckets.length}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-neutral-400">Minute buckets with traffic</p>
-        </article>
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Error groups</h2>
-          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
-            {errorGroups.total}
-          </p>
-          <p className="text-xs text-slate-500 dark:text-neutral-400">Grouped diagnosis anchors</p>
-        </article>
+        <MetricCard
+          label="Incident summary"
+          value={String(failures.items.reduce((sum, item) => sum + item.failure_count, 0))}
+          helper="Failures in this window"
+        />
+        <MetricCard label="Timeline buckets" value={String(timeline.buckets.length)} helper="Minutes with traffic" />
+        <MetricCard label="Error groups" value={String(errorGroups.total)} helper="Grouped anchors" />
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Quick diagnosis</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+      <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
+        <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-neutral-50">Quick diagnosis</h2>
+        <p className="mt-1.5 text-sm text-slate-600 dark:text-neutral-400">
           Recent grouped errors and top failing routes from the loaded request sample ({requests.limit} rows).
           Full request rows live on{" "}
           <Link
             href={buildLogsPageHref(scopedState)}
-            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+            className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
           >
             Logs
           </Link>{" "}
           (same time window and filters).
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
-              Recent errors
-            </h3>
+          <div className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-900/[0.04] dark:bg-neutral-800/40 dark:ring-white/[0.05]">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h3>
             {d.recentErrorsPreview.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">None in this window.</p>
             ) : (
@@ -125,7 +110,7 @@ export function DiagnosisContent() {
                     <div className="rounded-lg border border-transparent px-1 py-1 text-sm transition-colors hover:border-slate-200 hover:bg-white dark:hover:border-neutral-700 dark:hover:bg-neutral-900">
                       <a
                         href="#grouped-errors"
-                        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+                        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/45 dark:focus-visible:ring-orange-400/35"
                       >
                         <span className="font-medium text-slate-900 dark:text-neutral-100">
                           {item.exception_type ?? "Error"}
@@ -146,7 +131,7 @@ export function DiagnosisContent() {
                           pathQuery: item.path,
                           statusClass: "ALL",
                         })}
-                        className="mt-1 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                        className="mt-1 inline-block text-xs font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                       >
                         Request logs for this route
                       </Link>
@@ -156,10 +141,8 @@ export function DiagnosisContent() {
               </ul>
             )}
           </div>
-          <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
-              Top failing routes
-            </h3>
+          <div className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-900/[0.04] dark:bg-neutral-800/40 dark:ring-white/[0.05]">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h3>
             {d.topFailingRoutes.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">No 5xx in loaded requests.</p>
             ) : (
@@ -171,7 +154,7 @@ export function DiagnosisContent() {
                   >
                     <Link
                       href={buildLogsPageHref(scopedState, { pathQuery: path, statusClass: "5" })}
-                      className="min-w-0 truncate font-mono text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                      className="min-w-0 truncate font-mono text-xs text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                     >
                       {path}
                     </Link>
@@ -184,42 +167,9 @@ export function DiagnosisContent() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Causal timeline</h2>
-          <div className="mt-3 space-y-2">
-            {timeline.buckets.slice(-20).map((bucket) => (
-              <div key={bucket.minute} className="flex items-center justify-between text-xs">
-                <span className="text-slate-600 dark:text-neutral-300">{formatTimestamp(bucket.minute)}</span>
-                <span className="tabular-nums text-slate-700 dark:text-neutral-200">
-                  req {bucket.request_count} · err {bucket.error_count}
-                </span>
-              </div>
-            ))}
-          </div>
-        </article>
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Evidence panel</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">Top routes by failure count for fast pivots.</p>
-          <ul className="mt-3 space-y-2">
-            {failures.items.slice(0, 10).map((item) => (
-              <li key={item.path} className="flex items-center justify-between gap-3 text-sm">
-                <Link
-                  href={buildLogsPageHref(scopedState, { pathQuery: item.path, statusClass: "5" })}
-                  className="truncate font-mono text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
-                >
-                  {item.path}
-                </Link>
-                <span className="tabular-nums text-rose-700 dark:text-rose-300">{item.failure_count}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
-      </section>
-
       <section
         id="grouped-errors"
-        className="scroll-mt-28 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+        className="scroll-mt-28 rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -234,7 +184,7 @@ export function DiagnosisContent() {
               <select
                 value={d.errorGroupSort}
                 onChange={(e) => d.setErrorGroupSort(e.target.value as "last_seen" | "count")}
-                className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-orange-500/25 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-orange-400/22 dark:focus:ring-orange-400/35"
               >
                 <option value="last_seen">Last seen</option>
                 <option value="count">Count</option>
@@ -246,14 +196,13 @@ export function DiagnosisContent() {
           </div>
         </div>
         {d.pathQuery.trim() ? (
-          <div className="mt-4 flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-sm text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/35 dark:text-amber-100">
+          <div className="mt-4 flex flex-col gap-2 rounded-xl bg-orange-50/90 px-3 py-3 text-sm text-orange-950 ring-1 ring-orange-500/15 dark:bg-orange-950/30 dark:text-orange-50 dark:ring-orange-400/25">
             <p>
-              <span className="font-medium">Route filter active.</span> Grouped errors only include routes
-              matching{" "}
-              <code className="rounded bg-amber-100/90 px-1.5 py-0.5 font-mono text-xs dark:bg-amber-900/60">
+              <span className="font-semibold">Route filter on.</span> Groups match{" "}
+              <code className="rounded bg-white/90 px-1.5 py-0.5 font-mono text-xs dark:bg-neutral-900/80">
                 {d.pathQuery.trim()}
               </code>
-              . Clear it to see every group in this window.
+              . Clear to list every group in this window.
             </p>
             <button
               type="button"
@@ -261,7 +210,7 @@ export function DiagnosisContent() {
                 d.setPathQuery("");
                 d.setErrorGroupPage(0);
               }}
-              className="self-start rounded-md border border-amber-300/90 bg-white px-2.5 py-1 text-xs font-medium text-amber-950 shadow-sm hover:bg-amber-50 dark:border-amber-700 dark:bg-amber-900 dark:text-amber-50 dark:hover:bg-amber-800/80"
+              className="self-start rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-orange-500 dark:bg-orange-500 dark:hover:bg-orange-400"
             >
               Clear route filter
             </button>
@@ -297,7 +246,7 @@ export function DiagnosisContent() {
                       open={open}
                       onToggle={d.toggleRequestRow}
                       colSpan={8}
-                      summaryClassName="cursor-pointer border-l-2 border-transparent align-top hover:border-sky-500/80 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
+                      summaryClassName="cursor-pointer border-l-2 border-transparent align-top hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-orange-400/50 dark:hover:bg-neutral-800/90"
                       detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
                       detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
                       renderSummary={() => (
@@ -335,7 +284,7 @@ export function DiagnosisContent() {
                                   pathQuery: item.path,
                                   statusClass: "ALL",
                                 })}
-                                className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                                className="text-sm font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                               >
                                 Open logs for this route
                               </Link>
@@ -393,7 +342,7 @@ export function DiagnosisContent() {
               type="button"
               disabled={d.errorGroupPage === 0}
               onClick={() => d.setErrorGroupPage((p) => Math.max(0, p - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-orange-400/35"
             >
               Prev
             </button>
@@ -401,7 +350,7 @@ export function DiagnosisContent() {
               type="button"
               disabled={(d.errorGroupPage + 1) * d.errorGroupLimit >= errorGroups.total}
               onClick={() => d.setErrorGroupPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-orange-400/35"
             >
               Next
             </button>
@@ -424,7 +373,7 @@ export function DiagnosisContent() {
                     pathQuery: event.path,
                     statusClass: event.status_code >= 500 ? "5" : event.status_code >= 400 ? "4" : "ALL",
                   })}
-                  className="mt-2 inline-block font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                  className="mt-2 inline-block font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                 >
                   View in request logs
                 </Link>

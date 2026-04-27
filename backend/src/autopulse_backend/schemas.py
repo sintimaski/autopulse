@@ -96,6 +96,7 @@ class DashboardRequestItem(BaseModel):
     service_name: str
     environment: str
     request_id: str | None = None
+    log_message: str | None = None
 
 
 class DashboardRequestsResponse(BaseModel):

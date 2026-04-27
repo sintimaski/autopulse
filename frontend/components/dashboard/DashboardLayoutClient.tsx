@@ -8,7 +8,12 @@ import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import { DashboardAppShell } from "./AppShell";
 import { ApiKeyMissing, DashboardSessionRestoring } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
-import { readPersistedDashboardSession, readPersistedSessionRecord } from "./dashboardPersistentScope";
+import { buildLiveDashboardSearchString, parseLogsClientSearchParams } from "./dashboardLogsViewUrl";
+import {
+  DEFAULT_LOGS_VIEW_CLIENT,
+  readPersistedDashboardSession,
+  type PersistedLogsClientSlice,
+} from "./dashboardPersistentScope";
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
 import {
   buildScopedQuery,
@@ -63,7 +68,11 @@ type ScopedServerState = {
   sqlFilterEnabled: boolean;
 };
 
-function isScopedServerRoute(pathname: string): boolean {
+function isScopedUrlSyncRoute(pathname: string): boolean {
+  return pathname === "/dashboard" || pathname === "/diagnosis" || pathname === "/logs";
+}
+
+function isScopedPathRestoreRoute(pathname: string): boolean {
   return pathname === "/diagnosis" || pathname === "/logs";
 }
 
@@ -142,8 +151,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const debouncedEnvironmentQuery = useDebouncedValue(d.serverEnvironmentQuery, 250);
   const debouncedServiceQuery = useDebouncedValue(d.serverServiceQuery, 250);
   const searchKey = searchParams.toString();
-  const [navDiagnosisQuery, setNavDiagnosisQuery] = useState("");
-  const [navLogsQuery, setNavLogsQuery] = useState("");
 
   const scopedApplyTarget = {
     setAbsoluteWindow: d.setAbsoluteWindow,
@@ -166,38 +173,27 @@ function ShellWithData({ children }: { children: ReactNode }) {
     setSqlFilterEnabled: d.setSqlFilterEnabled,
   } as const;
 
-  useLayoutEffect(() => {
-    const rec = readPersistedSessionRecord();
-    if (rec) {
-      queueMicrotask(() => {
-        setNavDiagnosisQuery(rec.diagnosisScopedQueryString);
-        setNavLogsQuery(rec.logsScopedQueryString);
-      });
-    }
-  }, []);
-
-  const liveScopedQueryString = useMemo(
-    () =>
-      buildScopedQuery({
-        isAbsoluteWindow: d.isAbsoluteWindow,
-        windowMinutes: d.windowMinutes,
-        windowFromTimestamp: d.windowFromTimestamp,
-        windowToTimestamp: d.windowToTimestamp,
-        method: d.method,
-        statusClass: d.statusClass,
-        minLatencyMs: d.minLatencyMs,
-        maxLatencyMs: d.maxLatencyMs,
-        pathQuery: d.pathQuery,
-        serverEnvironmentQuery: d.serverEnvironmentQuery,
-        serverServiceQuery: d.serverServiceQuery,
-        requestLimit: d.requestLimit,
-        requestPage: d.requestPage,
-        errorGroupLimit: d.errorGroupLimit,
-        errorGroupPage: d.errorGroupPage,
-        errorGroupSort: d.errorGroupSort,
-        sqlFilterApplied: d.sqlFilterApplied,
-        sqlFilterEnabled: d.sqlFilterEnabled,
-      }).toString(),
+  const scopedServerStateForUrl = useMemo(
+    (): DashboardScopedQueryState => ({
+      isAbsoluteWindow: d.isAbsoluteWindow,
+      windowMinutes: d.windowMinutes,
+      windowFromTimestamp: d.windowFromTimestamp,
+      windowToTimestamp: d.windowToTimestamp,
+      method: d.method,
+      statusClass: d.statusClass,
+      minLatencyMs: d.minLatencyMs,
+      maxLatencyMs: d.maxLatencyMs,
+      pathQuery: d.pathQuery,
+      serverEnvironmentQuery: d.serverEnvironmentQuery,
+      serverServiceQuery: d.serverServiceQuery,
+      requestLimit: d.requestLimit,
+      requestPage: d.requestPage,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: d.errorGroupPage,
+      errorGroupSort: d.errorGroupSort,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
+    }),
     [
       d.errorGroupLimit,
       d.errorGroupPage,
@@ -220,15 +216,27 @@ function ShellWithData({ children }: { children: ReactNode }) {
     ],
   );
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      if (pathname === "/diagnosis") {
-        setNavDiagnosisQuery(liveScopedQueryString);
-      } else if (pathname === "/logs") {
-        setNavLogsQuery(liveScopedQueryString);
-      }
-    });
-  }, [liveScopedQueryString, pathname]);
+  const logsClientForUrl = useMemo(
+    (): PersistedLogsClientSlice => ({
+      groupBy: d.groupBy,
+      sortKey: d.sortKey,
+      sortDir: d.sortDir,
+      envTags: [...d.envTags].sort(),
+      serviceTags: [...d.serviceTags].sort(),
+    }),
+    [d.groupBy, d.sortKey, d.sortDir, d.envTags, d.serviceTags],
+  );
+
+  const diagnosisNavQueryComputed = useMemo(
+    () => buildScopedQuery(scopedServerStateForUrl).toString(),
+    [scopedServerStateForUrl],
+  );
+
+  const logsNavQueryComputed = useMemo(
+    () =>
+      buildLiveDashboardSearchString("/logs", scopedServerStateForUrl, logsClientForUrl),
+    [scopedServerStateForUrl, logsClientForUrl],
+  );
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -279,10 +287,10 @@ function ShellWithData({ children }: { children: ReactNode }) {
     };
 
     const previousPath = previousPathRef.current;
-    if (isScopedServerRoute(previousPath)) {
+    if (isScopedPathRestoreRoute(previousPath)) {
       scopedStateRef.current[previousPath] = captureCurrentState();
     }
-    if (isScopedServerRoute(pathname)) {
+    if (isScopedPathRestoreRoute(pathname)) {
       // `useLayoutEffect` below applies `searchParams` to context before this `useEffect` runs.
       // Without this guard, `buildDefaultScopedState` resets method/status/path/env/etc. after
       // every link from `/dashboard` (or any non-scoped route) even when the href carried scope.
@@ -312,7 +320,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useLayoutEffect(() => {
-    if (!isScopedServerRoute(pathname)) {
+    if (!isScopedUrlSyncRoute(pathname)) {
       return;
     }
     if (!searchKey) {
@@ -334,7 +342,13 @@ function ShellWithData({ children }: { children: ReactNode }) {
     const parsed = parseScopedQuery(sp);
     applyDashboardScopedQueryState(scopedApplyTarget, parsed);
 
-    const normalized = buildScopedQuery(parsed).toString();
+    const logsParsed =
+      pathname === "/logs" ? parseLogsClientSearchParams(sp) : DEFAULT_LOGS_VIEW_CLIENT;
+    if (pathname === "/logs") {
+      d.hydrateLogsViewFromUrl(logsParsed);
+    }
+
+    const normalized = buildLiveDashboardSearchString(pathname, parsed, logsParsed);
     if (!scopedQueryStringsEqual(normalized, search)) {
       const hash = typeof window !== "undefined" ? window.location.hash : "";
       const nextHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
@@ -348,33 +362,24 @@ function ShellWithData({ children }: { children: ReactNode }) {
   }, [pathname, searchKey, router]);
 
   useEffect(() => {
-    if (!isScopedServerRoute(pathname)) {
+    if (!isScopedUrlSyncRoute(pathname)) {
       return;
     }
     if (applyingScopedQueryFromUrlRef.current) {
       return;
     }
     const currentQuery = searchKey;
-    const nextQuery = buildScopedQuery({
-      isAbsoluteWindow: d.isAbsoluteWindow,
-      windowMinutes: d.windowMinutes,
-      windowFromTimestamp: d.windowFromTimestamp,
-      windowToTimestamp: d.windowToTimestamp,
-      method: d.method,
-      statusClass: d.statusClass,
-      minLatencyMs: d.minLatencyMs,
-      maxLatencyMs: d.maxLatencyMs,
-      pathQuery: d.pathQuery,
-      serverEnvironmentQuery: d.serverEnvironmentQuery,
-      serverServiceQuery: d.serverServiceQuery,
-      requestLimit: d.requestLimit,
-      requestPage: d.requestPage,
-      errorGroupLimit: d.errorGroupLimit,
-      errorGroupPage: d.errorGroupPage,
-      errorGroupSort: d.errorGroupSort,
-      sqlFilterApplied: d.sqlFilterApplied,
-      sqlFilterEnabled: d.sqlFilterEnabled,
-    }).toString();
+    const logsClientSlice: PersistedLogsClientSlice =
+      pathname === "/logs"
+        ? {
+            groupBy: d.groupBy,
+            sortKey: d.sortKey,
+            sortDir: d.sortDir,
+            envTags: [...d.envTags].sort(),
+            serviceTags: [...d.serviceTags].sort(),
+          }
+        : DEFAULT_LOGS_VIEW_CLIENT;
+    const nextQuery = buildLiveDashboardSearchString(pathname, scopedServerStateForUrl, logsClientSlice);
     if (scopedQueryStringsEqual(nextQuery, currentQuery)) {
       return;
     }
@@ -382,27 +387,15 @@ function ShellWithData({ children }: { children: ReactNode }) {
     const nextHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
     router.replace(nextHref, { scroll: false });
   }, [
-    d.errorGroupLimit,
-    d.errorGroupPage,
-    d.errorGroupSort,
-    d.isAbsoluteWindow,
-    d.maxLatencyMs,
-    d.minLatencyMs,
-    d.pathQuery,
-    d.serverEnvironmentQuery,
-    d.serverServiceQuery,
-    d.method,
-    d.requestLimit,
-    d.requestPage,
-    d.statusClass,
-    d.windowMinutes,
-    d.windowFromTimestamp,
-    d.windowToTimestamp,
+    scopedServerStateForUrl,
+    d.groupBy,
+    d.sortKey,
+    d.sortDir,
+    d.envTags,
+    d.serviceTags,
     pathname,
     router,
     searchKey,
-    d.sqlFilterApplied,
-    d.sqlFilterEnabled,
   ]);
 
   if (!d.authSessionResolved) {
@@ -453,8 +446,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
       title={meta.title}
       subtitle={meta.subtitle}
       isDark={isDark}
-      diagnosisNavQuery={navDiagnosisQuery}
-      logsNavQuery={navLogsQuery}
+      diagnosisNavQuery={diagnosisNavQueryComputed}
+      logsNavQuery={logsNavQueryComputed}
       filterToolbarAutoCollapse={showServerScope}
       filterToolbarCompactLabel={pathname === "/diagnosis" ? "Diagnosis scope" : pathname === "/logs" ? "Logs scope" : "Server scope"}
       onResetServerFilters={

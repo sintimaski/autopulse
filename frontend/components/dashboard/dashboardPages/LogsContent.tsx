@@ -73,7 +73,7 @@ export function LogsContent() {
 
   return (
     <>
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Logs triage flow</h2>
@@ -84,7 +84,7 @@ export function LogsContent() {
           <button
             type="button"
             onClick={d.clearClientFilters}
-            className="self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+            className="self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
           >
             Reset all filters
           </button>
@@ -107,14 +107,14 @@ export function LogsContent() {
             <p className="mt-1 text-2xl font-semibold tracking-tight text-red-700 dark:text-red-200">{errorRows}</p>
             <p className="mt-1 text-xs text-red-600/80 dark:text-red-300/80">Prioritize these first</p>
           </div>
-          <div className="rounded-xl border border-amber-200/70 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+          <div className="rounded-xl bg-orange-50/70 p-3 ring-1 ring-orange-500/12 dark:bg-orange-950/25 dark:ring-orange-400/20">
+            <p className="text-xs font-medium uppercase tracking-wide text-orange-800 dark:text-orange-200">
               Slow (300ms+)
             </p>
-            <p className="mt-1 text-2xl font-semibold tracking-tight text-amber-700 dark:text-amber-200">
+            <p className="mt-1 text-2xl font-semibold tracking-tight text-orange-900 dark:text-orange-100">
               {slowRows}
             </p>
-            <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Potential regressions</p>
+            <p className="mt-1 text-xs text-orange-800/85 dark:text-orange-200/85">Worth a quick look</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-800/70">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
@@ -142,7 +142,7 @@ export function LogsContent() {
               <select
                 value={d.groupBy}
                 onChange={(e) => d.setGroupBy(e.target.value as GroupBy)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-orange-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
               >
                 {GROUP_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -174,7 +174,7 @@ export function LogsContent() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Request rows</h2>
           <p className="text-sm text-slate-500 dark:text-neutral-400">
@@ -220,6 +220,7 @@ export function LogsContent() {
                             ["timestamp", "Time"],
                             ["method", "Method"],
                             ["path", "Path"],
+                            ["log_message", "Message"],
                             ["status_code", "Status"],
                             ["latency_ms", "Latency"],
                             ["service_name", "Service"],
@@ -236,11 +237,11 @@ export function LogsContent() {
                             <button
                               type="button"
                               onClick={() => d.onSortHeader(key)}
-                              className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
+                              className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
                             >
                               {label}
                               {d.sortKey === key && (
-                                <span className="text-sky-600 dark:text-neutral-300" aria-hidden>
+                                <span className="text-orange-600 dark:text-orange-400" aria-hidden>
                                   {d.sortDir === "asc" ? "↑" : "↓"}
                                 </span>
                               )}
@@ -261,6 +262,7 @@ export function LogsContent() {
                           String(item.latency_ms),
                           item.service_name,
                           item.environment,
+                          item.log_message ?? "",
                         ].join("|");
                         const open = d.expandedRequestIds.has(rowId);
                         return (
@@ -269,8 +271,8 @@ export function LogsContent() {
                             rowId={rowId}
                             open={open}
                             onToggle={d.toggleRequestRow}
-                            colSpan={8}
-                            summaryClassName="cursor-pointer border-l-2 border-transparent hover:border-sky-500/80 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
+                            colSpan={9}
+                            summaryClassName="cursor-pointer border-l-2 border-transparent hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
                             detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
                             detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
                             renderSummary={() => (
@@ -286,6 +288,13 @@ export function LogsContent() {
                               <td className="max-w-[220px] truncate px-3 py-2 font-mono text-xs text-slate-800 dark:text-neutral-200 sm:max-w-md">
                                 {item.path}
                               </td>
+                              <td className="max-w-[180px] truncate px-3 py-2 text-xs text-slate-600 dark:text-neutral-300 sm:max-w-sm">
+                                {item.log_message?.trim()
+                                  ? item.log_message.length > 120
+                                    ? `${item.log_message.slice(0, 120)}…`
+                                    : item.log_message
+                                  : "—"}
+                              </td>
                               <td className="px-3 py-2">
                                 <span
                                   className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${statusTone(item.status_code)}`}
@@ -298,7 +307,7 @@ export function LogsContent() {
                               </td>
                               <td className="px-3 py-2 text-slate-700 dark:text-neutral-300">{item.service_name}</td>
                               <td className="px-3 py-2">
-                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-900 ring-1 ring-emerald-500/20 dark:bg-emerald-950/40 dark:text-emerald-200 dark:ring-emerald-800/40">
+                                <span className="rounded-full bg-neutral-200/80 px-2 py-0.5 text-xs font-medium text-neutral-900 ring-1 ring-neutral-400/35 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/50">
                                   {item.environment}
                                 </span>
                               </td>
@@ -340,6 +349,14 @@ export function LogsContent() {
                                       {item.path}
                                     </dd>
                                   </div>
+                                  <div className="sm:col-span-2">
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
+                                      Log / error message
+                                    </dt>
+                                    <dd className="mt-0.5 break-words text-slate-900 dark:text-neutral-100">
+                                      {item.log_message?.trim() ? item.log_message : "—"}
+                                    </dd>
+                                  </div>
                                   <div>
                                     <dt className="font-semibold text-slate-500 dark:text-neutral-400">Status</dt>
                                     <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
@@ -366,7 +383,7 @@ export function LogsContent() {
                                 <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
                                   <Link
                                     href={diagnosisHref}
-                                    className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                                    className="text-sm font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                                   >
                                     {item.status_code >= 500
                                       ? "Open diagnosis (5xx on this route)"
@@ -397,7 +414,7 @@ export function LogsContent() {
               type="button"
               disabled={d.requestPage === 0}
               onClick={() => d.setRequestPage((p) => Math.max(0, p - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
             >
               Prev
             </button>
@@ -405,7 +422,7 @@ export function LogsContent() {
               type="button"
               disabled={(d.requestPage + 1) * d.requestLimit >= requests.total}
               onClick={() => d.setRequestPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
             >
               Next
             </button>
