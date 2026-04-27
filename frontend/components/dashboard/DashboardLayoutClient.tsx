@@ -22,6 +22,10 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Alerts",
     subtitle: "Heuristic preview and backend job runbook.",
   },
+  "/settings": {
+    title: "Settings",
+    subtitle: "Project defaults and delivery channel configuration.",
+  },
   "/logs": {
     title: "Logs",
     subtitle: "Scope traffic fast, then inspect request-level evidence.",
