@@ -222,6 +222,48 @@ def test_dashboard_requests_support_filters_and_pagination(backend_test_database
     assert payload["items"][0]["status_code"] >= 500
 
 
+def test_dashboard_requests_event_sql_filter_scopes_results(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project SQL Filter")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
+    app = create_app()
+
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/ok")
+        _ingest(client, key, base_time + timedelta(seconds=30), 503, "POST", "/boom")
+
+        filtered = client.get(
+            "/dashboard/requests",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
+                "event_sql_filter": "status_code >= 500",
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+
+    assert filtered.status_code == 200
+    payload = filtered.json()
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["path"] == "/boom"
+
+
+def test_dashboard_requests_event_sql_filter_invalid_returns_422(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project SQL Bad")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/requests",
+            params={"event_sql_filter": "unknown_column = 1"},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 422
+
+
 def test_dashboard_requests_support_latency_path_and_tag_filters(
     backend_test_database_url: str,
 ) -> None:
@@ -545,6 +587,8 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
 
         _ingest(client, key, base_time, 200, "GET", "/autopulse/dashboard/overview")
         _ingest(client, key, base_time + timedelta(seconds=10), 200, "GET", "/users/42")
+        _ingest(client, key, base_time + timedelta(seconds=11), 200, "GET", "/dashboard/overview")
+        _ingest(client, key, base_time + timedelta(seconds=12), 200, "POST", "/ingest")
 
         overview_all = client.get(
             "/dashboard/overview",
@@ -555,7 +599,7 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
             headers=headers,
         )
         assert overview_all.status_code == 200
-        assert overview_all.json()["request_count"] == 2
+        assert overview_all.json()["request_count"] == 4
 
         enable_filter = client.put(
             "/dashboard/theme-settings",

@@ -8,7 +8,11 @@ import { DashboardAppShell } from "./AppShell";
 import { ApiKeyMissing } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
-import { buildScopedQuery, parseScopedQuery } from "./dashboardQueryState";
+import {
+  buildScopedQuery,
+  parseScopedQuery,
+  scopedQueryStringsEqual,
+} from "./dashboardQueryState";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
@@ -63,7 +67,9 @@ type ScopedServerState = {
   requestPage: number;
   errorGroupLimit: number;
   errorGroupPage: number;
-  errorGroupSort: "last_seen" | "count";
+  sqlFilterDraft: string;
+  sqlFilterApplied: string;
+  sqlFilterEnabled: boolean;
 };
 
 function isScopedServerRoute(pathname: string): boolean {
@@ -87,7 +93,9 @@ function buildDefaultScopedState(d: ReturnType<typeof useDashboardData>): Scoped
     requestPage: 0,
     errorGroupLimit: 25,
     errorGroupPage: 0,
-    errorGroupSort: "last_seen",
+    sqlFilterDraft: "",
+    sqlFilterApplied: "",
+    sqlFilterEnabled: false,
   };
 }
 
@@ -112,11 +120,13 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const lastAppliedQueryRef = useRef<string>("");
   const scopedStateRef = useRef<Record<string, ScopedServerState>>({});
   const previousPathRef = useRef(pathname);
+  const applyingScopedQueryFromUrlRef = useRef(false);
   const debouncedPathQuery = useDebouncedValue(d.pathQuery, 250);
   const debouncedMinLatencyMs = useDebouncedValue(d.minLatencyMs, 250);
   const debouncedMaxLatencyMs = useDebouncedValue(d.maxLatencyMs, 250);
   const debouncedEnvironmentQuery = useDebouncedValue(d.serverEnvironmentQuery, 250);
   const debouncedServiceQuery = useDebouncedValue(d.serverServiceQuery, 250);
+  const searchKey = searchParams.toString();
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -155,7 +165,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
       requestPage: d.requestPage,
       errorGroupLimit: d.errorGroupLimit,
       errorGroupPage: d.errorGroupPage,
-      errorGroupSort: d.errorGroupSort,
+      sqlFilterDraft: d.sqlFilterDraft,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
     });
 
     const applyState = (state: ScopedServerState) => {
@@ -176,7 +188,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
       d.setRequestPage(state.requestPage);
       d.setErrorGroupLimit(state.errorGroupLimit);
       d.setErrorGroupPage(state.errorGroupPage);
-      d.setErrorGroupSort(state.errorGroupSort);
+      d.setSqlFilterDraft(state.sqlFilterDraft);
+      d.setSqlFilterApplied(state.sqlFilterApplied);
+      d.setSqlFilterEnabled(state.sqlFilterEnabled);
     };
 
     const previousPath = previousPathRef.current;
@@ -190,19 +204,27 @@ function ShellWithData({ children }: { children: ReactNode }) {
     }
 
     previousPathRef.current = pathname;
-  }, [d, pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intent: run only on pathname change; reads latest context inside.
+  }, [pathname]);
 
   useEffect(() => {
     if (!isScopedServerRoute(pathname)) {
       return;
     }
-    const search = searchParams.toString();
-    const queryKey = `${pathname}?${search}`;
-    if (lastAppliedQueryRef.current === queryKey) {
-      return;
+    const search = searchKey;
+    const prev = lastAppliedQueryRef.current;
+    if (prev) {
+      const qm = prev.indexOf("?");
+      const prevPath = qm >= 0 ? prev.slice(0, qm) : prev;
+      const prevSearch = qm >= 0 ? prev.slice(qm + 1) : "";
+      if (prevPath === pathname && scopedQueryStringsEqual(prevSearch, search)) {
+        return;
+      }
     }
 
-    const parsed = parseScopedQuery(new URLSearchParams(search));
+    applyingScopedQueryFromUrlRef.current = true;
+    const sp = new URLSearchParams(search);
+    const parsed = parseScopedQuery(sp);
     if (parsed.isAbsoluteWindow) {
       d.setAbsoluteWindow(parsed.windowFromTimestamp, parsed.windowToTimestamp);
     } else {
@@ -221,15 +243,38 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.setErrorGroupLimit(parsed.errorGroupLimit);
     d.setErrorGroupPage(parsed.errorGroupPage);
     d.setErrorGroupSort(parsed.errorGroupSort);
+    if (sp.has("sql_filter")) {
+      const f = (parsed.sqlFilterApplied ?? "").trim();
+      d.setSqlFilterApplied(f);
+      d.setSqlFilterDraft(f);
+      d.setSqlFilterEnabled(Boolean(parsed.sqlFilterEnabled && f.length > 0));
+    } else {
+      d.setSqlFilterApplied("");
+      d.setSqlFilterDraft("");
+      d.setSqlFilterEnabled(false);
+    }
 
-    lastAppliedQueryRef.current = queryKey;
-  }, [d, pathname, searchParams]);
+    const normalized = buildScopedQuery(parsed).toString();
+    if (!scopedQueryStringsEqual(normalized, search)) {
+      const hash = typeof window !== "undefined" ? window.location.hash : "";
+      const nextHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
+      router.replace(nextHref, { scroll: false });
+    }
+    lastAppliedQueryRef.current = `${pathname}?${normalized}`;
+    queueMicrotask(() => {
+      applyingScopedQueryFromUrlRef.current = false;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync URL to context; d setters are stable
+  }, [pathname, searchKey, router]);
 
   useEffect(() => {
     if (!isScopedServerRoute(pathname)) {
       return;
     }
-    const currentQuery = searchParams.toString();
+    if (applyingScopedQueryFromUrlRef.current) {
+      return;
+    }
+    const currentQuery = searchKey;
     const nextQuery = buildScopedQuery({
       isAbsoluteWindow: d.isAbsoluteWindow,
       windowMinutes: d.windowMinutes,
@@ -237,18 +282,20 @@ function ShellWithData({ children }: { children: ReactNode }) {
       windowToTimestamp: d.windowToTimestamp,
       method: d.method,
       statusClass: d.statusClass,
-      minLatencyMs: debouncedMinLatencyMs,
-      maxLatencyMs: debouncedMaxLatencyMs,
-      pathQuery: debouncedPathQuery,
-      serverEnvironmentQuery: debouncedEnvironmentQuery,
-      serverServiceQuery: debouncedServiceQuery,
+      minLatencyMs: d.minLatencyMs,
+      maxLatencyMs: d.maxLatencyMs,
+      pathQuery: d.pathQuery,
+      serverEnvironmentQuery: d.serverEnvironmentQuery,
+      serverServiceQuery: d.serverServiceQuery,
       requestLimit: d.requestLimit,
       requestPage: d.requestPage,
       errorGroupLimit: d.errorGroupLimit,
       errorGroupPage: d.errorGroupPage,
       errorGroupSort: d.errorGroupSort,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
     }).toString();
-    if (nextQuery === currentQuery) {
+    if (scopedQueryStringsEqual(nextQuery, currentQuery)) {
       return;
     }
     const hash = typeof window !== "undefined" ? window.location.hash : "";
@@ -259,21 +306,23 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.errorGroupPage,
     d.errorGroupSort,
     d.isAbsoluteWindow,
-    debouncedEnvironmentQuery,
-    debouncedMaxLatencyMs,
-    debouncedMinLatencyMs,
-    debouncedPathQuery,
-    debouncedServiceQuery,
+    d.maxLatencyMs,
+    d.minLatencyMs,
+    d.pathQuery,
+    d.serverEnvironmentQuery,
+    d.serverServiceQuery,
     d.method,
     d.requestLimit,
     d.requestPage,
     d.statusClass,
-    d.windowFromTimestamp,
     d.windowMinutes,
+    d.windowFromTimestamp,
     d.windowToTimestamp,
     pathname,
     router,
-    searchParams,
+    searchKey,
+    d.sqlFilterApplied,
+    d.sqlFilterEnabled,
   ]);
 
   if (!d.hasApiKey) {
@@ -301,6 +350,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
     errorGroupLimit: d.errorGroupLimit,
     errorGroupPage: d.errorGroupPage,
     errorGroupSort: d.errorGroupSort,
+    sqlFilterApplied: d.sqlFilterApplied,
+    sqlFilterEnabled: d.sqlFilterEnabled,
   }).toString();
   const resetServerFilters = () => {
     d.onServerMethodChange("ALL");
@@ -312,6 +363,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.setServerServiceQuery("");
     d.setRequestPage(0);
     d.setErrorGroupPage(0);
+    d.setSqlFilterDraft("");
+    d.setSqlFilterApplied("");
+    d.setSqlFilterEnabled(false);
   };
 
   return (
@@ -321,7 +375,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
       subtitle={meta.subtitle}
       isDark={isDark}
       scopedQueryString={scopedQueryString}
-      onRefresh={() => d.setRefreshToken((n) => n + 1)}
       filterToolbarAutoCollapse={showServerScope}
       filterToolbarCompactLabel="Server scope"
       onResetServerFilters={showServerScope ? resetServerFilters : undefined}

@@ -1,9 +1,14 @@
 type DashboardEndpointLabel =
   | "overview"
+  | "overview-extended"
   | "requests"
   | "error-groups"
+  | "diagnosis-timeline"
+  | "diagnosis-failures"
+  | "retention-settings"
   | "alert-settings"
-  | "alert-dispatches";
+  | "alert-dispatches"
+  | "theme-settings";
 
 export type DashboardFetchResult = {
   endpoint: DashboardEndpointLabel;

@@ -92,15 +92,10 @@ export function DashboardHomeContent() {
         />
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Scope</h2>
-            <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">
-              Adjust filters, then apply to reload metrics for this window.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-2.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <OverviewScopeFacetBoard />
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {overviewExtended.error_burst_count > 0 ? (
               <StatusPill label="Error burst detected" tone="danger" />
             ) : (
@@ -108,15 +103,12 @@ export function DashboardHomeContent() {
             )}
             <Link
               href={diagnosisGroupedHref}
-              className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+              className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
-              Open grouped errors
+              Grouped errors
             </Link>
           </div>
         </div>
-        <OverviewScopeFacetBoard
-          key={`${d.method}:${d.statusClass}:${d.serverEnvironmentQuery}:${d.serverServiceQuery}`}
-        />
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">

@@ -152,10 +152,11 @@ export function SettingsContent() {
                 );
               }}
             />
-            Exclude AutoPulse internal traffic (`/autopulse/*`) from dashboard data
+            Exclude AutoPulse internal traffic (`/autopulse/*`, `/dashboard/*`, `/ingest`) from analytics
           </label>
           <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-            Keeps dashboard/API requests from polluting request and error charts.
+            Applies to dashboard, diagnosis, request logs, SQL log queries, and alert evaluations so
+            embedded UI, dashboard API, and ingest calls do not skew counts.
           </p>
         </div>
       </section>

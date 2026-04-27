@@ -26,7 +26,8 @@ export function DashboardAppShell({
   scopedQueryString = "",
 }: {
   children: ReactNode;
-  onRefresh: () => void;
+  /** Omitted to hide the header control (live data is driven by WebSocket + scope changes). */
+  onRefresh?: () => void;
   filterToolbar: ReactNode | null;
   filterToolbarAutoCollapse?: boolean;
   filterToolbarCompactLabel?: string;
@@ -84,15 +85,17 @@ export function DashboardAppShell({
                 </h1>
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">{subtitle}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onRefresh}
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
-                >
-                  Refresh
-                </button>
-              </div>
+              {onRefresh ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={onRefresh}
+                    className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              ) : null}
             </div>
             {filterToolbar ? (
               <AutoCollapsibleHeaderPanel

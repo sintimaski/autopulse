@@ -29,6 +29,10 @@ from autopulse_backend.auth import (
 )
 from autopulse_backend.config import get_settings
 from autopulse_backend.db import get_db_session, get_engine
+from autopulse_backend.exclude_autopulse import (
+    append_exclude_autopulse_event_filters,
+    resolve_exclude_autopulse_traffic,
+)
 from autopulse_backend.models import (
     AlertDispatch,
     Event,
@@ -78,6 +82,7 @@ _LATENCY_MAX_MS_QUERY = Query(default=None, ge=0)
 _WINDOW_MINUTES_QUERY = Query(default=60, ge=1, le=7 * 24 * 60)
 _LIMIT_QUERY = Query(default=50, ge=1, le=200)
 _OFFSET_QUERY = Query(default=0, ge=0)
+_EVENT_SQL_FILTER_QUERY = Query(default=None, max_length=1500)
 _LOG_QUERY_SQL_RE = re.compile(
     r"^\s*select\s+(?P<select>[\w\s,.*]+)\s+from\s+events(?:\s+where\s+(?P<where>.+?))?"
     r"(?:\s+order\s+by\s+(?P<order>[\w_]+)\s*(?P<direction>asc|desc)?)?"
@@ -168,27 +173,6 @@ def _serialize_retention_settings(
             1, int(settings.logs_query_max_window_minutes or fallback_query_window_minutes)
         ),
     )
-
-
-async def _resolve_exclude_autopulse_traffic(
-    session: AsyncSession,
-    project_id,
-) -> bool:
-    setting = await session.scalar(
-        select(ProjectUiSettings.exclude_autopulse_traffic).where(
-            ProjectUiSettings.project_id == project_id
-        )
-    )
-    if setting is None:
-        return True
-    return bool(setting)
-
-
-def _append_exclude_autopulse_filters(filters: list, *, exclude_autopulse_traffic: bool) -> None:
-    if not exclude_autopulse_traffic:
-        return
-    # Embedded mode mounts internal dashboard/UI under /autopulse/*.
-    filters.extend([Event.path != "/autopulse", ~Event.path.like("/autopulse/%")])
 
 
 def _as_utc_datetime(value: datetime) -> datetime:
@@ -470,6 +454,20 @@ def _apply_log_query_filters(filters: list, where_clauses: list[str]) -> None:
         )
 
 
+def _append_event_sql_filters(filters: list, event_sql_filter: str | None) -> None:
+    """Apply log-query WHERE fragments (AND-separated) to an existing Event filter list."""
+    if not event_sql_filter or not event_sql_filter.strip():
+        return
+    # WHERE fragment is parsed via sqlparse after wrapping; not arbitrary SQL execution.
+    wrapped = (
+        "SELECT * FROM events WHERE "
+        f"{event_sql_filter.strip()} "  # nosec B608
+        "ORDER BY timestamp DESC LIMIT 100"
+    )
+    parsed = _parse_log_query(wrapped)
+    _apply_log_query_filters(filters, parsed.where_clauses)
+
+
 @router.get("/overview", response_model=DashboardOverviewResponse)
 async def get_dashboard_overview(
     context: Annotated[ProjectContext, Depends(authenticate_project)],
@@ -477,21 +475,23 @@ async def get_dashboard_overview(
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
     window_minutes: int = _WINDOW_MINUTES_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardOverviewResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
-    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
-        session, context.project_id
-    )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     error_condition = (Event.type == "error") | (Event.status_code >= 500)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
-    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    _append_event_sql_filters(filters, event_sql_filter)
 
     totals_query = select(
         func.count(Event.id),
@@ -587,20 +587,22 @@ async def get_dashboard_overview_extended(
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
     window_minutes: int = _WINDOW_MINUTES_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardOverviewExtendedResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
-    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
-        session, context.project_id
-    )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
-    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    _append_event_sql_filters(filters, event_sql_filter)
     rows = await session.execute(
         select(
             Event.path,
@@ -671,16 +673,22 @@ async def get_dashboard_diagnosis_timeline(
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
     window_minutes: int = _WINDOW_MINUTES_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardDiagnosisTimelineResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    _append_event_sql_filters(filters, event_sql_filter)
     rows = await session.execute(select(Event.timestamp, Event.status_code).where(*filters))
     buckets: dict[datetime, dict[str, int]] = {}
     for timestamp, status_code in rows:
@@ -712,16 +720,22 @@ async def get_dashboard_diagnosis_failures_by_route(
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
     window_minutes: int = _WINDOW_MINUTES_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardDiagnosisFailureRoutesResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    _append_event_sql_filters(filters, event_sql_filter)
     rows = await session.execute(
         select(Event.path, Event.status_code, Event.latency_ms).where(*filters)
     )
@@ -768,18 +782,24 @@ async def get_dashboard_diagnosis_error_group_events(
     window_minutes: int = _WINDOW_MINUTES_QUERY,
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardDiagnosisErrorGroupEventsResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
     _ = server_now
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
         Event.type == "error",
     ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    _append_event_sql_filters(filters, event_sql_filter)
     rows = await session.execute(
         select(
             Event.id,
@@ -868,20 +888,21 @@ async def get_dashboard_requests(
     max_latency_ms: float | None = _LATENCY_MAX_MS_QUERY,
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardRequestsResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
-    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
-        session, context.project_id
-    )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
-    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
     if method:
         filters.append(Event.method == method.upper())
     if status_class is not None:
@@ -899,6 +920,7 @@ async def get_dashboard_requests(
         filters.append(Event.latency_ms >= min_latency_ms)
     if max_latency_ms is not None:
         filters.append(Event.latency_ms <= max_latency_ms)
+    _append_event_sql_filters(filters, event_sql_filter)
 
     total_query = select(func.count(Event.id)).where(*filters)
     total_result = await session.execute(total_query)
@@ -970,21 +992,22 @@ async def get_dashboard_error_groups(
     max_latency_ms: float | None = _LATENCY_MAX_MS_QUERY,
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
+    event_sql_filter: str | None = _EVENT_SQL_FILTER_QUERY,
 ) -> DashboardErrorGroupsResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
-    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
-        session, context.project_id
-    )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
         Event.type == "error",
     ]
-    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
     if method:
         filters.append(Event.method == method.upper())
     if status_class is not None:
@@ -1002,6 +1025,7 @@ async def get_dashboard_error_groups(
         filters.append(Event.latency_ms >= min_latency_ms)
     if max_latency_ms is not None:
         filters.append(Event.latency_ms <= max_latency_ms)
+    _append_event_sql_filters(filters, event_sql_filter)
     dialect_name = session.bind.dialect.name if session.bind is not None else ""
 
     if dialect_name == "sqlite":
@@ -1394,6 +1418,9 @@ async def execute_dashboard_log_query(
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=bool(ui_settings.exclude_autopulse_traffic)
+    )
     _apply_log_query_filters(filters, parsed.where_clauses)
     cursor = _decode_log_cursor(payload.cursor)
     if cursor is not None:

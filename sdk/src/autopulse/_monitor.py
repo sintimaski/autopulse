@@ -46,6 +46,9 @@ class _MonitorConfig:
     max_retries: int
     retry_backoff_s: float
     debug: bool
+    # When set (e.g. "/autopulse"), requests under this prefix use request.url.path so DB
+    # "exclude internal traffic" filters match embedded dashboard/ingest routes.
+    mount_prefix: str | None
 
 
 def _utc_now_iso() -> str:
@@ -77,12 +80,29 @@ def _stable_error_hash(exception_type: str, exception_message: str, stack_trace:
     return digest.hexdigest()
 
 
-def _resolve_route_path(request: Request) -> str:
+def _normalize_mount_prefix(raw: object | None) -> str | None:
+    if raw is None:
+        return None
+    prefix = str(raw).strip()
+    if not prefix:
+        return None
+    if not prefix.startswith("/"):
+        prefix = f"/{prefix}"
+    if prefix != "/":
+        prefix = prefix.rstrip("/")
+    return prefix if prefix != "/" else None
+
+
+def _resolve_route_path(request: Request, *, mount_prefix: str | None) -> str:
+    wire = request.url.path
+    base = _normalize_mount_prefix(mount_prefix)
+    if base and (wire == base or wire.startswith(f"{base}/")):
+        return wire
     route = request.scope.get("route")
-    path = getattr(route, "path", None)
-    if isinstance(path, str) and path:
-        return path
-    return request.url.path
+    template = getattr(route, "path", None)
+    if isinstance(template, str) and template:
+        return template
+    return wire
 
 
 def _scrub_value(value: Any, scrub_keys: frozenset[str]) -> Any:
@@ -254,7 +274,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             self._dispatcher.enqueue(
                 {
                     **common,
-                    "path": _resolve_route_path(request),
+                    "path": _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
                     "type": "request",
                     "status_code": 500,
                     "latency_ms": round(latency_ms, 3),
@@ -263,7 +283,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             self._dispatcher.enqueue(
                 {
                     **common,
-                    "path": _resolve_route_path(request),
+                    "path": _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
                     "type": "error",
                     "status_code": 500,
                     "latency_ms": round(latency_ms, 3),
@@ -278,7 +298,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
         self._dispatcher.enqueue(
             {
                 **common,
-                "path": _resolve_route_path(request),
+                "path": _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
                 "type": "request",
                 "status_code": response.status_code,
                 "latency_ms": round(latency_ms, 3),
@@ -325,6 +345,7 @@ def monitor(app: Any, **kwargs: Any) -> None:
         max_retries=int(resolved_kwargs.get("max_retries", 3)),
         retry_backoff_s=float(resolved_kwargs.get("retry_backoff_s", 0.1)),
         debug=bool(resolved_kwargs.get("debug", False)),
+        mount_prefix=_normalize_mount_prefix(resolved_kwargs.get("mount_prefix")),
     )
     dispatcher = _EventDispatcher(
         config,

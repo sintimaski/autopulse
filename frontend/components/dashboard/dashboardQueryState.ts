@@ -22,9 +22,9 @@ export type DashboardScopedQueryState = {
   errorGroupLimit: number;
   errorGroupPage: number;
   errorGroupSort: "last_seen" | "count";
-  sqlQueryText?: string;
-  sqlQueryCursor?: string;
-  liveQueryEnabled?: boolean;
+  /** URL key `sql_filter`: applied WHERE fragment when SQL filter is enabled. */
+  sqlFilterApplied?: string;
+  sqlFilterEnabled?: boolean;
 };
 
 const DEFAULTS = {
@@ -132,17 +132,28 @@ export function buildScopedQuery(
   if (state.errorGroupSort === "count") {
     params.set("error_group_sort", "count");
   }
-  if (state.sqlQueryText && state.sqlQueryText.trim()) {
-    params.set("sql_query", state.sqlQueryText.trim());
-  }
-  if (state.sqlQueryCursor && state.sqlQueryCursor.trim()) {
-    params.set("sql_cursor", state.sqlQueryCursor.trim());
-  }
-  if (state.liveQueryEnabled === false) {
-    params.set("sql_live", "0");
+  const applied = (state.sqlFilterApplied ?? "").trim();
+  if (state.sqlFilterEnabled && applied) {
+    params.set("sql_filter", applied);
   }
 
   return params;
+}
+
+/** Compare query strings semantically (key order in toString() may differ). */
+export function scopedQueryStringsEqual(a: string, b: string): boolean {
+  if (a === b) {
+    return true;
+  }
+  const pa = new URLSearchParams(a);
+  const pb = new URLSearchParams(b);
+  const keys = new Set<string>([...pa.keys(), ...pb.keys()]);
+  for (const key of keys) {
+    if (pa.get(key) !== pb.get(key)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function parseScopedQuery(
@@ -155,7 +166,7 @@ export function parseScopedQuery(
   const errorGroupSort =
     searchParams.get("error_group_sort") === "count" ? "count" : "last_seen";
 
-  return {
+  const base: DashboardScopedQueryState = {
     isAbsoluteWindow: Boolean(from && to),
     windowMinutes: parseWindowMinutes(searchParams.get("window_minutes")),
     windowFromTimestamp: from ?? "",
@@ -186,8 +197,11 @@ export function parseScopedQuery(
       DEFAULTS.errorGroupPage,
     ),
     errorGroupSort,
-    sqlQueryText: searchParams.get("sql_query") ?? "",
-    sqlQueryCursor: searchParams.get("sql_cursor") ?? "",
-    liveQueryEnabled: searchParams.get("sql_live") !== "0",
   };
+  if (searchParams.has("sql_filter")) {
+    const f = (searchParams.get("sql_filter") ?? "").trim();
+    base.sqlFilterApplied = f;
+    base.sqlFilterEnabled = f.length > 0;
+  }
+  return base;
 }

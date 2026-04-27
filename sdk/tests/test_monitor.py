@@ -32,6 +32,7 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "max_retries": 2,
         "retry_backoff_s": 0.0,
         "debug": False,
+        "mount_prefix": None,
     }
     values.update(overrides)
     return _MonitorConfig(**values)
@@ -99,6 +100,27 @@ class _ErrorStatusClient:
 
 def test_monitor_is_noop_for_non_fastapi_object() -> None:
     monitor(object())
+
+
+def test_middleware_records_wire_path_when_request_is_under_mount_prefix() -> None:
+    main = FastAPI()
+    inner = FastAPI()
+
+    @inner.get("/dashboard/health")
+    async def inner_health() -> dict[str, str]:
+        return {"ok": "true"}
+
+    main.mount("/autopulse", inner)
+    dispatcher = _CapturingDispatcher()
+    config = _make_config(mount_prefix="/autopulse")
+    main.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+
+    with TestClient(main) as client:
+        response = client.get("/autopulse/dashboard/health")
+
+    assert response.status_code == 200
+    assert len(dispatcher.events) == 1
+    assert dispatcher.events[0]["path"] == "/autopulse/dashboard/health"
 
 
 def test_middleware_captures_request_event_with_route_template() -> None:

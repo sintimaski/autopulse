@@ -225,30 +225,23 @@ export function buildApiUrl(path: string): string {
   return `${normalizedBase}${normalizedPath}`;
 }
 
-export function buildUpdatesWebsocketUrl(token: string): string {
-  const normalizedBase = normalizeBasePath(apiBaseUrl);
+/** Build WS URL from the same path rules as {@link buildApiUrl} so mounts like `/autopulse` stay in sync. */
+function httpToWebsocketUrl(httpRef: string, token: string): string {
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : "http://localhost";
   const base =
-    normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")
-      ? new URL(normalizedBase)
-      : new URL(normalizedBase, window.location.origin);
+    httpRef.startsWith("http://") || httpRef.startsWith("https://")
+      ? new URL(httpRef)
+      : new URL(httpRef, origin);
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
-  const basePath = base.pathname.replace(/\/+$/, "");
-  base.pathname = `${basePath}/dashboard/updates`;
   base.searchParams.set("token", token);
   return base.toString();
 }
 
-export function buildLogQueryWebsocketUrl(token: string): string {
-  const normalizedBase = normalizeBasePath(apiBaseUrl);
-  const base =
-    normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")
-      ? new URL(normalizedBase)
-      : new URL(normalizedBase, window.location.origin);
-  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
-  const basePath = base.pathname.replace(/\/+$/, "");
-  base.pathname = `${basePath}/dashboard/log-query/stream`;
-  base.searchParams.set("token", token);
-  return base.toString();
+export function buildUpdatesWebsocketUrl(token: string): string {
+  return httpToWebsocketUrl(buildApiUrl("/dashboard/updates"), token);
 }
 
 export const WINDOW_OPTIONS = [15, 60, 240, 1440];

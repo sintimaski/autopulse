@@ -1,0 +1,38 @@
+"""Project UI setting: hide AutoPulse internal HTTP traffic from analytics queries."""
+
+from __future__ import annotations
+
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from autopulse_backend.models import Event, ProjectUiSettings
+
+
+async def resolve_exclude_autopulse_traffic(session: AsyncSession, project_id) -> bool:
+    setting = await session.scalar(
+        select(ProjectUiSettings.exclude_autopulse_traffic).where(
+            ProjectUiSettings.project_id == project_id
+        )
+    )
+    if setting is None:
+        return True
+    return bool(setting)
+
+
+def append_exclude_autopulse_event_filters(
+    filters: list,
+    *,
+    exclude_autopulse_traffic: bool,
+) -> None:
+    if not exclude_autopulse_traffic:
+        return
+    # Embedded mount: /autopulse/*. Standalone backend: dashboard API and ingest are often
+    # recorded without that prefix (/dashboard/*, /ingest) when middleware sees root paths.
+    internal = or_(
+        Event.path == "/autopulse",
+        Event.path.like("/autopulse/%"),
+        Event.path == "/ingest",
+        Event.path == "/dashboard",
+        Event.path.like("/dashboard/%"),
+    )
+    filters.append(~internal)

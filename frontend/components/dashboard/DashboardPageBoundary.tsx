@@ -51,7 +51,7 @@ export function DashboardPageBoundary({ children }: { children: ReactNode }) {
           <h2 className="text-lg font-semibold">Unable to load data</h2>
           <p className="mt-2 text-sm">{d.errorMessage}</p>
           <p className="mt-2 text-xs text-rose-700/90 dark:text-rose-300/90">
-            Verify API key and backend URL, then use Refresh in the header.
+            Verify API key and backend URL, adjust scope filters, or reload the page.
           </p>
         </section>
       </div>

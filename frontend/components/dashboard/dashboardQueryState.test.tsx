@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildScopedQuery, parseScopedQuery } from "./dashboardQueryState";
+import {
+  buildScopedQuery,
+  parseScopedQuery,
+  scopedQueryStringsEqual,
+} from "./dashboardQueryState";
 
 describe("dashboardQueryState", () => {
   it("builds query string with filters and pagination", () => {
@@ -21,9 +25,8 @@ describe("dashboardQueryState", () => {
       errorGroupLimit: 50,
       errorGroupPage: 3,
       errorGroupSort: "count",
-      sqlQueryText: "SELECT * FROM events",
-      sqlQueryCursor: "cursor-123",
-      liveQueryEnabled: false,
+      sqlFilterApplied: "status_code >= 500",
+      sqlFilterEnabled: true,
     });
     expect(query.get("from_timestamp")).toBe("2026-04-27T10:00:00.000Z");
     expect(query.get("to_timestamp")).toBe("2026-04-27T11:00:00.000Z");
@@ -34,9 +37,7 @@ describe("dashboardQueryState", () => {
     expect(query.get("request_page")).toBe("2");
     expect(query.get("error_group_page")).toBe("3");
     expect(query.get("error_group_sort")).toBe("count");
-    expect(query.get("sql_query")).toBe("SELECT * FROM events");
-    expect(query.get("sql_cursor")).toBe("cursor-123");
-    expect(query.get("sql_live")).toBe("0");
+    expect(query.get("sql_filter")).toBe("status_code >= 500");
   });
 
   it("parses scoped query and falls back to defaults", () => {
@@ -55,9 +56,7 @@ describe("dashboardQueryState", () => {
         error_group_limit: "10",
         error_group_page: "-3",
         error_group_sort: "count",
-        sql_query: "SELECT * FROM events",
-        sql_cursor: "c-1",
-        sql_live: "0",
+        sql_filter: "method = 'GET'",
       }),
     );
 
@@ -73,8 +72,42 @@ describe("dashboardQueryState", () => {
     expect(parsed.errorGroupLimit).toBe(10);
     expect(parsed.errorGroupPage).toBe(0);
     expect(parsed.errorGroupSort).toBe("count");
-    expect(parsed.sqlQueryText).toBe("SELECT * FROM events");
-    expect(parsed.sqlQueryCursor).toBe("c-1");
-    expect(parsed.liveQueryEnabled).toBe(false);
+    expect(parsed.sqlFilterApplied).toBe("method = 'GET'");
+    expect(parsed.sqlFilterEnabled).toBe(true);
+  });
+
+  it("parseScopedQuery omits sql fields when absent from URL", () => {
+    const parsed = parseScopedQuery(new URLSearchParams({ window_minutes: "30" }));
+    expect(parsed.sqlFilterApplied).toBeUndefined();
+    expect(parsed.sqlFilterEnabled).toBeUndefined();
+  });
+
+  it("scopedQueryStringsEqual ignores parameter order", () => {
+    expect(scopedQueryStringsEqual("a=1&b=2", "b=2&a=1")).toBe(true);
+    expect(scopedQueryStringsEqual("a=1", "a=2")).toBe(false);
+  });
+
+  it("buildScopedQuery omits sql_filter when disabled or empty", () => {
+    const query = buildScopedQuery({
+      isAbsoluteWindow: false,
+      windowMinutes: 60,
+      windowFromTimestamp: "",
+      windowToTimestamp: "",
+      method: "ALL",
+      statusClass: "ALL",
+      minLatencyMs: "",
+      maxLatencyMs: "",
+      pathQuery: "",
+      serverEnvironmentQuery: "",
+      serverServiceQuery: "",
+      requestLimit: 100,
+      requestPage: 0,
+      errorGroupLimit: 25,
+      errorGroupPage: 0,
+      errorGroupSort: "last_seen",
+      sqlFilterApplied: "status_code >= 500",
+      sqlFilterEnabled: false,
+    });
+    expect(query.has("sql_filter")).toBe(false);
   });
 });

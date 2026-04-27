@@ -68,6 +68,7 @@ export function ServerQueryToolbar() {
     () => [...new Set([...d.availableServices, ...d.serverServiceTags])].sort(),
     [d.availableServices, d.serverServiceTags],
   );
+  const sqlScopeActive = d.sqlFilterEnabled && d.sqlFilterApplied.trim() !== "";
   const activeServerFilterCount = [
     d.method !== "ALL",
     d.statusClass !== "ALL",
@@ -76,6 +77,7 @@ export function ServerQueryToolbar() {
     d.maxLatencyMs.trim() !== "",
     d.serverEnvironmentTags.length > 0,
     d.serverServiceTags.length > 0,
+    sqlScopeActive,
   ].filter(Boolean).length;
   const fromInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +97,9 @@ export function ServerQueryToolbar() {
     d.setMaxLatencyMs("");
     d.setServerEnvironmentTags([]);
     d.setServerServiceTags([]);
+    d.setSqlFilterDraft("");
+    d.setSqlFilterApplied("");
+    d.setSqlFilterEnabled(false);
     d.setErrorGroupSort("last_seen");
     d.setRequestPage(0);
     d.setErrorGroupPage(0);
@@ -403,6 +408,59 @@ export function ServerQueryToolbar() {
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-200 bg-white/90 p-3 dark:border-neutral-700 dark:bg-neutral-950/40">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-semibold text-slate-700 dark:text-neutral-200">
+            SQL WHERE filter
+          </p>
+          <span className="text-xs text-slate-500 dark:text-neutral-400">
+            AND-separated clauses; same grammar as log queries
+          </span>
+        </div>
+        <textarea
+          value={d.sqlFilterDraft}
+          onChange={(event) => d.setSqlFilterDraft(event.target.value)}
+          placeholder="e.g. status_code >= 500 AND method = 'GET'"
+          className="h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={d.sqlFilterValidating}
+            onClick={() => void d.validateSqlFilterDraft()}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+          >
+            Validate
+          </button>
+          <button
+            type="button"
+            disabled={d.sqlFilterValidating}
+            onClick={() => void d.applySqlFilter()}
+            className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+          >
+            Apply to scope
+          </button>
+          <button
+            type="button"
+            onClick={() => d.disableSqlFilter()}
+            disabled={!d.sqlFilterEnabled}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+          >
+            Disable
+          </button>
+          {d.sqlFilterValidation ? (
+            <span
+              className={`text-xs ${d.sqlFilterValidation.valid ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
+            >
+              {d.sqlFilterValidation.valid ? "Valid WHERE" : d.sqlFilterValidation.error ?? "Invalid"}
+            </span>
+          ) : null}
+          {d.sqlFilterEnabled ? (
+            <span className="text-xs font-medium text-sky-800 dark:text-sky-200">Filter on</span>
+          ) : null}
+        </div>
       </div>
     </div>
   );
