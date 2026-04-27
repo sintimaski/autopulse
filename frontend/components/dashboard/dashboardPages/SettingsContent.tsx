@@ -12,6 +12,7 @@ export function SettingsContent() {
   const form = d.alertSettings;
   const [formError, setFormError] = useState<string | null>(null);
   const [deliveryPreset, setDeliveryPreset] = useState<DeliveryPreset>("smtp_email");
+  const [themeMessage, setThemeMessage] = useState<string | null>(null);
 
   const onSaveAlerts = async () => {
     if (!form) {
@@ -40,6 +41,36 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Appearance</h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+          Theme preference is now a project setting stored in the backend.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {(["system", "light", "dark"] as const).map((theme) => (
+            <button
+              key={theme}
+              type="button"
+              onClick={async () => {
+                const ok = await d.saveThemePreference(theme);
+                setThemeMessage(ok ? "Theme saved." : "Failed to save theme.");
+              }}
+              disabled={d.themeSettingsSaving}
+              className={`rounded-xl border px-3 py-2 text-left text-xs ${
+                d.themePreference === theme
+                  ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-neutral-500 dark:bg-neutral-800 dark:text-neutral-100"
+                  : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              }`}
+            >
+              {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
+            </button>
+          ))}
+        </div>
+        {themeMessage ? (
+          <p className="mt-2 text-xs text-slate-600 dark:text-neutral-300">{themeMessage}</p>
+        ) : null}
+      </section>
+
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Settings model (MVP)</h2>
         <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">

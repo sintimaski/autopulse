@@ -172,5 +172,13 @@ class DashboardAlertDispatchesResponse(BaseModel):
     items: list[DashboardAlertDispatchItem]
 
 
+class DashboardThemeSettings(BaseModel):
+    theme_preference: Literal["system", "light", "dark"]
+
+
+class DashboardThemeSettingsUpdate(BaseModel):
+    theme_preference: Literal["system", "light", "dark"]
+
+
 def event_payload(event: IngestEvent) -> dict[str, Any]:
     return event.model_dump(mode="json")

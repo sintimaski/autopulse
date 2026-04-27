@@ -111,6 +111,28 @@ class ProjectAlertSettings(Base):
     )
 
 
+class ProjectUiSettings(Base):
+    __tablename__ = "project_ui_settings"
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    theme_preference: Mapped[str] = mapped_column(String(16), nullable=False, default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class AlertDispatch(Base):
     __tablename__ = "alert_dispatches"
     __table_args__ = (

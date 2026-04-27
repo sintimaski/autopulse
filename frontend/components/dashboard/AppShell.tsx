@@ -15,7 +15,6 @@ const nav = [
 export function DashboardAppShell({
   children,
   onRefresh,
-  onToggleTheme,
   filterToolbar,
   filterToolbarAutoCollapse = false,
   filterToolbarCompactLabel = "Server scope",
@@ -24,10 +23,10 @@ export function DashboardAppShell({
   title,
   subtitle,
   isDark,
+  scopedQueryString = "",
 }: {
   children: ReactNode;
   onRefresh: () => void;
-  onToggleTheme: () => void;
   filterToolbar: ReactNode | null;
   filterToolbarAutoCollapse?: boolean;
   filterToolbarCompactLabel?: string;
@@ -36,6 +35,7 @@ export function DashboardAppShell({
   title: string;
   subtitle: string;
   isDark: boolean;
+  scopedQueryString?: string;
 }) {
   return (
     <div suppressHydrationWarning className={isDark ? "dark" : ""}>
@@ -53,7 +53,11 @@ export function DashboardAppShell({
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={
+                    scopedQueryString && (item.href === "/diagnosis" || item.href === "/logs")
+                      ? `${item.href}?${scopedQueryString}`
+                      : item.href
+                  }
                   aria-current={active ? "page" : undefined}
                   className={`rounded-lg px-3 py-2 transition ${
                     active
@@ -81,13 +85,6 @@ export function DashboardAppShell({
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">{subtitle}</p>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={onToggleTheme}
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                >
-                  {isDark ? "Light theme" : "Dark theme"}
-                </button>
                 <button
                   type="button"
                   onClick={onRefresh}

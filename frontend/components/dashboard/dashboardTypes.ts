@@ -88,6 +88,12 @@ export type AlertDispatchesResponse = {
   items: AlertDispatchItem[];
 };
 
+export type ThemePreference = "system" | "light" | "dark";
+
+export type ThemeSettings = {
+  theme_preference: ThemePreference;
+};
+
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? "http://localhost:8000";
 export const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY;

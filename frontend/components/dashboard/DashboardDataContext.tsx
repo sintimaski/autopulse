@@ -45,6 +45,8 @@ import {
   type RequestsResponse,
   type SortDir,
   type SortKey,
+  type ThemePreference,
+  type ThemeSettings,
 } from "./dashboardTypes";
 
 export type DashboardDataContextValue = {
@@ -75,6 +77,7 @@ export type DashboardDataContextValue = {
   errorGroups: ErrorGroupsResponse | null;
   alertSettings: AlertSettings | null;
   alertDispatches: AlertDispatchesResponse | null;
+  themePreference: ThemePreference;
   errorGroupSort: "last_seen" | "count";
   loading: boolean;
   errorMessage: string | null;
@@ -82,6 +85,7 @@ export type DashboardDataContextValue = {
   runbookMessage: string | null;
   alertSettingsMessage: string | null;
   alertSettingsSaving: boolean;
+  themeSettingsSaving: boolean;
   expandedRequestIds: Set<string>;
   setRequestLimit: (n: number) => void;
   setRequestPage: React.Dispatch<React.SetStateAction<number>>;
@@ -105,6 +109,7 @@ export type DashboardDataContextValue = {
   clearClientFilters: () => void;
   copyRunbookCommand: (command: string, label: string) => Promise<void>;
   saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
+  saveThemePreference: (next: ThemePreference) => Promise<boolean>;
   updateAlertSettingsDraft: (next: AlertSettings) => void;
   toggleRequestRow: (id: string) => void;
   onSortHeader: (key: SortKey) => void;
@@ -166,6 +171,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [errorGroups, setErrorGroups] = useState<ErrorGroupsResponse | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -173,6 +179,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
+  const [themeSettingsSaving, setThemeSettingsSaving] = useState(false);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
 
@@ -302,6 +309,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           fetch(`${apiBaseUrl}/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`, {
             headers,
           }),
+          fetch(`${apiBaseUrl}/dashboard/theme-settings`, { headers }),
         ]).then(
           ([
             overviewResponse,
@@ -309,12 +317,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             errorGroupsResponse,
             alertSettingsResponse,
             alertDispatchesResponse,
+            themeSettingsResponse,
           ]) => [
           { endpoint: "overview", response: overviewResponse },
           { endpoint: "requests", response: requestsResponse },
           { endpoint: "error-groups", response: errorGroupsResponse },
           { endpoint: "alert-settings", response: alertSettingsResponse },
           { endpoint: "alert-dispatches", response: alertDispatchesResponse },
+          { endpoint: "theme-settings", response: themeSettingsResponse },
           ],
         )) as DashboardFetchResult[];
 
@@ -323,7 +333,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           throw new Error(fetchError);
         }
 
-        const [overviewData, requestsData, errorGroupsData, alertSettingsData, alertDispatchesData] = (await Promise.all(
+        const [overviewData, requestsData, errorGroupsData, alertSettingsData, alertDispatchesData, themeSettingsData] = (await Promise.all(
           results.map(async ({ response }) => response.json()),
         )) as [
           OverviewResponse,
@@ -331,12 +341,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           ErrorGroupsResponse,
           AlertSettings,
           AlertDispatchesResponse,
+          ThemeSettings,
         ];
         setOverview(overviewData);
         setRequests(requestsData);
         setErrorGroups(errorGroupsData);
         setAlertSettings(alertSettingsData);
         setAlertDispatches(alertDispatchesData);
+        setThemePreference(themeSettingsData.theme_preference);
       } catch (error) {
         setErrorMessage(buildDashboardNetworkError(error));
       } finally {
@@ -501,6 +513,36 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const updateAlertSettingsDraft = useCallback((next: AlertSettings) => {
     setAlertSettings(next);
   }, []);
+
+  const saveThemePreference = useCallback(
+    async (next: ThemePreference): Promise<boolean> => {
+      if (!apiKey) {
+        return false;
+      }
+      setThemeSettingsSaving(true);
+      try {
+        const response = await fetch(`${apiBaseUrl}/dashboard/theme-settings`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ theme_preference: next }),
+        });
+        if (!response.ok) {
+          throw new Error(`theme-settings update failed (${response.status})`);
+        }
+        const updated = (await response.json()) as ThemeSettings;
+        setThemePreference(updated.theme_preference);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setThemeSettingsSaving(false);
+      }
+    },
+    [],
+  );
 
   const toggleRequestRow = useCallback((id: string) => {
     setExpandedRequestIds((prev) => {
@@ -674,6 +716,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       errorGroups,
       alertSettings,
       alertDispatches,
+      themePreference,
       errorGroupSort,
       loading,
       errorMessage,
@@ -681,6 +724,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       runbookMessage,
       alertSettingsMessage,
       alertSettingsSaving,
+      themeSettingsSaving,
       expandedRequestIds,
       setRequestLimit,
       setRequestPage,
@@ -704,6 +748,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       clearClientFilters,
       copyRunbookCommand,
       saveAlertSettings,
+      saveThemePreference,
       updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,
@@ -755,6 +800,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       serviceTags,
       alertSettings,
       alertDispatches,
+      themePreference,
       errorGroupSort,
       loading,
       errorMessage,
@@ -762,6 +808,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       runbookMessage,
       alertSettingsMessage,
       alertSettingsSaving,
+      themeSettingsSaving,
       expandedRequestIds,
       onServerWindowChange,
       setAbsoluteWindow,
@@ -773,6 +820,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       clearClientFilters,
       copyRunbookCommand,
       saveAlertSettings,
+      saveThemePreference,
       updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,

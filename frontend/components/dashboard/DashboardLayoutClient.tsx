@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { DashboardAppShell } from "./AppShell";
 import { ApiKeyMissing } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
+import { buildScopedQuery, parseScopedQuery } from "./dashboardQueryState";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
@@ -45,7 +46,9 @@ type ScopedServerState = {
   serverEnvironmentQuery: string;
   serverServiceQuery: string;
   requestLimit: number;
+  requestPage: number;
   errorGroupLimit: number;
+  errorGroupPage: number;
   errorGroupSort: "last_seen" | "count";
 };
 
@@ -67,39 +70,54 @@ function buildDefaultScopedState(d: ReturnType<typeof useDashboardData>): Scoped
     serverEnvironmentQuery: "",
     serverServiceQuery: "",
     requestLimit: 100,
+    requestPage: 0,
     errorGroupLimit: 25,
+    errorGroupPage: 0,
     errorGroupSort: "last_seen",
   };
 }
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebounced(value);
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs, value]);
+  return debounced;
+}
+
 function ShellWithData({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const d = useDashboardData();
-  const [isDark, setIsDark] = useState(false);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
   const lastAppliedQueryRef = useRef<string>("");
   const scopedStateRef = useRef<Record<string, ScopedServerState>>({});
   const previousPathRef = useRef(pathname);
+  const debouncedPathQuery = useDebouncedValue(d.pathQuery, 250);
+  const debouncedMinLatencyMs = useDebouncedValue(d.minLatencyMs, 250);
+  const debouncedMaxLatencyMs = useDebouncedValue(d.maxLatencyMs, 250);
+  const debouncedEnvironmentQuery = useDebouncedValue(d.serverEnvironmentQuery, 250);
+  const debouncedServiceQuery = useDebouncedValue(d.serverServiceQuery, 250);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      const stored = window.localStorage.getItem("autopulse-theme");
-      if (stored === "dark") {
-        setIsDark(true);
-        return;
-      }
-      if (stored === "light") {
-        setIsDark(false);
-        return;
-      }
-      setIsDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
+      setSystemPrefersDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("autopulse-theme", isDark ? "dark" : "light");
-  }, [isDark]);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => {
+      setSystemPrefersDark(event.matches);
+    };
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   useEffect(() => {
     if (previousPathRef.current === pathname) {
@@ -113,13 +131,15 @@ function ShellWithData({ children }: { children: ReactNode }) {
       windowToTimestamp: d.windowToTimestamp,
       method: d.method,
       statusClass: d.statusClass,
-      minLatencyMs: d.minLatencyMs,
-      maxLatencyMs: d.maxLatencyMs,
-      pathQuery: d.pathQuery,
-      serverEnvironmentQuery: d.serverEnvironmentQuery,
-      serverServiceQuery: d.serverServiceQuery,
+      minLatencyMs: debouncedMinLatencyMs,
+      maxLatencyMs: debouncedMaxLatencyMs,
+      pathQuery: debouncedPathQuery,
+      serverEnvironmentQuery: debouncedEnvironmentQuery,
+      serverServiceQuery: debouncedServiceQuery,
       requestLimit: d.requestLimit,
+      requestPage: d.requestPage,
       errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: d.errorGroupPage,
       errorGroupSort: d.errorGroupSort,
     });
 
@@ -138,10 +158,10 @@ function ShellWithData({ children }: { children: ReactNode }) {
       d.setServerEnvironmentQuery(state.serverEnvironmentQuery);
       d.setServerServiceQuery(state.serverServiceQuery);
       d.setRequestLimit(state.requestLimit);
+      d.setRequestPage(state.requestPage);
       d.setErrorGroupLimit(state.errorGroupLimit);
+      d.setErrorGroupPage(state.errorGroupPage);
       d.setErrorGroupSort(state.errorGroupSort);
-      d.setRequestPage(0);
-      d.setErrorGroupPage(0);
     };
 
     const previousPath = previousPathRef.current;
@@ -158,70 +178,115 @@ function ShellWithData({ children }: { children: ReactNode }) {
   }, [d, pathname]);
 
   useEffect(() => {
-    if (pathname !== "/diagnosis") {
+    if (!isScopedServerRoute(pathname)) {
       return;
     }
     const search = searchParams.toString();
-    if (!search) {
-      return;
-    }
     const queryKey = `${pathname}?${search}`;
     if (lastAppliedQueryRef.current === queryKey) {
       return;
     }
 
-    const from = searchParams.get("from_timestamp") ?? searchParams.get("bucket_start");
-    const to = searchParams.get("to_timestamp") ?? searchParams.get("bucket_end");
-    if (from && to) {
-      d.setAbsoluteWindow(from, to);
+    const parsed = parseScopedQuery(new URLSearchParams(search));
+    if (parsed.isAbsoluteWindow) {
+      d.setAbsoluteWindow(parsed.windowFromTimestamp, parsed.windowToTimestamp);
+    } else {
+      d.clearAbsoluteWindow();
+      d.onServerWindowChange(parsed.windowMinutes);
     }
-    const method = searchParams.get("method");
-    if (method) {
-      d.onServerMethodChange(method);
-    }
-    const statusClass = searchParams.get("status_class");
-    if (statusClass) {
-      d.onServerStatusClassChange(statusClass);
-    }
-    const pathContains = searchParams.get("path_contains");
-    if (pathContains !== null) {
-      d.setPathQuery(pathContains);
-      d.setRequestPage(0);
-    }
-    const minLatency = searchParams.get("min_latency_ms");
-    if (minLatency !== null) {
-      d.setMinLatencyMs(minLatency);
-      d.setRequestPage(0);
-    }
-    const maxLatency = searchParams.get("max_latency_ms");
-    if (maxLatency !== null) {
-      d.setMaxLatencyMs(maxLatency);
-      d.setRequestPage(0);
-    }
-    const environments = searchParams.get("environments");
-    if (environments !== null) {
-      d.setServerEnvironmentQuery(environments);
-      d.setRequestPage(0);
-    }
-    const services = searchParams.get("services");
-    if (services !== null) {
-      d.setServerServiceQuery(services);
-      d.setRequestPage(0);
-    }
-    const errorGroupSort = searchParams.get("error_group_sort");
-    if (errorGroupSort === "count" || errorGroupSort === "last_seen") {
-      d.setErrorGroupSort(errorGroupSort);
-    }
+    d.onServerMethodChange(parsed.method);
+    d.onServerStatusClassChange(parsed.statusClass);
+    d.setPathQuery(parsed.pathQuery);
+    d.setMinLatencyMs(parsed.minLatencyMs);
+    d.setMaxLatencyMs(parsed.maxLatencyMs);
+    d.setServerEnvironmentQuery(parsed.serverEnvironmentQuery);
+    d.setServerServiceQuery(parsed.serverServiceQuery);
+    d.setRequestLimit(parsed.requestLimit);
+    d.setRequestPage(parsed.requestPage);
+    d.setErrorGroupLimit(parsed.errorGroupLimit);
+    d.setErrorGroupPage(parsed.errorGroupPage);
+    d.setErrorGroupSort(parsed.errorGroupSort);
 
     lastAppliedQueryRef.current = queryKey;
   }, [d, pathname, searchParams]);
+
+  useEffect(() => {
+    if (!isScopedServerRoute(pathname)) {
+      return;
+    }
+    const currentQuery = searchParams.toString();
+    const nextQuery = buildScopedQuery({
+      isAbsoluteWindow: d.isAbsoluteWindow,
+      windowMinutes: d.windowMinutes,
+      windowFromTimestamp: d.windowFromTimestamp,
+      windowToTimestamp: d.windowToTimestamp,
+      method: d.method,
+      statusClass: d.statusClass,
+      minLatencyMs: debouncedMinLatencyMs,
+      maxLatencyMs: debouncedMaxLatencyMs,
+      pathQuery: debouncedPathQuery,
+      serverEnvironmentQuery: debouncedEnvironmentQuery,
+      serverServiceQuery: debouncedServiceQuery,
+      requestLimit: d.requestLimit,
+      requestPage: d.requestPage,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: d.errorGroupPage,
+      errorGroupSort: d.errorGroupSort,
+    }).toString();
+    if (nextQuery === currentQuery) {
+      return;
+    }
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const nextHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
+    router.replace(nextHref, { scroll: false });
+  }, [
+    d.errorGroupLimit,
+    d.errorGroupPage,
+    d.errorGroupSort,
+    d.isAbsoluteWindow,
+    debouncedEnvironmentQuery,
+    debouncedMaxLatencyMs,
+    debouncedMinLatencyMs,
+    debouncedPathQuery,
+    debouncedServiceQuery,
+    d.method,
+    d.requestLimit,
+    d.requestPage,
+    d.statusClass,
+    d.windowFromTimestamp,
+    d.windowMinutes,
+    d.windowToTimestamp,
+    pathname,
+    router,
+    searchParams,
+  ]);
 
   if (!d.hasApiKey) {
     return <ApiKeyMissing />;
   }
 
+  const isDark =
+    d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
   const showServerScope = pathname === "/diagnosis" || pathname === "/logs";
+  const scopedQueryString = buildScopedQuery({
+    isAbsoluteWindow: d.isAbsoluteWindow,
+    windowMinutes: d.windowMinutes,
+    windowFromTimestamp: d.windowFromTimestamp,
+    windowToTimestamp: d.windowToTimestamp,
+    method: d.method,
+    statusClass: d.statusClass,
+    minLatencyMs: d.minLatencyMs,
+    maxLatencyMs: d.maxLatencyMs,
+    pathQuery: d.pathQuery,
+    serverEnvironmentQuery: d.serverEnvironmentQuery,
+    serverServiceQuery: d.serverServiceQuery,
+    requestLimit: d.requestLimit,
+    requestPage: d.requestPage,
+    errorGroupLimit: d.errorGroupLimit,
+    errorGroupPage: d.errorGroupPage,
+    errorGroupSort: d.errorGroupSort,
+  }).toString();
   const resetServerFilters = () => {
     d.onServerMethodChange("ALL");
     d.onServerStatusClassChange("ALL");
@@ -240,7 +305,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       title={meta.title}
       subtitle={meta.subtitle}
       isDark={isDark}
-      onToggleTheme={() => setIsDark((prev) => !prev)}
+      scopedQueryString={scopedQueryString}
       onRefresh={() => d.setRefreshToken((n) => n + 1)}
       filterToolbarAutoCollapse={showServerScope}
       filterToolbarCompactLabel="Server scope"

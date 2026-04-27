@@ -13,7 +13,12 @@ from autopulse_backend.alerts import get_or_create_project_alert_settings
 from autopulse_backend.auth import ProjectContext, authenticate_project
 from autopulse_backend.config import get_settings
 from autopulse_backend.db import get_db_session
-from autopulse_backend.models import AlertDispatch, Event, ProjectAlertSettings
+from autopulse_backend.models import (
+    AlertDispatch,
+    Event,
+    ProjectAlertSettings,
+    ProjectUiSettings,
+)
 from autopulse_backend.schemas import (
     DashboardAlertDispatchesResponse,
     DashboardAlertDispatchItem,
@@ -25,6 +30,8 @@ from autopulse_backend.schemas import (
     DashboardOverviewResponse,
     DashboardRequestItem,
     DashboardRequestsResponse,
+    DashboardThemeSettings,
+    DashboardThemeSettingsUpdate,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -59,6 +66,30 @@ def _serialize_alert_settings(settings: ProjectAlertSettings) -> DashboardAlertS
         outage_window_minutes=int(settings.outage_window_minutes),
         cooldown_minutes=int(settings.cooldown_minutes),
     )
+
+
+def _serialize_theme_settings(settings: ProjectUiSettings) -> DashboardThemeSettings:
+    theme = (
+        settings.theme_preference
+        if settings.theme_preference in {"system", "light", "dark"}
+        else "system"
+    )
+    return DashboardThemeSettings(theme_preference=theme)
+
+
+async def _get_or_create_project_ui_settings(
+    session: AsyncSession,
+    project_id,
+) -> ProjectUiSettings:
+    settings = await session.scalar(
+        select(ProjectUiSettings).where(ProjectUiSettings.project_id == project_id)
+    )
+    if settings is not None:
+        return settings
+    settings = ProjectUiSettings(project_id=project_id, theme_preference="system")
+    session.add(settings)
+    await session.flush()
+    return settings
 
 
 def _resolve_time_window(
@@ -618,10 +649,14 @@ async def get_dashboard_alert_dispatches(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
 ) -> DashboardAlertDispatchesResponse:
-    resolved_from, resolved_to = _resolve_time_window(from_timestamp, to_timestamp)
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
     filters = [
         AlertDispatch.project_id == context.project_id,
         AlertDispatch.triggered_at >= resolved_from,
@@ -673,3 +708,27 @@ async def update_dashboard_alert_settings(
     await session.commit()
     await session.refresh(alert_settings)
     return _serialize_alert_settings(alert_settings)
+
+
+@router.get("/theme-settings", response_model=DashboardThemeSettings)
+async def get_dashboard_theme_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardThemeSettings:
+    settings = await _get_or_create_project_ui_settings(session, context.project_id)
+    await session.commit()
+    await session.refresh(settings)
+    return _serialize_theme_settings(settings)
+
+
+@router.put("/theme-settings", response_model=DashboardThemeSettings)
+async def update_dashboard_theme_settings(
+    payload: DashboardThemeSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardThemeSettings:
+    settings = await _get_or_create_project_ui_settings(session, context.project_id)
+    settings.theme_preference = payload.theme_preference
+    await session.commit()
+    await session.refresh(settings)
+    return _serialize_theme_settings(settings)
