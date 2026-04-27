@@ -56,6 +56,17 @@ export type ErrorGroupsResponse = {
   items: ErrorGroupItem[];
 };
 
+export type AlertSettings = {
+  enabled: boolean;
+  destination_email: string | null;
+  error_spike_ratio_threshold: number;
+  error_spike_min_requests: number;
+  error_spike_window_minutes: number;
+  outage_min_requests: number;
+  outage_window_minutes: number;
+  cooldown_minutes: number;
+};
+
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? "http://localhost:8000";
 export const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY;

@@ -34,6 +34,7 @@ import {
   RUNBOOK_RETENTION_CMD,
   STATUS_CLASS_OPTIONS,
   WINDOW_OPTIONS,
+  type AlertSettings,
   type ErrorGroupItem,
   type ErrorGroupsResponse,
   type GroupBy,
@@ -53,6 +54,10 @@ export type DashboardDataContextValue = {
   requestPage: number;
   errorGroupLimit: number;
   errorGroupPage: number;
+  minLatencyMs: string;
+  maxLatencyMs: string;
+  serverServiceQuery: string;
+  serverEnvironmentQuery: string;
   pathQuery: string;
   groupBy: GroupBy;
   sortKey: SortKey;
@@ -62,16 +67,23 @@ export type DashboardDataContextValue = {
   overview: OverviewResponse | null;
   requests: RequestsResponse | null;
   errorGroups: ErrorGroupsResponse | null;
+  alertSettings: AlertSettings | null;
   errorGroupSort: "last_seen" | "count";
   loading: boolean;
   errorMessage: string | null;
   refreshToken: number;
   runbookMessage: string | null;
+  alertSettingsMessage: string | null;
+  alertSettingsSaving: boolean;
   expandedRequestIds: Set<string>;
   setRequestLimit: (n: number) => void;
   setRequestPage: React.Dispatch<React.SetStateAction<number>>;
   setErrorGroupLimit: (n: number) => void;
   setErrorGroupPage: React.Dispatch<React.SetStateAction<number>>;
+  setMinLatencyMs: React.Dispatch<React.SetStateAction<string>>;
+  setMaxLatencyMs: React.Dispatch<React.SetStateAction<string>>;
+  setServerServiceQuery: React.Dispatch<React.SetStateAction<string>>;
+  setServerEnvironmentQuery: React.Dispatch<React.SetStateAction<string>>;
   setPathQuery: React.Dispatch<React.SetStateAction<string>>;
   setGroupBy: React.Dispatch<React.SetStateAction<GroupBy>>;
   setErrorGroupSort: (s: "last_seen" | "count") => void;
@@ -83,6 +95,8 @@ export type DashboardDataContextValue = {
   toggleService: (value: string) => void;
   clearClientFilters: () => void;
   copyRunbookCommand: (command: string, label: string) => Promise<void>;
+  saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
+  updateAlertSettingsDraft: (next: AlertSettings) => void;
   toggleRequestRow: (id: string) => void;
   onSortHeader: (key: SortKey) => void;
   rawItems: RequestItem[];
@@ -126,6 +140,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [requestPage, setRequestPage] = useState(0);
   const [errorGroupLimit, setErrorGroupLimit] = useState(25);
   const [errorGroupPage, setErrorGroupPage] = useState(0);
+  const [minLatencyMs, setMinLatencyMs] = useState("");
+  const [maxLatencyMs, setMaxLatencyMs] = useState("");
+  const [serverServiceQuery, setServerServiceQuery] = useState("");
+  const [serverEnvironmentQuery, setServerEnvironmentQuery] = useState("");
   const [pathQuery, setPathQuery] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
@@ -135,11 +153,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [requests, setRequests] = useState<RequestsResponse | null>(null);
   const [errorGroups, setErrorGroups] = useState<ErrorGroupsResponse | null>(null);
+  const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
+  const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
+  const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
 
@@ -176,6 +197,34 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (statusClass !== "ALL") {
           requestsParams.set("status_class", statusClass);
         }
+        const minLatency = Number(minLatencyMs);
+        if (minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0) {
+          requestsParams.set("min_latency_ms", String(minLatency));
+        }
+        const maxLatency = Number(maxLatencyMs);
+        if (maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0) {
+          requestsParams.set("max_latency_ms", String(maxLatency));
+        }
+        const serverPath = pathQuery.trim();
+        if (serverPath) {
+          requestsParams.set("path_contains", serverPath);
+        }
+        const envCsv = serverEnvironmentQuery
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .join(",");
+        if (envCsv) {
+          requestsParams.set("environments", envCsv);
+        }
+        const serviceCsv = serverServiceQuery
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .join(",");
+        if (serviceCsv) {
+          requestsParams.set("services", serviceCsv);
+        }
 
         const errorGroupsParams = new URLSearchParams({
           from_timestamp: toIsoWindow.from,
@@ -190,23 +239,33 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           fetch(`${apiBaseUrl}/dashboard/error-groups?${errorGroupsParams.toString()}`, {
             headers,
           }),
-        ]).then(([overviewResponse, requestsResponse, errorGroupsResponse]) => [
+          fetch(`${apiBaseUrl}/dashboard/alert-settings`, { headers }),
+        ]).then(
+          ([
+            overviewResponse,
+            requestsResponse,
+            errorGroupsResponse,
+            alertSettingsResponse,
+          ]) => [
           { endpoint: "overview", response: overviewResponse },
           { endpoint: "requests", response: requestsResponse },
           { endpoint: "error-groups", response: errorGroupsResponse },
-        ])) as DashboardFetchResult[];
+          { endpoint: "alert-settings", response: alertSettingsResponse },
+          ],
+        )) as DashboardFetchResult[];
 
         const fetchError = buildDashboardFetchError(results);
         if (fetchError) {
           throw new Error(fetchError);
         }
 
-        const [overviewData, requestsData, errorGroupsData] = (await Promise.all(
+        const [overviewData, requestsData, errorGroupsData, alertSettingsData] = (await Promise.all(
           results.map(async ({ response }) => response.json()),
-        )) as [OverviewResponse, RequestsResponse, ErrorGroupsResponse];
+        )) as [OverviewResponse, RequestsResponse, ErrorGroupsResponse, AlertSettings];
         setOverview(overviewData);
         setRequests(requestsData);
         setErrorGroups(errorGroupsData);
+        setAlertSettings(alertSettingsData);
       } catch (error) {
         setErrorMessage(buildDashboardNetworkError(error));
       } finally {
@@ -224,6 +283,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     requestPage,
     errorGroupLimit,
     errorGroupPage,
+    minLatencyMs,
+    maxLatencyMs,
+    pathQuery,
+    serverEnvironmentQuery,
+    serverServiceQuery,
   ]);
 
   useEffect(() => {
@@ -289,6 +353,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const clearClientFilters = useCallback(() => {
     setPathQuery("");
+    setMinLatencyMs("");
+    setMaxLatencyMs("");
+    setServerServiceQuery("");
+    setServerEnvironmentQuery("");
     setEnvTags(new Set());
     setServiceTags(new Set());
     setGroupBy("none");
@@ -307,6 +375,43 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     } catch {
       setRunbookMessage("Clipboard unavailable — copy the command text manually.");
     }
+  }, []);
+
+  const saveAlertSettings = useCallback(
+    async (next: AlertSettings): Promise<boolean> => {
+      if (!apiKey) {
+        return false;
+      }
+      setAlertSettingsSaving(true);
+      setAlertSettingsMessage(null);
+      try {
+        const response = await fetch(`${apiBaseUrl}/dashboard/alert-settings`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(next),
+        });
+        if (!response.ok) {
+          throw new Error(`alert-settings update failed (${response.status})`);
+        }
+        const updated = (await response.json()) as AlertSettings;
+        setAlertSettings(updated);
+        setAlertSettingsMessage("Alert settings saved.");
+        return true;
+      } catch {
+        setAlertSettingsMessage("Failed to save alert settings. Try again.");
+        return false;
+      } finally {
+        setAlertSettingsSaving(false);
+      }
+    },
+    [],
+  );
+
+  const updateAlertSettingsDraft = useCallback((next: AlertSettings) => {
+    setAlertSettings(next);
   }, []);
 
   const toggleRequestRow = useCallback((id: string) => {
@@ -458,6 +563,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       requestPage,
       errorGroupLimit,
       errorGroupPage,
+      minLatencyMs,
+      maxLatencyMs,
+      serverServiceQuery,
+      serverEnvironmentQuery,
       pathQuery,
       groupBy,
       sortKey,
@@ -467,16 +576,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       overview,
       requests,
       errorGroups,
+      alertSettings,
       errorGroupSort,
       loading,
       errorMessage,
       refreshToken,
       runbookMessage,
+      alertSettingsMessage,
+      alertSettingsSaving,
       expandedRequestIds,
       setRequestLimit,
       setRequestPage,
       setErrorGroupLimit,
       setErrorGroupPage,
+      setMinLatencyMs,
+      setMaxLatencyMs,
+      setServerServiceQuery,
+      setServerEnvironmentQuery,
       setPathQuery,
       setGroupBy,
       setErrorGroupSort,
@@ -488,6 +604,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       toggleService,
       clearClientFilters,
       copyRunbookCommand,
+      saveAlertSettings,
+      updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,
       rawItems,
@@ -519,6 +637,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       requestPage,
       errorGroupLimit,
       errorGroupPage,
+      minLatencyMs,
+      maxLatencyMs,
+      serverServiceQuery,
+      serverEnvironmentQuery,
       pathQuery,
       groupBy,
       sortKey,
@@ -528,11 +650,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       overview,
       requests,
       errorGroups,
+      alertSettings,
       errorGroupSort,
       loading,
       errorMessage,
       refreshToken,
       runbookMessage,
+      alertSettingsMessage,
+      alertSettingsSaving,
       expandedRequestIds,
       onServerWindowChange,
       onServerMethodChange,
@@ -541,6 +666,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       toggleService,
       clearClientFilters,
       copyRunbookCommand,
+      saveAlertSettings,
+      updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,
       rawItems,

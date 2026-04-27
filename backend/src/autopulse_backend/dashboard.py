@@ -9,10 +9,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import String, case, cast, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autopulse_backend.alerts import get_or_create_project_alert_settings
 from autopulse_backend.auth import ProjectContext, authenticate_project
+from autopulse_backend.config import get_settings
 from autopulse_backend.db import get_db_session
-from autopulse_backend.models import Event
+from autopulse_backend.models import Event, ProjectAlertSettings
 from autopulse_backend.schemas import (
+    DashboardAlertSettings,
+    DashboardAlertSettingsUpdate,
     DashboardErrorGroupItem,
     DashboardErrorGroupsResponse,
     DashboardOverviewBucket,
@@ -26,8 +30,32 @@ _FROM_TIMESTAMP_QUERY = Query(default=None)
 _TO_TIMESTAMP_QUERY = Query(default=None)
 _METHOD_QUERY = Query(default=None)
 _STATUS_CLASS_QUERY = Query(default=None, ge=1, le=5)
+_PATH_QUERY = Query(default=None)
+_ENVIRONMENTS_QUERY = Query(default=None)
+_SERVICES_QUERY = Query(default=None)
+_LATENCY_MIN_MS_QUERY = Query(default=None, ge=0)
+_LATENCY_MAX_MS_QUERY = Query(default=None, ge=0)
 _LIMIT_QUERY = Query(default=50, ge=1, le=200)
 _OFFSET_QUERY = Query(default=0, ge=0)
+
+
+def _split_csv_values(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _serialize_alert_settings(settings: ProjectAlertSettings) -> DashboardAlertSettings:
+    return DashboardAlertSettings(
+        enabled=settings.enabled,
+        destination_email=settings.destination_email,
+        error_spike_ratio_threshold=float(settings.error_spike_ratio_threshold),
+        error_spike_min_requests=int(settings.error_spike_min_requests),
+        error_spike_window_minutes=int(settings.error_spike_window_minutes),
+        outage_min_requests=int(settings.outage_min_requests),
+        outage_window_minutes=int(settings.outage_window_minutes),
+        cooldown_minutes=int(settings.cooldown_minutes),
+    )
 
 
 def _resolve_time_window(
@@ -225,6 +253,11 @@ async def get_dashboard_requests(
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
     method: str | None = _METHOD_QUERY,
     status_class: int | None = _STATUS_CLASS_QUERY,
+    path_contains: str | None = _PATH_QUERY,
+    environments: str | None = _ENVIRONMENTS_QUERY,
+    services: str | None = _SERVICES_QUERY,
+    min_latency_ms: float | None = _LATENCY_MIN_MS_QUERY,
+    max_latency_ms: float | None = _LATENCY_MAX_MS_QUERY,
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
 ) -> DashboardRequestsResponse:
@@ -239,6 +272,18 @@ async def get_dashboard_requests(
     if status_class is not None:
         lower = status_class * 100
         filters.extend([Event.status_code >= lower, Event.status_code < lower + 100])
+    if path_contains:
+        lowered = path_contains.strip().lower()
+        if lowered:
+            filters.append(func.lower(Event.path).contains(lowered))
+    if env_values := _split_csv_values(environments):
+        filters.append(Event.environment.in_(env_values))
+    if service_values := _split_csv_values(services):
+        filters.append(Event.service_name.in_(service_values))
+    if min_latency_ms is not None:
+        filters.append(Event.latency_ms >= min_latency_ms)
+    if max_latency_ms is not None:
+        filters.append(Event.latency_ms <= max_latency_ms)
 
     total_query = select(func.count(Event.id)).where(*filters)
     total_result = await session.execute(total_query)
@@ -505,3 +550,40 @@ async def get_dashboard_error_groups(
         offset=offset,
         items=items,
     )
+
+
+@router.get("/alert-settings", response_model=DashboardAlertSettings)
+async def get_dashboard_alert_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardAlertSettings:
+    settings = get_settings()
+    alert_settings = await get_or_create_project_alert_settings(
+        session, context.project_id, settings
+    )
+    await session.commit()
+    await session.refresh(alert_settings)
+    return _serialize_alert_settings(alert_settings)
+
+
+@router.put("/alert-settings", response_model=DashboardAlertSettings)
+async def update_dashboard_alert_settings(
+    payload: DashboardAlertSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardAlertSettings:
+    settings = get_settings()
+    alert_settings = await get_or_create_project_alert_settings(
+        session, context.project_id, settings
+    )
+    alert_settings.enabled = payload.enabled
+    alert_settings.destination_email = payload.destination_email
+    alert_settings.error_spike_ratio_threshold = payload.error_spike_ratio_threshold
+    alert_settings.error_spike_min_requests = payload.error_spike_min_requests
+    alert_settings.error_spike_window_minutes = payload.error_spike_window_minutes
+    alert_settings.outage_min_requests = payload.outage_min_requests
+    alert_settings.outage_window_minutes = payload.outage_window_minutes
+    alert_settings.cooldown_minutes = payload.cooldown_minutes
+    await session.commit()
+    await session.refresh(alert_settings)
+    return _serialize_alert_settings(alert_settings)

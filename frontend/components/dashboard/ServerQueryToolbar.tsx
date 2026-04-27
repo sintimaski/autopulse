@@ -52,6 +52,75 @@ export function ServerQueryToolbar() {
         </select>
       </label>
       <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        Path contains
+        <input
+          type="search"
+          value={d.pathQuery}
+          onChange={(e) => {
+            d.setPathQuery(e.target.value);
+            d.setRequestPage(0);
+          }}
+          placeholder="/orders, /health, ..."
+          className="min-w-[170px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        Min latency (ms)
+        <input
+          type="number"
+          min={0}
+          step="1"
+          value={d.minLatencyMs}
+          onChange={(e) => {
+            d.setMinLatencyMs(e.target.value);
+            d.setRequestPage(0);
+          }}
+          placeholder="0"
+          className="w-[132px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        Max latency (ms)
+        <input
+          type="number"
+          min={0}
+          step="1"
+          value={d.maxLatencyMs}
+          onChange={(e) => {
+            d.setMaxLatencyMs(e.target.value);
+            d.setRequestPage(0);
+          }}
+          placeholder="5000"
+          className="w-[132px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        Environment tags
+        <input
+          type="text"
+          value={d.serverEnvironmentQuery}
+          onChange={(e) => {
+            d.setServerEnvironmentQuery(e.target.value);
+            d.setRequestPage(0);
+          }}
+          placeholder="prod, staging"
+          className="min-w-[156px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        Service tags
+        <input
+          type="text"
+          value={d.serverServiceQuery}
+          onChange={(e) => {
+            d.setServerServiceQuery(e.target.value);
+            d.setRequestPage(0);
+          }}
+          placeholder="api, worker"
+          className="min-w-[156px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
         Request page size
         <select
           value={d.requestLimit}

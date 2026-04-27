@@ -21,8 +21,8 @@ export function LogsContent() {
               Client filters & grouping
             </h2>
             <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-              Applies only to the {requests.limit} rows loaded for this page. Path, environment, and
-              service filters are client-side until backend query params are added.
+              Applies to the current rows loaded for this page. Use the header server query filters for
+              full-dataset filtering and pagination.
             </p>
           </div>
           <button
@@ -126,8 +126,8 @@ export function LogsContent() {
             Server query (same as header bar)
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500 dark:text-neutral-400">
-            Backend supports time range, HTTP method, status class, limit, and offset (pagination below).
-            Path, service, and environment are filtered client-side after load.
+            Backend supports time range, method, status class, path contains, latency bounds, service tags,
+            environment tags, limit, and offset (pagination below).
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">

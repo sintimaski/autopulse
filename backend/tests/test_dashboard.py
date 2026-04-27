@@ -93,9 +93,11 @@ def test_dashboard_reads_require_auth(backend_test_database_url: str) -> None:
         overview_response = client.get("/dashboard/overview")
         requests_response = client.get("/dashboard/requests")
         error_groups_response = client.get("/dashboard/error-groups")
+        alert_settings_response = client.get("/dashboard/alert-settings")
     assert overview_response.status_code == 401
     assert requests_response.status_code == 401
     assert error_groups_response.status_code == 401
+    assert alert_settings_response.status_code == 401
 
 
 def test_dashboard_preflight_returns_cors_headers(backend_test_database_url: str) -> None:
@@ -215,6 +217,82 @@ def test_dashboard_requests_support_filters_and_pagination(backend_test_database
     assert len(payload["items"]) == 1
     assert payload["items"][0]["method"] == "POST"
     assert payload["items"][0]["status_code"] >= 500
+
+
+def test_dashboard_requests_support_latency_path_and_tag_filters(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Rich Filters")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=20)
+    app = create_app()
+
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            200,
+            "GET",
+            "/checkout",
+            payload_overrides={
+                "latency_ms": 80.0,
+                "service_name": "api",
+                "environment": "prod",
+            },
+        )
+        _ingest(
+            client,
+            key,
+            base_time + timedelta(minutes=1),
+            500,
+            "GET",
+            "/checkout",
+            payload_overrides={
+                "latency_ms": 420.0,
+                "service_name": "api",
+                "environment": "prod",
+            },
+        )
+        _ingest(
+            client,
+            key,
+            base_time + timedelta(minutes=2),
+            200,
+            "GET",
+            "/health",
+            payload_overrides={
+                "latency_ms": 20.0,
+                "service_name": "worker",
+                "environment": "dev",
+            },
+        )
+
+        filtered = client.get(
+            "/dashboard/requests",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
+                "path_contains": "check",
+                "environments": "prod",
+                "services": "api",
+                "min_latency_ms": 100,
+                "max_latency_ms": 500,
+                "limit": 50,
+                "offset": 0,
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+
+    assert filtered.status_code == 200
+    payload = filtered.json()
+    assert payload["total"] == 1
+    assert len(payload["items"]) == 1
+    item = payload["items"][0]
+    assert item["path"] == "/checkout"
+    assert item["status_code"] == 500
+    assert item["service_name"] == "api"
+    assert item["environment"] == "prod"
 
 
 def test_dashboard_error_groups_merge_hashes_and_scope_by_project(
@@ -363,3 +441,73 @@ def test_dashboard_error_groups_http_fallback_when_no_exception_payload(
     assert item["exception_type"] == "HTTP 503"
     assert "/legacy-ingest-shape" in item["message"]
     assert item["sample_stack_trace"] is None
+
+
+def test_dashboard_alert_settings_read_and_update(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Alerts Config")
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        read_response = client.get("/dashboard/alert-settings", headers=headers)
+        assert read_response.status_code == 200
+        current = read_response.json()
+        assert current["enabled"] is True
+        assert current["error_spike_ratio_threshold"] == 0.4
+        assert current["error_spike_min_requests"] == 20
+        assert current["outage_min_requests"] == 10
+        assert current["cooldown_minutes"] == 15
+
+        update_payload = {
+            "enabled": False,
+            "destination_email": "team@example.com",
+            "error_spike_ratio_threshold": 0.6,
+            "error_spike_min_requests": 35,
+            "error_spike_window_minutes": 7,
+            "outage_min_requests": 18,
+            "outage_window_minutes": 9,
+            "cooldown_minutes": 20,
+        }
+        update_response = client.put(
+            "/dashboard/alert-settings",
+            json=update_payload,
+            headers=headers,
+        )
+        assert update_response.status_code == 200
+        assert update_response.json() == update_payload
+
+        verify_response = client.get("/dashboard/alert-settings", headers=headers)
+        assert verify_response.status_code == 200
+        assert verify_response.json() == update_payload
+
+
+def test_dashboard_alert_settings_are_scoped_by_project(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key_one, _ = _seed_project_and_key(backend_test_database_url, "Project One")
+    key_two, _ = _seed_project_and_key(backend_test_database_url, "Project Two")
+    app = create_app()
+    with TestClient(app) as client:
+        update_response = client.put(
+            "/dashboard/alert-settings",
+            json={
+                "enabled": True,
+                "destination_email": "project-one@example.com",
+                "error_spike_ratio_threshold": 0.55,
+                "error_spike_min_requests": 25,
+                "error_spike_window_minutes": 6,
+                "outage_min_requests": 12,
+                "outage_window_minutes": 8,
+                "cooldown_minutes": 18,
+            },
+            headers={"Authorization": f"Bearer {key_one}"},
+        )
+        assert update_response.status_code == 200
+
+        other_read = client.get(
+            "/dashboard/alert-settings",
+            headers={"Authorization": f"Bearer {key_two}"},
+        )
+        assert other_read.status_code == 200
+        payload = other_read.json()
+        assert payload["destination_email"] is None
+        assert payload["error_spike_ratio_threshold"] == 0.4
