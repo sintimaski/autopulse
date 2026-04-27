@@ -67,6 +67,24 @@ export type AlertSettings = {
   cooldown_minutes: number;
 };
 
+export type AlertDispatchItem = {
+  id: number;
+  alert_type: string;
+  destination_email: string | null;
+  delivered_via: string;
+  triggered_at: string;
+  window_start: string;
+  window_end: string;
+  detail: Record<string, number | string>;
+};
+
+export type AlertDispatchesResponse = {
+  total: number;
+  limit: number;
+  offset: number;
+  items: AlertDispatchItem[];
+};
+
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? "http://localhost:8000";
 export const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY;

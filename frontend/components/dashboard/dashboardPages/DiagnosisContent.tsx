@@ -6,6 +6,7 @@ import { useLayoutEffect } from "react";
 
 import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { ExpandableTableRow } from "../ExpandableTableRow";
 
 export function DiagnosisContent() {
   const d = useDashboardData();
@@ -132,6 +133,7 @@ export function DiagnosisContent() {
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-300">
                 <tr>
+                  <th className="w-10 px-2 py-2" aria-label="Expand row" />
                   <th className="px-3 py-2">Exception</th>
                   <th className="px-3 py-2">Message</th>
                   <th className="px-3 py-2">Route</th>
@@ -142,42 +144,85 @@ export function DiagnosisContent() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
-                {d.displayedErrorGroups.map((item) => (
-                  <tr key={item.group_key} className="align-top hover:bg-slate-50/80 dark:hover:bg-neutral-800/80">
-                    <td className="px-3 py-2 font-medium text-slate-900 dark:text-neutral-100">
-                      {item.exception_type ?? "(unknown)"}
-                    </td>
-                    <td className="max-w-[220px] truncate px-3 py-2 text-slate-700 dark:text-neutral-300 sm:max-w-md">
-                      {item.message ?? "(no message)"}
-                    </td>
-                    <td className="max-w-[220px] truncate px-3 py-2 font-mono text-xs text-slate-800 dark:text-neutral-100 sm:max-w-md">
-                      {item.path}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-slate-700 dark:text-neutral-300">{item.count}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
-                      {formatTimestamp(item.first_seen)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
-                      {formatTimestamp(item.last_seen)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {item.sample_stack_trace ? (
-                        <details className="max-w-[420px]">
-                          <summary className="cursor-pointer text-xs font-medium text-sky-700 dark:text-neutral-300">
-                            View stack
-                          </summary>
-                          <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-slate-950 p-2 text-[11px] leading-5 text-slate-100">
-                            {item.sample_stack_trace}
-                          </pre>
-                        </details>
-                      ) : (
-                        <span className="text-xs text-slate-500 dark:text-neutral-400">
-                          No stack trace (event had no exception payload).
-                        </span>
+                {d.displayedErrorGroups.map((item) => {
+                  const rowId = `error-group|${item.group_key}`;
+                  const open = d.expandedRequestIds.has(rowId);
+                  return (
+                    <ExpandableTableRow
+                      key={item.group_key}
+                      rowId={rowId}
+                      open={open}
+                      onToggle={d.toggleRequestRow}
+                      colSpan={8}
+                      summaryClassName="align-top hover:bg-slate-50/80 dark:hover:bg-neutral-800/80"
+                      detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
+                      detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
+                      renderSummary={() => (
+                        <>
+                          <td className="px-3 py-2 font-medium text-slate-900 dark:text-neutral-100">
+                            {item.exception_type ?? "(unknown)"}
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-2 text-slate-700 dark:text-neutral-300 sm:max-w-md">
+                            {item.message ?? "(no message)"}
+                          </td>
+                          <td className="max-w-[220px] truncate px-3 py-2 font-mono text-xs text-slate-800 dark:text-neutral-100 sm:max-w-md">
+                            {item.path}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums text-slate-700 dark:text-neutral-300">
+                            {item.count}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
+                            {formatTimestamp(item.first_seen)}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
+                            {formatTimestamp(item.last_seen)}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-500 dark:text-neutral-400">
+                            {item.sample_stack_trace ? "Stack trace available" : "No stack trace available"}
+                          </td>
+                        </>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                      renderDetails={() => (
+                        <dl className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">Group key</dt>
+                            <dd className="mt-0.5 break-all font-mono text-[11px] text-slate-800 dark:text-neutral-200">
+                              {item.group_key}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">Count</dt>
+                            <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
+                              {item.count}
+                            </dd>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">
+                              Exception message
+                            </dt>
+                            <dd className="mt-0.5 break-words text-slate-900 dark:text-neutral-100">
+                              {item.message ?? "(no message)"}
+                            </dd>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">
+                              Sample stack trace
+                            </dt>
+                            {item.sample_stack_trace ? (
+                              <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-slate-950 p-2 text-[11px] leading-5 text-slate-100">
+                                {item.sample_stack_trace}
+                              </pre>
+                            ) : (
+                              <dd className="mt-0.5 text-slate-600 dark:text-neutral-300">
+                                No stack trace (event had no exception payload).
+                              </dd>
+                            )}
+                          </div>
+                        </dl>
+                      )}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </div>

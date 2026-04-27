@@ -33,6 +33,50 @@ export function DashboardHomeContent() {
     : overview.avg_latency_ms;
   const displayRequestsPerMinute = displayRequestCount / Math.max(d.windowMinutes, 1);
   const usingFilteredSeries = d.method !== "ALL" || d.statusClass !== "ALL";
+  const diagnosisParams = (() => {
+    const params = new URLSearchParams({
+      from_timestamp: d.windowFromTimestamp,
+      to_timestamp: d.windowToTimestamp,
+    });
+    if (d.method !== "ALL") {
+      params.set("method", d.method);
+    }
+    if (d.statusClass !== "ALL") {
+      params.set("status_class", d.statusClass);
+    }
+    if (d.pathQuery.trim()) {
+      params.set("path_contains", d.pathQuery.trim());
+    }
+    if (d.minLatencyMs.trim()) {
+      params.set("min_latency_ms", d.minLatencyMs.trim());
+    }
+    if (d.maxLatencyMs.trim()) {
+      params.set("max_latency_ms", d.maxLatencyMs.trim());
+    }
+    const envCsv = d.serverEnvironmentQuery
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join(",");
+    if (envCsv) {
+      params.set("environments", envCsv);
+    }
+    const serviceCsv = d.serverServiceQuery
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join(",");
+    if (serviceCsv) {
+      params.set("services", serviceCsv);
+    }
+    return params;
+  })();
+  const diagnosisBaseHref = `/diagnosis?${diagnosisParams.toString()}`;
+  const diagnosisGroupedHref = `/diagnosis?${(() => {
+    const params = new URLSearchParams(diagnosisParams.toString());
+    params.set("error_group_sort", "count");
+    return params.toString();
+  })()}#grouped-errors`;
 
   return (
     <>
@@ -58,7 +102,7 @@ export function DashboardHomeContent() {
               : "5xx + ingested error events"}
           </p>
           <Link
-            href="/diagnosis#grouped-errors"
+            href={diagnosisGroupedHref}
             className="mt-2 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
           >
             Open grouped errors
@@ -78,10 +122,10 @@ export function DashboardHomeContent() {
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
         <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-          Requests (bars), error rate trend (line), and latency trend (line). Hover bars for exact bucket
-          values. Chart span and step only change how bars are drawn (same server window as the query bar).
-          For errors and routes, open{" "}
-          <Link href="/diagnosis" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
+          Requests (bars), plus request/error rate/error count/latency trend cards. Hover bars and trend lines
+          for exact values. Click a bar to jump to Diagnosis for that bucket. Chart span and step only change
+          how buckets are drawn (same server window as the query bar). For errors and routes, open{" "}
+          <Link href={diagnosisBaseHref} className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
             Diagnosis
           </Link>
           .
@@ -92,6 +136,7 @@ export function DashboardHomeContent() {
             fromTimestamp={overview.from_timestamp}
             toTimestamp={overview.to_timestamp}
             globalWindowMinutes={d.windowMinutes}
+            diagnosisBaseQuery={Object.fromEntries(diagnosisParams.entries())}
           />
         </div>
         {overview.series.length === 0 && d.sparklineSeries.length > 0 && (
@@ -110,7 +155,7 @@ export function DashboardHomeContent() {
           <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-100/90">
             Send traffic to <code className="rounded bg-amber-100 px-1">POST /ingest</code>, then use
             refresh in the header. You can also validate grouped errors on{" "}
-            <Link href="/diagnosis" className="font-medium underline underline-offset-2">
+            <Link href={diagnosisBaseHref} className="font-medium underline underline-offset-2">
               Diagnosis
             </Link>
             .
@@ -122,7 +167,7 @@ export function DashboardHomeContent() {
         <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h2>
-            <Link href="/diagnosis" className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
+            <Link href={diagnosisBaseHref} className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
               Full diagnosis
             </Link>
           </div>
@@ -150,7 +195,7 @@ export function DashboardHomeContent() {
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h2>
             <Link
-              href="/diagnosis#grouped-errors"
+              href={diagnosisGroupedHref}
               className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
               Grouped list
@@ -167,13 +212,24 @@ export function DashboardHomeContent() {
                   key={item.group_key}
                   className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/70"
                 >
-                  <p className="text-sm font-medium text-slate-900 dark:text-neutral-100">
-                    {item.exception_type ?? "Error"} <span className="text-slate-500 dark:text-neutral-400">on</span>{" "}
-                    <span className="font-mono text-xs">{item.path}</span>
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-300">
-                    Last seen {formatTimestamp(item.last_seen)} · Count {item.count}
-                  </p>
+                  <Link
+                    href={`/diagnosis?${(() => {
+                      const params = new URLSearchParams(diagnosisParams.toString());
+                      params.set("error_group_sort", "count");
+                      params.set("path_contains", item.path);
+                      return params.toString();
+                    })()}#grouped-errors`}
+                    className="block"
+                  >
+                    <p className="text-sm font-medium text-slate-900 dark:text-neutral-100">
+                      {item.exception_type ?? "Error"}{" "}
+                      <span className="text-slate-500 dark:text-neutral-400">on</span>{" "}
+                      <span className="font-mono text-xs">{item.path}</span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-300">
+                      Last seen {formatTimestamp(item.last_seen)} · Count {item.count}
+                    </p>
+                  </Link>
                 </li>
               ))}
             </ul>

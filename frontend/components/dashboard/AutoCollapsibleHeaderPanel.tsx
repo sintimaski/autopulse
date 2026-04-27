@@ -85,7 +85,7 @@ export function AutoCollapsibleHeaderPanel({
                   e.stopPropagation();
                   onResetFilters();
                 }}
-                className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium normal-case tracking-normal text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                className="rounded-lg border border-slate-200 bg-white px-2.75 py-1.75 text-[16px] font-medium normal-case tracking-normal text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
               >
                 Reset filters
               </button>

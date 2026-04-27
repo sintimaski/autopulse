@@ -101,5 +101,73 @@ class DashboardErrorGroupsResponse(BaseModel):
     items: list[DashboardErrorGroupItem]
 
 
+class DashboardAlertSettings(BaseModel):
+    enabled: bool
+    destination_email: str | None = None
+    error_spike_ratio_threshold: float
+    error_spike_min_requests: int
+    error_spike_window_minutes: int
+    outage_min_requests: int
+    outage_window_minutes: int
+    cooldown_minutes: int
+
+
+class DashboardAlertSettingsUpdate(BaseModel):
+    enabled: bool
+    destination_email: str | None = None
+    error_spike_ratio_threshold: float
+    error_spike_min_requests: int
+    error_spike_window_minutes: int
+    outage_min_requests: int
+    outage_window_minutes: int
+    cooldown_minutes: int
+
+    @field_validator("destination_email")
+    @classmethod
+    def normalize_destination_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("error_spike_ratio_threshold")
+    @classmethod
+    def validate_error_spike_ratio_threshold(cls, value: float) -> float:
+        if value < 0.0 or value > 1.0:
+            raise ValueError("error_spike_ratio_threshold must be between 0 and 1")
+        return value
+
+    @field_validator(
+        "error_spike_min_requests",
+        "error_spike_window_minutes",
+        "outage_min_requests",
+        "outage_window_minutes",
+        "cooldown_minutes",
+    )
+    @classmethod
+    def validate_positive_int(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("must be at least 1")
+        return value
+
+
+class DashboardAlertDispatchItem(BaseModel):
+    id: int
+    alert_type: str
+    destination_email: str | None
+    delivered_via: str
+    triggered_at: datetime
+    window_start: datetime
+    window_end: datetime
+    detail: dict[str, Any]
+
+
+class DashboardAlertDispatchesResponse(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[DashboardAlertDispatchItem]
+
+
 def event_payload(event: IngestEvent) -> dict[str, Any]:
     return event.model_dump(mode="json")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import type { OverviewBucket } from "../../utils/dashboardData";
 import {
@@ -56,17 +57,48 @@ function TrendLineChart({
   labels,
   color,
   formatValue,
+  summaryValue,
+  summaryLabel = "Latest",
 }: {
   title: string;
   values: number[];
   labels: string[];
   color: string;
   formatValue: (value: number) => string;
+  summaryValue?: number;
+  summaryLabel?: string;
 }) {
   const width = 260;
   const height = 56;
   const points = makeTrendPoints(values, width, height);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const latest = values.length ? values[values.length - 1] : 0;
+  const displayValue = summaryValue ?? latest;
+  const maxValue = Math.max(...values, 1);
+  const activeIndex = hoverIndex ?? (values.length ? values.length - 1 : null);
+  const activeValue = activeIndex === null ? 0 : values[activeIndex] ?? 0;
+  const activeLabel = activeIndex === null ? "" : labels[activeIndex] ?? "";
+  const activeX =
+    activeIndex === null
+      ? 0
+      : values.length > 1
+        ? (activeIndex / (values.length - 1)) * width
+        : width / 2;
+  const activeY = height - (activeValue / maxValue) * height;
+
+  const onSvgMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!values.length || !svgRef.current) {
+      return;
+    }
+    const rect = svgRef.current.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return;
+    }
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const idx = Math.round(ratio * Math.max(values.length - 1, 0));
+    setHoverIndex(idx);
+  };
 
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/80 p-3 dark:border-neutral-700 dark:bg-neutral-900/70">
@@ -74,13 +106,24 @@ function TrendLineChart({
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
           {title}
         </p>
-        <p className="text-xs font-medium tabular-nums text-slate-700 dark:text-neutral-200">
-          {formatValue(latest)}
-        </p>
+        <div className="text-right">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+            {summaryLabel}
+          </p>
+          <p className="text-xs font-medium tabular-nums text-slate-700 dark:text-neutral-200">
+            {formatValue(displayValue)}
+          </p>
+        </div>
       </div>
       {values.length ? (
         <>
-          <svg viewBox={`0 0 ${width} ${height}`} className="h-14 w-full">
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${width} ${height}`}
+            className="h-14 w-full cursor-crosshair"
+            onMouseMove={onSvgMove}
+            onMouseLeave={() => setHoverIndex(null)}
+          >
             <polyline
               points={points}
               fill="none"
@@ -89,11 +132,22 @@ function TrendLineChart({
               strokeLinejoin="round"
               strokeLinecap="round"
             />
+            {activeIndex !== null ? (
+              <circle
+                cx={activeX}
+                cy={Number.isFinite(activeY) ? activeY : height}
+                r={3}
+                fill={color}
+                stroke="white"
+                strokeWidth={1.2}
+              />
+            ) : null}
           </svg>
           <p className="mt-1 truncate text-[10px] text-slate-500 dark:text-neutral-400">
-            {labels[0]}
-            {" -> "}
-            {labels[labels.length - 1]}
+            {activeLabel ? `${activeLabel} • ${formatValue(activeValue)}` : null}
+          </p>
+          <p className="truncate text-[10px] text-slate-500 dark:text-neutral-400">
+            {labels[0]} {" -> "} {labels[labels.length - 1]}
           </p>
         </>
       ) : (
@@ -108,12 +162,15 @@ export function VolumeChart({
   fromTimestamp,
   toTimestamp,
   globalWindowMinutes,
+  diagnosisBaseQuery,
 }: {
   series: OverviewBucket[];
   fromTimestamp: string;
   toTimestamp: string;
   globalWindowMinutes: number;
+  diagnosisBaseQuery?: Record<string, string>;
 }) {
+  const router = useRouter();
   const wrapRef = useRef<HTMLDivElement>(null);
   const [chartSpanMinutes, setChartSpanMinutes] = useState(0);
   const [stepMinutes, setStepMinutes] = useState<(typeof STEP_OPTIONS)[number]>(1);
@@ -157,6 +214,22 @@ export function VolumeChart({
   const barGap = 4;
   const chartHeight = 52;
   const plotWidth = Math.max(displayed.length * (barWidth + barGap), 160);
+  const totalRequests = displayed.reduce((sum, bucket) => sum + Number(bucket.request_count || 0), 0);
+  const totalErrors = displayed.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0);
+  const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+  const onBucketClick = useCallback(
+    (bucket: OverviewBucket) => {
+      const bucketStart = bucket.minute;
+      const bucketEnd = new Date(new Date(bucket.minute).getTime() + stepMinutes * 60_000).toISOString();
+      const params = new URLSearchParams(diagnosisBaseQuery ?? {});
+      params.set("from_timestamp", bucketStart);
+      params.set("to_timestamp", bucketEnd);
+      params.set("error_group_sort", "count");
+      const query = params.toString();
+      router.push(`/diagnosis?${query}#grouped-errors`);
+    },
+    [diagnosisBaseQuery, router, stepMinutes],
+  );
 
   return (
     <div>
@@ -237,9 +310,10 @@ export function VolumeChart({
                       height={barHeight}
                       rx={1}
                       fill={barColor}
-                      className="cursor-crosshair"
+                      className="cursor-pointer"
                       onMouseEnter={(e) => onBarMove(e, bucket)}
                       onMouseMove={(e) => onBarMove(e, bucket)}
+                      onClick={() => onBucketClick(bucket)}
                     />
                   );
                 })}
@@ -275,11 +349,20 @@ export function VolumeChart({
                   </span>
                 </p>
                 <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-neutral-400">
-                  Bucket start (UTC). Color hints error share in the bucket.
+                  Bucket start (UTC). Click a bar to open Diagnosis for this bucket.
                 </p>
               </div>
             )}
-            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+              <TrendLineChart
+                title="Request Volume Trend"
+                values={displayed.map((bucket) => Number(bucket.request_count || 0))}
+                labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
+                color="#64748b"
+                formatValue={(value) => `${Math.round(value)}`}
+                summaryLabel="Total"
+                summaryValue={totalRequests}
+              />
               <TrendLineChart
                 title="Error Rate Trend"
                 values={displayed.map((bucket) => {
@@ -290,6 +373,17 @@ export function VolumeChart({
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
                 color="#f43f5e"
                 formatValue={(value) => `${value.toFixed(1)}%`}
+                summaryLabel="Window avg"
+                summaryValue={overallErrorRatePct}
+              />
+              <TrendLineChart
+                title="Error Count Trend"
+                values={displayed.map((bucket) => Number(bucket.error_count || 0))}
+                labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
+                color="#d97706"
+                formatValue={(value) => `${Math.round(value)}`}
+                summaryLabel="Total"
+                summaryValue={totalErrors}
               />
               <TrendLineChart
                 title="Latency Trend"
@@ -297,6 +391,7 @@ export function VolumeChart({
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
                 color="#a3a3a3"
                 formatValue={(value) => `${value.toFixed(1)} ms`}
+                summaryLabel="Latest"
               />
             </div>
           </>

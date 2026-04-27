@@ -25,6 +25,8 @@ import {
 import {
   apiBaseUrl,
   apiKey,
+  type AlertDispatchesResponse,
+  type AlertDispatchItem,
   compareValues,
   ERROR_GROUP_LIMIT_OPTIONS,
   GROUP_OPTIONS,
@@ -48,6 +50,9 @@ import {
 export type DashboardDataContextValue = {
   hasApiKey: boolean;
   windowMinutes: number;
+  windowFromTimestamp: string;
+  windowToTimestamp: string;
+  isAbsoluteWindow: boolean;
   method: string;
   statusClass: string;
   requestLimit: number;
@@ -68,6 +73,7 @@ export type DashboardDataContextValue = {
   requests: RequestsResponse | null;
   errorGroups: ErrorGroupsResponse | null;
   alertSettings: AlertSettings | null;
+  alertDispatches: AlertDispatchesResponse | null;
   errorGroupSort: "last_seen" | "count";
   loading: boolean;
   errorMessage: string | null;
@@ -89,6 +95,8 @@ export type DashboardDataContextValue = {
   setErrorGroupSort: (s: "last_seen" | "count") => void;
   setRefreshToken: React.Dispatch<React.SetStateAction<number>>;
   onServerWindowChange: (minutes: number) => void;
+  setAbsoluteWindow: (fromIso: string, toIso: string) => void;
+  clearAbsoluteWindow: () => void;
   onServerMethodChange: (value: string) => void;
   onServerStatusClassChange: (value: string) => void;
   toggleEnv: (value: string) => void;
@@ -106,6 +114,7 @@ export type DashboardDataContextValue = {
   topFailingRoutes: [string, number][];
   recentErrorsPreview: ErrorGroupItem[];
   displayedErrorGroups: ErrorGroupItem[];
+  recentAlertDispatches: AlertDispatchItem[];
   grouped: { key: string; label: string; items: RequestItem[] }[];
   sparklineSeries: OverviewBucket[];
   operationalSignals: ReturnType<typeof computeOperationalSignals>;
@@ -134,6 +143,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const hasApiKey = Boolean(apiKey);
 
   const [windowMinutes, setWindowMinutes] = useState(60);
+  const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
   const [method, setMethod] = useState("ALL");
   const [statusClass, setStatusClass] = useState("ALL");
   const [requestLimit, setRequestLimit] = useState(100);
@@ -154,6 +164,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [requests, setRequests] = useState<RequestsResponse | null>(null);
   const [errorGroups, setErrorGroups] = useState<ErrorGroupsResponse | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
+  const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -164,11 +175,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
 
-  const toIsoWindow = useMemo(() => {
+  const relativeWindow = useMemo(() => {
     const to = new Date();
     const from = new Date(to.getTime() - windowMinutes * 60 * 1000);
     return { from: from.toISOString(), to: to.toISOString() };
   }, [windowMinutes]);
+  const toIsoWindow = useMemo(() => {
+    if (!absoluteWindow) {
+      return relativeWindow;
+    }
+    const fromMs = new Date(absoluteWindow.from).getTime();
+    const toMs = new Date(absoluteWindow.to).getTime();
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+      return relativeWindow;
+    }
+    return absoluteWindow;
+  }, [absoluteWindow, relativeWindow]);
 
   useEffect(() => {
     if (!apiKey) {
@@ -232,6 +254,35 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           limit: String(errorGroupLimit),
           offset: String(errorGroupPage * errorGroupLimit),
         });
+        if (method !== "ALL") {
+          errorGroupsParams.set("method", method);
+        }
+        if (statusClass !== "ALL") {
+          errorGroupsParams.set("status_class", statusClass);
+        }
+        if (minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0) {
+          errorGroupsParams.set("min_latency_ms", String(minLatency));
+        }
+        if (maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0) {
+          errorGroupsParams.set("max_latency_ms", String(maxLatency));
+        }
+        if (serverPath) {
+          errorGroupsParams.set("path_contains", serverPath);
+        }
+        if (envCsv) {
+          errorGroupsParams.set("environments", envCsv);
+        }
+        if (serviceCsv) {
+          errorGroupsParams.set("services", serviceCsv);
+        }
+        const alertDispatchesParams = new URLSearchParams({
+          from_timestamp: new Date(
+            new Date(toIsoWindow.to).getTime() - 7 * 24 * 60 * 60 * 1000,
+          ).toISOString(),
+          to_timestamp: toIsoWindow.to,
+          limit: "25",
+          offset: "0",
+        });
 
         const results = (await Promise.all([
           fetch(`${apiBaseUrl}/dashboard/overview?${overviewParams.toString()}`, { headers }),
@@ -240,17 +291,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             headers,
           }),
           fetch(`${apiBaseUrl}/dashboard/alert-settings`, { headers }),
+          fetch(`${apiBaseUrl}/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`, {
+            headers,
+          }),
         ]).then(
           ([
             overviewResponse,
             requestsResponse,
             errorGroupsResponse,
             alertSettingsResponse,
+            alertDispatchesResponse,
           ]) => [
           { endpoint: "overview", response: overviewResponse },
           { endpoint: "requests", response: requestsResponse },
           { endpoint: "error-groups", response: errorGroupsResponse },
           { endpoint: "alert-settings", response: alertSettingsResponse },
+          { endpoint: "alert-dispatches", response: alertDispatchesResponse },
           ],
         )) as DashboardFetchResult[];
 
@@ -259,13 +315,20 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           throw new Error(fetchError);
         }
 
-        const [overviewData, requestsData, errorGroupsData, alertSettingsData] = (await Promise.all(
+        const [overviewData, requestsData, errorGroupsData, alertSettingsData, alertDispatchesData] = (await Promise.all(
           results.map(async ({ response }) => response.json()),
-        )) as [OverviewResponse, RequestsResponse, ErrorGroupsResponse, AlertSettings];
+        )) as [
+          OverviewResponse,
+          RequestsResponse,
+          ErrorGroupsResponse,
+          AlertSettings,
+          AlertDispatchesResponse,
+        ];
         setOverview(overviewData);
         setRequests(requestsData);
         setErrorGroups(errorGroupsData);
         setAlertSettings(alertSettingsData);
+        setAlertDispatches(alertDispatchesData);
       } catch (error) {
         setErrorMessage(buildDashboardNetworkError(error));
       } finally {
@@ -301,7 +364,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const rawItems = useMemo(() => requests?.items ?? [], [requests]);
 
   const onServerWindowChange = useCallback((minutes: number) => {
+    setAbsoluteWindowState(null);
     setWindowMinutes(minutes);
+    setRequestPage(0);
+    setErrorGroupPage(0);
+  }, []);
+  const setAbsoluteWindow = useCallback((fromIso: string, toIso: string) => {
+    const fromMs = new Date(fromIso).getTime();
+    const toMs = new Date(toIso).getTime();
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+      return;
+    }
+    setAbsoluteWindowState({ from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() });
+    setRequestPage(0);
+    setErrorGroupPage(0);
+  }, []);
+  const clearAbsoluteWindow = useCallback(() => {
+    setAbsoluteWindowState(null);
     setRequestPage(0);
     setErrorGroupPage(0);
   }, []);
@@ -518,6 +597,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return items;
   }, [errorGroups, errorGroupSort]);
 
+  const recentAlertDispatches = useMemo<AlertDispatchItem[]>(
+    () => alertDispatches?.items ?? [],
+    [alertDispatches],
+  );
+
   const grouped = useMemo(() => {
     if (groupBy === "none") {
       return [{ key: "all", label: "All traffic", items: filteredSorted }];
@@ -557,6 +641,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     (): DashboardDataContextValue => ({
       hasApiKey,
       windowMinutes,
+      windowFromTimestamp: toIsoWindow.from,
+      windowToTimestamp: toIsoWindow.to,
+      isAbsoluteWindow: absoluteWindow !== null,
       method,
       statusClass,
       requestLimit,
@@ -577,6 +664,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       requests,
       errorGroups,
       alertSettings,
+      alertDispatches,
       errorGroupSort,
       loading,
       errorMessage,
@@ -598,6 +686,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setErrorGroupSort,
       setRefreshToken,
       onServerWindowChange,
+      setAbsoluteWindow,
+      clearAbsoluteWindow,
       onServerMethodChange,
       onServerStatusClassChange,
       toggleEnv,
@@ -615,6 +705,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       topFailingRoutes,
       recentErrorsPreview,
       displayedErrorGroups,
+      recentAlertDispatches,
       grouped,
       sparklineSeries,
       operationalSignals,
@@ -631,6 +722,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [
       hasApiKey,
       windowMinutes,
+      toIsoWindow,
+      absoluteWindow,
       method,
       statusClass,
       requestLimit,
@@ -651,6 +744,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       requests,
       errorGroups,
       alertSettings,
+      alertDispatches,
       errorGroupSort,
       loading,
       errorMessage,
@@ -660,6 +754,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertSettingsSaving,
       expandedRequestIds,
       onServerWindowChange,
+      setAbsoluteWindow,
+      clearAbsoluteWindow,
       onServerMethodChange,
       onServerStatusClassChange,
       toggleEnv,
@@ -677,6 +773,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       topFailingRoutes,
       recentErrorsPreview,
       displayedErrorGroups,
+      recentAlertDispatches,
       grouped,
       sparklineSeries,
       operationalSignals,

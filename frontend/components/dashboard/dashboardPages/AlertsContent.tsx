@@ -1,18 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import type { AlertSettings } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 
 export function AlertsContent() {
   const d = useDashboardData();
-  const overview = d.overview;
   const router = useRouter();
+  const [formError, setFormError] = useState<string | null>(null);
+  const form = d.alertSettings;
 
-  if (!overview) {
-    return null;
-  }
+  const overview = d.overview;
   const requestCount = d.sparklineSeries.reduce(
     (sum, bucket) => sum + Number(bucket.request_count || 0),
     0,
@@ -21,19 +22,73 @@ export function AlertsContent() {
     (sum, bucket) => sum + Number(bucket.error_count || 0),
     0,
   );
-  const displayRequestCount = requestCount || overview.request_count;
-  const displayErrorCount = requestCount ? errorCount : overview.error_count;
+  const displayRequestCount = requestCount || overview?.request_count || 0;
+  const displayErrorCount = requestCount ? errorCount : overview?.error_count || 0;
   const displayErrorRate = displayRequestCount ? displayErrorCount / displayRequestCount : 0;
-  const successfulRequests = Math.max(displayRequestCount - displayErrorCount, 0);
-  const errorSpikeCandidate =
-    displayRequestCount >= d.M5_ALERT_DEFAULTS.errorSpikeMinRequests &&
-    displayErrorRate >= d.M5_ALERT_DEFAULTS.errorSpikeRatioThreshold;
-  const outageCandidate =
-    displayRequestCount >= d.M5_ALERT_DEFAULTS.outageMinRequests && successfulRequests === 0;
+  const successfulRequests = d.operationalSignals.successfulRequests;
+  const errorSpikeCandidate = d.operationalSignals.errorSpikeCandidate;
+  const outageCandidate = d.operationalSignals.outageCandidate;
+  const recentDispatches = d.recentAlertDispatches;
+  const diagnosisParams = (() => {
+    const params = new URLSearchParams({
+      from_timestamp: d.windowFromTimestamp,
+      to_timestamp: d.windowToTimestamp,
+    });
+    if (d.method !== "ALL") {
+      params.set("method", d.method);
+    }
+    if (d.statusClass !== "ALL") {
+      params.set("status_class", d.statusClass);
+    }
+    if (d.pathQuery.trim()) {
+      params.set("path_contains", d.pathQuery.trim());
+    }
+    if (d.minLatencyMs.trim()) {
+      params.set("min_latency_ms", d.minLatencyMs.trim());
+    }
+    if (d.maxLatencyMs.trim()) {
+      params.set("max_latency_ms", d.maxLatencyMs.trim());
+    }
+    if (d.serverEnvironmentQuery.trim()) {
+      params.set("environments", d.serverEnvironmentQuery.trim());
+    }
+    if (d.serverServiceQuery.trim()) {
+      params.set("services", d.serverServiceQuery.trim());
+    }
+    return params.toString();
+  })();
+  const diagnosisBaseHref = `/diagnosis?${diagnosisParams}`;
 
   const goToDiagnosisGrouped = () => {
     d.setErrorGroupSort("count");
-    router.push("/diagnosis#grouped-errors");
+    const groupedParams = new URLSearchParams(diagnosisParams);
+    groupedParams.set("error_group_sort", "count");
+    router.push(`/diagnosis?${groupedParams.toString()}#grouped-errors`);
+  };
+
+  const onSave = async () => {
+    if (!form) {
+      return;
+    }
+    if (form.error_spike_ratio_threshold < 0 || form.error_spike_ratio_threshold > 1) {
+      setFormError("Error spike threshold must be between 0 and 1.");
+      return;
+    }
+    const integerFields: Array<keyof AlertSettings> = [
+      "error_spike_min_requests",
+      "error_spike_window_minutes",
+      "outage_min_requests",
+      "outage_window_minutes",
+      "cooldown_minutes",
+    ];
+    for (const field of integerFields) {
+      if (Number(form[field]) < 1) {
+        setFormError("Minute/request threshold fields must be at least 1.");
+        return;
+      }
+    }
+    setFormError(null);
+    await d.saveAlertSettings(form);
   };
 
   return (
@@ -52,7 +107,7 @@ export function AlertsContent() {
             </Link>{" "}
             and{" "}
             <Link
-              href="/diagnosis"
+              href={diagnosisBaseHref}
               className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
               Diagnosis
@@ -61,15 +116,10 @@ export function AlertsContent() {
           </p>
         </div>
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
-          Heuristic-only mode
+          Live alert settings mode
         </span>
       </div>
-      <p className="mt-3 text-xs text-slate-500 dark:text-neutral-400">
-        In-app alert settings (enabled, destination email, thresholds) require dedicated backend
-        project-settings endpoints. This page intentionally surfaces live heuristics and runbook actions
-        only for MVP.
-      </p>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
             Alert heuristic preview
@@ -106,7 +156,209 @@ export function AlertsContent() {
             {(displayErrorRate * 100).toFixed(1)}% error rate.
           </p>
         </div>
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+            Alert settings
+          </h3>
+          {form ? (
+            <>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-neutral-200">
+                  <input
+                    type="checkbox"
+                    checked={form.enabled}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({ ...form, enabled: event.target.checked })
+                    }
+                  />
+                  Alerts enabled
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Destination email
+                  <input
+                    type="email"
+                    value={form.destination_email ?? ""}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        destination_email: event.target.value.trim() || null,
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    placeholder="ops@example.com"
+                  />
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Error spike threshold (0-1)
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={form.error_spike_ratio_threshold}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        error_spike_ratio_threshold: Number(event.target.value),
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  />
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Error spike min requests
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.error_spike_min_requests}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        error_spike_min_requests: Number(event.target.value),
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  />
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Error spike window (minutes)
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.error_spike_window_minutes}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        error_spike_window_minutes: Number(event.target.value),
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  />
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Outage min requests
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.outage_min_requests}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        outage_min_requests: Number(event.target.value),
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  />
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Outage window (minutes)
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.outage_window_minutes}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        outage_window_minutes: Number(event.target.value),
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  />
+                </label>
+                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                  Cooldown (minutes)
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.cooldown_minutes}
+                    onChange={(event) =>
+                      d.updateAlertSettingsDraft({
+                        ...form,
+                        cooldown_minutes: Number(event.target.value),
+                      })
+                    }
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onSave}
+                  disabled={d.alertSettingsSaving}
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-900 shadow-sm transition hover:bg-sky-100 disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+                >
+                  {d.alertSettingsSaving ? "Saving..." : "Save alert settings"}
+                </button>
+                {formError ? (
+                  <p className="text-xs text-rose-700 dark:text-rose-400">{formError}</p>
+                ) : null}
+                {d.alertSettingsMessage ? (
+                  <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                    {d.alertSettingsMessage}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+              Loading alert settings...
+            </p>
+          )}
+        </div>
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+              Recent dispatched alerts
+            </h3>
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
+              {d.alertDispatches?.total ?? 0} in current window
+            </span>
+          </div>
+          {recentDispatches.length === 0 ? (
+            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+              No alerts dispatched in the selected time window yet.
+            </p>
+          ) : (
+            <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-neutral-700">
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-slate-100/80 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Triggered</th>
+                    <th className="px-3 py-2 font-semibold">Type</th>
+                    <th className="px-3 py-2 font-semibold">Delivery</th>
+                    <th className="px-3 py-2 font-semibold">Destination</th>
+                    <th className="px-3 py-2 font-semibold">Detail</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
+                  {recentDispatches.map((dispatch) => (
+                    <tr key={dispatch.id}>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-neutral-200">
+                        {new Date(dispatch.triggered_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="rounded-full bg-sky-500/10 px-2 py-0.5 font-medium text-sky-800 dark:text-sky-300">
+                          {dispatch.alert_type}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                        {dispatch.delivered_via}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                        {dispatch.destination_email ?? "not set"}
+                      </td>
+                      <td className="max-w-[380px] px-3 py-2 font-mono text-[11px] text-slate-700 dark:text-neutral-300">
+                        {JSON.stringify(dispatch.detail)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-3">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
             Runbook shortcuts
           </h3>

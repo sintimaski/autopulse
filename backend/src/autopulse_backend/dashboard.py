@@ -13,8 +13,10 @@ from autopulse_backend.alerts import get_or_create_project_alert_settings
 from autopulse_backend.auth import ProjectContext, authenticate_project
 from autopulse_backend.config import get_settings
 from autopulse_backend.db import get_db_session
-from autopulse_backend.models import Event, ProjectAlertSettings
+from autopulse_backend.models import AlertDispatch, Event, ProjectAlertSettings
 from autopulse_backend.schemas import (
+    DashboardAlertDispatchesResponse,
+    DashboardAlertDispatchItem,
     DashboardAlertSettings,
     DashboardAlertSettingsUpdate,
     DashboardErrorGroupItem,
@@ -344,6 +346,13 @@ async def get_dashboard_error_groups(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    method: str | None = _METHOD_QUERY,
+    status_class: int | None = _STATUS_CLASS_QUERY,
+    path_contains: str | None = _PATH_QUERY,
+    environments: str | None = _ENVIRONMENTS_QUERY,
+    services: str | None = _SERVICES_QUERY,
+    min_latency_ms: float | None = _LATENCY_MIN_MS_QUERY,
+    max_latency_ms: float | None = _LATENCY_MAX_MS_QUERY,
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
 ) -> DashboardErrorGroupsResponse:
@@ -354,6 +363,23 @@ async def get_dashboard_error_groups(
         Event.timestamp <= resolved_to,
         Event.type == "error",
     ]
+    if method:
+        filters.append(Event.method == method.upper())
+    if status_class is not None:
+        lower = status_class * 100
+        filters.extend([Event.status_code >= lower, Event.status_code < lower + 100])
+    if path_contains:
+        lowered = path_contains.strip().lower()
+        if lowered:
+            filters.append(func.lower(Event.path).contains(lowered))
+    if env_values := _split_csv_values(environments):
+        filters.append(Event.environment.in_(env_values))
+    if service_values := _split_csv_values(services):
+        filters.append(Event.service_name.in_(service_values))
+    if min_latency_ms is not None:
+        filters.append(Event.latency_ms >= min_latency_ms)
+    if max_latency_ms is not None:
+        filters.append(Event.latency_ms <= max_latency_ms)
     dialect_name = session.bind.dialect.name if session.bind is not None else ""
 
     if dialect_name == "sqlite":
@@ -564,6 +590,46 @@ async def get_dashboard_alert_settings(
     await session.commit()
     await session.refresh(alert_settings)
     return _serialize_alert_settings(alert_settings)
+
+
+@router.get("/alert-dispatches", response_model=DashboardAlertDispatchesResponse)
+async def get_dashboard_alert_dispatches(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    limit: int = _LIMIT_QUERY,
+    offset: int = _OFFSET_QUERY,
+) -> DashboardAlertDispatchesResponse:
+    resolved_from, resolved_to = _resolve_time_window(from_timestamp, to_timestamp)
+    filters = [
+        AlertDispatch.project_id == context.project_id,
+        AlertDispatch.triggered_at >= resolved_from,
+        AlertDispatch.triggered_at <= resolved_to,
+    ]
+    total_result = await session.execute(select(func.count(AlertDispatch.id)).where(*filters))
+    total = int(total_result.scalar_one())
+    rows = await session.execute(
+        select(AlertDispatch)
+        .where(*filters)
+        .order_by(AlertDispatch.triggered_at.desc(), AlertDispatch.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    items = [
+        DashboardAlertDispatchItem(
+            id=dispatch.id,
+            alert_type=dispatch.alert_type,
+            destination_email=dispatch.destination_email,
+            delivered_via=dispatch.delivered_via,
+            triggered_at=dispatch.triggered_at.astimezone(UTC),
+            window_start=dispatch.window_start.astimezone(UTC),
+            window_end=dispatch.window_end.astimezone(UTC),
+            detail=dispatch.detail,
+        )
+        for dispatch in rows.scalars().all()
+    ]
+    return DashboardAlertDispatchesResponse(total=total, limit=limit, offset=offset, items=items)
 
 
 @router.put("/alert-settings", response_model=DashboardAlertSettings)

@@ -1,9 +1,8 @@
 "use client";
 
-import { Fragment } from "react";
-
 import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { ExpandableTableRow } from "../ExpandableTableRow";
 
 export function LogsContent() {
   const d = useDashboardData();
@@ -248,23 +247,17 @@ export function LogsContent() {
                         ].join("|");
                         const open = d.expandedRequestIds.has(rowId);
                         return (
-                          <Fragment key={rowId}>
-                            <tr
-                              role="button"
-                              tabIndex={0}
-                              aria-expanded={open}
-                              onClick={() => d.toggleRequestRow(rowId)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  d.toggleRequestRow(rowId);
-                                }
-                              }}
-                              className="cursor-pointer border-l-2 border-transparent hover:border-sky-500/80 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
-                            >
-                              <td className="px-2 py-2 text-center text-xs text-slate-400 dark:text-neutral-500" aria-hidden>
-                                {open ? "▼" : "▶"}
-                              </td>
+                          <ExpandableTableRow
+                            key={rowId}
+                            rowId={rowId}
+                            open={open}
+                            onToggle={d.toggleRequestRow}
+                            colSpan={8}
+                            summaryClassName="cursor-pointer border-l-2 border-transparent hover:border-sky-500/80 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
+                            detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
+                            detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
+                            renderSummary={() => (
+                              <>
                               <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
                                 {formatTimestamp(item.timestamp)}
                               </td>
@@ -292,68 +285,59 @@ export function LogsContent() {
                                   {item.environment}
                                 </span>
                               </td>
-                            </tr>
-                            {open ? (
-                              <tr className="bg-slate-50/95 dark:bg-neutral-900/95">
-                                <td
-                                  colSpan={8}
-                                  className="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <dl className="grid gap-3 sm:grid-cols-2">
-                                    <div>
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                        Request id
-                                      </dt>
-                                      <dd className="mt-0.5 break-all font-mono text-slate-900 dark:text-neutral-100">
-                                        {item.request_id ?? "— (not reported by SDK)"}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                        Timestamp (ISO)
-                                      </dt>
-                                      <dd className="mt-0.5 break-all font-mono text-slate-900 dark:text-neutral-100">
-                                        {item.timestamp}
-                                      </dd>
-                                    </div>
-                                    <div className="sm:col-span-2">
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">Path</dt>
-                                      <dd className="mt-0.5 break-all font-mono text-[13px] text-slate-900 dark:text-neutral-100">
-                                        {item.path}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">Status</dt>
-                                      <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
-                                        {item.status_code}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">Latency</dt>
-                                      <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
-                                        {item.latency_ms.toFixed(3)} ms
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">Service</dt>
-                                      <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.service_name}</dd>
-                                    </div>
-                                    <div>
-                                      <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                        Environment
-                                      </dt>
-                                      <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.environment}</dd>
-                                    </div>
-                                  </dl>
-                                  <p className="mt-3 text-[11px] text-slate-500 dark:text-neutral-400">
-                                    Click the row again to collapse. This detail view is ideal for sharing exact
-                                    failing request context with your team.
-                                  </p>
-                                </td>
-                              </tr>
-                            ) : null}
-                          </Fragment>
+                              </>
+                            )}
+                            renderDetails={() => (
+                              <>
+                                <dl className="grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
+                                      Request id
+                                    </dt>
+                                    <dd className="mt-0.5 break-all font-mono text-slate-900 dark:text-neutral-100">
+                                      {item.request_id ?? "— (not reported by SDK)"}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
+                                      Timestamp (ISO)
+                                    </dt>
+                                    <dd className="mt-0.5 break-all font-mono text-slate-900 dark:text-neutral-100">
+                                      {item.timestamp}
+                                    </dd>
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Path</dt>
+                                    <dd className="mt-0.5 break-all font-mono text-[13px] text-slate-900 dark:text-neutral-100">
+                                      {item.path}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Status</dt>
+                                    <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
+                                      {item.status_code}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Latency</dt>
+                                    <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
+                                      {item.latency_ms.toFixed(3)} ms
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Service</dt>
+                                    <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.service_name}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
+                                      Environment
+                                    </dt>
+                                    <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.environment}</dd>
+                                  </div>
+                                </dl>
+                              </>
+                            )}
+                          />
                         );
                       })}
                     </tbody>

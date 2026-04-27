@@ -52,7 +52,7 @@ def _in_cooldown(last_sent_at: datetime | None, cooldown_minutes: int, now: date
     return now < cooldown_ends
 
 
-async def _get_or_create_settings(
+async def get_or_create_project_alert_settings(
     session: AsyncSession, project_id: UUID, settings: Settings
 ) -> ProjectAlertSettings:
     current = await session.scalar(
@@ -82,6 +82,9 @@ async def _request_window_counts(
     window_start: datetime,
     window_end: datetime,
 ) -> tuple[int, int, int]:
+    # Include both request and error event rows in the evaluation window.
+    # Ingest paths may emit 5xx failures as `type=error`, and excluding them
+    # would undercount errors and prevent expected alert dispatches.
     result = await session.execute(
         select(
             func.count(Event.id),
@@ -89,7 +92,7 @@ async def _request_window_counts(
             func.sum(case((Event.status_code < 500, 1), else_=0)),
         ).where(
             Event.project_id == project_id,
-            Event.type == "request",
+            Event.type.in_(("request", "error")),
             Event.timestamp >= window_start,
             Event.timestamp <= window_end,
         )
@@ -136,7 +139,7 @@ async def evaluate_alerts_once(
 
     project_ids = list((await session.scalars(select(Project.id))).all())
     for project_id in project_ids:
-        alert_settings = await _get_or_create_settings(session, project_id, settings)
+        alert_settings = await get_or_create_project_alert_settings(session, project_id, settings)
         if not alert_settings.enabled:
             continue
 
