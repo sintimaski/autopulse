@@ -92,11 +92,45 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type ThemeSettings = {
   theme_preference: ThemePreference;
+  exclude_autopulse_traffic: boolean;
 };
 
+export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
+export const EMBEDDED_DEFAULT_API_KEY = "ap_live_embeddedlocal_localdevsecret";
+
 export const apiBaseUrl =
-  process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? "http://localhost:8000";
-export const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY;
+  process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? EMBEDDED_DEFAULT_API_BASE_URL;
+export const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY ?? EMBEDDED_DEFAULT_API_KEY;
+
+function normalizeBasePath(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) {
+    return EMBEDDED_DEFAULT_API_BASE_URL;
+  }
+  return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+}
+
+export function buildApiUrl(path: string): string {
+  const normalizedBase = normalizeBasePath(apiBaseUrl);
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")) {
+    return `${normalizedBase}${normalizedPath}`;
+  }
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+export function buildUpdatesWebsocketUrl(token: string): string {
+  const normalizedBase = normalizeBasePath(apiBaseUrl);
+  const base =
+    normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")
+      ? new URL(normalizedBase)
+      : new URL(normalizedBase, window.location.origin);
+  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+  const basePath = base.pathname.replace(/\/+$/, "");
+  base.pathname = `${basePath}/dashboard/updates`;
+  base.searchParams.set("token", token);
+  return base.toString();
+}
 
 export const WINDOW_OPTIONS = [15, 60, 240, 1440];
 export const METHOD_OPTIONS = ["ALL", "GET", "POST", "PUT", "PATCH", "DELETE"];

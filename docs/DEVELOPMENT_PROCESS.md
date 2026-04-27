@@ -28,12 +28,17 @@ uv run ruff format --check .
 uv run mypy
 uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 uv run pytest
+npm --prefix frontend run lint
+npm --prefix frontend run typecheck
+npm --prefix frontend run test
+npm --prefix frontend run build
 ```
 
 Optional local setup:
 
 ```bash
 uv run pre-commit install
+uv run pre-commit run --all-files
 ```
 
 Execution policy:
@@ -353,16 +358,17 @@ npm --prefix frontend install
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run test
+npm --prefix frontend run build
 ```
 
 Then perform the manual MVP scenario:
 
-1. Start backend and frontend locally.
-2. Integrate SDK into a minimal FastAPI app (one-line middleware enablement).
-3. Generate normal and failing traffic.
-4. Capture evidence for first-value time, grouped errors, and overview metrics.
-5. Simulate backend outage and verify host app continuity.
-6. Validate scrubbed payload output and alert dispatch behavior.
+1. Start a one-line embedded FastAPI sample (`autopulse(app)`) and confirm routes under `/autopulse/*`.
+2. Generate normal and failing traffic.
+3. Capture evidence for first-value time, grouped errors, and overview metrics.
+4. Simulate backend outage and verify host app continuity.
+5. Validate scrubbed payload output and alert dispatch behavior.
+6. (Optional split-mode check) run separate backend/frontend processes to verify compatibility with non-embedded installs.
 
 ### 7.3 MVP sign-off requirement
 

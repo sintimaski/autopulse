@@ -23,7 +23,8 @@ import {
   type DashboardFetchResult,
 } from "../../utils/dashboardFetchErrors";
 import {
-  apiBaseUrl,
+  buildApiUrl,
+  buildUpdatesWebsocketUrl,
   apiKey,
   type AlertDispatchesResponse,
   type AlertDispatchItem,
@@ -78,6 +79,7 @@ export type DashboardDataContextValue = {
   alertSettings: AlertSettings | null;
   alertDispatches: AlertDispatchesResponse | null;
   themePreference: ThemePreference;
+  excludeAutopulseTraffic: boolean;
   errorGroupSort: "last_seen" | "count";
   loading: boolean;
   errorMessage: string | null;
@@ -110,6 +112,7 @@ export type DashboardDataContextValue = {
   copyRunbookCommand: (command: string, label: string) => Promise<void>;
   saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
   saveThemePreference: (next: ThemePreference) => Promise<boolean>;
+  saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
   updateAlertSettingsDraft: (next: AlertSettings) => void;
   toggleRequestRow: (id: string) => void;
   onSortHeader: (key: SortKey) => void;
@@ -172,6 +175,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [excludeAutopulseTraffic, setExcludeAutopulseTraffic] = useState(true);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -308,16 +312,16 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         });
 
         const results = (await Promise.all([
-          fetch(`${apiBaseUrl}/dashboard/overview?${overviewParams.toString()}`, { headers }),
-          fetch(`${apiBaseUrl}/dashboard/requests?${requestsParams.toString()}`, { headers }),
-          fetch(`${apiBaseUrl}/dashboard/error-groups?${errorGroupsParams.toString()}`, {
+          fetch(buildApiUrl(`/dashboard/overview?${overviewParams.toString()}`), { headers }),
+          fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), { headers }),
+          fetch(buildApiUrl(`/dashboard/error-groups?${errorGroupsParams.toString()}`), {
             headers,
           }),
-          fetch(`${apiBaseUrl}/dashboard/alert-settings`, { headers }),
-          fetch(`${apiBaseUrl}/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`, {
+          fetch(buildApiUrl("/dashboard/alert-settings"), { headers }),
+          fetch(buildApiUrl(`/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`), {
             headers,
           }),
-          fetch(`${apiBaseUrl}/dashboard/theme-settings`, { headers }),
+          fetch(buildApiUrl("/dashboard/theme-settings"), { headers }),
         ]).then(
           ([
             overviewResponse,
@@ -357,6 +361,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAlertSettings(alertSettingsData);
         setAlertDispatches(alertDispatchesData);
         setThemePreference(themeSettingsData.theme_preference);
+        setExcludeAutopulseTraffic(themeSettingsData.exclude_autopulse_traffic);
         hasLoadedDashboardData.current = true;
       } catch (error) {
         if (!hasLoadedDashboardData.current) {
@@ -411,11 +416,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!apiKey) {
       return;
     }
-    const wsUrl = new URL(apiBaseUrl);
-    wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
-    const basePath = wsUrl.pathname.replace(/\/+$/, "");
-    wsUrl.pathname = `${basePath}/dashboard/updates`;
-    wsUrl.searchParams.set("token", apiKey);
+    const wsUrl = buildUpdatesWebsocketUrl(apiKey);
 
     let ws: WebSocket | null = null;
     let cancelled = false;
@@ -436,7 +437,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return;
       }
       opened = false;
-      ws = new WebSocket(wsUrl.toString());
+      ws = new WebSocket(wsUrl);
       ws.onopen = () => {
         opened = true;
         failedConnects = 0;
@@ -614,7 +615,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setAlertSettingsSaving(true);
       setAlertSettingsMessage(null);
       try {
-        const response = await fetch(`${apiBaseUrl}/dashboard/alert-settings`, {
+        const response = await fetch(buildApiUrl("/dashboard/alert-settings"), {
           method: "PUT",
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -650,19 +651,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       setThemeSettingsSaving(true);
       try {
-        const response = await fetch(`${apiBaseUrl}/dashboard/theme-settings`, {
+        const response = await fetch(buildApiUrl("/dashboard/theme-settings"), {
           method: "PUT",
           headers: {
             Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ theme_preference: next }),
+          body: JSON.stringify({
+            theme_preference: next,
+            exclude_autopulse_traffic: excludeAutopulseTraffic,
+          }),
         });
         if (!response.ok) {
           throw new Error(`theme-settings update failed (${response.status})`);
         }
         const updated = (await response.json()) as ThemeSettings;
         setThemePreference(updated.theme_preference);
+        setExcludeAutopulseTraffic(updated.exclude_autopulse_traffic);
         return true;
       } catch {
         return false;
@@ -670,7 +675,41 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setThemeSettingsSaving(false);
       }
     },
-    [],
+    [excludeAutopulseTraffic],
+  );
+
+  const saveExcludeAutopulseTraffic = useCallback(
+    async (next: boolean): Promise<boolean> => {
+      if (!apiKey) {
+        return false;
+      }
+      setThemeSettingsSaving(true);
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/theme-settings"), {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            theme_preference: themePreference,
+            exclude_autopulse_traffic: next,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`theme-settings update failed (${response.status})`);
+        }
+        const updated = (await response.json()) as ThemeSettings;
+        setThemePreference(updated.theme_preference);
+        setExcludeAutopulseTraffic(updated.exclude_autopulse_traffic);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setThemeSettingsSaving(false);
+      }
+    },
+    [themePreference],
   );
 
   const toggleRequestRow = useCallback((id: string) => {
@@ -846,6 +885,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertSettings,
       alertDispatches,
       themePreference,
+      excludeAutopulseTraffic,
       errorGroupSort,
       loading,
       errorMessage,
@@ -878,6 +918,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       copyRunbookCommand,
       saveAlertSettings,
       saveThemePreference,
+      saveExcludeAutopulseTraffic,
       updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,
@@ -930,6 +971,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertSettings,
       alertDispatches,
       themePreference,
+      excludeAutopulseTraffic,
       errorGroupSort,
       loading,
       errorMessage,
@@ -950,6 +992,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       copyRunbookCommand,
       saveAlertSettings,
       saveThemePreference,
+      saveExcludeAutopulseTraffic,
       updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,

@@ -1,6 +1,8 @@
 import asyncio
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -8,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from autopulse._embedded import DEFAULT_EMBEDDED_API_KEY
 from autopulse._monitor import (
     _AutoPulseMiddleware,
     _EventDispatcher,
@@ -269,3 +272,38 @@ ValueError: boom
     hash_a = _stable_error_hash("ValueError", "boom", stack_a)
     hash_b = _stable_error_hash("ValueError", "boom", stack_b)
     assert hash_a == hash_b
+
+
+def test_embedded_mode_mounts_backend_and_accepts_events(tmp_path: Path) -> None:
+    app = FastAPI()
+    monitor(
+        app,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded.db'}",
+    )
+
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "sdk-test",
+                "environment": "test",
+                "method": "GET",
+                "path": "/health",
+                "status_code": 200,
+                "latency_ms": 12.3,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {DEFAULT_EMBEDDED_API_KEY}"}
+    with TestClient(app) as client:
+        health_response = client.get("/autopulse/health")
+        assert health_response.status_code == 200
+
+        ingest_response = client.post("/autopulse/ingest", json=payload, headers=headers)
+        assert ingest_response.status_code == 200
+
+        overview_response = client.get("/autopulse/dashboard/overview", headers=headers)
+        assert overview_response.status_code == 200

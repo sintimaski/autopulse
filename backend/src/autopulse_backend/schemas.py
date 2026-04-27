@@ -174,10 +174,12 @@ class DashboardAlertDispatchesResponse(BaseModel):
 
 class DashboardThemeSettings(BaseModel):
     theme_preference: Literal["system", "light", "dark"]
+    exclude_autopulse_traffic: bool
 
 
 class DashboardThemeSettingsUpdate(BaseModel):
     theme_preference: Literal["system", "light", "dark"]
+    exclude_autopulse_traffic: bool
 
 
 def event_payload(event: IngestEvent) -> dict[str, Any]:

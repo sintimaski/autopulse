@@ -33,6 +33,20 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   },
 };
 
+function toRoutePath(pathname: string): string {
+  const basePath = "/autopulse/ui";
+  let normalized = pathname;
+  if (normalized === basePath) {
+    normalized = "/";
+  } else if (normalized.startsWith(`${basePath}/`)) {
+    normalized = normalized.slice(basePath.length);
+  }
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+}
+
 type ScopedServerState = {
   isAbsoluteWindow: boolean;
   windowMinutes: number;
@@ -89,7 +103,8 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
 }
 
 function ShellWithData({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  const pathname = toRoutePath(rawPathname);
   const router = useRouter();
   const searchParams = useSearchParams();
   const d = useDashboardData();

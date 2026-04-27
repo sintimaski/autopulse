@@ -1,7 +1,11 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { DashboardLayoutClient } from "../../components/dashboard/DashboardLayoutClient";
 
 export default function MainLayout({ children }: { children: ReactNode }) {
-  return <DashboardLayoutClient>{children}</DashboardLayoutClient>;
+  return (
+    <Suspense fallback={null}>
+      <DashboardLayoutClient>{children}</DashboardLayoutClient>
+    </Suspense>
+  );
 }

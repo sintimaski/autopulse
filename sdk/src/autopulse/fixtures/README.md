@@ -1,0 +1,50 @@
+# Synthetic Test App Fixture
+
+This fixture provides a local FastAPI app and a deterministic traffic driver for manual AutoPulse dashboard testing.
+
+## Components
+
+- `synthetic_test_app.py`: FastAPI app with 10 endpoints and controlled failure modes.
+- `synthetic_load.py`: weighted request generator with periodic spikes and error bursts.
+
+## Run
+
+From repository root:
+
+```bash
+uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010
+```
+
+Embedded mode also exposes local AutoPulse endpoints at:
+
+- `http://localhost:8010/autopulse/ingest`
+- `http://localhost:8010/autopulse/dashboard/*`
+- `http://localhost:8010/autopulse/ui/` (static assets when available)
+
+In another terminal:
+
+```bash
+uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8010 --duration-seconds 120 --rps 8 --role-mode mixed
+```
+
+## Environment Variables
+
+- `AUTOPULSE_MODE`: `embedded` (default) or `remote`.
+- `AUTOPULSE_MOUNT_PREFIX`: embedded mount prefix (default `/autopulse`).
+- `AUTOPULSE_DATABASE_URL`: embedded SQLite URL (default `sqlite+aiosqlite:///./autopulse_embedded.db`).
+- `AUTOPULSE_FRONTEND_MODE`: embedded frontend mode (`static` default, `sidecar` optional).
+- `AUTOPULSE_API_KEY`: project API key (`ap_live_...`) for remote ingest mode.
+- `AUTOPULSE_INGEST_URL`: remote ingest URL (default `http://localhost:8000/ingest`).
+- `AUTOPULSE_SERVICE_NAME`: service label (default `synthetic-test-api`).
+- `AUTOPULSE_ENVIRONMENT`: environment label (default `dev`).
+- `AUTOPULSE_BATCH_SIZE`: SDK batch size override.
+- `AUTOPULSE_FLUSH_INTERVAL_S`: SDK flush interval override.
+- `AUTOPULSE_DEBUG`: set to `1`/`true` to enable SDK debug logs.
+
+## Manual Verification Checklist
+
+- Volume chart reflects spikes every configured spike interval.
+- Error rate increases during burst windows and includes 4xx/5xx.
+- `/boom` failures create grouped errors with stack traces.
+- Auth denials are visible as 401/403 patterns.
+- `/reports/daily` slow/timeout behavior is visible in latency panels.

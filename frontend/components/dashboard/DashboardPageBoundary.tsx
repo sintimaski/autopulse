@@ -11,7 +11,8 @@ export function ApiKeyMissing() {
         <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Set <code className="rounded bg-black/30 px-1.5 py-0.5">NEXT_PUBLIC_AUTOPULSE_API_KEY</code> and{" "}
+          Embedded mode provides local defaults. To point the UI at a remote backend, set{" "}
+          <code className="rounded bg-black/30 px-1.5 py-0.5">NEXT_PUBLIC_AUTOPULSE_API_KEY</code> and{" "}
           <code className="rounded bg-black/30 px-1.5 py-0.5">NEXT_PUBLIC_AUTOPULSE_API_BASE_URL</code> in{" "}
           <code className="rounded bg-black/30 px-1.5 py-0.5">frontend/.env.local</code>, then restart{" "}
           <code className="rounded bg-black/30 px-1.5 py-0.5">npm run dev</code>.

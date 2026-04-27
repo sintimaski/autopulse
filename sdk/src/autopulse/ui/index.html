@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoPulse Embedded UI</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 2rem;
+        background: #0b1220;
+        color: #e2e8f0;
+      }
+      .card {
+        max-width: 780px;
+        margin: 0 auto;
+        background: #111a2d;
+        border: 1px solid #1f2a44;
+        border-radius: 12px;
+        padding: 1.25rem 1.5rem;
+      }
+      a {
+        color: #93c5fd;
+      }
+      code {
+        background: #0a1020;
+        border: 1px solid #1f2a44;
+        border-radius: 6px;
+        padding: 0.1rem 0.4rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>AutoPulse Embedded Dashboard</h1>
+      <p>
+        Static dashboard assets are not bundled in this build yet. The embedded backend is available and
+        collecting events.
+      </p>
+      <p>
+        API endpoints are mounted under <code>/autopulse/dashboard</code> and ingest is at
+        <code>/autopulse/ingest</code>.
+      </p>
+      <p>
+        For local development UI, run the Next app and point it to <code>/autopulse</code> as API base.
+      </p>
+    </main>
+  </body>
+</html>

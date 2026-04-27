@@ -11,8 +11,13 @@ npm run dev
 
 Environment variables:
 
-- `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (default: `http://localhost:8000`)
-- `NEXT_PUBLIC_AUTOPULSE_API_KEY` (required for authenticated dashboard reads)
+- `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (default: `/autopulse`)
+- `NEXT_PUBLIC_AUTOPULSE_API_KEY` (default: embedded local key for one-process mode)
+
+Build modes:
+
+- `AUTOPULSE_FRONTEND_MODE=static` (default): builds static export for embedding.
+- `AUTOPULSE_FRONTEND_MODE=sidecar`: keeps regular Next runtime output.
 
 The M3 shell renders:
 

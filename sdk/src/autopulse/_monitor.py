@@ -96,25 +96,55 @@ def _scrub_value(value: Any, scrub_keys: frozenset[str]) -> Any:
     return value
 
 
+def _add_event_handler(app: Any, event: str, handler: Callable[[], Awaitable[None]]) -> bool:
+    add_event_handler = getattr(app, "add_event_handler", None)
+    if callable(add_event_handler):
+        add_event_handler(event, handler)
+        return True
+    router = getattr(app, "router", None)
+    router_add_event_handler = getattr(router, "add_event_handler", None)
+    if callable(router_add_event_handler):
+        router_add_event_handler(event, handler)
+        return True
+    return False
+
+
 class _EventDispatcher:
-    def __init__(self, config: _MonitorConfig, *, client: httpx.AsyncClient | None = None) -> None:
+    def __init__(
+        self,
+        config: _MonitorConfig,
+        *,
+        client: httpx.AsyncClient | None = None,
+        owns_client: bool | None = None,
+    ) -> None:
         self._config = config
         self._queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=config.queue_maxsize)
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._client = client
-        self._owns_client = client is None
+        self._owns_client = client is None if owns_client is None else owns_client
         self._send_enabled = bool(config.ingest_url and config.api_key)
 
     async def start(self) -> None:
         if self._task is not None:
             return
         if not self._send_enabled:
+            _debug_log(
+                self._config.debug,
+                "sender disabled (missing api_key or ingest_url); no events will be sent",
+            )
             return
         self._stopping.clear()
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=5.0)
         self._task = asyncio.create_task(self._sender_loop())
+        _debug_log(
+            self._config.debug,
+            "sender started "
+            f"ingest_url={self._config.ingest_url} "
+            f"batch_size={self._config.batch_size} "
+            f"flush_interval_s={self._config.flush_interval_s}",
+        )
 
     async def stop(self) -> None:
         if self._task is None:
@@ -131,6 +161,10 @@ class _EventDispatcher:
             return
         try:
             self._queue.put_nowait(_scrub_value(event, DEFAULT_SCRUB_KEYS))
+            _debug_log(
+                self._config.debug,
+                f"event enqueued type={event.get('type')} queue_size={self._queue.qsize()}",
+            )
         except asyncio.QueueFull:
             _debug_log(self._config.debug, "event queue is full; dropping event")
 
@@ -164,14 +198,28 @@ class _EventDispatcher:
         payload = {"events": batch, "sdk_version": _sdk_version()}
         for attempt in range(self._config.max_retries + 1):
             try:
+                _debug_log(
+                    self._config.debug,
+                    f"sending batch events={len(batch)} attempt={attempt + 1}/"
+                    f"{self._config.max_retries + 1} url={self._config.ingest_url}",
+                )
                 response = await self._client.post(
                     self._config.ingest_url,
                     json=payload,
                     headers=headers,
                 )
                 response.raise_for_status()
+                _debug_log(
+                    self._config.debug,
+                    "batch sent successfully "
+                    f"status={response.status_code} accepted_events={len(batch)}",
+                )
                 return
-            except Exception:
+            except Exception as exc:
+                _debug_log(
+                    self._config.debug,
+                    f"batch send failed attempt={attempt + 1} error={type(exc).__name__}: {exc}",
+                )
                 if attempt >= self._config.max_retries:
                     _debug_log(self._config.debug, "dropping batch after retries exhausted")
                     return
@@ -245,24 +293,39 @@ def monitor(app: Any, **kwargs: Any) -> None:
     The SDK always fails silent by default: monitoring failures never block
     user requests.
     """
-    if not all(hasattr(app, attr) for attr in ("state", "add_middleware", "add_event_handler")):
+    if not all(hasattr(app, attr) for attr in ("state", "add_middleware")):
         return
     if getattr(app.state, "_autopulse_configured", False):
         return
+    resolved_kwargs = dict(kwargs)
+    mode = str(kwargs.get("mode", "remote")).strip().lower()
+    if mode == "embedded":
+        try:
+            from autopulse._embedded import configure_embedded
+
+            resolved_kwargs.update(configure_embedded(app, kwargs=kwargs))
+        except Exception as exc:
+            _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
     config = _MonitorConfig(
-        api_key=kwargs.get("api_key"),
-        ingest_url=kwargs.get("ingest_url"),
-        service_name=kwargs.get("service_name", "api"),
-        environment=kwargs.get("environment", "production"),
-        queue_maxsize=int(kwargs.get("queue_maxsize", 1000)),
-        batch_size=int(kwargs.get("batch_size", 50)),
-        flush_interval_s=float(kwargs.get("flush_interval_s", 2.0)),
-        max_retries=int(kwargs.get("max_retries", 3)),
-        retry_backoff_s=float(kwargs.get("retry_backoff_s", 0.1)),
-        debug=bool(kwargs.get("debug", False)),
+        api_key=resolved_kwargs.get("api_key"),
+        ingest_url=resolved_kwargs.get("ingest_url"),
+        service_name=resolved_kwargs.get("service_name", "api"),
+        environment=resolved_kwargs.get("environment", "production"),
+        queue_maxsize=int(resolved_kwargs.get("queue_maxsize", 1000)),
+        batch_size=int(resolved_kwargs.get("batch_size", 50)),
+        flush_interval_s=float(resolved_kwargs.get("flush_interval_s", 2.0)),
+        max_retries=int(resolved_kwargs.get("max_retries", 3)),
+        retry_backoff_s=float(resolved_kwargs.get("retry_backoff_s", 0.1)),
+        debug=bool(resolved_kwargs.get("debug", False)),
     )
-    dispatcher = _EventDispatcher(config, client=kwargs.get("http_client"))
+    dispatcher = _EventDispatcher(
+        config,
+        client=resolved_kwargs.get("http_client"),
+        owns_client=resolved_kwargs.get("owns_http_client"),
+    )
     app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
-    app.add_event_handler("startup", dispatcher.start)
-    app.add_event_handler("shutdown", dispatcher.stop)
+    if not _add_event_handler(app, "startup", dispatcher.start):
+        return
+    if not _add_event_handler(app, "shutdown", dispatcher.stop):
+        return
     app.state._autopulse_configured = True

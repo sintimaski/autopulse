@@ -29,3 +29,8 @@ repos:
         entry: npm --prefix frontend run typecheck
         language: system
         pass_filenames: false
+      - id: frontend-build
+        name: frontend-build
+        entry: npm --prefix frontend run build
+        language: system
+        pass_filenames: false

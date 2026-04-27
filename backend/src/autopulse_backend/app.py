@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -67,3 +69,10 @@ def create_app() -> FastAPI:
     if settings.dev_scenarios_enabled:
         app.include_router(dev_scenarios_router)
     return app
+
+
+def mount_on_app(host_app: Any, *, prefix: str = "/autopulse") -> FastAPI:
+    """Mount the backend app under a host FastAPI application."""
+    mounted_app = create_app()
+    host_app.mount(prefix.rstrip("/") or "/", mounted_app)
+    return mounted_app

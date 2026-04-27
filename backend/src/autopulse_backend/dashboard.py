@@ -14,7 +14,8 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from sqlalchemy import String, case, cast, func, literal, select
+from sqlalchemy import String, case, cast, func, literal, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autopulse_backend.alerts import get_or_create_project_alert_settings
@@ -115,7 +116,31 @@ def _serialize_theme_settings(settings: ProjectUiSettings) -> DashboardThemeSett
         if settings.theme_preference in {"system", "light", "dark"}
         else "system"
     )
-    return DashboardThemeSettings(theme_preference=theme)
+    return DashboardThemeSettings(
+        theme_preference=theme,
+        exclude_autopulse_traffic=bool(settings.exclude_autopulse_traffic),
+    )
+
+
+async def _resolve_exclude_autopulse_traffic(
+    session: AsyncSession,
+    project_id,
+) -> bool:
+    setting = await session.scalar(
+        select(ProjectUiSettings.exclude_autopulse_traffic).where(
+            ProjectUiSettings.project_id == project_id
+        )
+    )
+    if setting is None:
+        return True
+    return bool(setting)
+
+
+def _append_exclude_autopulse_filters(filters: list, *, exclude_autopulse_traffic: bool) -> None:
+    if not exclude_autopulse_traffic:
+        return
+    # Embedded mode mounts internal dashboard/UI under /autopulse/*.
+    filters.extend([Event.path != "/autopulse", ~Event.path.like("/autopulse/%")])
 
 
 def _as_utc_datetime(value: datetime) -> datetime:
@@ -128,9 +153,24 @@ async def _get_or_create_project_ui_settings(
     session: AsyncSession,
     project_id,
 ) -> ProjectUiSettings:
-    settings = await session.scalar(
-        select(ProjectUiSettings).where(ProjectUiSettings.project_id == project_id)
-    )
+    try:
+        settings = await session.scalar(
+            select(ProjectUiSettings).where(ProjectUiSettings.project_id == project_id)
+        )
+    except OperationalError as exc:
+        # SQLite local dev path uses create_all and may lag model columns.
+        if "no such column: project_ui_settings.exclude_autopulse_traffic" not in str(exc):
+            raise
+        await session.execute(
+            text(
+                "ALTER TABLE project_ui_settings "
+                "ADD COLUMN exclude_autopulse_traffic BOOLEAN NOT NULL DEFAULT 1"
+            )
+        )
+        await session.commit()
+        settings = await session.scalar(
+            select(ProjectUiSettings).where(ProjectUiSettings.project_id == project_id)
+        )
     if settings is not None:
         return settings
     settings = ProjectUiSettings(project_id=project_id, theme_preference="system")
@@ -235,17 +275,22 @@ async def get_dashboard_overview(
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
+    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
+        session, context.project_id
+    )
     error_condition = (Event.type == "error") | (Event.status_code >= 500)
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
 
     totals_query = select(
         func.count(Event.id),
         func.sum(case((error_condition, 1), else_=0)),
         func.avg(Event.latency_ms),
-    ).where(
-        Event.project_id == context.project_id,
-        Event.timestamp >= resolved_from,
-        Event.timestamp <= resolved_to,
-    )
+    ).where(*filters)
     totals_result = await session.execute(totals_query)
     request_count, error_count, avg_latency = totals_result.one()
 
@@ -259,11 +304,7 @@ async def get_dashboard_overview(
     dialect_name = session.bind.dialect.name if session.bind is not None else ""
     if dialect_name == "sqlite":
         series_rows = await session.execute(
-            select(Event.timestamp, Event.type, Event.status_code, Event.latency_ms).where(
-                Event.project_id == context.project_id,
-                Event.timestamp >= resolved_from,
-                Event.timestamp <= resolved_to,
-            )
+            select(Event.timestamp, Event.type, Event.status_code, Event.latency_ms).where(*filters)
         )
         buckets: dict[datetime, dict[str, float | int]] = {}
         for timestamp, event_type, status_code, latency_ms in series_rows:
@@ -298,9 +339,7 @@ async def get_dashboard_overview(
                 func.avg(Event.latency_ms),
             )
             .where(
-                Event.project_id == context.project_id,
-                Event.timestamp >= resolved_from,
-                Event.timestamp <= resolved_to,
+                *filters,
             )
             .group_by("minute_bucket")
             .order_by("minute_bucket")
@@ -355,11 +394,15 @@ async def get_dashboard_requests(
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
+    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
+        session, context.project_id
+    )
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
     ]
+    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
     if method:
         filters.append(Event.method == method.upper())
     if status_class is not None:
@@ -453,12 +496,16 @@ async def get_dashboard_error_groups(
     resolved_from, resolved_to = _resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
+    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
+        session, context.project_id
+    )
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
         Event.type == "error",
     ]
+    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
     if method:
         filters.append(Event.method == method.upper())
     if status_class is not None:
@@ -776,6 +823,7 @@ async def update_dashboard_theme_settings(
 ) -> DashboardThemeSettings:
     settings = await _get_or_create_project_ui_settings(session, context.project_id)
     settings.theme_preference = payload.theme_preference
+    settings.exclude_autopulse_traffic = payload.exclude_autopulse_traffic
     await session.commit()
     await session.refresh(settings)
     return _serialize_theme_settings(settings)

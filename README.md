@@ -17,6 +17,25 @@ Execution guide: **[docs/DEVELOPMENT_PROCESS.md](./docs/DEVELOPMENT_PROCESS.md)*
 
 ## Local development
 
+Single-app embedded flow (recommended for SDK + dashboard manual validation):
+
+```bash
+uv sync --group dev
+npm --prefix frontend install
+npm --prefix frontend run build
+uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010
+```
+
+Then generate fixture traffic:
+
+```bash
+uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8010 --duration-seconds 120 --rps 8 --role-mode mixed
+```
+
+Embedded endpoints are available under `http://localhost:8010/autopulse/*`.
+
+Split backend/frontend flow (for backend or frontend-only iteration):
+
 Backend (from repository root):
 
 ```bash
@@ -32,6 +51,13 @@ npm --prefix frontend run dev
 ```
 
 Set frontend environment variables in `frontend/.env.local`:
+
+```bash
+NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=/autopulse
+NEXT_PUBLIC_AUTOPULSE_API_KEY=ap_live_embeddedlocal_localdevsecret
+```
+
+For split mode, set:
 
 ```bash
 NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=http://localhost:8000
@@ -55,7 +81,7 @@ The frontend tracks `DEVELOPMENT.md` dashboard requirements:
 
 - Python **3.11+**, package and workspace management with **[uv](https://docs.astral.sh/uv/)**.
 - Node.js for the `frontend/` dashboard.
-- **pre-commit** for Ruff, Bandit, and basic hygiene.
+- **pre-commit** for Ruff, Bandit, frontend lint/typecheck/build, and basic hygiene.
 - **GitHub Actions** for Python and frontend CI on push and pull request.
 
 ```bash
@@ -71,10 +97,12 @@ uv run pytest
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run test
+npm --prefix frontend run build
 ```
 
 Install git hooks (once per clone):
 
 ```bash
 uv run pre-commit install
+uv run pre-commit run --all-files
 ```

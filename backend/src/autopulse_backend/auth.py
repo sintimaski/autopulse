@@ -59,6 +59,17 @@ def verify_api_key_secret(secret: str, salt: bytes, expected_hash: bytes) -> boo
     return hmac.compare_digest(_derive_secret_hash(secret, salt), expected_hash)
 
 
+def build_api_key_record(api_key: str) -> tuple[str, bytes, bytes] | None:
+    """Build storage fields for an existing raw API key."""
+    parsed = parse_api_key(api_key)
+    if parsed is None:
+        return None
+    key_id, secret = parsed
+    salt = secrets.token_bytes(_SALT_BYTES)
+    secret_hash = _derive_secret_hash(secret, salt)
+    return key_id, salt, secret_hash
+
+
 def _unauthorized() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

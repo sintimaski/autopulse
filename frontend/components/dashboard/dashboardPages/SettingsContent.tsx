@@ -69,6 +69,27 @@ export function SettingsContent() {
         {themeMessage ? (
           <p className="mt-2 text-xs text-slate-600 dark:text-neutral-300">{themeMessage}</p>
         ) : null}
+        <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
+          <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-neutral-200">
+            <input
+              type="checkbox"
+              checked={d.excludeAutopulseTraffic}
+              disabled={d.themeSettingsSaving}
+              onChange={async (event) => {
+                const ok = await d.saveExcludeAutopulseTraffic(event.target.checked);
+                setThemeMessage(
+                  ok
+                    ? "Traffic filter preference saved."
+                    : "Failed to save traffic filter preference.",
+                );
+              }}
+            />
+            Exclude AutoPulse internal traffic (`/autopulse/*`) from dashboard data
+          </label>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-neutral-400">
+            Keeps dashboard/API requests from polluting request and error charts.
+          </p>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">

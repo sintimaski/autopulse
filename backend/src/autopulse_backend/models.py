@@ -122,6 +122,7 @@ class ProjectUiSettings(Base):
         unique=True,
     )
     theme_preference: Mapped[str] = mapped_column(String(16), nullable=False, default="system")
+    exclude_autopulse_traffic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

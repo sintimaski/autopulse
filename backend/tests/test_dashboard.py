@@ -515,3 +515,66 @@ def test_dashboard_alert_settings_are_scoped_by_project(backend_test_database_ur
         payload = other_read.json()
         assert payload["destination_email"] is None
         assert payload["error_spike_ratio_threshold"] == 0.4
+
+
+def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project UI Settings")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        read_response = client.get("/dashboard/theme-settings", headers=headers)
+        assert read_response.status_code == 200
+        initial = read_response.json()
+        assert initial["theme_preference"] == "system"
+        assert initial["exclude_autopulse_traffic"] is True
+
+        disable_filter = client.put(
+            "/dashboard/theme-settings",
+            json={
+                "theme_preference": "system",
+                "exclude_autopulse_traffic": False,
+            },
+            headers=headers,
+        )
+        assert disable_filter.status_code == 200
+        assert disable_filter.json()["exclude_autopulse_traffic"] is False
+
+        _ingest(client, key, base_time, 200, "GET", "/autopulse/dashboard/overview")
+        _ingest(client, key, base_time + timedelta(seconds=10), 200, "GET", "/users/42")
+
+        overview_all = client.get(
+            "/dashboard/overview",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers=headers,
+        )
+        assert overview_all.status_code == 200
+        assert overview_all.json()["request_count"] == 2
+
+        enable_filter = client.put(
+            "/dashboard/theme-settings",
+            json={
+                "theme_preference": "system",
+                "exclude_autopulse_traffic": True,
+            },
+            headers=headers,
+        )
+        assert enable_filter.status_code == 200
+        assert enable_filter.json()["exclude_autopulse_traffic"] is True
+
+        overview_filtered = client.get(
+            "/dashboard/overview",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers=headers,
+        )
+        assert overview_filtered.status_code == 200
+        assert overview_filtered.json()["request_count"] == 1
