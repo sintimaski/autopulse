@@ -13,6 +13,12 @@ export function SettingsContent() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deliveryPreset, setDeliveryPreset] = useState<DeliveryPreset>("smtp_email");
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
+  const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
+  const [retentionDraft, setRetentionDraft] = useState<{
+    raw_events_days: number;
+    logs_query_max_window_minutes: number;
+  } | null>(null);
+  const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
 
   const onSaveAlerts = async () => {
     if (!form) {
@@ -41,6 +47,68 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Retention policy</h2>
+        {effectiveRetentionDraft ? (
+          <>
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+              Configure how long raw events are retained and the max query window for SQL logs.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
+                Raw events retention (days)
+                <input
+                  type="number"
+                  min={1}
+                  value={effectiveRetentionDraft.raw_events_days}
+                  onChange={(event) =>
+                    setRetentionDraft({
+                      raw_events_days: Number(event.target.value),
+                      logs_query_max_window_minutes:
+                        effectiveRetentionDraft.logs_query_max_window_minutes,
+                    })
+                  }
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                />
+              </label>
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
+                Max SQL query window (minutes)
+                <input
+                  type="number"
+                  min={1}
+                  value={effectiveRetentionDraft.logs_query_max_window_minutes}
+                  onChange={(event) =>
+                    setRetentionDraft({
+                      raw_events_days: effectiveRetentionDraft.raw_events_days,
+                      logs_query_max_window_minutes: Number(event.target.value),
+                    })
+                  }
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!effectiveRetentionDraft) {
+                  return;
+                }
+                const ok = await d.saveRetentionSettings(effectiveRetentionDraft);
+                setRetentionMessage(ok ? "Retention settings saved." : "Failed to save retention settings.");
+              }}
+              className="mt-3 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+            >
+              Save retention policy
+            </button>
+            {retentionMessage ? (
+              <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{retentionMessage}</p>
+            ) : null}
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">Loading retention settings...</p>
+        )}
+      </section>
+
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Appearance</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">

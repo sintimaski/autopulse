@@ -24,6 +24,7 @@ import {
 } from "../../utils/dashboardFetchErrors";
 import {
   buildApiUrl,
+  buildLogQueryWebsocketUrl,
   buildUpdatesWebsocketUrl,
   apiKey,
   type AlertDispatchesResponse,
@@ -38,12 +39,19 @@ import {
   STATUS_CLASS_OPTIONS,
   WINDOW_OPTIONS,
   type AlertSettings,
+  type DiagnosisErrorGroupEventsResponse,
+  type DiagnosisFailureRoutesResponse,
+  type DiagnosisTimelineResponse,
   type ErrorGroupItem,
   type ErrorGroupsResponse,
   type GroupBy,
   type OverviewResponse,
+  type OverviewExtendedResponse,
   type RequestItem,
   type RequestsResponse,
+  type RetentionSettings,
+  type LogQueryPageResponse,
+  type LogQueryValidationResponse,
   type SortDir,
   type SortKey,
   type ThemePreference,
@@ -77,10 +85,15 @@ export type DashboardDataContextValue = {
   envTags: Set<string>;
   serviceTags: Set<string>;
   overview: OverviewResponse | null;
+  overviewExtended: OverviewExtendedResponse | null;
   requests: RequestsResponse | null;
   errorGroups: ErrorGroupsResponse | null;
+  diagnosisTimeline: DiagnosisTimelineResponse | null;
+  diagnosisFailures: DiagnosisFailureRoutesResponse | null;
+  diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
   alertSettings: AlertSettings | null;
   alertDispatches: AlertDispatchesResponse | null;
+  retentionSettings: RetentionSettings | null;
   themePreference: ThemePreference;
   excludeAutopulseTraffic: boolean;
   errorGroupSort: "last_seen" | "count";
@@ -118,6 +131,11 @@ export type DashboardDataContextValue = {
   saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
   saveThemePreference: (next: ThemePreference) => Promise<boolean>;
   saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
+  saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
+  runLogQueryValidate: (query: string) => Promise<LogQueryValidationResponse | null>;
+  runLogQueryExecute: (query: string, options?: { resetCursor?: boolean }) => Promise<boolean>;
+  setLiveQueryEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  setSqlQueryText: React.Dispatch<React.SetStateAction<string>>;
   updateAlertSettingsDraft: (next: AlertSettings) => void;
   toggleRequestRow: (id: string) => void;
   onSortHeader: (key: SortKey) => void;
@@ -132,6 +150,12 @@ export type DashboardDataContextValue = {
   grouped: { key: string; label: string; items: RequestItem[] }[];
   sparklineSeries: OverviewBucket[];
   operationalSignals: ReturnType<typeof computeOperationalSignals>;
+  sqlQueryText: string;
+  sqlQueryCursor: string | null;
+  sqlQueryResults: LogQueryPageResponse | null;
+  sqlQueryValidation: LogQueryValidationResponse | null;
+  sqlQueryLoading: boolean;
+  liveQueryEnabled: boolean;
   WINDOW_OPTIONS: typeof WINDOW_OPTIONS;
   METHOD_OPTIONS: typeof METHOD_OPTIONS;
   STATUS_CLASS_OPTIONS: typeof STATUS_CLASS_OPTIONS;
@@ -175,10 +199,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [envTags, setEnvTags] = useState<Set<string>>(new Set());
   const [serviceTags, setServiceTags] = useState<Set<string>>(new Set());
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewExtended, setOverviewExtended] = useState<OverviewExtendedResponse | null>(null);
   const [requests, setRequests] = useState<RequestsResponse | null>(null);
   const [errorGroups, setErrorGroups] = useState<ErrorGroupsResponse | null>(null);
+  const [diagnosisTimeline, setDiagnosisTimeline] = useState<DiagnosisTimelineResponse | null>(null);
+  const [diagnosisFailures, setDiagnosisFailures] = useState<DiagnosisFailureRoutesResponse | null>(null);
+  const [diagnosisErrorGroupEvents, setDiagnosisErrorGroupEvents] = useState<DiagnosisErrorGroupEventsResponse | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
+  const [retentionSettings, setRetentionSettings] = useState<RetentionSettings | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [excludeAutopulseTraffic, setExcludeAutopulseTraffic] = useState(true);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
@@ -189,6 +218,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
   const [themeSettingsSaving, setThemeSettingsSaving] = useState(false);
+  const [sqlQueryText, setSqlQueryText] = useState(
+    "SELECT * FROM events WHERE status_code >= 500 ORDER BY timestamp DESC LIMIT 100",
+  );
+  const [sqlQueryCursor, setSqlQueryCursor] = useState<string | null>(null);
+  const [sqlQueryResults, setSqlQueryResults] = useState<LogQueryPageResponse | null>(null);
+  const [sqlQueryValidation, setSqlQueryValidation] = useState<LogQueryValidationResponse | null>(null);
+  const [sqlQueryLoading, setSqlQueryLoading] = useState(false);
+  const [liveQueryEnabled, setLiveQueryEnabled] = useState(true);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRefreshDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -312,13 +349,49 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           limit: "25",
           offset: "0",
         });
+        const diagnosisSharedParams = new URLSearchParams();
+        if (toIsoWindow) {
+          diagnosisSharedParams.set("from_timestamp", toIsoWindow.from);
+          diagnosisSharedParams.set("to_timestamp", toIsoWindow.to);
+        } else {
+          diagnosisSharedParams.set("window_minutes", String(windowMinutes));
+        }
+        if (method !== "ALL") {
+          diagnosisSharedParams.set("method", method);
+        }
+        if (statusClass !== "ALL") {
+          diagnosisSharedParams.set("status_class", statusClass);
+        }
+        if (envCsv) {
+          diagnosisSharedParams.set("environments", envCsv);
+        }
+        if (serviceCsv) {
+          diagnosisSharedParams.set("services", serviceCsv);
+        }
+        if (serverPath) {
+          diagnosisSharedParams.set("path_contains", serverPath);
+        }
+        if (minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0) {
+          diagnosisSharedParams.set("min_latency_ms", String(minLatency));
+        }
+        if (maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0) {
+          diagnosisSharedParams.set("max_latency_ms", String(maxLatency));
+        }
 
         const results = (await Promise.all([
           fetch(buildApiUrl(`/dashboard/overview?${overviewParams.toString()}`), { headers }),
+          fetch(buildApiUrl(`/dashboard/overview/extended?${overviewParams.toString()}`), { headers }),
           fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), { headers }),
           fetch(buildApiUrl(`/dashboard/error-groups?${errorGroupsParams.toString()}`), {
             headers,
           }),
+          fetch(buildApiUrl(`/dashboard/diagnosis/timeline?${diagnosisSharedParams.toString()}`), {
+            headers,
+          }),
+          fetch(buildApiUrl(`/dashboard/diagnosis/failures-by-route?${diagnosisSharedParams.toString()}`), {
+            headers,
+          }),
+          fetch(buildApiUrl("/dashboard/retention-settings"), { headers }),
           fetch(buildApiUrl("/dashboard/alert-settings"), { headers }),
           fetch(buildApiUrl(`/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`), {
             headers,
@@ -327,15 +400,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         ]).then(
           ([
             overviewResponse,
+            overviewExtendedResponse,
             requestsResponse,
             errorGroupsResponse,
+            diagnosisTimelineResponse,
+            diagnosisFailuresResponse,
+            retentionSettingsResponse,
             alertSettingsResponse,
             alertDispatchesResponse,
             themeSettingsResponse,
           ]) => [
           { endpoint: "overview", response: overviewResponse },
+          { endpoint: "overview-extended", response: overviewExtendedResponse },
           { endpoint: "requests", response: requestsResponse },
           { endpoint: "error-groups", response: errorGroupsResponse },
+          { endpoint: "diagnosis-timeline", response: diagnosisTimelineResponse },
+          { endpoint: "diagnosis-failures", response: diagnosisFailuresResponse },
+          { endpoint: "retention-settings", response: retentionSettingsResponse },
           { endpoint: "alert-settings", response: alertSettingsResponse },
           { endpoint: "alert-dispatches", response: alertDispatchesResponse },
           { endpoint: "theme-settings", response: themeSettingsResponse },
@@ -347,19 +428,27 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           throw new Error(fetchError);
         }
 
-        const [overviewData, requestsData, errorGroupsData, alertSettingsData, alertDispatchesData, themeSettingsData] = (await Promise.all(
+        const [overviewData, overviewExtendedData, requestsData, errorGroupsData, diagnosisTimelineData, diagnosisFailuresData, retentionSettingsData, alertSettingsData, alertDispatchesData, themeSettingsData] = (await Promise.all(
           results.map(async ({ response }) => response.json()),
         )) as [
           OverviewResponse,
+          OverviewExtendedResponse,
           RequestsResponse,
           ErrorGroupsResponse,
+          DiagnosisTimelineResponse,
+          DiagnosisFailureRoutesResponse,
+          RetentionSettings,
           AlertSettings,
           AlertDispatchesResponse,
           ThemeSettings,
         ];
         setOverview(overviewData);
+        setOverviewExtended(overviewExtendedData);
         setRequests(requestsData);
         setErrorGroups(errorGroupsData);
+        setDiagnosisTimeline(diagnosisTimelineData);
+        setDiagnosisFailures(diagnosisFailuresData);
+        setRetentionSettings(retentionSettingsData);
         setAlertSettings(alertSettingsData);
         setAlertDispatches(alertDispatchesData);
         setThemePreference(themeSettingsData.theme_preference);
@@ -725,6 +814,146 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [themePreference],
   );
 
+  const saveRetentionSettings = useCallback(
+    async (next: RetentionSettings): Promise<boolean> => {
+      if (!apiKey) {
+        return false;
+      }
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/retention-settings"), {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(next),
+        });
+        if (!response.ok) {
+          throw new Error(`retention-settings update failed (${response.status})`);
+        }
+        const updated = (await response.json()) as RetentionSettings;
+        setRetentionSettings(updated);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
+  const runLogQueryValidate = useCallback(async (query: string): Promise<LogQueryValidationResponse | null> => {
+    if (!apiKey) {
+      return null;
+    }
+    try {
+      const response = await fetch(buildApiUrl("/dashboard/log-query/validate"), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query, page_size: 100 }),
+      });
+      const payload = (await response.json()) as LogQueryValidationResponse;
+      setSqlQueryValidation(payload);
+      return payload;
+    } catch {
+      const fallback: LogQueryValidationResponse = {
+        valid: false,
+        normalized_query: query,
+        error: "Validation request failed",
+      };
+      setSqlQueryValidation(fallback);
+      return fallback;
+    }
+  }, []);
+
+  const runLogQueryExecute = useCallback(
+    async (query: string, options?: { resetCursor?: boolean }): Promise<boolean> => {
+      if (!apiKey) {
+        return false;
+      }
+      const resetCursor = Boolean(options?.resetCursor);
+      setSqlQueryLoading(true);
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/log-query/execute"), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query,
+            cursor: resetCursor ? null : sqlQueryCursor,
+            page_size: 100,
+            from_timestamp: toIsoWindow?.from,
+            to_timestamp: toIsoWindow?.to,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`log query failed (${response.status})`);
+        }
+        const payload = (await response.json()) as LogQueryPageResponse;
+        setSqlQueryResults(payload);
+        setSqlQueryCursor(payload.next_cursor);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setSqlQueryLoading(false);
+      }
+    },
+    [sqlQueryCursor, toIsoWindow],
+  );
+
+  useEffect(() => {
+    if (!apiKey || !liveQueryEnabled) {
+      return;
+    }
+    const wsUrl = buildLogQueryWebsocketUrl(apiKey);
+    let ws: WebSocket | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    ws = new WebSocket(wsUrl);
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { type?: string };
+        if (payload.type !== "ingest") {
+          return;
+        }
+      } catch {
+        return;
+      }
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+      }
+      refreshTimer = setTimeout(() => {
+        void runLogQueryExecute(sqlQueryText, { resetCursor: true });
+      }, 300);
+    };
+    ws.onopen = () => {
+      ws?.send("ping");
+    };
+    return () => {
+      if (refreshTimer) {
+        clearTimeout(refreshTimer);
+      }
+      ws?.close();
+    };
+  }, [liveQueryEnabled, runLogQueryExecute, sqlQueryText]);
+
+  useEffect(() => {
+    if (!apiKey) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      void runLogQueryValidate(sqlQueryText);
+      void runLogQueryExecute(sqlQueryText, { resetCursor: true });
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [sqlQueryText, runLogQueryExecute, runLogQueryValidate]);
+
   const toggleRequestRow = useCallback((id: string) => {
     setExpandedRequestIds((prev) => {
       const next = new Set(prev);
@@ -803,6 +1032,42 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       )
       .slice(0, 5);
   }, [errorGroups]);
+
+  useEffect(() => {
+    if (!apiKey) {
+      return;
+    }
+    const groupKey = recentErrorsPreview[0]?.group_key;
+    if (!groupKey) {
+      queueMicrotask(() => {
+        setDiagnosisErrorGroupEvents(null);
+      });
+      return;
+    }
+    const params = new URLSearchParams({
+      group_key: groupKey,
+      limit: "20",
+      offset: "0",
+    });
+    if (toIsoWindow) {
+      params.set("from_timestamp", toIsoWindow.from);
+      params.set("to_timestamp", toIsoWindow.to);
+    } else {
+      params.set("window_minutes", String(windowMinutes));
+    }
+    void fetch(buildApiUrl(`/dashboard/diagnosis/error-group-events?${params.toString()}`), {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (payload) {
+          setDiagnosisErrorGroupEvents(payload as DiagnosisErrorGroupEventsResponse);
+        }
+      })
+      .catch(() => {
+        setDiagnosisErrorGroupEvents(null);
+      });
+  }, [recentErrorsPreview, toIsoWindow, windowMinutes]);
 
   const displayedErrorGroups = useMemo(() => {
     const source = errorGroups?.items;
@@ -895,10 +1160,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       envTags,
       serviceTags,
       overview,
+      overviewExtended,
       requests,
       errorGroups,
+      diagnosisTimeline,
+      diagnosisFailures,
+      diagnosisErrorGroupEvents,
       alertSettings,
       alertDispatches,
+      retentionSettings,
       themePreference,
       excludeAutopulseTraffic,
       errorGroupSort,
@@ -936,6 +1206,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveAlertSettings,
       saveThemePreference,
       saveExcludeAutopulseTraffic,
+      saveRetentionSettings,
+      runLogQueryValidate,
+      runLogQueryExecute,
+      setLiveQueryEnabled,
+      setSqlQueryText,
       updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,
@@ -950,6 +1225,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       grouped,
       sparklineSeries,
       operationalSignals,
+      sqlQueryText,
+      sqlQueryCursor,
+      sqlQueryResults,
+      sqlQueryValidation,
+      sqlQueryLoading,
+      liveQueryEnabled,
       WINDOW_OPTIONS,
       METHOD_OPTIONS,
       STATUS_CLASS_OPTIONS,
@@ -966,8 +1247,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       toIsoWindow,
       absoluteWindow,
       overview,
+      overviewExtended,
       requests,
       errorGroups,
+      diagnosisTimeline,
+      diagnosisFailures,
+      diagnosisErrorGroupEvents,
       serverNowTimestamp,
       method,
       statusClass,
@@ -989,6 +1274,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       serviceTags,
       alertSettings,
       alertDispatches,
+      retentionSettings,
       themePreference,
       excludeAutopulseTraffic,
       errorGroupSort,
@@ -1014,6 +1300,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveAlertSettings,
       saveThemePreference,
       saveExcludeAutopulseTraffic,
+      saveRetentionSettings,
+      runLogQueryValidate,
+      runLogQueryExecute,
       updateAlertSettingsDraft,
       toggleRequestRow,
       onSortHeader,
@@ -1028,6 +1317,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       grouped,
       sparklineSeries,
       operationalSignals,
+      sqlQueryText,
+      sqlQueryCursor,
+      sqlQueryResults,
+      sqlQueryValidation,
+      sqlQueryLoading,
+      liveQueryEnabled,
     ],
   );
 

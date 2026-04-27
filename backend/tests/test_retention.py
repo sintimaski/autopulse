@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from autopulse_backend.config import get_settings
-from autopulse_backend.models import Event, Project
+from autopulse_backend.models import Event, Project, ProjectUiSettings
 from autopulse_backend.retention import run_retention_cleanup_once
 
 
@@ -94,3 +94,57 @@ def test_retention_cleanup_deletes_only_rows_older_than_window(
 
     assert deleted == 1
     assert remaining == 1
+
+
+def test_retention_cleanup_respects_project_override(
+    backend_test_database_url: str,
+) -> None:
+    now = datetime.now(tz=UTC)
+
+    async def run() -> tuple[int, int]:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="Override Project")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    ProjectUiSettings(
+                        project_id=project.id,
+                        theme_preference="system",
+                        exclude_autopulse_traffic=True,
+                        retention_raw_events_days=2,
+                        logs_query_max_window_minutes=60,
+                    )
+                )
+                old_time = now - timedelta(days=3)
+                session.add(
+                    Event(
+                        project_id=project.id,
+                        timestamp=old_time,
+                        received_at=old_time,
+                        sdk_version="0.1.0",
+                        type="request",
+                        service_name="api",
+                        environment="test",
+                        method="GET",
+                        path="/old-override",
+                        status_code=200,
+                        latency_ms=10.0,
+                        payload={"path": "/old-override"},
+                        request_id="override-1",
+                    )
+                )
+                await session.commit()
+                settings = replace(get_settings(), retention_raw_events_days=14)
+                result = await run_retention_cleanup_once(session, settings, now=now)
+                remaining_result = await session.execute(text("SELECT COUNT(*) FROM events"))
+                return result.deleted_events, int(remaining_result.scalar_one())
+        finally:
+            await engine.dispose()
+
+    truncate_full_schema(backend_test_database_url)
+    deleted, remaining = asyncio.run(run())
+    assert deleted == 1
+    assert remaining == 0

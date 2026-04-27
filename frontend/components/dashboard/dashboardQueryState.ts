@@ -22,6 +22,9 @@ export type DashboardScopedQueryState = {
   errorGroupLimit: number;
   errorGroupPage: number;
   errorGroupSort: "last_seen" | "count";
+  sqlQueryText?: string;
+  sqlQueryCursor?: string;
+  liveQueryEnabled?: boolean;
 };
 
 const DEFAULTS = {
@@ -129,6 +132,15 @@ export function buildScopedQuery(
   if (state.errorGroupSort === "count") {
     params.set("error_group_sort", "count");
   }
+  if (state.sqlQueryText && state.sqlQueryText.trim()) {
+    params.set("sql_query", state.sqlQueryText.trim());
+  }
+  if (state.sqlQueryCursor && state.sqlQueryCursor.trim()) {
+    params.set("sql_cursor", state.sqlQueryCursor.trim());
+  }
+  if (state.liveQueryEnabled === false) {
+    params.set("sql_live", "0");
+  }
 
   return params;
 }
@@ -174,5 +186,8 @@ export function parseScopedQuery(
       DEFAULTS.errorGroupPage,
     ),
     errorGroupSort,
+    sqlQueryText: searchParams.get("sql_query") ?? "",
+    sqlQueryCursor: searchParams.get("sql_cursor") ?? "",
+    liveQueryEnabled: searchParams.get("sql_live") !== "0",
   };
 }

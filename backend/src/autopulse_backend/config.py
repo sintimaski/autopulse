@@ -56,6 +56,7 @@ class Settings:
     alert_outage_window_minutes: int = 5
     alert_cooldown_minutes: int = 15
     retention_raw_events_days: int = 14
+    logs_query_max_window_minutes: int = 1440
     jobs_enable_scheduler: bool = False
     jobs_alert_interval_seconds: float = 60.0
     jobs_retention_interval_seconds: float = 3600.0
@@ -117,6 +118,7 @@ def get_settings() -> Settings:
         ),
         alert_cooldown_minutes=_env_int("ALERT_COOLDOWN_MINUTES", 15, minimum=1),
         retention_raw_events_days=_env_int("RETENTION_RAW_EVENTS_DAYS", 14, minimum=1),
+        logs_query_max_window_minutes=_env_int("LOGS_QUERY_MAX_WINDOW_MINUTES", 1440, minimum=1),
         jobs_enable_scheduler=_env_bool("JOBS_ENABLE_SCHEDULER", False),
         jobs_alert_interval_seconds=_env_float(
             "JOBS_ALERT_INTERVAL_SECONDS",

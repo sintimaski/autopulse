@@ -13,6 +13,9 @@ export function DiagnosisContent() {
   const pathname = usePathname();
   const requests = d.requests;
   const errorGroups = d.errorGroups;
+  const timeline = d.diagnosisTimeline;
+  const failures = d.diagnosisFailures;
+  const groupEvents = d.diagnosisErrorGroupEvents;
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") {
@@ -23,12 +26,36 @@ export function DiagnosisContent() {
     }
   }, [pathname]);
 
-  if (!requests || !errorGroups) {
+  if (!requests || !errorGroups || !timeline || !failures) {
     return null;
   }
 
   return (
     <>
+      <section className="grid gap-4 lg:grid-cols-3">
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Incident summary</h2>
+          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
+            {failures.items.reduce((sum, item) => sum + item.failure_count, 0)}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-neutral-400">Total failures in selected window</p>
+        </article>
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Timeline buckets</h2>
+          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
+            {timeline.buckets.length}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-neutral-400">Minute buckets with traffic</p>
+        </article>
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Error groups</h2>
+          <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
+            {errorGroups.total}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-neutral-400">Grouped diagnosis anchors</p>
+        </article>
+      </section>
+
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Quick diagnosis</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
@@ -94,6 +121,36 @@ export function DiagnosisContent() {
             )}
           </div>
         </div>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Causal timeline</h2>
+          <div className="mt-3 space-y-2">
+            {timeline.buckets.slice(-20).map((bucket) => (
+              <div key={bucket.minute} className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 dark:text-neutral-300">{formatTimestamp(bucket.minute)}</span>
+                <span className="tabular-nums text-slate-700 dark:text-neutral-200">
+                  req {bucket.request_count} · err {bucket.error_count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Evidence panel</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">Top routes by failure count for fast pivots.</p>
+          <ul className="mt-3 space-y-2">
+            {failures.items.slice(0, 10).map((item) => (
+              <li key={item.path} className="flex items-center justify-between gap-3 text-sm">
+                <Link href={`/logs?path_contains=${encodeURIComponent(item.path)}`} className="truncate font-mono text-xs text-sky-700 hover:underline dark:text-neutral-300">
+                  {item.path}
+                </Link>
+                <span className="tabular-nums text-rose-700 dark:text-rose-300">{item.failure_count}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
       </section>
 
       <section
@@ -250,6 +307,24 @@ export function DiagnosisContent() {
             </button>
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Error-group event evidence</h2>
+        {groupEvents && groupEvents.items.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {groupEvents.items.slice(0, 8).map((event) => (
+              <li key={event.id} className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs dark:border-neutral-700 dark:bg-neutral-800/70">
+                <p className="font-mono">{event.path}</p>
+                <p className="mt-1 text-slate-600 dark:text-neutral-300">
+                  {formatTimestamp(event.timestamp)} · {event.status_code} · {event.latency_ms.toFixed(1)} ms
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">Select a busier window to load event evidence.</p>
+        )}
       </section>
     </>
   );

@@ -62,6 +62,27 @@ class DashboardOverviewResponse(BaseModel):
     series: list[DashboardOverviewBucket]
 
 
+class DashboardBreakdownItem(BaseModel):
+    key: str
+    request_count: int
+    error_count: int
+    error_rate: float
+    avg_latency_ms: float
+
+
+class DashboardOverviewExtendedResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    p50_latency_ms: float
+    p95_latency_ms: float
+    p99_latency_ms: float
+    error_burst_count: int
+    active_incident_count: int
+    service_breakdown: list[DashboardBreakdownItem]
+    route_breakdown: list[DashboardBreakdownItem]
+
+
 class DashboardRequestItem(BaseModel):
     timestamp: datetime
     method: str
@@ -102,6 +123,53 @@ class DashboardErrorGroupsResponse(BaseModel):
     limit: int
     offset: int
     items: list[DashboardErrorGroupItem]
+
+
+class DashboardDiagnosisTimelineBucket(BaseModel):
+    minute: datetime
+    request_count: int
+    error_count: int
+
+
+class DashboardDiagnosisTimelineResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    buckets: list[DashboardDiagnosisTimelineBucket]
+
+
+class DashboardDiagnosisFailureRouteItem(BaseModel):
+    path: str
+    failure_count: int
+    error_rate: float
+    avg_latency_ms: float
+
+
+class DashboardDiagnosisFailureRoutesResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    items: list[DashboardDiagnosisFailureRouteItem]
+
+
+class DashboardDiagnosisErrorGroupEventItem(BaseModel):
+    id: int
+    timestamp: datetime
+    method: str
+    path: str
+    status_code: int
+    latency_ms: float
+    service_name: str
+    environment: str
+    request_id: str | None = None
+    stack_trace: str | None = None
+    message: str | None = None
+    exception_type: str | None = None
+
+
+class DashboardDiagnosisErrorGroupEventsResponse(BaseModel):
+    total: int
+    items: list[DashboardDiagnosisErrorGroupEventItem]
 
 
 class DashboardAlertSettings(BaseModel):
@@ -180,6 +248,61 @@ class DashboardThemeSettings(BaseModel):
 class DashboardThemeSettingsUpdate(BaseModel):
     theme_preference: Literal["system", "light", "dark"]
     exclude_autopulse_traffic: bool
+
+
+class DashboardRetentionSettings(BaseModel):
+    raw_events_days: int
+    logs_query_max_window_minutes: int
+
+
+class DashboardRetentionSettingsUpdate(BaseModel):
+    raw_events_days: int
+    logs_query_max_window_minutes: int
+
+    @field_validator("raw_events_days", "logs_query_max_window_minutes")
+    @classmethod
+    def validate_positive_values(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("must be at least 1")
+        return value
+
+
+class DashboardLogQueryRequest(BaseModel):
+    query: str
+    cursor: str | None = None
+    page_size: int = 100
+    from_timestamp: datetime | None = None
+    to_timestamp: datetime | None = None
+
+    @field_validator("page_size")
+    @classmethod
+    def validate_page_size(cls, value: int) -> int:
+        return max(1, min(value, 200))
+
+
+class DashboardLogQueryValidationResponse(BaseModel):
+    valid: bool
+    normalized_query: str
+    error: str | None = None
+
+
+class DashboardLogQueryItem(BaseModel):
+    id: int
+    timestamp: datetime
+    method: str
+    path: str
+    status_code: int
+    latency_ms: float
+    service_name: str
+    environment: str
+    request_id: str | None = None
+
+
+class DashboardLogQueryPageResponse(BaseModel):
+    server_now: datetime
+    query: str
+    next_cursor: str | None
+    items: list[DashboardLogQueryItem]
 
 
 def event_payload(event: IngestEvent) -> dict[str, Any]:

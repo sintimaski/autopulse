@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -38,12 +41,26 @@ from autopulse_backend.schemas import (
     DashboardAlertDispatchItem,
     DashboardAlertSettings,
     DashboardAlertSettingsUpdate,
+    DashboardBreakdownItem,
+    DashboardDiagnosisErrorGroupEventItem,
+    DashboardDiagnosisErrorGroupEventsResponse,
+    DashboardDiagnosisFailureRouteItem,
+    DashboardDiagnosisFailureRoutesResponse,
+    DashboardDiagnosisTimelineBucket,
+    DashboardDiagnosisTimelineResponse,
     DashboardErrorGroupItem,
     DashboardErrorGroupsResponse,
+    DashboardLogQueryItem,
+    DashboardLogQueryPageResponse,
+    DashboardLogQueryRequest,
+    DashboardLogQueryValidationResponse,
     DashboardOverviewBucket,
+    DashboardOverviewExtendedResponse,
     DashboardOverviewResponse,
     DashboardRequestItem,
     DashboardRequestsResponse,
+    DashboardRetentionSettings,
+    DashboardRetentionSettingsUpdate,
     DashboardThemeSettings,
     DashboardThemeSettingsUpdate,
 )
@@ -61,6 +78,19 @@ _LATENCY_MAX_MS_QUERY = Query(default=None, ge=0)
 _WINDOW_MINUTES_QUERY = Query(default=60, ge=1, le=7 * 24 * 60)
 _LIMIT_QUERY = Query(default=50, ge=1, le=200)
 _OFFSET_QUERY = Query(default=0, ge=0)
+_LOG_QUERY_SQL_RE = re.compile(
+    r"^\s*select\s+(?P<select>[\w\s,.*]+)\s+from\s+events(?:\s+where\s+(?P<where>.+?))?"
+    r"(?:\s+order\s+by\s+(?P<order>[\w_]+)\s*(?P<direction>asc|desc)?)?"
+    r"(?:\s+limit\s+(?P<limit>\d+))?\s*$",
+    re.IGNORECASE,
+)
+_LOG_QUERY_MAX_LIMIT = 200
+_SUPPORTED_SELECT_ALL_COLUMNS = (
+    "id,timestamp,method,path,status_code,latency_ms,service_name,environment,request_id"
+)
+_SUPPORTED_SELECT_ALL_COLUMNS_SPACED = (
+    "id, timestamp, method, path, status_code, latency_ms, service_name, environment, request_id"
+)
 
 
 @router.websocket("/updates")
@@ -122,6 +152,24 @@ def _serialize_theme_settings(settings: ProjectUiSettings) -> DashboardThemeSett
     )
 
 
+def _serialize_retention_settings(
+    settings: ProjectUiSettings,
+    fallback_days: int,
+    fallback_query_window_minutes: int,
+) -> DashboardRetentionSettings:
+    raw_days = (
+        int(settings.retention_raw_events_days)
+        if settings.retention_raw_events_days
+        else fallback_days
+    )
+    return DashboardRetentionSettings(
+        raw_events_days=max(1, raw_days),
+        logs_query_max_window_minutes=max(
+            1, int(settings.logs_query_max_window_minutes or fallback_query_window_minutes)
+        ),
+    )
+
+
 async def _resolve_exclude_autopulse_traffic(
     session: AsyncSession,
     project_id,
@@ -159,14 +207,33 @@ async def _get_or_create_project_ui_settings(
         )
     except OperationalError as exc:
         # SQLite local dev path uses create_all and may lag model columns.
-        if "no such column: project_ui_settings.exclude_autopulse_traffic" not in str(exc):
+        error_text = str(exc)
+        if (
+            "project_ui_settings.exclude_autopulse_traffic" not in error_text
+            and "project_ui_settings.logs_query_max_window_minutes" not in error_text
+            and "project_ui_settings.retention_raw_events_days" not in error_text
+        ):
             raise
-        await session.execute(
-            text(
-                "ALTER TABLE project_ui_settings "
-                "ADD COLUMN exclude_autopulse_traffic BOOLEAN NOT NULL DEFAULT 1"
-            )
-        )
+        alter_statements = [
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN exclude_autopulse_traffic BOOLEAN NOT NULL DEFAULT 1",
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN logs_query_max_window_minutes INTEGER NOT NULL DEFAULT 1440",
+            "ALTER TABLE project_ui_settings " "ADD COLUMN retention_raw_events_days INTEGER NULL",
+        ]
+        for statement in alter_statements:
+            try:
+                await session.execute(text(statement))
+            except OperationalError as migration_exc:
+                # Column already exists or dialect-specific duplicate-column error.
+                duplicate_column_markers = (
+                    "duplicate column name",
+                    "already exists",
+                )
+                if not any(
+                    marker in str(migration_exc).lower() for marker in duplicate_column_markers
+                ):
+                    raise
         await session.commit()
         settings = await session.scalar(
             select(ProjectUiSettings).where(ProjectUiSettings.project_id == project_id)
@@ -261,6 +328,146 @@ class _SQLiteErrorGroup:
     sample_stack_trace: str | None
     sample_id: int
     sample_status_code: int
+
+
+@dataclass(slots=True)
+class _ParsedLogQuery:
+    normalized_query: str
+    where_clauses: list[str]
+    order_by: str
+    order_desc: bool
+    limit: int
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    rank = max(0, min(len(ordered) - 1, int(round((len(ordered) - 1) * percentile))))
+    return float(ordered[rank])
+
+
+def _parse_log_query(query: str) -> _ParsedLogQuery:
+    normalized = " ".join(query.strip().split())
+    if not normalized:
+        raise HTTPException(status_code=422, detail="query must not be empty")
+    match = _LOG_QUERY_SQL_RE.match(normalized)
+    if not match:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Unsupported query syntax. Use: SELECT ... FROM events "
+                "WHERE ... ORDER BY timestamp|id ASC|DESC LIMIT n"
+            ),
+        )
+
+    select_part = (match.group("select") or "").strip().lower()
+    if select_part not in {
+        "*",
+        _SUPPORTED_SELECT_ALL_COLUMNS,
+        _SUPPORTED_SELECT_ALL_COLUMNS_SPACED,
+    }:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Only SELECT * or explicit columns "
+                "(id,timestamp,method,path,status_code,latency_ms,service_name,environment,"
+                "request_id) "
+                "is supported."
+            ),
+        )
+
+    order_by = (match.group("order") or "timestamp").strip().lower()
+    if order_by not in {"timestamp", "id"}:
+        raise HTTPException(status_code=422, detail="ORDER BY supports only timestamp or id")
+    direction = (match.group("direction") or "desc").strip().lower()
+    order_desc = direction != "asc"
+
+    limit_value = int(match.group("limit") or 100)
+    limit = max(1, min(limit_value, _LOG_QUERY_MAX_LIMIT))
+
+    where_raw = (match.group("where") or "").strip()
+    where_clauses = [
+        part.strip()
+        for part in re.split(r"\s+and\s+", where_raw, flags=re.IGNORECASE)
+        if part.strip()
+    ]
+    return _ParsedLogQuery(
+        normalized_query=normalized,
+        where_clauses=where_clauses,
+        order_by=order_by,
+        order_desc=order_desc,
+        limit=limit,
+    )
+
+
+def _decode_log_cursor(cursor: str | None) -> tuple[datetime, int] | None:
+    if not cursor:
+        return None
+    try:
+        decoded = base64.urlsafe_b64decode(cursor.encode("utf-8")).decode("utf-8")
+        raw = json.loads(decoded)
+        timestamp = _as_utc_datetime(datetime.fromisoformat(str(raw["timestamp"])))
+        event_id = int(raw["id"])
+        return timestamp, event_id
+    except Exception as exc:  # pragma: no cover - defensive parsing
+        raise HTTPException(status_code=422, detail="Invalid cursor") from exc
+
+
+def _encode_log_cursor(timestamp: datetime, event_id: int) -> str:
+    payload = {"timestamp": _as_utc_datetime(timestamp).isoformat(), "id": event_id}
+    return base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("utf-8")
+
+
+def _apply_log_query_filters(filters: list, where_clauses: list[str]) -> None:
+    for clause in where_clauses:
+        eq_match = re.match(
+            r"^(method|environment|service_name)\s*=\s*'([^']+)'\s*$",
+            clause,
+            flags=re.IGNORECASE,
+        )
+        if eq_match:
+            field, value = eq_match.groups()
+            field_name = field.lower()
+            if field_name == "method":
+                filters.append(Event.method == value.upper())
+            elif field_name == "environment":
+                filters.append(Event.environment == value)
+            else:
+                filters.append(Event.service_name == value)
+            continue
+
+        path_like = re.match(r"^path\s+like\s+'([^']+)'\s*$", clause, flags=re.IGNORECASE)
+        if path_like:
+            filters.append(Event.path.like(path_like.group(1)))
+            continue
+
+        status_ge = re.match(r"^status_code\s*>=\s*(\d+)\s*$", clause, flags=re.IGNORECASE)
+        if status_ge:
+            filters.append(Event.status_code >= int(status_ge.group(1)))
+            continue
+        status_le = re.match(r"^status_code\s*<=\s*(\d+)\s*$", clause, flags=re.IGNORECASE)
+        if status_le:
+            filters.append(Event.status_code <= int(status_le.group(1)))
+            continue
+
+        latency_ge = re.match(
+            r"^latency_ms\s*>=\s*(\d+(?:\.\d+)?)\s*$", clause, flags=re.IGNORECASE
+        )
+        if latency_ge:
+            filters.append(Event.latency_ms >= float(latency_ge.group(1)))
+            continue
+        latency_le = re.match(
+            r"^latency_ms\s*<=\s*(\d+(?:\.\d+)?)\s*$", clause, flags=re.IGNORECASE
+        )
+        if latency_le:
+            filters.append(Event.latency_ms <= float(latency_le.group(1)))
+            continue
+
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported WHERE clause fragment: '{clause}'",
+        )
 
 
 @router.get("/overview", response_model=DashboardOverviewResponse)
@@ -371,6 +578,278 @@ async def get_dashboard_overview(
         requests_per_minute=requests_per_minute,
         series=series,
     )
+
+
+@router.get("/overview/extended", response_model=DashboardOverviewExtendedResponse)
+async def get_dashboard_overview_extended(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
+) -> DashboardOverviewExtendedResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    exclude_autopulse_traffic = await _resolve_exclude_autopulse_traffic(
+        session, context.project_id
+    )
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    _append_exclude_autopulse_filters(filters, exclude_autopulse_traffic=exclude_autopulse_traffic)
+    rows = await session.execute(
+        select(
+            Event.path,
+            Event.service_name,
+            Event.status_code,
+            Event.latency_ms,
+            Event.timestamp,
+        ).where(*filters)
+    )
+    items = list(rows)
+    latencies = [float(latency) for _, _, _, latency, _ in items]
+
+    service_stats: dict[str, dict[str, float | int]] = {}
+    route_stats: dict[str, dict[str, float | int]] = {}
+    error_burst_count = 0
+    error_window_start = resolved_to - timedelta(minutes=5)
+    for path, service_name, status_code, latency_ms, timestamp in items:
+        is_error = int(status_code) >= 500
+        key_service = service_name or "unknown"
+        key_route = path or "unknown"
+        for stats, key in ((service_stats, key_service), (route_stats, key_route)):
+            current = stats.setdefault(
+                key,
+                {"requests": 0, "errors": 0, "latency_sum": 0.0},
+            )
+            current["requests"] += 1
+            current["latency_sum"] += float(latency_ms)
+            if is_error:
+                current["errors"] += 1
+        if is_error and _as_utc_datetime(timestamp) >= error_window_start:
+            error_burst_count += 1
+
+    def to_breakdown(source: dict[str, dict[str, float | int]]) -> list[DashboardBreakdownItem]:
+        rows_result: list[DashboardBreakdownItem] = []
+        for key, data in source.items():
+            req = int(data["requests"])
+            err = int(data["errors"])
+            rows_result.append(
+                DashboardBreakdownItem(
+                    key=key,
+                    request_count=req,
+                    error_count=err,
+                    error_rate=(err / req) if req else 0.0,
+                    avg_latency_ms=(float(data["latency_sum"]) / req) if req else 0.0,
+                )
+            )
+        rows_result.sort(key=lambda row: (row.error_count, row.request_count), reverse=True)
+        return rows_result[:8]
+
+    return DashboardOverviewExtendedResponse(
+        server_now=server_now,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+        p50_latency_ms=_percentile(latencies, 0.50),
+        p95_latency_ms=_percentile(latencies, 0.95),
+        p99_latency_ms=_percentile(latencies, 0.99),
+        error_burst_count=error_burst_count,
+        active_incident_count=1 if error_burst_count > 0 else 0,
+        service_breakdown=to_breakdown(service_stats),
+        route_breakdown=to_breakdown(route_stats),
+    )
+
+
+@router.get("/diagnosis/timeline", response_model=DashboardDiagnosisTimelineResponse)
+async def get_dashboard_diagnosis_timeline(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
+) -> DashboardDiagnosisTimelineResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    rows = await session.execute(select(Event.timestamp, Event.status_code).where(*filters))
+    buckets: dict[datetime, dict[str, int]] = {}
+    for timestamp, status_code in rows:
+        minute = _minute_bucket(timestamp)
+        bucket = buckets.setdefault(minute, {"requests": 0, "errors": 0})
+        bucket["requests"] += 1
+        if int(status_code) >= 500:
+            bucket["errors"] += 1
+    timeline = [
+        DashboardDiagnosisTimelineBucket(
+            minute=minute,
+            request_count=data["requests"],
+            error_count=data["errors"],
+        )
+        for minute, data in sorted(buckets.items(), key=lambda item: item[0])
+    ]
+    return DashboardDiagnosisTimelineResponse(
+        server_now=server_now,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+        buckets=timeline,
+    )
+
+
+@router.get("/diagnosis/failures-by-route", response_model=DashboardDiagnosisFailureRoutesResponse)
+async def get_dashboard_diagnosis_failures_by_route(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
+) -> DashboardDiagnosisFailureRoutesResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    rows = await session.execute(
+        select(Event.path, Event.status_code, Event.latency_ms).where(*filters)
+    )
+    grouped: dict[str, dict[str, float | int]] = {}
+    for path, status_code, latency_ms in rows:
+        key = path or "unknown"
+        item = grouped.setdefault(key, {"requests": 0, "failures": 0, "latency_sum": 0.0})
+        item["requests"] += 1
+        item["latency_sum"] += float(latency_ms)
+        if int(status_code) >= 500:
+            item["failures"] += 1
+    items = [
+        DashboardDiagnosisFailureRouteItem(
+            path=path,
+            failure_count=int(data["failures"]),
+            error_rate=(int(data["failures"]) / int(data["requests"]))
+            if int(data["requests"])
+            else 0.0,
+            avg_latency_ms=(float(data["latency_sum"]) / int(data["requests"]))
+            if int(data["requests"])
+            else 0.0,
+        )
+        for path, data in grouped.items()
+        if int(data["failures"]) > 0
+    ]
+    items.sort(key=lambda item: item.failure_count, reverse=True)
+    return DashboardDiagnosisFailureRoutesResponse(
+        server_now=server_now,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+        items=items[:20],
+    )
+
+
+@router.get(
+    "/diagnosis/error-group-events", response_model=DashboardDiagnosisErrorGroupEventsResponse
+)
+async def get_dashboard_diagnosis_error_group_events(
+    group_key: str,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
+    limit: int = _LIMIT_QUERY,
+    offset: int = _OFFSET_QUERY,
+) -> DashboardDiagnosisErrorGroupEventsResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    _ = server_now
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+        Event.type == "error",
+    ]
+    rows = await session.execute(
+        select(
+            Event.id,
+            Event.timestamp,
+            Event.method,
+            Event.path,
+            Event.status_code,
+            Event.latency_ms,
+            Event.service_name,
+            Event.environment,
+            Event.request_id,
+            Event.payload,
+        )
+        .where(*filters)
+        .order_by(Event.timestamp.desc(), Event.id.desc())
+    )
+    matched: list[DashboardDiagnosisErrorGroupEventItem] = []
+    for (
+        event_id,
+        timestamp,
+        method,
+        path,
+        status_code,
+        latency_ms,
+        service_name,
+        environment,
+        request_id,
+        payload,
+    ) in rows:
+        payload_dict = payload if isinstance(payload, dict) else {}
+        error_hash = payload_dict.get("error_hash")
+        derived_key = (
+            str(error_hash)
+            if isinstance(error_hash, str) and error_hash
+            else _synthetic_error_key(
+                payload_dict.get("exception_type")
+                if isinstance(payload_dict.get("exception_type"), str)
+                else None,
+                payload_dict.get("exception_message")
+                if isinstance(payload_dict.get("exception_message"), str)
+                else None,
+                path,
+            )
+        )
+        if derived_key != group_key:
+            continue
+        matched.append(
+            DashboardDiagnosisErrorGroupEventItem(
+                id=int(event_id),
+                timestamp=_as_utc_datetime(timestamp),
+                method=method,
+                path=path,
+                status_code=int(status_code),
+                latency_ms=float(latency_ms),
+                service_name=service_name,
+                environment=environment,
+                request_id=request_id,
+                stack_trace=payload_dict.get("stack_trace")
+                if isinstance(payload_dict.get("stack_trace"), str)
+                else None,
+                message=payload_dict.get("exception_message")
+                if isinstance(payload_dict.get("exception_message"), str)
+                else None,
+                exception_type=payload_dict.get("exception_type")
+                if isinstance(payload_dict.get("exception_type"), str)
+                else None,
+            )
+        )
+    paged = matched[offset : offset + limit]
+    return DashboardDiagnosisErrorGroupEventsResponse(total=len(matched), items=paged)
 
 
 @router.get("/requests", response_model=DashboardRequestsResponse)
@@ -827,3 +1306,193 @@ async def update_dashboard_theme_settings(
     await session.commit()
     await session.refresh(settings)
     return _serialize_theme_settings(settings)
+
+
+@router.get("/retention-settings", response_model=DashboardRetentionSettings)
+async def get_dashboard_retention_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardRetentionSettings:
+    settings = get_settings()
+    ui_settings = await _get_or_create_project_ui_settings(session, context.project_id)
+    await session.commit()
+    await session.refresh(ui_settings)
+    return _serialize_retention_settings(
+        ui_settings,
+        settings.retention_raw_events_days,
+        settings.logs_query_max_window_minutes,
+    )
+
+
+@router.put("/retention-settings", response_model=DashboardRetentionSettings)
+async def update_dashboard_retention_settings(
+    payload: DashboardRetentionSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardRetentionSettings:
+    settings = get_settings()
+    ui_settings = await _get_or_create_project_ui_settings(session, context.project_id)
+    ui_settings.retention_raw_events_days = payload.raw_events_days
+    ui_settings.logs_query_max_window_minutes = payload.logs_query_max_window_minutes
+    await session.commit()
+    await session.refresh(ui_settings)
+    return _serialize_retention_settings(
+        ui_settings,
+        settings.retention_raw_events_days,
+        settings.logs_query_max_window_minutes,
+    )
+
+
+@router.post("/log-query/validate", response_model=DashboardLogQueryValidationResponse)
+async def validate_dashboard_log_query(
+    payload: DashboardLogQueryRequest,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardLogQueryValidationResponse:
+    _ = context
+    _ = session
+    try:
+        parsed = _parse_log_query(payload.query)
+    except HTTPException as exc:
+        return DashboardLogQueryValidationResponse(
+            valid=False,
+            normalized_query=payload.query.strip(),
+            error=str(exc.detail),
+        )
+    return DashboardLogQueryValidationResponse(
+        valid=True,
+        normalized_query=parsed.normalized_query,
+        error=None,
+    )
+
+
+@router.post("/log-query/execute", response_model=DashboardLogQueryPageResponse)
+async def execute_dashboard_log_query(
+    payload: DashboardLogQueryRequest,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardLogQueryPageResponse:
+    server_now = datetime.now(tz=UTC)
+    settings = get_settings()
+    parsed = _parse_log_query(payload.query)
+    ui_settings = await _get_or_create_project_ui_settings(session, context.project_id)
+    max_minutes = max(
+        1,
+        int(ui_settings.logs_query_max_window_minutes or settings.logs_query_max_window_minutes),
+    )
+    resolved_from, resolved_to = _resolve_time_window(
+        payload.from_timestamp,
+        payload.to_timestamp,
+        min(max_minutes, _WINDOW_MINUTES_QUERY.default),
+        now_utc=server_now,
+    )
+    if (resolved_to - resolved_from) > timedelta(minutes=max_minutes):
+        resolved_from = resolved_to - timedelta(minutes=max_minutes)
+
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    _apply_log_query_filters(filters, parsed.where_clauses)
+    cursor = _decode_log_cursor(payload.cursor)
+    if cursor is not None:
+        cursor_ts, cursor_id = cursor
+        if parsed.order_by == "id":
+            if parsed.order_desc:
+                filters.append(Event.id < cursor_id)
+            else:
+                filters.append(Event.id > cursor_id)
+        else:
+            if parsed.order_desc:
+                filters.append(
+                    (Event.timestamp < cursor_ts)
+                    | ((Event.timestamp == cursor_ts) & (Event.id < cursor_id))
+                )
+            else:
+                filters.append(
+                    (Event.timestamp > cursor_ts)
+                    | ((Event.timestamp == cursor_ts) & (Event.id > cursor_id))
+                )
+
+    requested_limit = max(1, min(payload.page_size, parsed.limit, _LOG_QUERY_MAX_LIMIT))
+    order_column = Event.id if parsed.order_by == "id" else Event.timestamp
+    direction = order_column.desc() if parsed.order_desc else order_column.asc()
+    results = await session.execute(
+        select(
+            Event.id,
+            Event.timestamp,
+            Event.method,
+            Event.path,
+            Event.status_code,
+            Event.latency_ms,
+            Event.service_name,
+            Event.environment,
+            Event.request_id,
+        )
+        .where(*filters)
+        .order_by(direction, Event.id.desc() if parsed.order_desc else Event.id.asc())
+        .limit(requested_limit + 1)
+    )
+    rows = list(results)
+    has_more = len(rows) > requested_limit
+    selected_rows = rows[:requested_limit]
+    next_cursor = None
+    if has_more and selected_rows:
+        last = selected_rows[-1]
+        next_cursor = _encode_log_cursor(timestamp=last[1], event_id=int(last[0]))
+    return DashboardLogQueryPageResponse(
+        server_now=server_now,
+        query=parsed.normalized_query,
+        next_cursor=next_cursor,
+        items=[
+            DashboardLogQueryItem(
+                id=int(event_id),
+                timestamp=_as_utc_datetime(timestamp),
+                method=method,
+                path=path,
+                status_code=int(status_code),
+                latency_ms=float(latency_ms),
+                service_name=service_name,
+                environment=environment,
+                request_id=request_id,
+            )
+            for (
+                event_id,
+                timestamp,
+                method,
+                path,
+                status_code,
+                latency_ms,
+                service_name,
+                environment,
+                request_id,
+            ) in selected_rows
+        ],
+    )
+
+
+@router.websocket("/log-query/stream")
+async def dashboard_log_query_stream(websocket: WebSocket) -> None:
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Missing API key")
+        return
+    session_maker = async_sessionmaker(
+        bind=get_engine(), expire_on_commit=False, class_=AsyncSession
+    )
+    async with session_maker() as session:
+        try:
+            context = await authenticate_project_token(session=session, token=token)
+        except HTTPException:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid API key")
+            return
+    await websocket.accept()
+    project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        project_websocket_hub.remove_connection(project_id=context.project_id, websocket=websocket)

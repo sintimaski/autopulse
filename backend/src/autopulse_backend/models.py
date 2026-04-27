@@ -123,6 +123,10 @@ class ProjectUiSettings(Base):
     )
     theme_preference: Mapped[str] = mapped_column(String(16), nullable=False, default="system")
     exclude_autopulse_traffic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    retention_raw_events_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    logs_query_max_window_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1440
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

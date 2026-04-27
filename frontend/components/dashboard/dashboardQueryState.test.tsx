@@ -21,6 +21,9 @@ describe("dashboardQueryState", () => {
       errorGroupLimit: 50,
       errorGroupPage: 3,
       errorGroupSort: "count",
+      sqlQueryText: "SELECT * FROM events",
+      sqlQueryCursor: "cursor-123",
+      liveQueryEnabled: false,
     });
     expect(query.get("from_timestamp")).toBe("2026-04-27T10:00:00.000Z");
     expect(query.get("to_timestamp")).toBe("2026-04-27T11:00:00.000Z");
@@ -31,6 +34,9 @@ describe("dashboardQueryState", () => {
     expect(query.get("request_page")).toBe("2");
     expect(query.get("error_group_page")).toBe("3");
     expect(query.get("error_group_sort")).toBe("count");
+    expect(query.get("sql_query")).toBe("SELECT * FROM events");
+    expect(query.get("sql_cursor")).toBe("cursor-123");
+    expect(query.get("sql_live")).toBe("0");
   });
 
   it("parses scoped query and falls back to defaults", () => {
@@ -49,6 +55,9 @@ describe("dashboardQueryState", () => {
         error_group_limit: "10",
         error_group_page: "-3",
         error_group_sort: "count",
+        sql_query: "SELECT * FROM events",
+        sql_cursor: "c-1",
+        sql_live: "0",
       }),
     );
 
@@ -64,5 +73,8 @@ describe("dashboardQueryState", () => {
     expect(parsed.errorGroupLimit).toBe(10);
     expect(parsed.errorGroupPage).toBe(0);
     expect(parsed.errorGroupSort).toBe("count");
+    expect(parsed.sqlQueryText).toBe("SELECT * FROM events");
+    expect(parsed.sqlQueryCursor).toBe("c-1");
+    expect(parsed.liveQueryEnabled).toBe(false);
   });
 });

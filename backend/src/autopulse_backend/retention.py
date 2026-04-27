@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.config import Settings
-from autopulse_backend.models import Event
+from autopulse_backend.models import Event, ProjectUiSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,12 +23,55 @@ async def run_retention_cleanup_once(
     now: datetime | None = None,
 ) -> RetentionCleanupResult:
     resolved_now = now.astimezone(UTC) if now is not None else datetime.now(tz=UTC)
-    cutoff = resolved_now - timedelta(days=settings.retention_raw_events_days)
-    stale_count_result = await session.execute(
-        select(func.count(Event.id)).where(Event.received_at < cutoff)
+    default_cutoff = resolved_now - timedelta(days=settings.retention_raw_events_days)
+    stale_count = 0
+
+    retention_overrides = await session.execute(
+        select(
+            ProjectUiSettings.project_id,
+            ProjectUiSettings.retention_raw_events_days,
+        ).where(ProjectUiSettings.retention_raw_events_days.is_not(None))
     )
-    stale_count = int(stale_count_result.scalar_one())
-    if stale_count > 0:
-        await session.execute(delete(Event).where(Event.received_at < cutoff))
+    for project_id, retention_days in retention_overrides:
+        if retention_days is None:
+            continue
+        project_cutoff = resolved_now - timedelta(days=max(1, int(retention_days)))
+        count_result = await session.execute(
+            select(func.count(Event.id)).where(
+                Event.project_id == project_id, Event.received_at < project_cutoff
+            )
+        )
+        project_stale = int(count_result.scalar_one())
+        if project_stale > 0:
+            stale_count += project_stale
+            await session.execute(
+                delete(Event).where(
+                    Event.project_id == project_id, Event.received_at < project_cutoff
+                )
+            )
+
+    stale_count_result = await session.execute(
+        select(func.count(Event.id)).where(
+            Event.received_at < default_cutoff,
+            Event.project_id.not_in(
+                select(ProjectUiSettings.project_id).where(
+                    ProjectUiSettings.retention_raw_events_days.is_not(None)
+                )
+            ),
+        )
+    )
+    default_stale = int(stale_count_result.scalar_one())
+    if default_stale > 0:
+        stale_count += default_stale
+        await session.execute(
+            delete(Event).where(
+                Event.received_at < default_cutoff,
+                Event.project_id.not_in(
+                    select(ProjectUiSettings.project_id).where(
+                        ProjectUiSettings.retention_raw_events_days.is_not(None)
+                    )
+                ),
+            )
+        )
     await session.commit()
-    return RetentionCleanupResult(cutoff=cutoff, deleted_events=stale_count)
+    return RetentionCleanupResult(cutoff=default_cutoff, deleted_events=stale_count)

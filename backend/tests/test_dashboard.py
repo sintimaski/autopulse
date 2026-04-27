@@ -578,3 +578,95 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
         )
         assert overview_filtered.status_code == 200
         assert overview_filtered.json()["request_count"] == 1
+
+
+def test_dashboard_overview_extended_and_diagnosis_endpoints(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Diagnosis")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=8)
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/ok")
+        _ingest(client, key, base_time + timedelta(minutes=1), 502, "GET", "/checkout")
+        _ingest(client, key, base_time + timedelta(minutes=2), 503, "POST", "/checkout")
+        _ingest(client, key, base_time + timedelta(minutes=3), 200, "GET", "/users")
+
+        extended = client.get(
+            "/dashboard/overview/extended",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers=headers,
+        )
+        timeline = client.get(
+            "/dashboard/diagnosis/timeline",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers=headers,
+        )
+        failures = client.get(
+            "/dashboard/diagnosis/failures-by-route",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers=headers,
+        )
+
+    assert extended.status_code == 200
+    extended_payload = extended.json()
+    assert extended_payload["p95_latency_ms"] > 0
+    assert isinstance(extended_payload["service_breakdown"], list)
+    assert isinstance(extended_payload["route_breakdown"], list)
+    assert timeline.status_code == 200
+    assert len(timeline.json()["buckets"]) >= 1
+    assert failures.status_code == 200
+    assert failures.json()["items"][0]["path"] == "/checkout"
+
+
+def test_dashboard_log_query_validate_execute_and_retention_settings(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Query")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    query = "SELECT * FROM events WHERE status_code >= 500 ORDER BY timestamp DESC LIMIT 2"
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/ok")
+        _ingest(client, key, base_time + timedelta(minutes=1), 500, "POST", "/boom")
+        _ingest(client, key, base_time + timedelta(minutes=2), 503, "POST", "/boom")
+        validate = client.post(
+            "/dashboard/log-query/validate",
+            json={"query": query},
+            headers=headers,
+        )
+        assert validate.status_code == 200
+        assert validate.json()["valid"] is True
+
+        execute = client.post(
+            "/dashboard/log-query/execute",
+            json={"query": query},
+            headers=headers,
+        )
+        assert execute.status_code == 200
+        execute_payload = execute.json()
+        assert len(execute_payload["items"]) == 2
+        assert execute_payload["next_cursor"] is not None
+
+        retention_read = client.get("/dashboard/retention-settings", headers=headers)
+        assert retention_read.status_code == 200
+        retention_update = client.put(
+            "/dashboard/retention-settings",
+            json={"raw_events_days": 7, "logs_query_max_window_minutes": 120},
+            headers=headers,
+        )
+        assert retention_update.status_code == 200
+        assert retention_update.json()["raw_events_days"] == 7

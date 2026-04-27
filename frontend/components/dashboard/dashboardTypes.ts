@@ -17,6 +17,27 @@ export type OverviewResponse = {
   series: OverviewBucket[];
 };
 
+export type BreakdownItem = {
+  key: string;
+  request_count: number;
+  error_count: number;
+  error_rate: number;
+  avg_latency_ms: number;
+};
+
+export type OverviewExtendedResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  p50_latency_ms: number;
+  p95_latency_ms: number;
+  p99_latency_ms: number;
+  error_burst_count: number;
+  active_incident_count: number;
+  service_breakdown: BreakdownItem[];
+  route_breakdown: BreakdownItem[];
+};
+
 export type RequestItem = {
   timestamp: string;
   method: string;
@@ -59,6 +80,53 @@ export type ErrorGroupsResponse = {
   items: ErrorGroupItem[];
 };
 
+export type DiagnosisTimelineBucket = {
+  minute: string;
+  request_count: number;
+  error_count: number;
+};
+
+export type DiagnosisTimelineResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  buckets: DiagnosisTimelineBucket[];
+};
+
+export type DiagnosisFailureRouteItem = {
+  path: string;
+  failure_count: number;
+  error_rate: number;
+  avg_latency_ms: number;
+};
+
+export type DiagnosisFailureRoutesResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  items: DiagnosisFailureRouteItem[];
+};
+
+export type DiagnosisErrorGroupEventItem = {
+  id: number;
+  timestamp: string;
+  method: string;
+  path: string;
+  status_code: number;
+  latency_ms: number;
+  service_name: string;
+  environment: string;
+  request_id: string | null;
+  stack_trace: string | null;
+  message: string | null;
+  exception_type: string | null;
+};
+
+export type DiagnosisErrorGroupEventsResponse = {
+  total: number;
+  items: DiagnosisErrorGroupEventItem[];
+};
+
 export type AlertSettings = {
   enabled: boolean;
   destination_email: string | null;
@@ -95,6 +163,44 @@ export type ThemeSettings = {
   exclude_autopulse_traffic: boolean;
 };
 
+export type RetentionSettings = {
+  raw_events_days: number;
+  logs_query_max_window_minutes: number;
+};
+
+export type LogQueryRequest = {
+  query: string;
+  cursor?: string | null;
+  page_size?: number;
+  from_timestamp?: string;
+  to_timestamp?: string;
+};
+
+export type LogQueryValidationResponse = {
+  valid: boolean;
+  normalized_query: string;
+  error: string | null;
+};
+
+export type LogQueryItem = {
+  id: number;
+  timestamp: string;
+  method: string;
+  path: string;
+  status_code: number;
+  latency_ms: number;
+  service_name: string;
+  environment: string;
+  request_id: string | null;
+};
+
+export type LogQueryPageResponse = {
+  server_now: string;
+  query: string;
+  next_cursor: string | null;
+  items: LogQueryItem[];
+};
+
 export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
 export const EMBEDDED_DEFAULT_API_KEY = "ap_live_embeddedlocal_localdevsecret";
 
@@ -128,6 +234,19 @@ export function buildUpdatesWebsocketUrl(token: string): string {
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
   const basePath = base.pathname.replace(/\/+$/, "");
   base.pathname = `${basePath}/dashboard/updates`;
+  base.searchParams.set("token", token);
+  return base.toString();
+}
+
+export function buildLogQueryWebsocketUrl(token: string): string {
+  const normalizedBase = normalizeBasePath(apiBaseUrl);
+  const base =
+    normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")
+      ? new URL(normalizedBase)
+      : new URL(normalizedBase, window.location.origin);
+  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+  const basePath = base.pathname.replace(/\/+$/, "");
+  base.pathname = `${basePath}/dashboard/log-query/stream`;
   base.searchParams.set("token", token);
   return base.toString();
 }
