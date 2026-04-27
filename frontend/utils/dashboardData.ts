@@ -40,6 +40,52 @@ export type OverviewForSignals = {
   error_rate: number;
 } | null;
 
+function emptyBucket(minute: string): OverviewBucket {
+  return {
+    minute,
+    request_count: 0,
+    error_count: 0,
+    avg_latency_ms: 0,
+    count_2xx: 0,
+    count_3xx: 0,
+    count_4xx: 0,
+    count_5xx: 0,
+  };
+}
+
+function normalizeMinuteIso(minute: string): string {
+  const parsed = new Date(minute);
+  if (!Number.isFinite(parsed.getTime())) {
+    return minute;
+  }
+  parsed.setSeconds(0, 0);
+  return parsed.toISOString();
+}
+
+function fillMinuteBucketGaps(series: OverviewBucket[]): OverviewBucket[] {
+  if (!series.length) {
+    return [];
+  }
+  const normalized = series.map((bucket) => ({
+    ...bucket,
+    minute: normalizeMinuteIso(bucket.minute),
+  }));
+  const sorted = normalized.sort((a, b) => a.minute.localeCompare(b.minute));
+  const byMinute = new Map(sorted.map((bucket) => [bucket.minute, bucket]));
+  const start = new Date(sorted[0].minute).getTime();
+  const end = new Date(sorted[sorted.length - 1].minute).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+    return sorted;
+  }
+
+  const out: OverviewBucket[] = [];
+  for (let ts = start; ts <= end; ts += 60_000) {
+    const minute = new Date(ts).toISOString();
+    out.push(byMinute.get(minute) ?? emptyBucket(minute));
+  }
+  return out;
+}
+
 export function resolveSparklineSeries(
   overview: OverviewForSparkline,
   requests: RequestsForSparkline,
@@ -47,7 +93,7 @@ export function resolveSparklineSeries(
 ): OverviewBucket[] {
   const preferRequests = options?.preferRequests ?? false;
   if (!preferRequests && overview?.series?.length) {
-    return overview.series;
+    return fillMinuteBucketGaps(overview.series);
   }
   if (!requests?.items?.length) {
     return overview?.series?.length ? overview.series : [];
@@ -87,7 +133,7 @@ export function resolveSparklineSeries(
       count_5xx: statusClass === 5 ? 1 : 0,
     });
   }
-  return [...buckets.values()].sort((a, b) => a.minute.localeCompare(b.minute));
+  return fillMinuteBucketGaps([...buckets.values()]);
 }
 
 export function maxBucketRequestCount(series: OverviewBucket[]): number {
@@ -122,11 +168,12 @@ export function aggregateSeriesByStep(
   if (!series.length) {
     return [];
   }
+  const normalized = fillMinuteBucketGaps(series);
   const step = Math.max(1, Math.floor(stepMinutes));
   if (step === 1) {
-    return [...series].sort((a, b) => a.minute.localeCompare(b.minute));
+    return normalized;
   }
-  const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
+  const sorted = normalized;
   const spanMs = step * 60 * 1000;
   type Acc = {
     rc: number;
@@ -162,7 +209,7 @@ export function aggregateSeriesByStep(
       map.set(key, { rc, ec, latWeighted: lat * rc, c2xx, c3xx, c4xx, c5xx });
     }
   }
-  return [...map.entries()]
+  const grouped = [...map.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([minute, acc]) => ({
       minute,
@@ -174,6 +221,21 @@ export function aggregateSeriesByStep(
       count_4xx: acc.c4xx,
       count_5xx: acc.c5xx,
     }));
+  if (!grouped.length) {
+    return [];
+  }
+  const groupedByMinute = new Map(grouped.map((bucket) => [bucket.minute, bucket]));
+  const start = new Date(grouped[0].minute).getTime();
+  const end = new Date(grouped[grouped.length - 1].minute).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+    return grouped;
+  }
+  const out: OverviewBucket[] = [];
+  for (let ts = start; ts <= end; ts += spanMs) {
+    const minute = new Date(ts).toISOString();
+    out.push(groupedByMinute.get(minute) ?? emptyBucket(minute));
+  }
+  return out;
 }
 
 export function computeOperationalSignals(

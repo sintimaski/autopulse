@@ -1,0 +1,260 @@
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
+from autopulse_backend.dashboard.error_grouping import (
+    derived_error_group_key,
+    error_like_events_predicate,
+)
+from autopulse_backend.dashboard.log_query import append_event_sql_filters
+from autopulse_backend.dashboard.params import (
+    EVENT_SQL_FILTER_QUERY,
+    FROM_TIMESTAMP_QUERY,
+    LIMIT_QUERY,
+    OFFSET_QUERY,
+    TO_TIMESTAMP_QUERY,
+    WINDOW_MINUTES_QUERY,
+)
+from autopulse_backend.dashboard.time_window import (
+    as_utc_datetime,
+    iter_minute_buckets,
+    minute_bucket,
+    resolve_time_window,
+)
+from autopulse_backend.db import get_db_session
+from autopulse_backend.exclude_autopulse import (
+    append_exclude_autopulse_event_filters,
+    resolve_exclude_autopulse_traffic,
+)
+from autopulse_backend.models import Event
+from autopulse_backend.schemas import (
+    DashboardDiagnosisErrorGroupEventItem,
+    DashboardDiagnosisErrorGroupEventsResponse,
+    DashboardDiagnosisFailureRouteItem,
+    DashboardDiagnosisFailureRoutesResponse,
+    DashboardDiagnosisTimelineBucket,
+    DashboardDiagnosisTimelineResponse,
+)
+
+router = APIRouter()
+
+
+def _fill_timeline_gaps(
+    *,
+    sparse_timeline: list[DashboardDiagnosisTimelineBucket],
+    from_timestamp: datetime,
+    to_timestamp: datetime,
+) -> list[DashboardDiagnosisTimelineBucket]:
+    by_minute = {bucket.minute: bucket for bucket in sparse_timeline}
+    return [
+        by_minute.get(
+            minute,
+            DashboardDiagnosisTimelineBucket(minute=minute, request_count=0, error_count=0),
+        )
+        for minute in iter_minute_buckets(from_timestamp, to_timestamp)
+    ]
+
+
+@router.get("/diagnosis/timeline", response_model=DashboardDiagnosisTimelineResponse)
+async def get_dashboard_diagnosis_timeline(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = TO_TIMESTAMP_QUERY,
+    window_minutes: int = WINDOW_MINUTES_QUERY,
+    event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
+) -> DashboardDiagnosisTimelineResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    append_event_sql_filters(filters, event_sql_filter)
+    rows = await session.execute(select(Event.timestamp, Event.status_code).where(*filters))
+    buckets: dict[datetime, dict[str, int]] = {}
+    for timestamp, status_code in rows:
+        minute = minute_bucket(timestamp)
+        bucket = buckets.setdefault(minute, {"requests": 0, "errors": 0})
+        bucket["requests"] += 1
+        if int(status_code) >= 500:
+            bucket["errors"] += 1
+    sparse_timeline = [
+        DashboardDiagnosisTimelineBucket(
+            minute=minute,
+            request_count=data["requests"],
+            error_count=data["errors"],
+        )
+        for minute, data in sorted(buckets.items(), key=lambda item: item[0])
+    ]
+    timeline = _fill_timeline_gaps(
+        sparse_timeline=sparse_timeline,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+    )
+    return DashboardDiagnosisTimelineResponse(
+        server_now=server_now,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+        buckets=timeline,
+    )
+
+
+@router.get("/diagnosis/failures-by-route", response_model=DashboardDiagnosisFailureRoutesResponse)
+async def get_dashboard_diagnosis_failures_by_route(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = TO_TIMESTAMP_QUERY,
+    window_minutes: int = WINDOW_MINUTES_QUERY,
+    event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
+) -> DashboardDiagnosisFailureRoutesResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+    ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    append_event_sql_filters(filters, event_sql_filter)
+    rows = await session.execute(
+        select(Event.path, Event.status_code, Event.latency_ms).where(*filters)
+    )
+    grouped: dict[str, dict[str, float | int]] = {}
+    for path, status_code, latency_ms in rows:
+        key = path or "unknown"
+        item = grouped.setdefault(key, {"requests": 0, "failures": 0, "latency_sum": 0.0})
+        item["requests"] += 1
+        item["latency_sum"] += float(latency_ms)
+        if int(status_code) >= 500:
+            item["failures"] += 1
+    items = [
+        DashboardDiagnosisFailureRouteItem(
+            path=path,
+            failure_count=int(data["failures"]),
+            error_rate=(int(data["failures"]) / int(data["requests"]))
+            if int(data["requests"])
+            else 0.0,
+            avg_latency_ms=(float(data["latency_sum"]) / int(data["requests"]))
+            if int(data["requests"])
+            else 0.0,
+        )
+        for path, data in grouped.items()
+        if int(data["failures"]) > 0
+    ]
+    items.sort(key=lambda item: item.failure_count, reverse=True)
+    return DashboardDiagnosisFailureRoutesResponse(
+        server_now=server_now,
+        from_timestamp=resolved_from,
+        to_timestamp=resolved_to,
+        items=items[:20],
+    )
+
+
+@router.get(
+    "/diagnosis/error-group-events", response_model=DashboardDiagnosisErrorGroupEventsResponse
+)
+async def get_dashboard_diagnosis_error_group_events(
+    group_key: str,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = TO_TIMESTAMP_QUERY,
+    window_minutes: int = WINDOW_MINUTES_QUERY,
+    limit: int = LIMIT_QUERY,
+    offset: int = OFFSET_QUERY,
+    event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
+) -> DashboardDiagnosisErrorGroupEventsResponse:
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
+    _ = server_now
+    exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, context.project_id)
+    filters = [
+        Event.project_id == context.project_id,
+        Event.timestamp >= resolved_from,
+        Event.timestamp <= resolved_to,
+        error_like_events_predicate(resolved_from, resolved_to),
+    ]
+    append_exclude_autopulse_event_filters(
+        filters, exclude_autopulse_traffic=exclude_autopulse_traffic
+    )
+    append_event_sql_filters(filters, event_sql_filter)
+    rows = await session.execute(
+        select(
+            Event.id,
+            Event.timestamp,
+            Event.method,
+            Event.path,
+            Event.status_code,
+            Event.latency_ms,
+            Event.service_name,
+            Event.environment,
+            Event.request_id,
+            Event.payload,
+        )
+        .where(*filters)
+        .order_by(Event.timestamp.desc(), Event.id.desc())
+    )
+    matched: list[DashboardDiagnosisErrorGroupEventItem] = []
+    for (
+        event_id,
+        timestamp,
+        method,
+        path,
+        status_code,
+        latency_ms,
+        service_name,
+        environment,
+        request_id,
+        payload,
+    ) in rows:
+        payload_dict = payload if isinstance(payload, dict) else {}
+        ev_path = path if isinstance(path, str) else ""
+        derived_key = derived_error_group_key(payload_dict, ev_path)
+        if derived_key != group_key:
+            continue
+        matched.append(
+            DashboardDiagnosisErrorGroupEventItem(
+                id=int(event_id),
+                timestamp=as_utc_datetime(timestamp),
+                method=method,
+                path=path,
+                status_code=int(status_code),
+                latency_ms=float(latency_ms),
+                service_name=service_name,
+                environment=environment,
+                request_id=request_id,
+                stack_trace=payload_dict.get("stack_trace")
+                if isinstance(payload_dict.get("stack_trace"), str)
+                else None,
+                message=payload_dict.get("exception_message")
+                if isinstance(payload_dict.get("exception_message"), str)
+                else None,
+                exception_type=payload_dict.get("exception_type")
+                if isinstance(payload_dict.get("exception_type"), str)
+                else None,
+            )
+        )
+    paged = matched[offset : offset + limit]
+    return DashboardDiagnosisErrorGroupEventsResponse(total=len(matched), items=paged)

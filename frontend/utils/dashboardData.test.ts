@@ -18,7 +18,26 @@ describe("resolveSparklineSeries", () => {
     const requests = {
       items: [{ timestamp: "2026-04-26T10:00:30Z", status_code: 200, latency_ms: 5 }],
     };
-    expect(resolveSparklineSeries(overview, requests)).toEqual(series);
+    expect(resolveSparklineSeries(overview, requests)).toEqual([
+      { minute: "2026-04-26T10:00:00.000Z", request_count: 3, error_count: 0, avg_latency_ms: 10 },
+    ]);
+  });
+
+  it("fills minute gaps when overview series is sparse", () => {
+    const overview = {
+      series: [
+        { minute: "2026-04-26T10:00:00.000Z", request_count: 2, error_count: 0, avg_latency_ms: 10 },
+        { minute: "2026-04-26T10:02:00.000Z", request_count: 1, error_count: 1, avg_latency_ms: 30 },
+      ],
+    };
+    const out = resolveSparklineSeries(overview, null);
+    expect(out).toHaveLength(3);
+    expect(out[1]).toMatchObject({
+      minute: "2026-04-26T10:01:00.000Z",
+      request_count: 0,
+      error_count: 0,
+      avg_latency_ms: 0,
+    });
   });
 
   it("aggregates request rows by minute when overview series is empty", () => {
@@ -132,6 +151,31 @@ describe("aggregateSeriesByStep", () => {
     expect(out[0].count_3xx).toBe(0);
     expect(out[0].count_4xx).toBe(1);
     expect(out[0].count_5xx).toBe(1);
+  });
+
+  it("fills missing step buckets with zeros", () => {
+    const series = [
+      {
+        minute: "1970-01-01T00:00:00.000Z",
+        request_count: 2,
+        error_count: 0,
+        avg_latency_ms: 10,
+      },
+      {
+        minute: "1970-01-01T00:10:00.000Z",
+        request_count: 1,
+        error_count: 1,
+        avg_latency_ms: 30,
+      },
+    ];
+    const out = aggregateSeriesByStep(series, 5);
+    expect(out.map((b) => b.minute)).toEqual([
+      "1970-01-01T00:00:00.000Z",
+      "1970-01-01T00:05:00.000Z",
+      "1970-01-01T00:10:00.000Z",
+    ]);
+    expect(out[1].request_count).toBe(0);
+    expect(out[1].error_count).toBe(0);
   });
 });
 
