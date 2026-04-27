@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 
-import { FacetPillGroup } from "../FacetPillGroup";
 import { MetricCard } from "../MetricCard";
+import { OverviewScopeFacetBoard } from "../OverviewScopeFacetBoard";
 import { SparklineMini } from "../SparklineMini";
 import { StatusPill } from "../StatusPill";
 import { VolumeChart } from "../VolumeChart";
@@ -93,20 +93,30 @@ export function DashboardHomeContent() {
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex flex-wrap items-center gap-3">
-          <FacetPillGroup title="Method" values={d.method === "ALL" ? [] : [d.method]} />
-          <FacetPillGroup title="Status" values={d.statusClass === "ALL" ? [] : [`${d.statusClass}xx`]} />
-          <FacetPillGroup title="Env" values={d.serverEnvironmentTags} />
-          <FacetPillGroup title="Service" values={d.serverServiceTags} />
-          {overviewExtended.error_burst_count > 0 ? (
-            <StatusPill label="Error burst detected" tone="danger" />
-          ) : (
-            <StatusPill label="No active burst" tone="success" />
-          )}
-          <Link href={diagnosisGroupedHref} className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
-            Open grouped errors
-          </Link>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Scope</h2>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">
+              Adjust filters, then apply to reload metrics for this window.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {overviewExtended.error_burst_count > 0 ? (
+              <StatusPill label="Error burst detected" tone="danger" />
+            ) : (
+              <StatusPill label="No active burst" tone="success" />
+            )}
+            <Link
+              href={diagnosisGroupedHref}
+              className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+            >
+              Open grouped errors
+            </Link>
+          </div>
         </div>
+        <OverviewScopeFacetBoard
+          key={`${d.method}:${d.statusClass}:${d.serverEnvironmentQuery}:${d.serverServiceQuery}`}
+        />
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
