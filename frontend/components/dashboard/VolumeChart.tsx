@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { OverviewBucket } from "../../utils/dashboardData";
@@ -25,7 +25,7 @@ const STEP_OPTIONS = [1, 2, 5, 15, 30, 60] as const;
 
 function formatMinuteLabel(iso: string): string {
   try {
-    return new Date(iso).toLocaleString(undefined, {
+    return parseIsoTimestamp(iso).toLocaleString(undefined, {
       month: "short",
       day: "numeric",
       hour: "2-digit",
@@ -34,6 +34,11 @@ function formatMinuteLabel(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function parseIsoTimestamp(value: string): Date {
+  const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value);
+  return new Date(hasZone ? value : `${value}Z`);
 }
 
 function makeTrendPoints(values: number[], width: number, height: number): string {
@@ -174,6 +179,7 @@ export function VolumeChart({
   const wrapRef = useRef<HTMLDivElement>(null);
   const [chartSpanMinutes, setChartSpanMinutes] = useState(0);
   const [stepMinutes, setStepMinutes] = useState<(typeof STEP_OPTIONS)[number]>(1);
+  const [chartContainerWidth, setChartContainerWidth] = useState(0);
   const [tip, setTip] = useState<{
     bucket: OverviewBucket;
     left: number;
@@ -181,6 +187,8 @@ export function VolumeChart({
     errRatio: number;
     containerWidth: number;
   } | null>(null);
+  const [hoveredColumnIndex, setHoveredColumnIndex] = useState<number | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const displayed = useMemo(() => {
     const trimmed =
@@ -210,17 +218,41 @@ export function VolumeChart({
       });
   }, []);
 
-  const barWidth = 16;
-  const barGap = 4;
-  const chartHeight = 52;
-  const plotWidth = Math.max(displayed.length * (barWidth + barGap), 160);
+  useEffect(() => {
+    const el = chartContainerRef.current;
+    if (!el) {
+      return;
+    }
+    const updateWidth = () => {
+      setChartContainerWidth(Math.max(0, el.clientWidth));
+    };
+    updateWidth();
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const barGap = 3.5;
+  const outerHorizontalPadding = 16;
+  const availablePlotWidth = Math.max(0, chartContainerWidth - outerHorizontalPadding);
+  const fitBarWidth =
+    displayed.length > 0
+      ? Math.max(
+          2,
+          Math.min(32, (availablePlotWidth - barGap * Math.max(0, displayed.length - 1)) / displayed.length),
+        )
+      : 2;
+  const barWidth = Number.isFinite(fitBarWidth) ? fitBarWidth : 2;
+  const chartHeight = 52 * 1.5;
+  const computedPlotWidth = displayed.length * barWidth + Math.max(0, displayed.length - 1) * barGap;
+  const plotWidth = Math.max(160, computedPlotWidth);
   const totalRequests = displayed.reduce((sum, bucket) => sum + Number(bucket.request_count || 0), 0);
   const totalErrors = displayed.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0);
   const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
   const onBucketClick = useCallback(
     (bucket: OverviewBucket) => {
-      const bucketStart = bucket.minute;
-      const bucketEnd = new Date(new Date(bucket.minute).getTime() + stepMinutes * 60_000).toISOString();
+      const bucketStart = parseIsoTimestamp(bucket.minute).toISOString();
+      const bucketEnd = new Date(parseIsoTimestamp(bucket.minute).getTime() + stepMinutes * 60_000).toISOString();
       const params = new URLSearchParams(diagnosisBaseQuery ?? {});
       params.set("from_timestamp", bucketStart);
       params.set("to_timestamp", bucketEnd);
@@ -282,7 +314,8 @@ export function VolumeChart({
         ) : (
           <>
             <div
-              className="overflow-x-auto rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-2 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
+              ref={chartContainerRef}
+              className="overflow-x-auto rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-3 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
               role="img"
               aria-label="Request volume by time bucket"
             >
@@ -290,7 +323,10 @@ export function VolumeChart({
                 width={plotWidth}
                 height={chartHeight}
                 className="block"
-                onMouseLeave={() => setTip(null)}
+                onMouseLeave={() => {
+                  setTip(null);
+                  setHoveredColumnIndex(null);
+                }}
               >
                 {displayed.map((bucket, index) => {
                   const requestCount = Number(bucket.request_count || 0);
@@ -302,19 +338,45 @@ export function VolumeChart({
                   const x = index * (barWidth + barGap);
                   const y = chartHeight - barHeight;
                   return (
-                    <rect
-                      key={`${bucket.minute}-${index}`}
-                      x={x}
-                      y={y}
-                      width={barWidth}
-                      height={barHeight}
-                      rx={1}
-                      fill={barColor}
-                      className="cursor-pointer"
-                      onMouseEnter={(e) => onBarMove(e, bucket)}
-                      onMouseMove={(e) => onBarMove(e, bucket)}
-                      onClick={() => onBucketClick(bucket)}
-                    />
+                    <g key={`${bucket.minute}-${index}`}>
+                      {hoveredColumnIndex === index ? (
+                        <rect
+                          x={x - 1}
+                          y={0}
+                          width={barWidth + 2}
+                          height={chartHeight}
+                          rx={2}
+                          fill="rgba(56, 189, 248, 0.14)"
+                          pointerEvents="none"
+                        />
+                      ) : null}
+                      <rect
+                        x={x}
+                        y={y}
+                        width={barWidth}
+                        height={barHeight}
+                        rx={1}
+                        fill={barColor}
+                        pointerEvents="none"
+                      />
+                      <rect
+                        x={x}
+                        y={0}
+                        width={barWidth}
+                        height={chartHeight}
+                        fill="transparent"
+                        className="cursor-pointer"
+                        onMouseEnter={(e) => {
+                          setHoveredColumnIndex(index);
+                          onBarMove(e, bucket);
+                        }}
+                        onMouseMove={(e) => {
+                          setHoveredColumnIndex(index);
+                          onBarMove(e, bucket);
+                        }}
+                        onClick={() => onBucketClick(bucket)}
+                      />
+                    </g>
                   );
                 })}
               </svg>
@@ -349,7 +411,7 @@ export function VolumeChart({
                   </span>
                 </p>
                 <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-neutral-400">
-                  Bucket start (UTC). Click a bar to open Diagnosis for this bucket.
+                  Bucket start (your local time). Click a bar to open Diagnosis for this bucket.
                 </p>
               </div>
             )}

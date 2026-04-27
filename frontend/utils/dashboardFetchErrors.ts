@@ -1,4 +1,9 @@
-type DashboardEndpointLabel = "overview" | "requests" | "error-groups";
+type DashboardEndpointLabel =
+  | "overview"
+  | "requests"
+  | "error-groups"
+  | "alert-settings"
+  | "alert-dispatches";
 
 export type DashboardFetchResult = {
   endpoint: DashboardEndpointLabel;

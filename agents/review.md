@@ -3,6 +3,7 @@
 ## Purpose
 
 Review diffs for **correctness**, **product fit**, **security**, and **operational** risk using explicit lanes so nothing important is skipped.
+For milestone or release-bound changes, pair this review with `docs/DEVELOPMENT_PROCESS.md` section 8 (Risk and Release Readiness Checks).
 
 ## Inputs
 

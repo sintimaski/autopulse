@@ -322,26 +322,88 @@ Test taxonomy used across milestones:
 
 ## 7) MVP Completion Gate (Must Match DEVELOPMENT.md)
 
-Before declaring MVP done, all checks below must be true:
+Treat MVP completion as a release gate, not a status note.
+All checks below must pass in one verification cycle and include evidence links
+(test output, screenshots, command snippets, or notes in the release PR description).
 
-- A FastAPI developer can integrate AutoPulse with one line.
-- Requests appear in the dashboard within a few seconds.
-- Exceptions are grouped and visible with stack traces.
-- Basic request rate, error rate, and latency are visible.
-- SDK failure does not affect the user app.
-- Sensitive headers and common secret fields are scrubbed by default.
-- Email alerts work for simple error spikes.
-- Setup documentation is short enough to read in a few minutes.
+### 7.1 Required gate checks
+
+- **One-line integration:** verify a clean FastAPI sample app can enable AutoPulse with one line and no extra observability configuration.
+- **First value speed:** after generating traffic, requests are visible in the dashboard within a few seconds.
+- **Error diagnosis:** induced exceptions are grouped and visible with stack traces.
+- **Core overview signals:** request rate, error rate, and average latency are visible and numerically plausible.
+- **Fail-silent SDK behavior:** when backend is unavailable, the host app still serves requests successfully.
+- **Default scrubbing:** sensitive headers and common secret fields are scrubbed in captured payloads.
+- **Alert baseline:** simple error spike emits an email alert.
+- **Outage heuristic:** simple outage pattern emits an email alert.
+- **Setup brevity:** onboarding/setup docs are concise enough for a new user to read in a few minutes.
+
+### 7.2 MVP gate execution checklist
+
+Run these checks in order from repository root:
+
+```bash
+uv sync --group dev
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+npm --prefix frontend install
+npm --prefix frontend run lint
+npm --prefix frontend run typecheck
+npm --prefix frontend run test
+```
+
+Then perform the manual MVP scenario:
+
+1. Start backend and frontend locally.
+2. Integrate SDK into a minimal FastAPI app (one-line middleware enablement).
+3. Generate normal and failing traffic.
+4. Capture evidence for first-value time, grouped errors, and overview metrics.
+5. Simulate backend outage and verify host app continuity.
+6. Validate scrubbed payload output and alert dispatch behavior.
+
+### 7.3 MVP sign-off requirement
+
+MVP is complete only when all checks in `7.1` are marked pass and all evidence from `7.2`
+is attached to the milestone release PR.
+Any failed check blocks MVP declaration until remediated.
 
 ## 8) Risk and Release Readiness Checks
 
-Before each milestone release, explicitly review these risk classes:
+Before each milestone release, run a structured risk review using the classes below.
+Every class needs: current status (`pass`, `needs mitigation`, or `blocked`), evidence,
+and an explicit owner when mitigation is required.
 
-- Hot-path latency regression in SDK middleware.
-- Unbounded memory growth or retry storms during outages.
-- Sensitive data leakage from headers/body/query capture.
-- Dashboard complexity drift away from fast diagnosis.
-- Storage growth and retention-policy correctness.
+### 8.1 Required risk classes
+
+- **SDK hot path performance risk:** latency regression in middleware/request path.
+- **Reliability containment risk:** unbounded memory growth or retry storms during outages.
+- **Data exposure risk:** sensitive leakage from header/body/query capture.
+- **Auth boundary risk:** API-key/auth drift (hashed keys, project isolation, reject invalid credentials).
+- **Transport/default security drift:** production HTTPS and conservative capture defaults.
+- **Product scope drift:** dashboard complexity moving away from fast diagnosis.
+- **Data lifecycle risk:** storage growth and retention-policy correctness.
+
+### 8.2 Per-release readiness routine
+
+For each milestone release:
+
+1. Run full automated checks from section `7.2`.
+2. Complete a manual risk walk for all classes in `8.1`.
+3. Record mitigations, owners, and due dates for non-pass classes.
+4. Confirm no unresolved `blocked` risks remain for MVP-critical behavior.
+5. Add a short "release readiness" note to the PR describing residual risk.
+
+### 8.3 Release decision rule
+
+Release proceeds when:
+
+- all automated checks pass,
+- no `blocked` risks remain in the classes above,
+- any `needs mitigation` risks have an owner and dated follow-up issue,
+- and the release note includes residual-risk acknowledgment.
 
 Keep mitigations aligned with `DEVELOPMENT.md` engineering-risk guidance.
 

@@ -705,4 +705,5 @@ The MVP is ready to launch when:
 - SDK failure does not affect the user app.
 - Sensitive headers and common secret fields are scrubbed by default.
 - Email alerts work for simple error spikes.
+- Email alerts work for simple outage heuristics.
 - Setup documentation is short enough to read in a few minutes.

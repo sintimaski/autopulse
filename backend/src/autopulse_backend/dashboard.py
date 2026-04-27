@@ -77,6 +77,12 @@ def _serialize_theme_settings(settings: ProjectUiSettings) -> DashboardThemeSett
     return DashboardThemeSettings(theme_preference=theme)
 
 
+def _as_utc_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 async def _get_or_create_project_ui_settings(
     session: AsyncSession,
     project_id,
@@ -99,9 +105,9 @@ def _resolve_time_window(
     *,
     now_utc: datetime,
 ) -> tuple[datetime, datetime]:
-    resolved_to = to_timestamp.astimezone(UTC) if to_timestamp is not None else now_utc
+    resolved_to = _as_utc_datetime(to_timestamp) if to_timestamp is not None else now_utc
     resolved_from = (
-        from_timestamp.astimezone(UTC)
+        _as_utc_datetime(from_timestamp)
         if from_timestamp is not None
         else resolved_to - timedelta(minutes=window_minutes)
     )
@@ -111,7 +117,7 @@ def _resolve_time_window(
 
 
 def _minute_bucket(dt: datetime) -> datetime:
-    return dt.astimezone(UTC).replace(second=0, microsecond=0)
+    return _as_utc_datetime(dt).replace(second=0, microsecond=0)
 
 
 def _synthetic_error_key(
@@ -261,7 +267,7 @@ async def get_dashboard_overview(
         series_result = await session.execute(series_query)
         series = [
             DashboardOverviewBucket(
-                minute=minute_bucket.astimezone(UTC),
+                minute=_as_utc_datetime(minute_bucket),
                 request_count=int(bucket_request_count or 0),
                 error_count=int(bucket_error_count or 0),
                 avg_latency_ms=float(bucket_avg_latency or 0.0),
@@ -354,7 +360,7 @@ async def get_dashboard_requests(
     requests_result = await session.execute(requests_query)
     items = [
         DashboardRequestItem(
-            timestamp=timestamp.astimezone(UTC),
+            timestamp=_as_utc_datetime(timestamp),
             method=event_method,
             path=path,
             status_code=status_code,
@@ -454,7 +460,7 @@ async def get_dashboard_error_groups(
                 )
 
             current = grouped.get(group_key)
-            event_time = timestamp.astimezone(UTC)
+            event_time = _as_utc_datetime(timestamp)
             if current is None:
                 grouped[group_key] = _SQLiteErrorGroup(
                     group_key=group_key,
@@ -613,8 +619,8 @@ async def get_dashboard_error_groups(
                 message=msg,
                 path=sample_path,
                 count=int(count),
-                first_seen=first_seen.astimezone(UTC),
-                last_seen=last_seen.astimezone(UTC),
+                first_seen=_as_utc_datetime(first_seen),
+                last_seen=_as_utc_datetime(last_seen),
                 sample_stack_trace=stack,
             )
         )
@@ -677,9 +683,9 @@ async def get_dashboard_alert_dispatches(
             alert_type=dispatch.alert_type,
             destination_email=dispatch.destination_email,
             delivered_via=dispatch.delivered_via,
-            triggered_at=dispatch.triggered_at.astimezone(UTC),
-            window_start=dispatch.window_start.astimezone(UTC),
-            window_end=dispatch.window_end.astimezone(UTC),
+            triggered_at=_as_utc_datetime(dispatch.triggered_at),
+            window_start=_as_utc_datetime(dispatch.window_start),
+            window_end=_as_utc_datetime(dispatch.window_end),
             detail=dispatch.detail,
         )
         for dispatch in rows.scalars().all()

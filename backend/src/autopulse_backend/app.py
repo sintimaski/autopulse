@@ -7,6 +7,7 @@ from sqlalchemy import text
 from autopulse_backend.config import get_settings
 from autopulse_backend.dashboard import router as dashboard_router
 from autopulse_backend.db import get_engine
+from autopulse_backend.dev_scenarios import router as dev_scenarios_router
 from autopulse_backend.ingest import router as ingest_router
 from autopulse_backend.jobs import SchedulerHandle, start_scheduler
 from autopulse_backend.models import Base
@@ -63,4 +64,6 @@ def create_app() -> FastAPI:
 
     app.include_router(ingest_router)
     app.include_router(dashboard_router)
+    if settings.dev_scenarios_enabled:
+        app.include_router(dev_scenarios_router)
     return app

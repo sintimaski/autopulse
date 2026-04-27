@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { VolumeChart } from "../VolumeChart";
 import { useDashboardData } from "../DashboardDataContext";
+import { buildScopedQuery } from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
 
 export function DashboardHomeContent() {
@@ -33,44 +34,24 @@ export function DashboardHomeContent() {
     : overview.avg_latency_ms;
   const displayRequestsPerMinute = displayRequestCount / Math.max(d.windowMinutes, 1);
   const usingFilteredSeries = d.method !== "ALL" || d.statusClass !== "ALL";
-  const diagnosisParams = (() => {
-    const params = new URLSearchParams({
-      from_timestamp: d.windowFromTimestamp,
-      to_timestamp: d.windowToTimestamp,
-    });
-    if (d.method !== "ALL") {
-      params.set("method", d.method);
-    }
-    if (d.statusClass !== "ALL") {
-      params.set("status_class", d.statusClass);
-    }
-    if (d.pathQuery.trim()) {
-      params.set("path_contains", d.pathQuery.trim());
-    }
-    if (d.minLatencyMs.trim()) {
-      params.set("min_latency_ms", d.minLatencyMs.trim());
-    }
-    if (d.maxLatencyMs.trim()) {
-      params.set("max_latency_ms", d.maxLatencyMs.trim());
-    }
-    const envCsv = d.serverEnvironmentQuery
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
-      .join(",");
-    if (envCsv) {
-      params.set("environments", envCsv);
-    }
-    const serviceCsv = d.serverServiceQuery
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean)
-      .join(",");
-    if (serviceCsv) {
-      params.set("services", serviceCsv);
-    }
-    return params;
-  })();
+  const diagnosisParams = buildScopedQuery({
+    isAbsoluteWindow: d.isAbsoluteWindow,
+    windowMinutes: d.windowMinutes,
+    windowFromTimestamp: d.windowFromTimestamp,
+    windowToTimestamp: d.windowToTimestamp,
+    method: d.method,
+    statusClass: d.statusClass,
+    minLatencyMs: d.minLatencyMs,
+    maxLatencyMs: d.maxLatencyMs,
+    pathQuery: d.pathQuery,
+    serverEnvironmentQuery: d.serverEnvironmentQuery,
+    serverServiceQuery: d.serverServiceQuery,
+    requestLimit: d.requestLimit,
+    requestPage: 0,
+    errorGroupLimit: d.errorGroupLimit,
+    errorGroupPage: 0,
+    errorGroupSort: d.errorGroupSort,
+  });
   const diagnosisBaseHref = `/diagnosis?${diagnosisParams.toString()}`;
   const diagnosisGroupedHref = `/diagnosis?${(() => {
     const params = new URLSearchParams(diagnosisParams.toString());

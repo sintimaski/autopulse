@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import type { AlertSettings } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { buildScopedQuery } from "../dashboardQueryState";
 
 export function AlertsContent() {
   const d = useDashboardData();
@@ -29,34 +30,24 @@ export function AlertsContent() {
   const errorSpikeCandidate = d.operationalSignals.errorSpikeCandidate;
   const outageCandidate = d.operationalSignals.outageCandidate;
   const recentDispatches = d.recentAlertDispatches;
-  const diagnosisParams = (() => {
-    const params = new URLSearchParams({
-      from_timestamp: d.windowFromTimestamp,
-      to_timestamp: d.windowToTimestamp,
-    });
-    if (d.method !== "ALL") {
-      params.set("method", d.method);
-    }
-    if (d.statusClass !== "ALL") {
-      params.set("status_class", d.statusClass);
-    }
-    if (d.pathQuery.trim()) {
-      params.set("path_contains", d.pathQuery.trim());
-    }
-    if (d.minLatencyMs.trim()) {
-      params.set("min_latency_ms", d.minLatencyMs.trim());
-    }
-    if (d.maxLatencyMs.trim()) {
-      params.set("max_latency_ms", d.maxLatencyMs.trim());
-    }
-    if (d.serverEnvironmentQuery.trim()) {
-      params.set("environments", d.serverEnvironmentQuery.trim());
-    }
-    if (d.serverServiceQuery.trim()) {
-      params.set("services", d.serverServiceQuery.trim());
-    }
-    return params.toString();
-  })();
+  const diagnosisParams = buildScopedQuery({
+    isAbsoluteWindow: d.isAbsoluteWindow,
+    windowMinutes: d.windowMinutes,
+    windowFromTimestamp: d.windowFromTimestamp,
+    windowToTimestamp: d.windowToTimestamp,
+    method: d.method,
+    statusClass: d.statusClass,
+    minLatencyMs: d.minLatencyMs,
+    maxLatencyMs: d.maxLatencyMs,
+    pathQuery: d.pathQuery,
+    serverEnvironmentQuery: d.serverEnvironmentQuery,
+    serverServiceQuery: d.serverServiceQuery,
+    requestLimit: d.requestLimit,
+    requestPage: 0,
+    errorGroupLimit: d.errorGroupLimit,
+    errorGroupPage: 0,
+    errorGroupSort: d.errorGroupSort,
+  }).toString();
   const diagnosisBaseHref = `/diagnosis?${diagnosisParams}`;
 
   const goToDiagnosisGrouped = () => {
