@@ -68,8 +68,11 @@ def _sdk_version() -> str:
         return "unknown"
 
 
-def _stable_error_hash(exception_type: str, exception_message: str, stack_trace: str) -> str:
+def _stable_error_hash(
+    exception_type: str, exception_message: str, stack_trace: str, path: str
+) -> str:
     # Keep grouping stable across equivalent traces where only line numbers differ.
+    # Include route path so the same exception text on different endpoints does not share one hash.
     normalized_stack_trace = re.sub(r"line \d+", "line ?", stack_trace)
     digest = hashlib.sha256()
     digest.update(exception_type.encode("utf-8"))
@@ -77,6 +80,8 @@ def _stable_error_hash(exception_type: str, exception_message: str, stack_trace:
     digest.update(exception_message.encode("utf-8"))
     digest.update(b"|")
     digest.update(normalized_stack_trace.encode("utf-8"))
+    digest.update(b"|")
+    digest.update((path or "").encode("utf-8"))
     return digest.hexdigest()
 
 
@@ -290,7 +295,12 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
                     "exception_type": type(exc).__name__,
                     "exception_message": str(exc),
                     "stack_trace": stack_trace,
-                    "error_hash": _stable_error_hash(type(exc).__name__, str(exc), stack_trace),
+                    "error_hash": _stable_error_hash(
+                        type(exc).__name__,
+                        str(exc),
+                        stack_trace,
+                        _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
+                    ),
                 }
             )
             raise

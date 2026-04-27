@@ -47,6 +47,8 @@ export function AlertsContent() {
     errorGroupLimit: d.errorGroupLimit,
     errorGroupPage: 0,
     errorGroupSort: d.errorGroupSort,
+    sqlFilterApplied: d.sqlFilterApplied,
+    sqlFilterEnabled: d.sqlFilterEnabled,
   }).toString();
   const diagnosisBaseHref = `/diagnosis?${diagnosisParams}`;
 

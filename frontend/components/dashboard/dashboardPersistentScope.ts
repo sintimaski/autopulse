@@ -34,7 +34,15 @@ export type PersistedLogsClientSlice = {
   serviceTags: string[];
 };
 
+/** v2: Diagnosis and Logs keep independent server-scope query strings. */
 export type PersistedDashboardSession = {
+  v: 2;
+  diagnosisScopedQueryString: string;
+  logsScopedQueryString: string;
+  logsClient: PersistedLogsClientSlice;
+};
+
+type PersistedDashboardSessionV1 = {
   v: 1;
   scopedQueryString: string;
   logsClient: PersistedLogsClientSlice;
@@ -56,8 +64,21 @@ function normalizeLogsClient(raw: unknown): PersistedLogsClientSlice | null {
   return { groupBy, sortKey, sortDir, envTags, serviceTags };
 }
 
+function parseScopedFromQueryString(q: string): DashboardScopedQueryState {
+  return parseScopedQuery(new URLSearchParams(q));
+}
+
+const DEFAULT_LOGS_CLIENT: PersistedLogsClientSlice = {
+  groupBy: "none",
+  sortKey: "timestamp",
+  sortDir: "desc",
+  envTags: [],
+  serviceTags: [],
+};
+
 export function readPersistedDashboardSession(): {
-  scoped: DashboardScopedQueryState;
+  diagnosisScoped: DashboardScopedQueryState;
+  logsScoped: DashboardScopedQueryState;
   logsClient: PersistedLogsClientSlice;
 } | null {
   if (typeof window === "undefined") {
@@ -68,21 +89,26 @@ export function readPersistedDashboardSession(): {
     if (!raw) {
       return null;
     }
-    const parsed = JSON.parse(raw) as Partial<PersistedDashboardSession>;
-    if (parsed.v !== 1 || typeof parsed.scopedQueryString !== "string") {
-      return null;
-    }
-    const scoped = parseScopedQuery(new URLSearchParams(parsed.scopedQueryString));
+    const parsed = JSON.parse(raw) as Partial<PersistedDashboardSession> & Partial<PersistedDashboardSessionV1>;
     const logsClient =
-      normalizeLogsClient(parsed.logsClient) ??
-      ({
-        groupBy: "none",
-        sortKey: "timestamp",
-        sortDir: "desc",
-        envTags: [],
-        serviceTags: [],
-      } satisfies PersistedLogsClientSlice);
-    return { scoped, logsClient };
+      normalizeLogsClient(parsed.logsClient) ?? ({ ...DEFAULT_LOGS_CLIENT } satisfies PersistedLogsClientSlice);
+
+    if (parsed.v === 2 && typeof parsed.diagnosisScopedQueryString === "string" && typeof parsed.logsScopedQueryString === "string") {
+      return {
+        diagnosisScoped: parseScopedFromQueryString(parsed.diagnosisScopedQueryString),
+        logsScoped: parseScopedFromQueryString(parsed.logsScopedQueryString),
+        logsClient,
+      };
+    }
+    if (parsed.v === 1 && typeof parsed.scopedQueryString === "string") {
+      const shared = parseScopedFromQueryString(parsed.scopedQueryString);
+      return {
+        diagnosisScoped: shared,
+        logsScoped: { ...shared },
+        logsClient,
+      };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -100,12 +126,68 @@ export function writePersistedDashboardSession(payload: PersistedDashboardSessio
 }
 
 export function buildPersistedSessionPayload(
-  scoped: DashboardScopedQueryState,
+  diagnosisScopedQueryString: string,
+  logsScopedQueryString: string,
   logsClient: PersistedLogsClientSlice,
 ): PersistedDashboardSession {
   return {
-    v: 1,
-    scopedQueryString: buildScopedQuery(scoped).toString(),
+    v: 2,
+    diagnosisScopedQueryString,
+    logsScopedQueryString,
     logsClient,
   };
+}
+
+/** Read v2 session from disk for merge-write; returns null if missing or invalid. */
+export function readPersistedSessionRecord(): PersistedDashboardSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<PersistedDashboardSession> & Partial<PersistedDashboardSessionV1>;
+    const logsClient =
+      normalizeLogsClient(parsed.logsClient) ?? ({ ...DEFAULT_LOGS_CLIENT } satisfies PersistedLogsClientSlice);
+
+    if (parsed.v === 2 && typeof parsed.diagnosisScopedQueryString === "string" && typeof parsed.logsScopedQueryString === "string") {
+      return {
+        v: 2,
+        diagnosisScopedQueryString: parsed.diagnosisScopedQueryString,
+        logsScopedQueryString: parsed.logsScopedQueryString,
+        logsClient,
+      };
+    }
+    if (parsed.v === 1 && typeof parsed.scopedQueryString === "string") {
+      const s = parsed.scopedQueryString;
+      return {
+        v: 2,
+        diagnosisScopedQueryString: s,
+        logsScopedQueryString: s,
+        logsClient,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Merge-update one route's scope string and write v2 session. */
+export function mergePersistedScopedSession(
+  routePath: string,
+  scoped: DashboardScopedQueryState,
+  logsClient: PersistedLogsClientSlice,
+): void {
+  const prior = readPersistedSessionRecord();
+  const nextScoped = buildScopedQuery(scoped).toString();
+  const diagnosisScopedQueryString =
+    routePath === "/diagnosis" ? nextScoped : (prior?.diagnosisScopedQueryString ?? "");
+  const logsScopedQueryString =
+    routePath === "/logs" ? nextScoped : (prior?.logsScopedQueryString ?? "");
+  writePersistedDashboardSession(
+    buildPersistedSessionPayload(diagnosisScopedQueryString, logsScopedQueryString, logsClient),
+  );
 }

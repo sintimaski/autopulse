@@ -291,9 +291,16 @@ ValueError: boom
     do_work()
 ValueError: boom
 """
-    hash_a = _stable_error_hash("ValueError", "boom", stack_a)
-    hash_b = _stable_error_hash("ValueError", "boom", stack_b)
+    hash_a = _stable_error_hash("ValueError", "boom", stack_a, "/api/a")
+    hash_b = _stable_error_hash("ValueError", "boom", stack_b, "/api/a")
     assert hash_a == hash_b
+
+
+def test_stable_error_hash_differs_by_path() -> None:
+    stack = "ValueError: boom\n"
+    h_a = _stable_error_hash("ValueError", "boom", stack, "/boom")
+    h_b = _stable_error_hash("ValueError", "boom", stack, "/orders")
+    assert h_a != h_b
 
 
 def test_embedded_mode_mounts_backend_and_accepts_events(tmp_path: Path) -> None:

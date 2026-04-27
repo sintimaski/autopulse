@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEventHandler } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEventHandler } from "react";
 
+import { Ban, CalendarClock, Check, FilterX, History, ListChecks, SlidersHorizontal } from "../../lib/icons";
 import { useDashboardData } from "./DashboardDataContext";
 import { TagSelector } from "./TagSelector";
 
@@ -53,8 +54,11 @@ function formatRelativeToUserTime(serverIso: string): string {
   return `${Math.abs(diffMinutes)}m behind your local time`;
 }
 
-export function ServerQueryToolbar() {
+export type ServerScopeToolbarVariant = "diagnosis" | "logs";
+
+export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVariant }) {
   const d = useDashboardData();
+  const scopeTitle = variant === "diagnosis" ? "Diagnosis scope" : "Logs scope";
   const selectedEnvironmentTags = useMemo(
     () => new Set(d.serverEnvironmentTags),
     [d.serverEnvironmentTags],
@@ -89,6 +93,31 @@ export function ServerQueryToolbar() {
   const errorGroupSortRef = useRef<HTMLSelectElement>(null);
   const [windowError, setWindowError] = useState<string | null>(null);
 
+  /** Rolling-window API timestamps change on every refresh; keys must not, or inputs remount and layout jumps while scrolled. */
+  const dateTimeFieldResetKey = useMemo(
+    () =>
+      d.isAbsoluteWindow
+        ? `abs:${d.windowFromTimestamp}|${d.windowToTimestamp}`
+        : `roll:${d.windowMinutes}`,
+    [d.isAbsoluteWindow, d.windowFromTimestamp, d.windowToTimestamp, d.windowMinutes],
+  );
+
+  useEffect(() => {
+    const from = fromInputRef.current;
+    const to = toInputRef.current;
+    if (!from || !to) {
+      return;
+    }
+    const nextFrom = isoToLocalInputValue(d.windowFromTimestamp);
+    const nextTo = isoToLocalInputValue(d.windowToTimestamp);
+    if (document.activeElement !== from && from.value !== nextFrom) {
+      from.value = nextFrom;
+    }
+    if (document.activeElement !== to && to.value !== nextTo) {
+      to.value = nextTo;
+    }
+  }, [d.windowFromTimestamp, d.windowToTimestamp]);
+
   const resetServerFilters = () => {
     d.onServerMethodChange("ALL");
     d.onServerStatusClassChange("ALL");
@@ -100,15 +129,20 @@ export function ServerQueryToolbar() {
     d.setSqlFilterDraft("");
     d.setSqlFilterApplied("");
     d.setSqlFilterEnabled(false);
-    d.setErrorGroupSort("last_seen");
-    d.setRequestPage(0);
-    d.setErrorGroupPage(0);
     if (methodRef.current) methodRef.current.value = "ALL";
     if (statusClassRef.current) statusClassRef.current.value = "ALL";
     if (minLatencyRef.current) minLatencyRef.current.value = "";
     if (maxLatencyRef.current) maxLatencyRef.current.value = "";
     if (pathRef.current) pathRef.current.value = "";
-    if (errorGroupSortRef.current) errorGroupSortRef.current.value = "last_seen";
+    if (variant === "diagnosis") {
+      d.setErrorGroupSort("last_seen");
+      d.setRequestPage(0);
+      d.setErrorGroupPage(0);
+      if (errorGroupSortRef.current) errorGroupSortRef.current.value = "last_seen";
+    } else {
+      d.setRequestLimit(100);
+      d.setRequestPage(0);
+    }
   };
   const applyFilters = () => {
     const currentScrollY = window.scrollY;
@@ -117,9 +151,13 @@ export function ServerQueryToolbar() {
     d.setMinLatencyMs(minLatencyRef.current?.value ?? "");
     d.setMaxLatencyMs(maxLatencyRef.current?.value ?? "");
     d.setPathQuery(pathRef.current?.value ?? "");
-    d.setErrorGroupSort((errorGroupSortRef.current?.value as "last_seen" | "count") ?? "last_seen");
-    d.setRequestPage(0);
-    d.setErrorGroupPage(0);
+    if (variant === "diagnosis") {
+      d.setErrorGroupSort((errorGroupSortRef.current?.value as "last_seen" | "count") ?? "last_seen");
+      d.setRequestPage(0);
+      d.setErrorGroupPage(0);
+    } else {
+      d.setRequestPage(0);
+    }
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: currentScrollY, behavior: "auto" });
     });
@@ -159,28 +197,40 @@ export function ServerQueryToolbar() {
       onKeyDown={onToolbarKeyDown}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
-            Server scope
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <SlidersHorizontal className="size-4 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
+            <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">{scopeTitle}</p>
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-300">
+              {activeServerFilterCount} active
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-neutral-400">
+            {variant === "diagnosis"
+              ? "Applies to grouped errors, diagnosis timeline, and the loaded request slice."
+              : "Applies to the request log table and server-backed log queries."}
           </p>
-          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-300">
-            {activeServerFilterCount} active
-          </span>
         </div>
-        <button
-          type="button"
-          onClick={resetServerFilters}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
-        >
-          Reset filters
-        </button>
-        <button
-          type="button"
-          onClick={applyFilters}
-          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
-        >
-          Apply filters
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={resetServerFilters}
+            title="Reset filters"
+            aria-label="Reset filters"
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+          >
+            <FilterX className="size-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={applyFilters}
+            title="Apply filters"
+            aria-label="Apply filters"
+            className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 p-2 text-sky-900 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
+          >
+            <Check className="size-4" aria-hidden />
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
@@ -201,7 +251,7 @@ export function ServerQueryToolbar() {
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
           From
           <input
-            key={`from-${d.windowFromTimestamp}`}
+            key={`from-${dateTimeFieldResetKey}`}
             ref={fromInputRef}
             type="datetime-local"
             defaultValue={isoToLocalInputValue(d.windowFromTimestamp)}
@@ -211,7 +261,7 @@ export function ServerQueryToolbar() {
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
           To
           <input
-            key={`to-${d.windowToTimestamp}`}
+            key={`to-${dateTimeFieldResetKey}`}
             ref={toInputRef}
             type="datetime-local"
             defaultValue={isoToLocalInputValue(d.windowToTimestamp)}
@@ -222,17 +272,21 @@ export function ServerQueryToolbar() {
           <button
             type="button"
             onClick={applyAbsoluteWindow}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+            title="Apply custom time window"
+            aria-label="Apply custom time window"
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
           >
-            Apply window
+            <CalendarClock className="size-4" aria-hidden />
           </button>
           {d.isAbsoluteWindow ? (
             <button
               type="button"
               onClick={d.clearAbsoluteWindow}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+              title="Use quick range preset"
+              aria-label="Use quick range preset"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
             >
-              Use quick range
+              <History className="size-4" aria-hidden />
             </button>
           ) : null}
         </div>
@@ -320,18 +374,38 @@ export function ServerQueryToolbar() {
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Error groups sort
-          <select
-            key={`error-group-sort-${d.errorGroupSort}`}
-            ref={errorGroupSortRef}
-            defaultValue={d.errorGroupSort}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-          >
-            <option value="last_seen">Last seen</option>
-            <option value="count">Count</option>
-          </select>
-        </label>
+        {variant === "diagnosis" ? (
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+            Grouped errors sort
+            <select
+              key={`error-group-sort-${d.errorGroupSort}`}
+              ref={errorGroupSortRef}
+              defaultValue={d.errorGroupSort}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            >
+              <option value="last_seen">Last seen</option>
+              <option value="count">Count</option>
+            </select>
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+            Request rows per page
+            <select
+              value={d.requestLimit}
+              onChange={(e) => {
+                d.setRequestLimit(Number(e.target.value));
+                d.setRequestPage(0);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            >
+              {d.REQUEST_LIMIT_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value} / page
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -373,42 +447,27 @@ export function ServerQueryToolbar() {
         />
       </div>
 
-      <div className="mt-3 grid gap-3 md:max-w-[380px] md:grid-cols-2">
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Request rows per page
-          <select
-            value={d.requestLimit}
-            onChange={(e) => {
-              d.setRequestLimit(Number(e.target.value));
-              d.setRequestPage(0);
-            }}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-          >
-            {d.REQUEST_LIMIT_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value} / page
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Error groups per page
-          <select
-            value={d.errorGroupLimit}
-            onChange={(e) => {
-              d.setErrorGroupLimit(Number(e.target.value));
-              d.setErrorGroupPage(0);
-            }}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-          >
-            {d.ERROR_GROUP_LIMIT_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value} / page
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {variant === "diagnosis" ? (
+        <div className="mt-3 max-w-[220px]">
+          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+            Grouped errors per page
+            <select
+              value={d.errorGroupLimit}
+              onChange={(e) => {
+                d.setErrorGroupLimit(Number(e.target.value));
+                d.setErrorGroupPage(0);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            >
+              {d.ERROR_GROUP_LIMIT_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value} / page
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      ) : null}
 
       <div className="mt-4 rounded-lg border border-slate-200 bg-white/90 p-3 dark:border-neutral-700 dark:bg-neutral-950/40">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -416,7 +475,7 @@ export function ServerQueryToolbar() {
             SQL WHERE filter
           </p>
           <span className="text-xs text-slate-500 dark:text-neutral-400">
-            AND-separated clauses; same grammar as log queries
+            AND-separated clauses; same grammar as the Logs SQL query panel
           </span>
         </div>
         <textarea
@@ -430,25 +489,31 @@ export function ServerQueryToolbar() {
             type="button"
             disabled={d.sqlFilterValidating}
             onClick={() => void d.validateSqlFilterDraft()}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+            title="Validate SQL filter"
+            aria-label="Validate SQL filter"
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
           >
-            Validate
+            <ListChecks className="size-3.5" aria-hidden />
           </button>
           <button
             type="button"
             disabled={d.sqlFilterValidating}
             onClick={() => void d.applySqlFilter()}
-            className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+            title="Apply SQL filter to scope"
+            aria-label="Apply SQL filter to scope"
+            className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 p-1.5 text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
           >
-            Apply to scope
+            <Check className="size-3.5" aria-hidden />
           </button>
           <button
             type="button"
             onClick={() => d.disableSqlFilter()}
             disabled={!d.sqlFilterEnabled}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+            title="Disable SQL filter"
+            aria-label="Disable SQL filter"
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
           >
-            Disable
+            <Ban className="size-3.5" aria-hidden />
           </button>
           {d.sqlFilterValidation ? (
             <span

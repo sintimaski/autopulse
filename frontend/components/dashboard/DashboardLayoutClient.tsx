@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import { DashboardAppShell } from "./AppShell";
 import { ApiKeyMissing, DashboardSessionRestoring } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
+import { readPersistedDashboardSession, readPersistedSessionRecord } from "./dashboardPersistentScope";
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
 import {
   buildScopedQuery,
   parseScopedQuery,
   scopedQueryStringsEqual,
+  type DashboardScopedQueryState,
 } from "./dashboardQueryState";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 
@@ -54,6 +57,7 @@ type ScopedServerState = {
   requestPage: number;
   errorGroupLimit: number;
   errorGroupPage: number;
+  errorGroupSort: "last_seen" | "count";
   sqlFilterDraft: string;
   sqlFilterApplied: string;
   sqlFilterEnabled: boolean;
@@ -80,9 +84,33 @@ function buildDefaultScopedState(d: ReturnType<typeof useDashboardData>): Scoped
     requestPage: 0,
     errorGroupLimit: 25,
     errorGroupPage: 0,
+    errorGroupSort: "last_seen",
     sqlFilterDraft: "",
     sqlFilterApplied: "",
     sqlFilterEnabled: false,
+  };
+}
+
+function scopedServerStateToParsed(state: ScopedServerState): DashboardScopedQueryState {
+  return {
+    isAbsoluteWindow: state.isAbsoluteWindow,
+    windowMinutes: state.windowMinutes,
+    windowFromTimestamp: state.windowFromTimestamp,
+    windowToTimestamp: state.windowToTimestamp,
+    method: state.method,
+    statusClass: state.statusClass,
+    minLatencyMs: state.minLatencyMs,
+    maxLatencyMs: state.maxLatencyMs,
+    pathQuery: state.pathQuery,
+    serverEnvironmentQuery: state.serverEnvironmentQuery,
+    serverServiceQuery: state.serverServiceQuery,
+    requestLimit: state.requestLimit,
+    requestPage: state.requestPage,
+    errorGroupLimit: state.errorGroupLimit,
+    errorGroupPage: state.errorGroupPage,
+    errorGroupSort: state.errorGroupSort,
+    sqlFilterApplied: state.sqlFilterApplied,
+    sqlFilterEnabled: state.sqlFilterEnabled,
   };
 }
 
@@ -114,6 +142,93 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const debouncedEnvironmentQuery = useDebouncedValue(d.serverEnvironmentQuery, 250);
   const debouncedServiceQuery = useDebouncedValue(d.serverServiceQuery, 250);
   const searchKey = searchParams.toString();
+  const [navDiagnosisQuery, setNavDiagnosisQuery] = useState("");
+  const [navLogsQuery, setNavLogsQuery] = useState("");
+
+  const scopedApplyTarget = {
+    setAbsoluteWindow: d.setAbsoluteWindow,
+    clearAbsoluteWindow: d.clearAbsoluteWindow,
+    onServerWindowChange: d.onServerWindowChange,
+    onServerMethodChange: d.onServerMethodChange,
+    onServerStatusClassChange: d.onServerStatusClassChange,
+    setPathQuery: d.setPathQuery,
+    setMinLatencyMs: d.setMinLatencyMs,
+    setMaxLatencyMs: d.setMaxLatencyMs,
+    setServerEnvironmentQuery: d.setServerEnvironmentQuery,
+    setServerServiceQuery: d.setServerServiceQuery,
+    setRequestLimit: d.setRequestLimit,
+    setRequestPage: d.setRequestPage,
+    setErrorGroupLimit: d.setErrorGroupLimit,
+    setErrorGroupPage: d.setErrorGroupPage,
+    setErrorGroupSort: d.setErrorGroupSort,
+    setSqlFilterApplied: d.setSqlFilterApplied,
+    setSqlFilterDraft: d.setSqlFilterDraft,
+    setSqlFilterEnabled: d.setSqlFilterEnabled,
+  } as const;
+
+  useLayoutEffect(() => {
+    const rec = readPersistedSessionRecord();
+    if (rec) {
+      queueMicrotask(() => {
+        setNavDiagnosisQuery(rec.diagnosisScopedQueryString);
+        setNavLogsQuery(rec.logsScopedQueryString);
+      });
+    }
+  }, []);
+
+  const liveScopedQueryString = useMemo(
+    () =>
+      buildScopedQuery({
+        isAbsoluteWindow: d.isAbsoluteWindow,
+        windowMinutes: d.windowMinutes,
+        windowFromTimestamp: d.windowFromTimestamp,
+        windowToTimestamp: d.windowToTimestamp,
+        method: d.method,
+        statusClass: d.statusClass,
+        minLatencyMs: d.minLatencyMs,
+        maxLatencyMs: d.maxLatencyMs,
+        pathQuery: d.pathQuery,
+        serverEnvironmentQuery: d.serverEnvironmentQuery,
+        serverServiceQuery: d.serverServiceQuery,
+        requestLimit: d.requestLimit,
+        requestPage: d.requestPage,
+        errorGroupLimit: d.errorGroupLimit,
+        errorGroupPage: d.errorGroupPage,
+        errorGroupSort: d.errorGroupSort,
+        sqlFilterApplied: d.sqlFilterApplied,
+        sqlFilterEnabled: d.sqlFilterEnabled,
+      }).toString(),
+    [
+      d.errorGroupLimit,
+      d.errorGroupPage,
+      d.errorGroupSort,
+      d.isAbsoluteWindow,
+      d.maxLatencyMs,
+      d.minLatencyMs,
+      d.pathQuery,
+      d.serverEnvironmentQuery,
+      d.serverServiceQuery,
+      d.method,
+      d.requestLimit,
+      d.requestPage,
+      d.statusClass,
+      d.sqlFilterApplied,
+      d.sqlFilterEnabled,
+      d.windowMinutes,
+      d.windowFromTimestamp,
+      d.windowToTimestamp,
+    ],
+  );
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (pathname === "/diagnosis") {
+        setNavDiagnosisQuery(liveScopedQueryString);
+      } else if (pathname === "/logs") {
+        setNavLogsQuery(liveScopedQueryString);
+      }
+    });
+  }, [liveScopedQueryString, pathname]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -152,32 +267,15 @@ function ShellWithData({ children }: { children: ReactNode }) {
       requestPage: d.requestPage,
       errorGroupLimit: d.errorGroupLimit,
       errorGroupPage: d.errorGroupPage,
+      errorGroupSort: d.errorGroupSort,
       sqlFilterDraft: d.sqlFilterDraft,
       sqlFilterApplied: d.sqlFilterApplied,
       sqlFilterEnabled: d.sqlFilterEnabled,
     });
 
     const applyState = (state: ScopedServerState) => {
-      if (state.isAbsoluteWindow) {
-        d.setAbsoluteWindow(state.windowFromTimestamp, state.windowToTimestamp);
-      } else {
-        d.clearAbsoluteWindow();
-        d.onServerWindowChange(state.windowMinutes);
-      }
-      d.onServerMethodChange(state.method);
-      d.onServerStatusClassChange(state.statusClass);
-      d.setMinLatencyMs(state.minLatencyMs);
-      d.setMaxLatencyMs(state.maxLatencyMs);
-      d.setPathQuery(state.pathQuery);
-      d.setServerEnvironmentQuery(state.serverEnvironmentQuery);
-      d.setServerServiceQuery(state.serverServiceQuery);
-      d.setRequestLimit(state.requestLimit);
-      d.setRequestPage(state.requestPage);
-      d.setErrorGroupLimit(state.errorGroupLimit);
-      d.setErrorGroupPage(state.errorGroupPage);
+      applyDashboardScopedQueryState(scopedApplyTarget, scopedServerStateToParsed(state));
       d.setSqlFilterDraft(state.sqlFilterDraft);
-      d.setSqlFilterApplied(state.sqlFilterApplied);
-      d.setSqlFilterEnabled(state.sqlFilterEnabled);
     };
 
     const previousPath = previousPathRef.current;
@@ -185,9 +283,28 @@ function ShellWithData({ children }: { children: ReactNode }) {
       scopedStateRef.current[previousPath] = captureCurrentState();
     }
     if (isScopedServerRoute(pathname)) {
-      const nextState =
-        scopedStateRef.current[pathname] ?? buildDefaultScopedState(d);
-      applyState(nextState);
+      // `useLayoutEffect` below applies `searchParams` to context before this `useEffect` runs.
+      // Without this guard, `buildDefaultScopedState` resets method/status/path/env/etc. after
+      // every link from `/dashboard` (or any non-scoped route) even when the href carried scope.
+      if (!searchKey) {
+        const fromRef = scopedStateRef.current[pathname];
+        if (fromRef) {
+          applyState(fromRef);
+        } else {
+          const persisted = readPersistedDashboardSession();
+          const scoped =
+            pathname === "/diagnosis"
+              ? persisted?.diagnosisScoped
+              : pathname === "/logs"
+                ? persisted?.logsScoped
+                : null;
+          if (persisted && scoped) {
+            applyDashboardScopedQueryState(scopedApplyTarget, scoped);
+          } else {
+            applyState(buildDefaultScopedState(d));
+          }
+        }
+      }
     }
 
     previousPathRef.current = pathname;
@@ -215,34 +332,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     applyingScopedQueryFromUrlRef.current = true;
     const sp = new URLSearchParams(search);
     const parsed = parseScopedQuery(sp);
-    if (parsed.isAbsoluteWindow) {
-      d.setAbsoluteWindow(parsed.windowFromTimestamp, parsed.windowToTimestamp);
-    } else {
-      d.clearAbsoluteWindow();
-      d.onServerWindowChange(parsed.windowMinutes);
-    }
-    d.onServerMethodChange(parsed.method);
-    d.onServerStatusClassChange(parsed.statusClass);
-    d.setPathQuery(parsed.pathQuery);
-    d.setMinLatencyMs(parsed.minLatencyMs);
-    d.setMaxLatencyMs(parsed.maxLatencyMs);
-    d.setServerEnvironmentQuery(parsed.serverEnvironmentQuery);
-    d.setServerServiceQuery(parsed.serverServiceQuery);
-    d.setRequestLimit(parsed.requestLimit);
-    d.setRequestPage(parsed.requestPage);
-    d.setErrorGroupLimit(parsed.errorGroupLimit);
-    d.setErrorGroupPage(parsed.errorGroupPage);
-    d.setErrorGroupSort(parsed.errorGroupSort);
-    if (sp.has("sql_filter")) {
-      const f = (parsed.sqlFilterApplied ?? "").trim();
-      d.setSqlFilterApplied(f);
-      d.setSqlFilterDraft(f);
-      d.setSqlFilterEnabled(Boolean(parsed.sqlFilterEnabled && f.length > 0));
-    } else {
-      d.setSqlFilterApplied("");
-      d.setSqlFilterDraft("");
-      d.setSqlFilterEnabled(false);
-    }
+    applyDashboardScopedQueryState(scopedApplyTarget, parsed);
 
     const normalized = buildScopedQuery(parsed).toString();
     if (!scopedQueryStringsEqual(normalized, search)) {
@@ -326,27 +416,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
   const showServerScope = pathname === "/diagnosis" || pathname === "/logs";
-  const scopedQueryString = buildScopedQuery({
-    isAbsoluteWindow: d.isAbsoluteWindow,
-    windowMinutes: d.windowMinutes,
-    windowFromTimestamp: d.windowFromTimestamp,
-    windowToTimestamp: d.windowToTimestamp,
-    method: d.method,
-    statusClass: d.statusClass,
-    minLatencyMs: d.minLatencyMs,
-    maxLatencyMs: d.maxLatencyMs,
-    pathQuery: d.pathQuery,
-    serverEnvironmentQuery: d.serverEnvironmentQuery,
-    serverServiceQuery: d.serverServiceQuery,
-    requestLimit: d.requestLimit,
-    requestPage: d.requestPage,
-    errorGroupLimit: d.errorGroupLimit,
-    errorGroupPage: d.errorGroupPage,
-    errorGroupSort: d.errorGroupSort,
-    sqlFilterApplied: d.sqlFilterApplied,
-    sqlFilterEnabled: d.sqlFilterEnabled,
-  }).toString();
-  const resetServerFilters = () => {
+  const resetDiagnosisScope = () => {
     d.onServerMethodChange("ALL");
     d.onServerStatusClassChange("ALL");
     d.setPathQuery("");
@@ -356,6 +426,22 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.setServerServiceQuery("");
     d.setRequestPage(0);
     d.setErrorGroupPage(0);
+    d.setErrorGroupSort("last_seen");
+    d.setErrorGroupLimit(25);
+    d.setSqlFilterDraft("");
+    d.setSqlFilterApplied("");
+    d.setSqlFilterEnabled(false);
+  };
+  const resetLogsScope = () => {
+    d.onServerMethodChange("ALL");
+    d.onServerStatusClassChange("ALL");
+    d.setPathQuery("");
+    d.setMinLatencyMs("");
+    d.setMaxLatencyMs("");
+    d.setServerEnvironmentQuery("");
+    d.setServerServiceQuery("");
+    d.setRequestLimit(100);
+    d.setRequestPage(0);
     d.setSqlFilterDraft("");
     d.setSqlFilterApplied("");
     d.setSqlFilterEnabled(false);
@@ -367,11 +453,22 @@ function ShellWithData({ children }: { children: ReactNode }) {
       title={meta.title}
       subtitle={meta.subtitle}
       isDark={isDark}
-      scopedQueryString={scopedQueryString}
+      diagnosisNavQuery={navDiagnosisQuery}
+      logsNavQuery={navLogsQuery}
       filterToolbarAutoCollapse={showServerScope}
-      filterToolbarCompactLabel="Server scope"
-      onResetServerFilters={showServerScope ? resetServerFilters : undefined}
-      filterToolbar={showServerScope ? <ServerQueryToolbar /> : null}
+      filterToolbarCompactLabel={pathname === "/diagnosis" ? "Diagnosis scope" : pathname === "/logs" ? "Logs scope" : "Server scope"}
+      onResetServerFilters={
+        showServerScope
+          ? pathname === "/diagnosis"
+            ? resetDiagnosisScope
+            : resetLogsScope
+          : undefined
+      }
+      filterToolbar={
+        showServerScope ? (
+          <ServerQueryToolbar variant={pathname === "/diagnosis" ? "diagnosis" : "logs"} />
+        ) : null
+      }
     >
       {children}
     </DashboardAppShell>

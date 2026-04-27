@@ -1,15 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+
+import {
+  Activity,
+  Bell,
+  LayoutDashboard,
+  PanelLeft,
+  PanelLeftClose,
+  RotateCw,
+  ScrollText,
+  Settings,
+  Stethoscope,
+} from "../../lib/icons";
+import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
 
-const nav = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/diagnosis", label: "Diagnosis" },
-  { href: "/alerts", label: "Alerts" },
-  { href: "/settings", label: "Settings" },
-  { href: "/logs", label: "Logs" },
+const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
+
+const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/alerts", label: "Alerts", Icon: Bell },
+  { href: "/diagnosis", label: "Diagnosis", Icon: Stethoscope },
+  { href: "/logs", label: "Logs", Icon: ScrollText },
+  { href: "/settings", label: "Settings", Icon: Settings },
 ] as const;
 
 export function DashboardAppShell({
@@ -23,7 +38,8 @@ export function DashboardAppShell({
   title,
   subtitle,
   isDark,
-  scopedQueryString = "",
+  diagnosisNavQuery = "",
+  logsNavQuery = "",
 }: {
   children: ReactNode;
   /** Omitted to hide the header control (live data is driven by WebSocket + scope changes). */
@@ -36,47 +52,125 @@ export function DashboardAppShell({
   title: string;
   subtitle: string;
   isDark: boolean;
-  scopedQueryString?: string;
+  /** Last persisted or live `/diagnosis` server-scope query string (without `?`). */
+  diagnosisNavQuery?: string;
+  /** Last persisted or live `/logs` server-scope query string (without `?`). */
+  logsNavQuery?: string;
 }) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      if (raw === "1") {
+        queueMicrotask(() => setSidebarCollapsed(true));
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+
+  const sidebarWidth = sidebarCollapsed ? "4.5rem" : "14rem";
+
   return (
     <div suppressHydrationWarning className={isDark ? "dark" : ""}>
-      <div className="flex min-h-screen bg-slate-100 text-slate-900 dark:bg-neutral-950 dark:text-neutral-100">
-        <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-neutral-800/90 bg-neutral-950 text-neutral-100 dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="border-b border-white/10 px-4 py-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-400/90 dark:text-neutral-400">
-              AutoPulse
-            </p>
-            <p className="mt-1 text-sm font-semibold tracking-tight">Console</p>
+      <div
+        className="flex min-h-screen bg-slate-100 text-slate-900 dark:bg-neutral-950 dark:text-neutral-100"
+        style={{ ["--dashboard-sidebar-width" as string]: sidebarWidth }}
+      >
+        <aside
+          className="sticky top-0 flex h-screen w-[var(--dashboard-sidebar-width)] shrink-0 flex-col border-r border-neutral-800/90 bg-neutral-950 text-neutral-100 transition-[width] duration-200 ease-out dark:border-neutral-800 dark:bg-neutral-900"
+          aria-label="Primary navigation"
+        >
+          <div className="border-b border-white/10 px-2 py-4 sm:px-3">
+            {sidebarCollapsed ? (
+              <div className="flex flex-col items-center gap-2">
+                <Activity
+                  className="size-7 text-sky-400/90 dark:text-sky-400/80"
+                  aria-hidden
+                />
+                <button
+                  type="button"
+                  onClick={toggleSidebar}
+                  aria-label="Expand sidebar"
+                  className="rounded-lg p-2 text-neutral-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+                >
+                  <PanelLeft className="size-4" aria-hidden />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 px-1">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-sky-400/90 dark:text-neutral-400">
+                    <Activity className="size-3.5 shrink-0 text-sky-400/90 dark:text-sky-400/70" aria-hidden />
+                    AutoPulse
+                  </p>
+                  <p className="mt-1 text-sm font-semibold tracking-tight">Console</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleSidebar}
+                  aria-label="Collapse sidebar to icons"
+                  className="shrink-0 rounded-lg p-2 text-neutral-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+                >
+                  <PanelLeftClose className="size-4" aria-hidden />
+                </button>
+              </div>
+            )}
           </div>
           <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-4 text-sm">
             {nav.map((item) => {
               const active = pathname === item.href;
+              const Icon = item.Icon;
               return (
                 <Link
                   key={item.href}
                   href={
-                    scopedQueryString && (item.href === "/diagnosis" || item.href === "/logs")
-                      ? `${item.href}?${scopedQueryString}`
-                      : item.href
+                    item.href === "/diagnosis" && diagnosisNavQuery
+                      ? `${item.href}?${diagnosisNavQuery}`
+                      : item.href === "/logs" && logsNavQuery
+                        ? `${item.href}?${logsNavQuery}`
+                        : item.href
                   }
+                  title={sidebarCollapsed ? item.label : undefined}
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                  aria-label={sidebarCollapsed ? item.label : undefined}
+                  className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                    sidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
+                  } ${
                     active
                       ? "bg-white/15 font-medium text-white"
                       : "text-neutral-300 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  {item.label}
+                  <Icon className="size-[1.125rem] shrink-0" aria-hidden />
+                  {!sidebarCollapsed ? <span>{item.label}</span> : null}
                 </Link>
               );
             })}
           </nav>
-          <div className="border-t border-white/10 px-4 py-3 text-xs leading-snug text-neutral-500">
-            FastAPI-native visibility. Tune scope, then inspect evidence.
-          </div>
+          {!sidebarCollapsed ? (
+            <div className="border-t border-white/10 px-4 py-3 text-xs leading-snug text-neutral-500">
+              FastAPI-native visibility. Tune scope, then inspect evidence.
+            </div>
+          ) : (
+            <div className="border-t border-white/10 py-2" aria-hidden />
+          )}
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col transition-[margin] duration-200">
           <header className="border-b border-slate-200/90 bg-white/95 dark:border-neutral-800 dark:bg-neutral-900/95">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div>
@@ -90,9 +184,11 @@ export function DashboardAppShell({
                   <button
                     type="button"
                     onClick={onRefresh}
-                    className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+                    title="Refresh"
+                    aria-label="Refresh"
+                    className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
                   >
-                    Refresh
+                    <RotateCw className="size-4" aria-hidden />
                   </button>
                 </div>
               ) : null}

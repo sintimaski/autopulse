@@ -56,12 +56,12 @@ import {
   type ThemePreference,
   type ThemeSettings,
 } from "./dashboardTypes";
-import { normalizeCommaSeparated, splitCommaSeparated } from "./dashboardQueryState";
+import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import {
-  buildPersistedSessionPayload,
+  mergePersistedScopedSession,
   readPersistedDashboardSession,
-  writePersistedDashboardSession,
 } from "./dashboardPersistentScope";
+import { normalizeCommaSeparated, splitCommaSeparated, type DashboardScopedQueryState } from "./dashboardQueryState";
 import {
   buildDashboardDataCacheScopeKey,
   readDashboardSnapshot,
@@ -271,57 +271,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return absoluteWindow;
   }, [absoluteWindow]);
 
-  useLayoutEffect(() => {
-    if (hasHydratedPersistedScope.current) {
-      return;
-    }
-    const parsed = readPersistedDashboardSession();
-    if (!parsed) {
-      hasHydratedPersistedScope.current = true;
-      return;
-    }
-    const { scoped, logsClient } = parsed;
-    if (scoped.isAbsoluteWindow && scoped.windowFromTimestamp && scoped.windowToTimestamp) {
-      setAbsoluteWindowState({ from: scoped.windowFromTimestamp, to: scoped.windowToTimestamp });
-    } else {
-      setAbsoluteWindowState(null);
-      setWindowMinutes(scoped.windowMinutes);
-    }
-    setMethod(scoped.method);
-    setStatusClass(scoped.statusClass);
-    setPathQuery(scoped.pathQuery);
-    setMinLatencyMs(scoped.minLatencyMs);
-    setMaxLatencyMs(scoped.maxLatencyMs);
-    setServerEnvironmentQuery(scoped.serverEnvironmentQuery);
-    setServerServiceQuery(scoped.serverServiceQuery);
-    setRequestLimit(scoped.requestLimit);
-    setRequestPage(scoped.requestPage);
-    setErrorGroupLimit(scoped.errorGroupLimit);
-    setErrorGroupPage(scoped.errorGroupPage);
-    setErrorGroupSort(scoped.errorGroupSort);
-    const f = (scoped.sqlFilterApplied ?? "").trim();
-    if (scoped.sqlFilterEnabled && f) {
-      setSqlFilterApplied(f);
-      setSqlFilterDraft(f);
-      setSqlFilterEnabled(true);
-    } else {
-      setSqlFilterApplied("");
-      setSqlFilterDraft("");
-      setSqlFilterEnabled(false);
-    }
-    setGroupBy(logsClient.groupBy);
-    setSortKey(logsClient.sortKey);
-    setSortDir(logsClient.sortDir);
-    setEnvTags(new Set(logsClient.envTags));
-    setServiceTags(new Set(logsClient.serviceTags));
-    hasHydratedPersistedScope.current = true;
-  }, []);
-
   useEffect(() => {
     if (!hasHydratedPersistedScope.current) {
       return;
     }
-    const scopedForPersist = {
+    if (dashboardRoutePath !== "/diagnosis" && dashboardRoutePath !== "/logs") {
+      return;
+    }
+    const scopedForPersist: DashboardScopedQueryState = {
       isAbsoluteWindow: absoluteWindow !== null,
       windowMinutes,
       windowFromTimestamp: absoluteWindow?.from ?? "",
@@ -342,18 +299,17 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterEnabled,
     };
     const timer = window.setTimeout(() => {
-      writePersistedDashboardSession(
-        buildPersistedSessionPayload(scopedForPersist, {
-          groupBy,
-          sortKey,
-          sortDir,
-          envTags: [...envTags],
-          serviceTags: [...serviceTags],
-        }),
-      );
+      mergePersistedScopedSession(dashboardRoutePath, scopedForPersist, {
+        groupBy,
+        sortKey,
+        sortDir,
+        envTags: [...envTags],
+        serviceTags: [...serviceTags],
+      });
     }, 350);
     return () => window.clearTimeout(timer);
   }, [
+    dashboardRoutePath,
     absoluteWindow,
     windowMinutes,
     method,
@@ -774,6 +730,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     requestPage,
     errorGroupLimit,
     errorGroupPage,
+    errorGroupSort,
     minLatencyMs,
     maxLatencyMs,
     pathQuery,
@@ -945,6 +902,53 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setStatusClass(value);
     setRequestPage(0);
     setErrorGroupPage(0);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (hasHydratedPersistedScope.current) {
+      return;
+    }
+    const parsed = readPersistedDashboardSession();
+    if (!parsed) {
+      hasHydratedPersistedScope.current = true;
+      return;
+    }
+    const path = toDashboardRoutePath(window.location.pathname);
+    const scoped: DashboardScopedQueryState | null =
+      path === "/logs" ? parsed.logsScoped : path === "/diagnosis" ? parsed.diagnosisScoped : null;
+    if (scoped) {
+      applyDashboardScopedQueryState(
+        {
+          setAbsoluteWindow,
+          clearAbsoluteWindow,
+          onServerWindowChange,
+          onServerMethodChange,
+          onServerStatusClassChange,
+          setPathQuery,
+          setMinLatencyMs,
+          setMaxLatencyMs,
+          setServerEnvironmentQuery,
+          setServerServiceQuery,
+          setRequestLimit,
+          setRequestPage,
+          setErrorGroupLimit,
+          setErrorGroupPage,
+          setErrorGroupSort,
+          setSqlFilterApplied,
+          setSqlFilterDraft,
+          setSqlFilterEnabled,
+        },
+        scoped,
+      );
+    }
+    const { logsClient } = parsed;
+    setGroupBy(logsClient.groupBy);
+    setSortKey(logsClient.sortKey);
+    setSortDir(logsClient.sortDir);
+    setEnvTags(new Set(logsClient.envTags));
+    setServiceTags(new Set(logsClient.serviceTags));
+    hasHydratedPersistedScope.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time hydration; setters stable
   }, []);
 
   const availableEnvironments = useMemo(

@@ -19,9 +19,10 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from sqlalchemy import String, case, cast, func, literal, select, text
+from sqlalchemy import String, and_, case, cast, exists, func, literal, or_, select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 from autopulse_backend.alerts import get_or_create_project_alert_settings
 from autopulse_backend.auth import (
@@ -361,6 +362,57 @@ def _synthetic_error_key(
     digest.update(b"|")
     digest.update(path.encode("utf-8"))
     return digest.hexdigest()
+
+
+# Ingest `error_hash` from the SDK is stable per (type, message, stack) and omits path, so the same
+# logical bug on different routes used to collapse into one dashboard row. Append path for grouping.
+_DASHBOARD_GROUP_HASH_PATH_SEP = "\x1e"
+
+
+def _derived_error_group_key(payload_dict: dict, path: str) -> str:
+    raw_hash = payload_dict.get("error_hash")
+    error_hash = raw_hash.strip() if isinstance(raw_hash, str) else ""
+    route = path or ""
+    et_raw = payload_dict.get("exception_type")
+    exception_type = et_raw if isinstance(et_raw, str) else None
+    exception_message = (
+        payload_dict.get("exception_message")
+        if isinstance(payload_dict.get("exception_message"), str)
+        else None
+    )
+    if error_hash:
+        return f"{error_hash}{_DASHBOARD_GROUP_HASH_PATH_SEP}{route}"
+    return _synthetic_error_key(exception_type, exception_message, route)
+
+
+def _error_like_events_predicate(resolved_from: datetime, resolved_to: datetime):
+    """Match SDK `type=error` rows, plus `type=request` 5xx when no paired error (same request_id).
+
+    HTTPException / synthetic apps often emit only a request row for 503/500; uncaught handlers emit
+    both request+error with the same request_id — exclude the request half from grouping.
+    """
+    paired_error = aliased(Event)
+    return or_(
+        Event.type == "error",
+        and_(
+            Event.type == "request",
+            Event.status_code >= 500,
+            or_(
+                Event.request_id.is_(None),
+                ~exists(
+                    select(literal(1)).where(
+                        paired_error.project_id == Event.project_id,
+                        paired_error.type == "error",
+                        paired_error.request_id == Event.request_id,
+                        paired_error.request_id.isnot(None),
+                        Event.request_id.isnot(None),
+                        paired_error.timestamp >= resolved_from,
+                        paired_error.timestamp <= resolved_to,
+                    )
+                ),
+            ),
+        ),
+    )
 
 
 def _error_group_labels(
@@ -924,7 +976,7 @@ async def get_dashboard_diagnosis_error_group_events(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
-        Event.type == "error",
+        _error_like_events_predicate(resolved_from, resolved_to),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -960,20 +1012,8 @@ async def get_dashboard_diagnosis_error_group_events(
         payload,
     ) in rows:
         payload_dict = payload if isinstance(payload, dict) else {}
-        error_hash = payload_dict.get("error_hash")
-        derived_key = (
-            str(error_hash)
-            if isinstance(error_hash, str) and error_hash
-            else _synthetic_error_key(
-                payload_dict.get("exception_type")
-                if isinstance(payload_dict.get("exception_type"), str)
-                else None,
-                payload_dict.get("exception_message")
-                if isinstance(payload_dict.get("exception_message"), str)
-                else None,
-                path,
-            )
-        )
+        ev_path = path if isinstance(path, str) else ""
+        derived_key = _derived_error_group_key(payload_dict, ev_path)
         if derived_key != group_key:
             continue
         matched.append(
@@ -1133,7 +1173,7 @@ async def get_dashboard_error_groups(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
-        Event.type == "error",
+        _error_like_events_predicate(resolved_from, resolved_to),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -1167,18 +1207,11 @@ async def get_dashboard_error_groups(
         grouped: dict[str, _SQLiteErrorGroup] = {}
         for event_id, timestamp, path, status_code, payload in rows_result:
             payload_dict = payload if isinstance(payload, dict) else {}
-            error_hash = payload_dict.get("error_hash")
             exception_type = payload_dict.get("exception_type")
             exception_message = payload_dict.get("exception_message")
             sample_stack_trace = payload_dict.get("stack_trace")
-            if isinstance(error_hash, str) and error_hash:
-                group_key = error_hash
-            else:
-                group_key = _synthetic_error_key(
-                    exception_type if isinstance(exception_type, str) else None,
-                    exception_message if isinstance(exception_message, str) else None,
-                    path,
-                )
+            route_path = path if isinstance(path, str) else ""
+            group_key = _derived_error_group_key(payload_dict, route_path)
 
             current = grouped.get(group_key)
             event_time = _as_utc_datetime(timestamp)
@@ -1257,7 +1290,18 @@ async def get_dashboard_error_groups(
             Event.path,
         )
     )
-    group_key_expr = func.coalesce(func.nullif(error_hash, ""), synthetic_group_key)
+    error_hash_trimmed = func.nullif(func.trim(error_hash), "")
+    group_key_expr = case(
+        (
+            error_hash_trimmed.isnot(None),
+            func.concat(
+                error_hash_trimmed,
+                literal(_DASHBOARD_GROUP_HASH_PATH_SEP),
+                func.coalesce(Event.path, literal("")),
+            ),
+        ),
+        else_=synthetic_group_key,
+    )
 
     groups_subquery = (
         select(

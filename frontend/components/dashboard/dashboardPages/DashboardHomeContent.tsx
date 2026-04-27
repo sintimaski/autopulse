@@ -63,6 +63,8 @@ export function DashboardHomeContent() {
     errorGroupLimit: d.errorGroupLimit,
     errorGroupPage: 0,
     errorGroupSort: d.errorGroupSort,
+    sqlFilterApplied: d.sqlFilterApplied,
+    sqlFilterEnabled: d.sqlFilterEnabled,
   });
   const diagnosisBaseHref = `/diagnosis?${diagnosisParams.toString()}`;
   const diagnosisGroupedHref = `/diagnosis?${(() => {
@@ -251,7 +253,8 @@ export function DashboardHomeContent() {
                     href={`/diagnosis?${(() => {
                       const params = new URLSearchParams(diagnosisParams.toString());
                       params.set("error_group_sort", "count");
-                      params.set("path_contains", item.path);
+                      // Do not set path_contains here: narrowing to one route hides every other
+                      // group and that scope persists for Diagnosis (sidebar + session).
                       return params.toString();
                     })()}#grouped-errors`}
                     className="block"

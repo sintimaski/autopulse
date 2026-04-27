@@ -31,6 +31,7 @@ _REQUEST_SPECS: tuple[RequestSpec, ...] = (
     RequestSpec("search", "GET", "/search", 7),
     RequestSpec("auth-login", "POST", "/auth/login", 3),
     RequestSpec("reports", "GET", "/reports/daily", 2),
+    # Uncaught exception → 500; keep low weight — other bursts hit 4xx/5xx on core routes.
     RequestSpec("boom", "GET", "/boom", 1),
 )
 
@@ -75,6 +76,29 @@ def _request_payload(
     body: dict[str, Any] = {}
     user_id = rng.randint(1, 30)
     order_id = rng.randint(1000, 1100)
+
+    if error_burst:
+        if spec.name == "users-read":
+            roll = rng.random()
+            if roll < 0.2:
+                headers = {"x-request-id": request_id}
+            elif roll < 0.35:
+                headers = {"x-request-id": request_id, "Authorization": "Bearer expired"}
+            elif roll < 0.55:
+                user_id = rng.choice([404, 9_999, 50_001])
+        elif spec.name == "orders-read":
+            order_roll = rng.random()
+            if order_roll < 0.25:
+                headers = {"x-request-id": request_id, "Authorization": "Bearer expired"}
+            elif order_roll < 0.55:
+                order_id = rng.choice([7_001, 8_888, 12_345])
+        elif spec.name == "search" and rng.random() < 0.2:
+            headers = {"x-request-id": request_id}
+        elif spec.name in {"users-patch", "orders-create", "reports"} and rng.random() < 0.35:
+            headers["x-auth-token"] = "demo:viewer:viewer-forbidden"
+        elif spec.name == "users-patch" and rng.random() < 0.5:
+            user_id = rng.choice([404, 99_999])
+
     path = spec.path_template.format(user_id=user_id, order_id=order_id)
 
     if spec.name == "users-create":
@@ -84,14 +108,18 @@ def _request_payload(
             "display_name": f"User {suffix}",
             "role": rng.choice(["viewer", "editor"]),
         }
-        if error_burst and rng.random() < 0.3:
-            body["email"] = "bad-email"
+        if error_burst:
+            choice = rng.random()
+            if choice < 0.28:
+                body["email"] = "bad-email"
+            elif choice < 0.52:
+                body["email"] = f"blocked-{suffix}@blocked.example"
     elif spec.name == "users-patch":
         body = {
             "display_name": f"Patch {request_index}",
             "version": rng.randint(0, 4),
         }
-        if error_burst and rng.random() < 0.5:
+        if error_burst and rng.random() < 0.45:
             params["force_conflict"] = "true"
     elif spec.name == "orders-create":
         body = {
@@ -99,7 +127,7 @@ def _request_payload(
             "amount_cents": rng.randint(120, 9_999),
             "item": f"item-{rng.randint(1, 300)}",
         }
-        if error_burst and rng.random() < 0.5:
+        if error_burst and rng.random() < 0.45:
             params["force_unavailable"] = "true"
     elif spec.name == "search":
         params["q"] = f"q-{rng.randint(1, 50)}"
@@ -107,10 +135,10 @@ def _request_payload(
         chosen_role = rng.choice(["viewer", "editor", "admin"])
         body = {"username": f"{chosen_role}@example.com", "password": "demo-pass"}
         headers = {"x-request-id": request_id}
-        if error_burst and rng.random() < 0.4:
+        if error_burst and rng.random() < 0.45:
             body["password"] = "wrong-pass"  # nosec B105
     elif spec.name == "reports":
-        if error_burst and rng.random() < 0.5:
+        if error_burst and rng.random() < 0.45:
             params["force_timeout"] = "true"
     elif spec.name == "boom":
         if role_mode == "mixed":

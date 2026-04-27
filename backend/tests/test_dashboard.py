@@ -450,25 +450,155 @@ def test_dashboard_error_groups_merge_hashes_and_scope_by_project(
     assert len(payload["items"]) == 3
 
     by_key = {item["group_key"]: item for item in payload["items"]}
-    assert shared_hash in by_key
-    assert by_key[shared_hash]["count"] == 2
-    assert by_key[shared_hash]["exception_type"] == "ValueError"
-    assert by_key[shared_hash]["message"] == "boom"
-    assert by_key[shared_hash]["path"] == "/boom"
-    assert by_key[shared_hash]["sample_stack_trace"] in {"trace-a", "trace-b"}
+    boom_key = f"{shared_hash}\x1e/boom"
+    assert boom_key in by_key
+    assert by_key[boom_key]["count"] == 2
+    assert by_key[boom_key]["exception_type"] == "ValueError"
+    assert by_key[boom_key]["message"] == "boom"
+    assert by_key[boom_key]["path"] == "/boom"
+    assert by_key[boom_key]["sample_stack_trace"] in {"trace-a", "trace-b"}
 
-    other_group = by_key["hash-other"]
+    other_key = "hash-other\x1e/boom-alt"
+    other_group = by_key[other_key]
     assert other_group["count"] == 1
     assert other_group["exception_type"] == "RuntimeError"
     assert other_group["path"] == "/boom-alt"
 
     synthetic_groups = [
-        item for item in payload["items"] if item["group_key"] not in {shared_hash, "hash-other"}
+        item for item in payload["items"] if item["group_key"] not in {boom_key, other_key}
     ]
     assert len(synthetic_groups) == 1
     assert synthetic_groups[0]["count"] == 1
     assert synthetic_groups[0]["path"] == "/missing-hash"
     assert synthetic_groups[0]["exception_type"] == "KeyError"
+
+
+def test_dashboard_error_groups_split_same_error_hash_by_path(
+    backend_test_database_url: str,
+) -> None:
+    """SDK error_hash omits path; dashboard must still show one row per route."""
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Split By Path")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=5)
+    shared_hash = "hash-same-across-routes"
+    app = create_app()
+    with TestClient(app) as client:
+        for path in ("/boom", "/orders"):
+            _ingest(
+                client,
+                key,
+                base_time,
+                500,
+                "GET",
+                path,
+                event_type="error",
+                payload_overrides={
+                    "error_hash": shared_hash,
+                    "exception_type": "ValueError",
+                    "exception_message": "boom",
+                    "stack_trace": f"trace-{path}",
+                },
+            )
+        response = client.get(
+            "/dashboard/error-groups",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=6)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    paths = {item["path"] for item in payload["items"]}
+    assert paths == {"/boom", "/orders"}
+    for item in payload["items"]:
+        assert item["group_key"] == f"{shared_hash}\x1e{item['path']}"
+        assert item["count"] == 1
+
+
+def test_dashboard_error_groups_dedupes_request_when_paired_error_event_exists(
+    backend_test_database_url: str,
+) -> None:
+    """Paired request+error rows share request_id; only the error row counts for grouping."""
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Paired Request Error")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=3)
+    rid = "paired-req-1"
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            500,
+            "GET",
+            "/boom",
+            event_type="request",
+            payload_overrides={"request_id": rid},
+        )
+        _ingest(
+            client,
+            key,
+            base_time + timedelta(seconds=1),
+            500,
+            "GET",
+            "/boom",
+            event_type="error",
+            payload_overrides={
+                "request_id": rid,
+                "error_hash": "dedupe-hash",
+                "exception_type": "ValueError",
+                "exception_message": "nope",
+                "stack_trace": "tb",
+            },
+        )
+        response = client.get(
+            "/dashboard/error-groups",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["group_key"].startswith("dedupe-hash")
+
+
+def test_dashboard_error_groups_includes_request_only_server_errors(
+    backend_test_database_url: str,
+) -> None:
+    """HTTPException 503 may be request-only (no type=error); grouping must still include it."""
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Request Only 5xx")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=3)
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            503,
+            "POST",
+            "/orders",
+            event_type="request",
+            payload_overrides={"request_id": "load-00882-001"},
+        )
+        response = client.get(
+            "/dashboard/error-groups",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=5)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] >= 1
+    paths = {item["path"] for item in payload["items"]}
+    assert "/orders" in paths
 
 
 def test_dashboard_error_groups_http_fallback_when_no_exception_payload(
