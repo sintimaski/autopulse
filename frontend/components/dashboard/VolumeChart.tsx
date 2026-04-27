@@ -218,6 +218,26 @@ export function VolumeChart({
       });
   }, []);
 
+  const liveTip = useMemo(() => {
+    if (!tip) {
+      return null;
+    }
+    const updatedBucket = displayed.find((bucket) => bucket.minute === tip.bucket.minute);
+    if (!updatedBucket) {
+      return null;
+    }
+    const requestCount = Number(updatedBucket.request_count || 0);
+    const errorCount = Number(updatedBucket.error_count || 0);
+    return {
+      ...tip,
+      bucket: updatedBucket,
+      errRatio: requestCount > 0 ? errorCount / requestCount : 0,
+    };
+  }, [displayed, tip]);
+
+  const activeHoveredColumnIndex =
+    hoveredColumnIndex !== null && hoveredColumnIndex < displayed.length ? hoveredColumnIndex : null;
+
   useEffect(() => {
     const el = chartContainerRef.current;
     if (!el) {
@@ -339,7 +359,7 @@ export function VolumeChart({
                   const y = chartHeight - barHeight;
                   return (
                     <g key={`${bucket.minute}-${index}`}>
-                      {hoveredColumnIndex === index ? (
+                      {activeHoveredColumnIndex === index ? (
                         <rect
                           x={x - 1}
                           y={0}
@@ -381,33 +401,33 @@ export function VolumeChart({
                 })}
               </svg>
             </div>
-            {tip && (
+            {liveTip && (
               <div
                 className="pointer-events-none absolute z-10 min-w-[200px] max-w-[min(280px,calc(100%-8px))] -translate-x-1/2 -translate-y-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
                 style={{
-                  left: Math.max(80, Math.min(tip.left, tip.containerWidth - 80)),
-                  top: Math.max(4, tip.top - 8),
+                  left: Math.max(80, Math.min(liveTip.left, liveTip.containerWidth - 80)),
+                  top: Math.max(4, liveTip.top - 8),
                 }}
               >
                 <p className="font-semibold text-slate-900 dark:text-neutral-100">
-                  {formatMinuteLabel(tip.bucket.minute)}
+                  {formatMinuteLabel(liveTip.bucket.minute)}
                 </p>
                 <p className="mt-1 tabular-nums text-slate-700 dark:text-neutral-300">
                   <span className="font-medium text-slate-900 dark:text-neutral-100">
-                    {Number(tip.bucket.request_count || 0)}
+                    {Number(liveTip.bucket.request_count || 0)}
                   </span>{" "}
                   requests
                 </p>
                 <p className="tabular-nums text-slate-700 dark:text-neutral-300">
                   <span className="font-medium text-rose-700 dark:text-rose-400">
-                    {Number(tip.bucket.error_count || 0)}
+                    {Number(liveTip.bucket.error_count || 0)}
                   </span>{" "}
-                  errors ({(tip.errRatio * 100).toFixed(1)}%)
+                  errors ({(liveTip.errRatio * 100).toFixed(1)}%)
                 </p>
                 <p className="mt-0.5 tabular-nums text-slate-600 dark:text-neutral-400">
                   Avg latency{" "}
                   <span className="font-medium text-slate-900 dark:text-neutral-100">
-                    {Number(tip.bucket.avg_latency_ms || 0).toFixed(1)} ms
+                    {Number(liveTip.bucket.avg_latency_ms || 0).toFixed(1)} ms
                   </span>
                 </p>
                 <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-neutral-400">

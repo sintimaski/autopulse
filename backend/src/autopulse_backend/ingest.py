@@ -12,6 +12,7 @@ from autopulse_backend.config import get_settings
 from autopulse_backend.db import get_db_session
 from autopulse_backend.ingest_limits import ingest_rate_limiter
 from autopulse_backend.models import Event
+from autopulse_backend.realtime import IngestBroadcastMessage, project_websocket_hub
 from autopulse_backend.schemas import IngestBatchRequest, IngestBatchResponse, event_payload
 
 router = APIRouter()
@@ -91,5 +92,12 @@ async def ingest_events(
         project_id=context.project_id,
         batch=batch,
         received_at=received_at,
+    )
+    await project_websocket_hub.publish_ingest(
+        message=IngestBroadcastMessage(
+            project_id=context.project_id,
+            accepted=accepted,
+            received_at=received_at,
+        )
     )
     return IngestBatchResponse(accepted=accepted)

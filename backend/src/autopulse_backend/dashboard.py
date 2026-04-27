@@ -5,20 +5,33 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from sqlalchemy import String, case, cast, func, literal, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autopulse_backend.alerts import get_or_create_project_alert_settings
-from autopulse_backend.auth import ProjectContext, authenticate_project
+from autopulse_backend.auth import (
+    ProjectContext,
+    authenticate_project,
+    authenticate_project_token,
+)
 from autopulse_backend.config import get_settings
-from autopulse_backend.db import get_db_session
+from autopulse_backend.db import get_db_session, get_engine
 from autopulse_backend.models import (
     AlertDispatch,
     Event,
     ProjectAlertSettings,
     ProjectUiSettings,
 )
+from autopulse_backend.realtime import project_websocket_hub
 from autopulse_backend.schemas import (
     DashboardAlertDispatchesResponse,
     DashboardAlertDispatchItem,
@@ -47,6 +60,34 @@ _LATENCY_MAX_MS_QUERY = Query(default=None, ge=0)
 _WINDOW_MINUTES_QUERY = Query(default=60, ge=1, le=7 * 24 * 60)
 _LIMIT_QUERY = Query(default=50, ge=1, le=200)
 _OFFSET_QUERY = Query(default=0, ge=0)
+
+
+@router.websocket("/updates")
+async def dashboard_updates(websocket: WebSocket) -> None:
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Missing API key")
+        return
+
+    session_maker = async_sessionmaker(
+        bind=get_engine(), expire_on_commit=False, class_=AsyncSession
+    )
+    async with session_maker() as session:
+        try:
+            context = await authenticate_project_token(session=session, token=token)
+        except HTTPException:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid API key")
+            return
+
+    await websocket.accept()
+    project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        project_websocket_hub.remove_connection(project_id=context.project_id, websocket=websocket)
 
 
 def _split_csv_values(value: str | None) -> list[str]:

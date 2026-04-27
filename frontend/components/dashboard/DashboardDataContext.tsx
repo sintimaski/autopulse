@@ -181,6 +181,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
   const [themeSettingsSaving, setThemeSettingsSaving] = useState(false);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsRefreshDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wsHeartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsPollingFallbackTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasLoadedDashboardData = useRef(false);
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
 
   const serverNowTimestamp = overview?.server_now ?? requests?.server_now ?? errorGroups?.server_now ?? null;
@@ -202,7 +207,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
 
     const run = async () => {
-      setLoading(true);
+      const isInitialLoad = !hasLoadedDashboardData.current;
+      if (isInitialLoad) {
+        setLoading(true);
+      }
       setErrorMessage(null);
       try {
         const headers = { Authorization: `Bearer ${apiKey}` };
@@ -349,10 +357,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAlertSettings(alertSettingsData);
         setAlertDispatches(alertDispatchesData);
         setThemePreference(themeSettingsData.theme_preference);
+        hasLoadedDashboardData.current = true;
       } catch (error) {
-        setErrorMessage(buildDashboardNetworkError(error));
+        if (!hasLoadedDashboardData.current) {
+          setErrorMessage(buildDashboardNetworkError(error));
+        }
       } finally {
-        setLoading(false);
+        if (isInitialLoad) {
+          setLoading(false);
+        }
       }
     };
 
@@ -379,6 +392,122 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (runbookTimer.current) {
         clearTimeout(runbookTimer.current);
       }
+      if (wsReconnectTimer.current) {
+        clearTimeout(wsReconnectTimer.current);
+      }
+      if (wsRefreshDebounceTimer.current) {
+        clearTimeout(wsRefreshDebounceTimer.current);
+      }
+      if (wsHeartbeatTimer.current) {
+        clearInterval(wsHeartbeatTimer.current);
+      }
+      if (wsPollingFallbackTimer.current) {
+        clearInterval(wsPollingFallbackTimer.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!apiKey) {
+      return;
+    }
+    const wsUrl = new URL(apiBaseUrl);
+    wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+    const basePath = wsUrl.pathname.replace(/\/+$/, "");
+    wsUrl.pathname = `${basePath}/dashboard/updates`;
+    wsUrl.searchParams.set("token", apiKey);
+
+    let ws: WebSocket | null = null;
+    let cancelled = false;
+    let opened = false;
+    let failedConnects = 0;
+
+    const startPollingFallback = () => {
+      if (wsPollingFallbackTimer.current) {
+        return;
+      }
+      wsPollingFallbackTimer.current = setInterval(() => {
+        setRefreshToken((token) => token + 1);
+      }, 5000);
+    };
+
+    const connect = () => {
+      if (cancelled) {
+        return;
+      }
+      opened = false;
+      ws = new WebSocket(wsUrl.toString());
+      ws.onopen = () => {
+        opened = true;
+        failedConnects = 0;
+        if (wsPollingFallbackTimer.current) {
+          clearInterval(wsPollingFallbackTimer.current);
+          wsPollingFallbackTimer.current = null;
+        }
+        if (wsHeartbeatTimer.current) {
+          clearInterval(wsHeartbeatTimer.current);
+        }
+        wsHeartbeatTimer.current = setInterval(() => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          ws.send("ping");
+        }, 20000);
+      };
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as { type?: string };
+          if (payload.type !== "ingest") {
+            return;
+          }
+        } catch {
+          return;
+        }
+        if (wsRefreshDebounceTimer.current) {
+          clearTimeout(wsRefreshDebounceTimer.current);
+        }
+        wsRefreshDebounceTimer.current = setTimeout(() => {
+          setRefreshToken((token) => token + 1);
+        }, 300);
+      };
+      ws.onclose = () => {
+        if (wsHeartbeatTimer.current) {
+          clearInterval(wsHeartbeatTimer.current);
+          wsHeartbeatTimer.current = null;
+        }
+        if (cancelled) {
+          return;
+        }
+        if (!opened) {
+          failedConnects += 1;
+          if (failedConnects >= 3) {
+            startPollingFallback();
+            return;
+          }
+        }
+        wsReconnectTimer.current = setTimeout(connect, 2000);
+      };
+      ws.onerror = () => {
+        ws?.close();
+      };
+    };
+
+    connect();
+    return () => {
+      cancelled = true;
+      if (wsReconnectTimer.current) {
+        clearTimeout(wsReconnectTimer.current);
+      }
+      if (wsRefreshDebounceTimer.current) {
+        clearTimeout(wsRefreshDebounceTimer.current);
+      }
+      if (wsHeartbeatTimer.current) {
+        clearInterval(wsHeartbeatTimer.current);
+      }
+      if (wsPollingFallbackTimer.current) {
+        clearInterval(wsPollingFallbackTimer.current);
+      }
+      ws?.close();
     };
   }, []);
 

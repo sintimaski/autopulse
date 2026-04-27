@@ -23,6 +23,7 @@ export function ApiKeyMissing() {
 
 export function DashboardPageBoundary({ children }: { children: ReactNode }) {
   const d = useDashboardData();
+  const hasRenderableData = Boolean(d.overview && d.requests && d.errorGroups);
 
   if (d.loading) {
     return (
@@ -39,7 +40,7 @@ export function DashboardPageBoundary({ children }: { children: ReactNode }) {
     );
   }
 
-  if (d.errorMessage) {
+  if (d.errorMessage && !hasRenderableData) {
     return (
       <div className="mx-auto max-w-5xl">
         <section
@@ -56,7 +57,7 @@ export function DashboardPageBoundary({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!d.overview || !d.requests || !d.errorGroups) {
+  if (!hasRenderableData) {
     return null;
   }
 

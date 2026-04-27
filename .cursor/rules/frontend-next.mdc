@@ -9,3 +9,4 @@ alwaysApply: false
 - Optimize for **fast diagnosis** on the overview; avoid configurability that belongs in enterprise APM.
 - Accessible defaults: contrast, keyboard navigation, clear empty and error states.
 - Align visible fields with MVP tables and error grouping in `DEVELOPMENT.md`.
+- For live data refreshes, prefer **in-place state updates** over disruptive reload patterns: avoid replacing the full page with loading skeletons after first paint; keep prior data rendered and refresh components smoothly.
