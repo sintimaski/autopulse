@@ -37,6 +37,26 @@ describe("resolveSparklineSeries", () => {
     expect(result[0].error_count).toBe(2);
   });
 
+  it("uses request-derived series when preferRequests is true", () => {
+    const overview = {
+      series: [
+        {
+          minute: "2026-04-26T10:00:00Z",
+          request_count: 99,
+          error_count: 0,
+          avg_latency_ms: 1,
+        },
+      ],
+    };
+    const requests = {
+      items: [{ timestamp: "2026-04-26T10:00:30Z", status_code: 500, latency_ms: 20 }],
+    };
+    const result = resolveSparklineSeries(overview, requests, { preferRequests: true });
+    expect(result).toHaveLength(1);
+    expect(result[0].request_count).toBe(1);
+    expect(result[0].error_count).toBe(1);
+  });
+
   it("returns empty when no overview series and no requests", () => {
     expect(resolveSparklineSeries(null, null)).toEqual([]);
     expect(resolveSparklineSeries({ series: [] }, { items: [] })).toEqual([]);

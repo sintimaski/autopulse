@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from autopulse_backend.config import get_settings
 from autopulse_backend.dashboard import router as dashboard_router
@@ -42,6 +43,23 @@ def create_app() -> FastAPI:
         if isinstance(scheduler, SchedulerHandle):
             await scheduler.stop()
             app.state._autopulse_scheduler = None
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/ready")
+    async def ready() -> dict[str, str]:
+        engine = get_engine(settings.database_url)
+        try:
+            async with engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database not ready",
+            ) from exc
+        return {"status": "ready"}
 
     app.include_router(ingest_router)
     app.include_router(dashboard_router)

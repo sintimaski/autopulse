@@ -39,12 +39,14 @@ export type OverviewForSignals = {
 export function resolveSparklineSeries(
   overview: OverviewForSparkline,
   requests: RequestsForSparkline,
+  options?: { preferRequests?: boolean },
 ): OverviewBucket[] {
-  if (overview?.series?.length) {
+  const preferRequests = options?.preferRequests ?? false;
+  if (!preferRequests && overview?.series?.length) {
     return overview.series;
   }
   if (!requests?.items?.length) {
-    return [];
+    return overview?.series?.length ? overview.series : [];
   }
   const buckets = new Map<string, OverviewBucket>();
   for (const item of requests.items) {

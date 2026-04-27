@@ -43,6 +43,9 @@ def _env_float(name: str, default: float, *, minimum: float | None = None) -> fl
 class Settings:
     database_url: str
     cors_allow_origins: tuple[str, ...]
+    ingest_max_request_bytes: int = 1_048_576
+    ingest_rate_limit_requests_per_window: int = 1200
+    ingest_rate_limit_window_seconds: int = 60
     default_sdk_version: str = "unknown"
     alerts_enabled: bool = True
     alert_default_destination_email: str | None = None
@@ -69,6 +72,17 @@ def get_settings() -> Settings:
     return Settings(
         database_url=getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db"),
         cors_allow_origins=cors_allow_origins,
+        ingest_max_request_bytes=_env_int("INGEST_MAX_REQUEST_BYTES", 1_048_576, minimum=1),
+        ingest_rate_limit_requests_per_window=_env_int(
+            "INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW",
+            1200,
+            minimum=0,
+        ),
+        ingest_rate_limit_window_seconds=_env_int(
+            "INGEST_RATE_LIMIT_WINDOW_SECONDS",
+            60,
+            minimum=1,
+        ),
         alerts_enabled=_env_bool("ALERTS_ENABLED", True),
         alert_default_destination_email=getenv("ALERT_DEFAULT_DESTINATION_EMAIL"),
         alert_error_spike_ratio_threshold=_env_float(

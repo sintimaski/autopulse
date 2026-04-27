@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
@@ -30,6 +31,23 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
 function ShellWithData({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const d = useDashboardData();
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const stored = window.localStorage.getItem("autopulse-theme");
+    if (stored === "dark") {
+      return true;
+    }
+    if (stored === "light") {
+      return false;
+    }
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem("autopulse-theme", isDark ? "dark" : "light");
+  }, [isDark]);
 
   if (!d.hasApiKey) {
     return <ApiKeyMissing />;
@@ -42,6 +60,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
       pathname={pathname}
       title={meta.title}
       subtitle={meta.subtitle}
+      isDark={isDark}
+      onToggleTheme={() => setIsDark((prev) => !prev)}
       onRefresh={() => d.setRefreshToken((n) => n + 1)}
       filterToolbar={<ServerQueryToolbar />}
     >

@@ -13,44 +13,75 @@ export function DashboardHomeContent() {
   if (!overview || !requests) {
     return null;
   }
+  const derivedRequestCount = d.sparklineSeries.reduce(
+    (sum, bucket) => sum + Number(bucket.request_count || 0),
+    0,
+  );
+  const derivedErrorCount = d.sparklineSeries.reduce(
+    (sum, bucket) => sum + Number(bucket.error_count || 0),
+    0,
+  );
+  const derivedLatencyWeighted = d.sparklineSeries.reduce(
+    (sum, bucket) => sum + Number(bucket.avg_latency_ms || 0) * Number(bucket.request_count || 0),
+    0,
+  );
+  const displayRequestCount = derivedRequestCount || overview.request_count;
+  const displayErrorCount = derivedRequestCount ? derivedErrorCount : overview.error_count;
+  const displayErrorRate = displayRequestCount ? displayErrorCount / displayRequestCount : 0;
+  const displayAvgLatencyMs = displayRequestCount
+    ? derivedLatencyWeighted / displayRequestCount
+    : overview.avg_latency_ms;
+  const displayRequestsPerMinute = displayRequestCount / Math.max(d.windowMinutes, 1);
+  const usingFilteredSeries = d.method !== "ALL" || d.statusClass !== "ALL";
 
   return (
     <>
       <section className="grid gap-4 sm:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Requests / min</h3>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900">
-            {overview.requests_per_minute.toFixed(2)}
+        <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+            Requests / min
+          </h3>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-neutral-100">
+            {displayRequestsPerMinute.toFixed(2)}
           </p>
         </article>
-        <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Error rate</h3>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-rose-600">
-            {(overview.error_rate * 100).toFixed(1)}%
+        <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+            Error rate
+          </h3>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
+            {(displayErrorRate * 100).toFixed(1)}%
           </p>
-          <p className="mt-1 text-xs text-slate-500">5xx + ingested error events</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+            {usingFilteredSeries
+              ? "Derived from current filtered request slice"
+              : "5xx + ingested error events"}
+          </p>
           <Link
             href="/diagnosis#grouped-errors"
-            className="mt-2 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline"
+            className="mt-2 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
           >
             Open grouped errors
           </Link>
         </article>
-        <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Avg latency</h3>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900">
-            {overview.avg_latency_ms.toFixed(1)}{" "}
-            <span className="text-lg font-semibold text-slate-500">ms</span>
+        <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+            Avg latency
+          </h3>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-neutral-100">
+            {displayAvgLatencyMs.toFixed(1)}{" "}
+            <span className="text-lg font-semibold text-slate-500 dark:text-neutral-400">ms</span>
           </p>
         </article>
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-800">Volume (by minute)</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          Hover bars for counts, error share, and average latency. Chart span and step only change how
-          bars are drawn (same server window as the query bar). For errors and routes, open{" "}
-          <Link href="/diagnosis" className="font-medium text-sky-700 underline-offset-2 hover:underline">
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+          Requests (bars), error rate trend (line), and latency trend (line). Hover bars for exact bucket
+          values. Chart span and step only change how bars are drawn (same server window as the query bar).
+          For errors and routes, open{" "}
+          <Link href="/diagnosis" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
             Diagnosis
           </Link>
           .
@@ -64,7 +95,7 @@ export function DashboardHomeContent() {
           />
         </div>
         {overview.series.length === 0 && d.sparklineSeries.length > 0 && (
-          <p className="mt-2 text-xs text-amber-700">
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
             Backend minute series is empty for this range; buckets are derived from the loaded request
             page.
           </p>
@@ -72,9 +103,11 @@ export function DashboardHomeContent() {
       </section>
 
       {overview.request_count === 0 ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-amber-900">No traffic in this window yet</h2>
-          <p className="mt-1 text-sm text-amber-900/90">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+          <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            No traffic in this window yet
+          </h2>
+          <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-100/90">
             Send traffic to <code className="rounded bg-amber-100 px-1">POST /ingest</code>, then use
             refresh in the header. You can also validate grouped errors on{" "}
             <Link href="/diagnosis" className="font-medium underline underline-offset-2">
@@ -86,21 +119,25 @@ export function DashboardHomeContent() {
       ) : null}
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-800">Top failing routes</h2>
-            <Link href="/diagnosis" className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline">
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h2>
+            <Link href="/diagnosis" className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
               Full diagnosis
             </Link>
           </div>
           {d.topFailingRoutes.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No 5xx failures in the current request sample.</p>
+            <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">
+              No 5xx failures in the current request sample.
+            </p>
           ) : (
             <ul className="mt-3 space-y-2">
               {d.topFailingRoutes.map(([path, count]) => (
                 <li key={path} className="flex items-start justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate font-mono text-xs text-slate-800">{path}</span>
-                  <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                  <span className="min-w-0 truncate font-mono text-xs text-slate-800 dark:text-neutral-100">
+                    {path}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
                     {count}
                   </span>
                 </li>
@@ -109,27 +146,32 @@ export function DashboardHomeContent() {
           )}
         </article>
 
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm">
+        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-800">Recent errors</h2>
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h2>
             <Link
               href="/diagnosis#grouped-errors"
-              className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline"
+              className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
               Grouped list
             </Link>
           </div>
           {d.recentErrorsPreview.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">No grouped errors in this time window.</p>
+            <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">
+              No grouped errors in this time window.
+            </p>
           ) : (
             <ul className="mt-3 space-y-2">
               {d.recentErrorsPreview.map((item) => (
-                <li key={item.group_key} className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2">
-                  <p className="text-sm font-medium text-slate-900">
-                    {item.exception_type ?? "Error"} <span className="text-slate-500">on</span>{" "}
+                <li
+                  key={item.group_key}
+                  className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/70"
+                >
+                  <p className="text-sm font-medium text-slate-900 dark:text-neutral-100">
+                    {item.exception_type ?? "Error"} <span className="text-slate-500 dark:text-neutral-400">on</span>{" "}
                     <span className="font-mono text-xs">{item.path}</span>
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-600">
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-300">
                     Last seen {formatTimestamp(item.last_seen)} · Count {item.count}
                   </p>
                 </li>

@@ -93,12 +93,12 @@ export function formatTimestamp(value: string): string {
 
 export function statusTone(code: number): string {
   if (code >= 500) {
-    return "bg-rose-500/15 text-rose-800 ring-rose-500/25";
+    return "bg-rose-500/15 text-rose-800 ring-rose-500/25 dark:bg-rose-900/40 dark:text-rose-300 dark:ring-rose-700/50";
   }
   if (code >= 400) {
-    return "bg-amber-500/15 text-amber-900 ring-amber-500/25";
+    return "bg-amber-500/15 text-amber-900 ring-amber-500/25 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-700/50";
   }
-  return "bg-emerald-500/15 text-emerald-900 ring-emerald-500/25";
+  return "bg-emerald-500/15 text-emerald-900 ring-emerald-500/25 dark:bg-emerald-900/40 dark:text-emerald-300 dark:ring-emerald-700/50";
 }
 
 export function compareValues(a: string | number, b: string | number, dir: SortDir): number {

@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -207,3 +208,68 @@ def test_ingest_rejects_invalid_batch_all_or_nothing(backend_test_database_url: 
         response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
     assert response.status_code == 422
     assert _count_events(backend_test_database_url) == 0
+
+
+def test_ingest_rejects_payload_larger_than_configured_limit(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_MAX_REQUEST_BYTES", "64")
+    app = create_app()
+    payload = {
+        "sdk_version": "0.1.0",
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/users/{id}",
+                "status_code": 200,
+                "latency_ms": 42.3,
+                "request_id": "req-too-large",
+            }
+        ],
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Ingest payload exceeds max request size (64 bytes)."}
+    assert _count_events(backend_test_database_url) == 0
+
+
+def test_ingest_rate_limit_returns_429_with_retry_after(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "2")
+    monkeypatch.setenv("INGEST_RATE_LIMIT_WINDOW_SECONDS", "60")
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/rate-limit",
+                "status_code": 200,
+                "latency_ms": 12.5,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        first = client.post("/ingest", json=payload, headers=headers)
+        second = client.post("/ingest", json=payload, headers=headers)
+        third = client.post("/ingest", json=payload, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429
+    assert third.headers.get("retry-after") == "60"
+    assert third.json() == {"detail": "Ingest rate limit exceeded. Try again in 60 seconds."}
+    assert _count_events(backend_test_database_url) == 2

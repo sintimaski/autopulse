@@ -434,8 +434,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [filteredSorted, groupBy]);
 
   const sparklineSeries = useMemo(
-    () => resolveSparklineSeries(overview, requests),
-    [overview, requests],
+    () =>
+      resolveSparklineSeries(overview, requests, {
+        // When server-side filters are active, derive buckets from the filtered request page
+        // so chart + cards reflect selected method/status.
+        preferRequests: method !== "ALL" || statusClass !== "ALL",
+      }),
+    [overview, requests, method, statusClass],
   );
 
   const operationalSignals = useMemo(
