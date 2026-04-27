@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -65,6 +66,7 @@ import {
   writeDashboardSnapshot,
 } from "./dashboardSnapshotCache";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
+import { toDashboardRoutePath } from "./dashboardRoutePath";
 
 export type DashboardDataContextValue = {
   hasApiKey: boolean;
@@ -234,8 +236,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRefreshDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Ensures a refresh runs during steady ingest even if debounce keeps resetting. */
+  const wsRefreshMaxWaitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsHeartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLoadedDashboardData = useRef(false);
+  const rawDashboardPathname = usePathname();
+  const dashboardRoutePath = useMemo(
+    () => toDashboardRoutePath(rawDashboardPathname),
+    [rawDashboardPathname],
+  );
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
   const serverEnvironmentTags = useMemo(
     () => splitCommaSeparated(serverEnvironmentQuery),
@@ -311,6 +320,17 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
 
     const run = async () => {
+      const routePath = dashboardRoutePath;
+      if (routePath === "/settings") {
+        return;
+      }
+
+      const includeExtended = routePath === "/dashboard" || routePath === "/diagnosis";
+      const includeErrorGroups = routePath === "/dashboard" || routePath === "/diagnosis";
+      const includeDiagnosis = routePath === "/diagnosis";
+      const includeAlertDispatches = routePath === "/alerts";
+      const useSnapshot = routePath === "/dashboard";
+
       const isInitialLoad = !hasLoadedDashboardData.current;
       if (isInitialLoad) {
         setLoading(true);
@@ -461,85 +481,130 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           sqlFilterEnabled,
           sqlFilterApplied,
         });
-        const cached = readDashboardSnapshot(scopeKey);
+        const cached = useSnapshot ? readDashboardSnapshot(scopeKey) : null;
         if (cached) {
           setOverview(cached.overview);
           setOverviewExtended(cached.overviewExtended);
           setRequests(cached.requests);
           setErrorGroups(cached.errorGroups);
-          setDiagnosisTimeline(cached.diagnosisTimeline);
-          setDiagnosisFailures(cached.diagnosisFailures);
-          setAlertDispatches(cached.alertDispatches);
+          setDiagnosisTimeline(cached.diagnosisTimeline ?? null);
+          setDiagnosisFailures(cached.diagnosisFailures ?? null);
+          setAlertDispatches(cached.alertDispatches ?? null);
         }
 
-        const results = (await Promise.all([
-          fetch(buildApiUrl(`/dashboard/overview?${overviewParams.toString()}`), { headers }),
-          fetch(buildApiUrl(`/dashboard/overview/extended?${overviewParams.toString()}`), { headers }),
-          fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), { headers }),
-          fetch(buildApiUrl(`/dashboard/error-groups?${errorGroupsParams.toString()}`), {
-            headers,
-          }),
-          fetch(buildApiUrl(`/dashboard/diagnosis/timeline?${diagnosisSharedParams.toString()}`), {
-            headers,
-          }),
-          fetch(buildApiUrl(`/dashboard/diagnosis/failures-by-route?${diagnosisSharedParams.toString()}`), {
-            headers,
-          }),
-          fetch(buildApiUrl(`/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`), {
-            headers,
-          }),
-        ]).then(
-          ([
-            overviewResponse,
-            overviewExtendedResponse,
-            requestsResponse,
-            errorGroupsResponse,
-            diagnosisTimelineResponse,
-            diagnosisFailuresResponse,
-            alertDispatchesResponse,
-          ]) => [
-          { endpoint: "overview", response: overviewResponse },
-          { endpoint: "overview-extended", response: overviewExtendedResponse },
-          { endpoint: "requests", response: requestsResponse },
-          { endpoint: "error-groups", response: errorGroupsResponse },
-          { endpoint: "diagnosis-timeline", response: diagnosisTimelineResponse },
-          { endpoint: "diagnosis-failures", response: diagnosisFailuresResponse },
-          { endpoint: "alert-dispatches", response: alertDispatchesResponse },
-          ],
-        )) as DashboardFetchResult[];
+        const fetchTasks: Array<{
+          endpoint: DashboardFetchResult["endpoint"];
+          promise: Promise<Response>;
+        }> = [
+          {
+            endpoint: "overview",
+            promise: fetch(buildApiUrl(`/dashboard/overview?${overviewParams.toString()}`), {
+              headers,
+            }),
+          },
+        ];
+        if (includeExtended) {
+          fetchTasks.push({
+            endpoint: "overview-extended",
+            promise: fetch(buildApiUrl(`/dashboard/overview/extended?${overviewParams.toString()}`), {
+              headers,
+            }),
+          });
+        }
+        fetchTasks.push({
+          endpoint: "requests",
+          promise: fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), { headers }),
+        });
+        if (includeErrorGroups) {
+          fetchTasks.push({
+            endpoint: "error-groups",
+            promise: fetch(buildApiUrl(`/dashboard/error-groups?${errorGroupsParams.toString()}`), {
+              headers,
+            }),
+          });
+        }
+        if (includeDiagnosis) {
+          fetchTasks.push({
+            endpoint: "diagnosis-timeline",
+            promise: fetch(
+              buildApiUrl(`/dashboard/diagnosis/timeline?${diagnosisSharedParams.toString()}`),
+              { headers },
+            ),
+          });
+          fetchTasks.push({
+            endpoint: "diagnosis-failures",
+            promise: fetch(
+              buildApiUrl(`/dashboard/diagnosis/failures-by-route?${diagnosisSharedParams.toString()}`),
+              { headers },
+            ),
+          });
+        }
+        if (includeAlertDispatches) {
+          fetchTasks.push({
+            endpoint: "alert-dispatches",
+            promise: fetch(
+              buildApiUrl(`/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`),
+              { headers },
+            ),
+          });
+        }
+
+        const results: DashboardFetchResult[] = await Promise.all(
+          fetchTasks.map(async ({ endpoint, promise }) => ({
+            endpoint,
+            response: await promise,
+          })),
+        );
 
         const fetchError = buildDashboardFetchError(results);
         if (fetchError) {
           throw new Error(fetchError);
         }
 
-        const [overviewData, overviewExtendedData, requestsData, errorGroupsData, diagnosisTimelineData, diagnosisFailuresData, alertDispatchesData] = (await Promise.all(
-          results.map(async ({ response }) => response.json()),
-        )) as [
-          OverviewResponse,
-          OverviewExtendedResponse,
-          RequestsResponse,
-          ErrorGroupsResponse,
-          DiagnosisTimelineResponse,
-          DiagnosisFailureRoutesResponse,
-          AlertDispatchesResponse,
-        ];
+        const byEndpoint = new Map<DashboardFetchResult["endpoint"], unknown>();
+        await Promise.all(
+          results.map(async ({ endpoint, response }) => {
+            byEndpoint.set(endpoint, await response.json());
+          }),
+        );
+
+        const overviewData = byEndpoint.get("overview") as OverviewResponse;
+        const requestsData = byEndpoint.get("requests") as RequestsResponse;
+
         setOverview(overviewData);
-        setOverviewExtended(overviewExtendedData);
         setRequests(requestsData);
-        setErrorGroups(errorGroupsData);
-        setDiagnosisTimeline(diagnosisTimelineData);
-        setDiagnosisFailures(diagnosisFailuresData);
-        setAlertDispatches(alertDispatchesData);
-        writeDashboardSnapshot(scopeKey, {
-          overview: overviewData,
-          overviewExtended: overviewExtendedData,
-          requests: requestsData,
-          errorGroups: errorGroupsData,
-          diagnosisTimeline: diagnosisTimelineData,
-          diagnosisFailures: diagnosisFailuresData,
-          alertDispatches: alertDispatchesData,
-        });
+
+        if (includeExtended) {
+          setOverviewExtended(byEndpoint.get("overview-extended") as OverviewExtendedResponse);
+        } else {
+          setOverviewExtended(null);
+        }
+        if (includeErrorGroups) {
+          setErrorGroups(byEndpoint.get("error-groups") as ErrorGroupsResponse);
+        } else {
+          setErrorGroups(null);
+        }
+        if (includeDiagnosis) {
+          setDiagnosisTimeline(byEndpoint.get("diagnosis-timeline") as DiagnosisTimelineResponse);
+          setDiagnosisFailures(byEndpoint.get("diagnosis-failures") as DiagnosisFailureRoutesResponse);
+        } else {
+          setDiagnosisTimeline(null);
+          setDiagnosisFailures(null);
+        }
+        if (includeAlertDispatches) {
+          setAlertDispatches(byEndpoint.get("alert-dispatches") as AlertDispatchesResponse);
+        } else {
+          setAlertDispatches(null);
+        }
+
+        if (useSnapshot && includeExtended && includeErrorGroups) {
+          writeDashboardSnapshot(scopeKey, {
+            overview: overviewData,
+            overviewExtended: byEndpoint.get("overview-extended") as OverviewExtendedResponse,
+            requests: requestsData,
+            errorGroups: byEndpoint.get("error-groups") as ErrorGroupsResponse,
+          });
+        }
         hasLoadedDashboardData.current = true;
       } catch (error) {
         if (!hasLoadedDashboardData.current) {
@@ -554,6 +619,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
     void run();
   }, [
+    dashboardRoutePath,
     method,
     statusClass,
     toIsoWindow,
@@ -583,6 +649,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (wsRefreshDebounceTimer.current) {
         clearTimeout(wsRefreshDebounceTimer.current);
       }
+      if (wsRefreshMaxWaitTimer.current) {
+        clearTimeout(wsRefreshMaxWaitTimer.current);
+      }
       if (wsHeartbeatTimer.current) {
         clearInterval(wsHeartbeatTimer.current);
       }
@@ -594,6 +663,44 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       return;
     }
     const wsUrl = buildUpdatesWebsocketUrl(apiKey);
+    const INGEST_REFRESH_DEBOUNCE_MS = 500;
+    const INGEST_REFRESH_MAX_WAIT_MS = 2500;
+
+    const clearIngestRefreshTimers = () => {
+      if (wsRefreshDebounceTimer.current) {
+        clearTimeout(wsRefreshDebounceTimer.current);
+        wsRefreshDebounceTimer.current = null;
+      }
+      if (wsRefreshMaxWaitTimer.current) {
+        clearTimeout(wsRefreshMaxWaitTimer.current);
+        wsRefreshMaxWaitTimer.current = null;
+      }
+    };
+
+    const scheduleIngestRefresh = () => {
+      if (wsRefreshDebounceTimer.current) {
+        clearTimeout(wsRefreshDebounceTimer.current);
+      }
+      wsRefreshDebounceTimer.current = setTimeout(() => {
+        wsRefreshDebounceTimer.current = null;
+        if (wsRefreshMaxWaitTimer.current) {
+          clearTimeout(wsRefreshMaxWaitTimer.current);
+          wsRefreshMaxWaitTimer.current = null;
+        }
+        setRefreshToken((token) => token + 1);
+      }, INGEST_REFRESH_DEBOUNCE_MS);
+
+      if (!wsRefreshMaxWaitTimer.current) {
+        wsRefreshMaxWaitTimer.current = setTimeout(() => {
+          wsRefreshMaxWaitTimer.current = null;
+          if (wsRefreshDebounceTimer.current) {
+            clearTimeout(wsRefreshDebounceTimer.current);
+            wsRefreshDebounceTimer.current = null;
+          }
+          setRefreshToken((token) => token + 1);
+        }, INGEST_REFRESH_MAX_WAIT_MS);
+      }
+    };
 
     let ws: WebSocket | null = null;
     let cancelled = false;
@@ -625,14 +732,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         } catch {
           return;
         }
-        if (wsRefreshDebounceTimer.current) {
-          clearTimeout(wsRefreshDebounceTimer.current);
-        }
-        wsRefreshDebounceTimer.current = setTimeout(() => {
-          setRefreshToken((token) => token + 1);
-        }, 400);
+        scheduleIngestRefresh();
       };
       ws.onclose = () => {
+        clearIngestRefreshTimers();
         if (wsHeartbeatTimer.current) {
           clearInterval(wsHeartbeatTimer.current);
           wsHeartbeatTimer.current = null;
@@ -655,9 +758,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (wsReconnectTimer.current) {
         clearTimeout(wsReconnectTimer.current);
       }
-      if (wsRefreshDebounceTimer.current) {
-        clearTimeout(wsRefreshDebounceTimer.current);
-      }
+      clearIngestRefreshTimers();
       if (wsHeartbeatTimer.current) {
         clearInterval(wsHeartbeatTimer.current);
       }
@@ -1046,6 +1147,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!apiKey) {
       return;
     }
+    if (dashboardRoutePath !== "/diagnosis") {
+      queueMicrotask(() => {
+        setDiagnosisErrorGroupEvents(null);
+      });
+      return;
+    }
     const groupKey = recentErrorsPreview[0]?.group_key;
     if (!groupKey) {
       queueMicrotask(() => {
@@ -1079,7 +1186,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         setDiagnosisErrorGroupEvents(null);
       });
-  }, [recentErrorsPreview, toIsoWindow, windowMinutes, sqlFilterEnabled, sqlFilterApplied]);
+  }, [
+    apiKey,
+    dashboardRoutePath,
+    recentErrorsPreview,
+    toIsoWindow,
+    windowMinutes,
+    sqlFilterEnabled,
+    sqlFilterApplied,
+  ]);
 
   const displayedErrorGroups = useMemo(() => {
     const source = errorGroups?.items;
@@ -1149,8 +1264,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     (): DashboardDataContextValue => ({
       hasApiKey,
       windowMinutes,
-      windowFromTimestamp: toIsoWindow?.from ?? overview?.from_timestamp ?? "",
-      windowToTimestamp: toIsoWindow?.to ?? overview?.to_timestamp ?? "",
+      windowFromTimestamp:
+        toIsoWindow?.from ?? overview?.from_timestamp ?? requests?.from_timestamp ?? "",
+      windowToTimestamp: toIsoWindow?.to ?? overview?.to_timestamp ?? requests?.to_timestamp ?? "",
       serverNowTimestamp,
       isAbsoluteWindow: absoluteWindow !== null,
       method,

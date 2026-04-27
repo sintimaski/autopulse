@@ -19,6 +19,7 @@ Embedded mode also exposes local AutoPulse endpoints at:
 
 - `http://localhost:8010/autopulse/ingest`
 - `http://localhost:8010/autopulse/dashboard/*`
+- `ws://localhost:8010/autopulse/dashboard/updates?token=…` (sends `subscribed` + `pong` to client `ping`; **`ingest` broadcasts only after batches hit this same server’s `/ingest`**)
 - `http://localhost:8010/autopulse/ui/` (static assets when available)
 
 In another terminal:

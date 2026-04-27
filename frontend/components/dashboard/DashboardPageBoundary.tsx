@@ -22,9 +22,30 @@ export function ApiKeyMissing() {
   );
 }
 
-export function DashboardPageBoundary({ children }: { children: ReactNode }) {
+export type DashboardPageDataReady =
+  /** Overview home & Diagnosis (error groups + extended breakdown). */
+  | "traffic-full"
+  /** Logs: request table + window metadata from overview. */
+  | "traffic-requests"
+  /** Alerts: sparkline + dispatches (no error-group list). */
+  | "traffic-alerts"
+  /** Settings: project JSON only (no traffic bundle). */
+  | "settings-only";
+
+export function DashboardPageBoundary({
+  children,
+  dataReady = "traffic-full",
+}: {
+  children: ReactNode;
+  dataReady?: DashboardPageDataReady;
+}) {
   const d = useDashboardData();
-  const hasRenderableData = Boolean(d.overview && d.requests && d.errorGroups);
+  const hasRenderableData =
+    dataReady === "traffic-full"
+      ? Boolean(d.overview && d.requests && d.errorGroups)
+      : dataReady === "traffic-requests" || dataReady === "traffic-alerts"
+        ? Boolean(d.overview && d.requests)
+        : Boolean(d.alertSettings && d.retentionSettings);
 
   if (d.loading) {
     return (

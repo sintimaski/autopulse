@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function SettingsPage() {
   return (
-    <DashboardPageBoundary>
+    <DashboardPageBoundary dataReady="settings-only">
       <SettingsContent />
     </DashboardPageBoundary>
   );

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function AlertsPage() {
   return (
-    <DashboardPageBoundary>
+    <DashboardPageBoundary dataReady="traffic-alerts">
       <AlertsContent />
     </DashboardPageBoundary>
   );

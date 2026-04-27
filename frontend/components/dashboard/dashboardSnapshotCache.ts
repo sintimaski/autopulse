@@ -17,9 +17,10 @@ export type DashboardSnapshotPayload = {
   overviewExtended: OverviewExtendedResponse;
   requests: RequestsResponse;
   errorGroups: ErrorGroupsResponse;
-  diagnosisTimeline: DiagnosisTimelineResponse;
-  diagnosisFailures: DiagnosisFailureRoutesResponse;
-  alertDispatches: AlertDispatchesResponse;
+  /** Omitted on newer home snapshots (diagnosis is fetched only on `/diagnosis`). */
+  diagnosisTimeline?: DiagnosisTimelineResponse;
+  diagnosisFailures?: DiagnosisFailureRoutesResponse;
+  alertDispatches?: AlertDispatchesResponse;
 };
 
 export type DashboardSnapshotRecord = {
@@ -64,7 +65,12 @@ export function readDashboardSnapshot(scopeKey: string): DashboardSnapshotPayloa
     if (!parsed || typeof parsed.scopeKey !== "string" || parsed.scopeKey !== scopeKey) {
       return null;
     }
-    if (!parsed.payload?.overview || !parsed.payload?.requests) {
+    if (
+      !parsed.payload?.overview ||
+      !parsed.payload?.overviewExtended ||
+      !parsed.payload?.requests ||
+      !parsed.payload?.errorGroups
+    ) {
       return null;
     }
     return parsed.payload;

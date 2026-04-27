@@ -117,9 +117,14 @@ async def dashboard_updates(websocket: WebSocket) -> None:
 
     await websocket.accept()
     project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
+    await websocket.send_text(
+        json.dumps({"type": "subscribed", "project_id": str(context.project_id)}),
+    )
     try:
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            if raw.strip().lower() == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}))
     except WebSocketDisconnect:
         pass
     finally:
