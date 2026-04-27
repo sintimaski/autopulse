@@ -3,6 +3,10 @@ export type OverviewBucket = {
   request_count: number;
   error_count: number;
   avg_latency_ms: number;
+  count_2xx?: number;
+  count_3xx?: number;
+  count_4xx?: number;
+  count_5xx?: number;
 };
 
 export type OverviewResponse = {

@@ -7,6 +7,10 @@ export type OverviewBucket = {
   request_count: number;
   error_count: number;
   avg_latency_ms: number;
+  count_2xx?: number;
+  count_3xx?: number;
+  count_4xx?: number;
+  count_5xx?: number;
 };
 
 export type OverviewForSparkline = {
@@ -59,13 +63,28 @@ export function resolveSparklineSeries(
       if (item.status_code >= 500) {
         existing.error_count += 1;
       }
+      const statusClass = Math.floor(Number(item.status_code || 0) / 100);
+      if (statusClass === 2) {
+        existing.count_2xx = Number(existing.count_2xx || 0) + 1;
+      } else if (statusClass === 3) {
+        existing.count_3xx = Number(existing.count_3xx || 0) + 1;
+      } else if (statusClass === 4) {
+        existing.count_4xx = Number(existing.count_4xx || 0) + 1;
+      } else if (statusClass === 5) {
+        existing.count_5xx = Number(existing.count_5xx || 0) + 1;
+      }
       continue;
     }
+    const statusClass = Math.floor(Number(item.status_code || 0) / 100);
     buckets.set(key, {
       minute: key,
       request_count: 1,
       error_count: item.status_code >= 500 ? 1 : 0,
       avg_latency_ms: item.latency_ms,
+      count_2xx: statusClass === 2 ? 1 : 0,
+      count_3xx: statusClass === 3 ? 1 : 0,
+      count_4xx: statusClass === 4 ? 1 : 0,
+      count_5xx: statusClass === 5 ? 1 : 0,
     });
   }
   return [...buckets.values()].sort((a, b) => a.minute.localeCompare(b.minute));
@@ -109,7 +128,15 @@ export function aggregateSeriesByStep(
   }
   const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
   const spanMs = step * 60 * 1000;
-  type Acc = { rc: number; ec: number; latWeighted: number };
+  type Acc = {
+    rc: number;
+    ec: number;
+    latWeighted: number;
+    c2xx: number;
+    c3xx: number;
+    c4xx: number;
+    c5xx: number;
+  };
   const map = new Map<string, Acc>();
   for (const b of sorted) {
     const t = new Date(b.minute).getTime();
@@ -118,13 +145,21 @@ export function aggregateSeriesByStep(
     const rc = Number(b.request_count || 0);
     const ec = Number(b.error_count || 0);
     const lat = Number(b.avg_latency_ms || 0);
+    const c2xx = Number(b.count_2xx || 0);
+    const c3xx = Number(b.count_3xx || 0);
+    const c4xx = Number(b.count_4xx || 0);
+    const c5xx = Number(b.count_5xx || 0);
     const existing = map.get(key);
     if (existing) {
       existing.rc += rc;
       existing.ec += ec;
       existing.latWeighted += lat * rc;
+      existing.c2xx += c2xx;
+      existing.c3xx += c3xx;
+      existing.c4xx += c4xx;
+      existing.c5xx += c5xx;
     } else {
-      map.set(key, { rc, ec, latWeighted: lat * rc });
+      map.set(key, { rc, ec, latWeighted: lat * rc, c2xx, c3xx, c4xx, c5xx });
     }
   }
   return [...map.entries()]
@@ -134,6 +169,10 @@ export function aggregateSeriesByStep(
       request_count: acc.rc,
       error_count: acc.ec,
       avg_latency_ms: acc.rc > 0 ? acc.latWeighted / acc.rc : 0,
+      count_2xx: acc.c2xx,
+      count_3xx: acc.c3xx,
+      count_4xx: acc.c4xx,
+      count_5xx: acc.c5xx,
     }));
 }
 

@@ -182,9 +182,17 @@ def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_u
     assert second_minute in series_by_minute
     assert series_by_minute[first_minute]["request_count"] == 2
     assert series_by_minute[first_minute]["error_count"] == 1
+    assert series_by_minute[first_minute]["count_2xx"] == 1
+    assert series_by_minute[first_minute]["count_3xx"] == 0
+    assert series_by_minute[first_minute]["count_4xx"] == 0
+    assert series_by_minute[first_minute]["count_5xx"] == 1
     assert series_by_minute[first_minute]["avg_latency_ms"] > 0
     assert series_by_minute[second_minute]["request_count"] == 1
     assert series_by_minute[second_minute]["error_count"] == 0
+    assert series_by_minute[second_minute]["count_2xx"] == 1
+    assert series_by_minute[second_minute]["count_3xx"] == 0
+    assert series_by_minute[second_minute]["count_4xx"] == 0
+    assert series_by_minute[second_minute]["count_5xx"] == 0
 
 
 def test_dashboard_requests_support_filters_and_pagination(backend_test_database_url: str) -> None:

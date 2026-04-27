@@ -8,6 +8,13 @@ import { SparklineMini } from "../SparklineMini";
 import { StatusPill } from "../StatusPill";
 import { VolumeChart } from "../VolumeChart";
 import { useDashboardData } from "../DashboardDataContext";
+import {
+  BreakdownBarChart,
+  ChartPanel,
+  MultiSeriesLineChart,
+  PercentileLadder,
+  type MultiSeriesLineChartSeries,
+} from "../charts";
 import { buildScopedQuery } from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
 
@@ -65,8 +72,41 @@ export function DashboardHomeContent() {
   })()}#grouped-errors`;
   const errorTrendValues = d.sparklineSeries.map((bucket) => bucket.error_count);
   const latencyTrendValues = d.sparklineSeries.map((bucket) => bucket.avg_latency_ms);
-  const serviceBreakdown = overviewExtended.service_breakdown.slice(0, 5);
-  const routeBreakdown = overviewExtended.route_breakdown.slice(0, 5);
+  const serviceBreakdownByVolume = [...overviewExtended.service_breakdown]
+    .sort((a, b) => b.request_count - a.request_count)
+    .slice(0, 10);
+  const routeBreakdownByVolume = [...overviewExtended.route_breakdown]
+    .sort((a, b) => b.request_count - a.request_count)
+    .slice(0, 10);
+  const statusClassLabels = d.sparklineSeries.map((bucket) =>
+    new Date(bucket.minute).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+  );
+  const statusClassSeries: MultiSeriesLineChartSeries[] = [
+    {
+      id: "2xx",
+      label: "2xx",
+      color: "#10b981",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_2xx || 0)),
+    },
+    {
+      id: "3xx",
+      label: "3xx",
+      color: "#0ea5e9",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_3xx || 0)),
+    },
+    {
+      id: "4xx",
+      label: "4xx",
+      color: "#f59e0b",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_4xx || 0)),
+    },
+    {
+      id: "5xx",
+      label: "5xx",
+      color: "#f43f5e",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_5xx || 0)),
+    },
+  ];
 
   return (
     <>
@@ -138,21 +178,23 @@ export function DashboardHomeContent() {
         )}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Error trend</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">Minute-level error counts in current scope.</p>
-          <div className="mt-2">
-            <SparklineMini values={errorTrendValues} colorClass="text-rose-600 dark:text-rose-300" />
-          </div>
-        </article>
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Latency trend</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">Average minute latency in milliseconds.</p>
-          <div className="mt-2">
-            <SparklineMini values={latencyTrendValues} colorClass="text-amber-600 dark:text-amber-300" />
-          </div>
-        </article>
+      <section className="grid gap-4 lg:grid-cols-3">
+        <ChartPanel title="Error trend" description="Minute-level error counts in current scope.">
+          <SparklineMini values={errorTrendValues} colorClass="text-rose-600 dark:text-rose-300" />
+        </ChartPanel>
+        <ChartPanel title="Latency trend" description="Average minute latency in milliseconds.">
+          <SparklineMini values={latencyTrendValues} colorClass="text-amber-600 dark:text-amber-300" />
+        </ChartPanel>
+        <ChartPanel
+          title="Latency shape"
+          description={`Window average ${displayAvgLatencyMs.toFixed(1)} ms`}
+        >
+          <PercentileLadder
+            p50={overviewExtended.p50_latency_ms}
+            p95={overviewExtended.p95_latency_ms}
+            p99={overviewExtended.p99_latency_ms}
+          />
+        </ChartPanel>
       </section>
 
       {overview.request_count === 0 ? (
@@ -171,20 +213,14 @@ export function DashboardHomeContent() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h2>
-            <Link href={diagnosisBaseHref} className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
-              Full diagnosis
-            </Link>
-          </div>
+      <section className="grid gap-4 lg:grid-cols-3">
+        <ChartPanel title="Top failing routes" actionHref={diagnosisBaseHref} actionLabel="Full diagnosis">
           {d.topFailingRoutes.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">
+            <p className="text-sm text-slate-600 dark:text-neutral-300">
               No 5xx failures in the current request sample.
             </p>
           ) : (
-            <ul className="mt-3 space-y-2">
+            <ul className="space-y-2">
               {d.topFailingRoutes.map(([path, count]) => (
                 <li key={path} className="flex items-start justify-between gap-3 text-sm">
                   <span className="min-w-0 truncate font-mono text-xs text-slate-800 dark:text-neutral-100">
@@ -197,24 +233,15 @@ export function DashboardHomeContent() {
               ))}
             </ul>
           )}
-        </article>
+        </ChartPanel>
 
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h2>
-            <Link
-              href={diagnosisGroupedHref}
-              className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
-            >
-              Grouped list
-            </Link>
-          </div>
+        <ChartPanel title="Recent errors" actionHref={diagnosisGroupedHref} actionLabel="Grouped list">
           {d.recentErrorsPreview.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">
+            <p className="text-sm text-slate-600 dark:text-neutral-300">
               No grouped errors in this time window.
             </p>
           ) : (
-            <ul className="mt-3 space-y-2">
+            <ul className="space-y-2">
               {d.recentErrorsPreview.map((item) => (
                 <li
                   key={item.group_key}
@@ -242,43 +269,53 @@ export function DashboardHomeContent() {
               ))}
             </ul>
           )}
-        </article>
+        </ChartPanel>
 
-        <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Top services by failures</h2>
-          {serviceBreakdown.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">No service-level data yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {serviceBreakdown.map((item) => (
-                <li key={item.key} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate text-slate-800 dark:text-neutral-100">{item.key}</span>
-                  <span className="tabular-nums text-rose-700 dark:text-rose-300">
-                    {item.error_count}/{item.request_count}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </article>
+        <ChartPanel
+          title="Top services by request volume"
+          description="Highest traffic services in this window."
+          actionHref={diagnosisBaseHref}
+          actionLabel="Open diagnosis"
+        >
+          <BreakdownBarChart
+            items={serviceBreakdownByVolume.map((item) => ({
+              key: item.key,
+              value: item.request_count,
+              secondaryLabel: "error rate",
+              secondaryValue: item.error_rate * 100,
+            }))}
+            valueLabel="req"
+            emptyMessage="No service-level data yet."
+          />
+        </ChartPanel>
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Top failing routes (breakdown)</h2>
-        {routeBreakdown.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">No route breakdown available.</p>
-        ) : (
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {routeBreakdown.map((item) => (
-              <li key={item.key} className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800/70">
-                <p className="truncate font-mono text-xs">{item.key}</p>
-                <p className="mt-1 tabular-nums text-slate-700 dark:text-neutral-300">
-                  errors {item.error_count} · rate {(item.error_rate * 100).toFixed(1)}%
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <ChartPanel
+          title="Responses by class"
+          description="Per-minute response classes across the active scope."
+          actionHref={diagnosisBaseHref}
+          actionLabel="Open diagnosis"
+        >
+          <MultiSeriesLineChart labels={statusClassLabels} series={statusClassSeries} />
+        </ChartPanel>
+        <ChartPanel
+          title="Top routes by request volume"
+          description="Highest traffic routes in this window."
+          actionHref={diagnosisBaseHref}
+          actionLabel="Open diagnosis"
+        >
+          <BreakdownBarChart
+            items={routeBreakdownByVolume.map((item) => ({
+              key: item.key,
+              value: item.request_count,
+              secondaryLabel: "error rate",
+              secondaryValue: item.error_rate * 100,
+            }))}
+            valueLabel="req"
+            emptyMessage="No route breakdown available."
+          />
+        </ChartPanel>
       </section>
     </>
   );

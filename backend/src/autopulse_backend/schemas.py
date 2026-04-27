@@ -48,6 +48,10 @@ class DashboardOverviewBucket(BaseModel):
     request_count: int
     error_count: int
     avg_latency_ms: float
+    count_2xx: int
+    count_3xx: int
+    count_4xx: int
+    count_5xx: int
 
 
 class DashboardOverviewResponse(BaseModel):

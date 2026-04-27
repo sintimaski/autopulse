@@ -35,6 +35,10 @@ describe("resolveSparklineSeries", () => {
     expect(result[0].minute).toBe("2026-04-26T10:00:00.000Z");
     expect(result[0].request_count).toBe(3);
     expect(result[0].error_count).toBe(2);
+    expect(result[0].count_2xx).toBe(1);
+    expect(result[0].count_3xx).toBe(0);
+    expect(result[0].count_4xx).toBe(0);
+    expect(result[0].count_5xx).toBe(2);
   });
 
   it("uses request-derived series when preferRequests is true", () => {
@@ -98,14 +102,36 @@ describe("aggregateSeriesByStep", () => {
 
   it("merges buckets for step > 1 with weighted latency", () => {
     const series = [
-      { minute: "1970-01-01T00:00:00.000Z", request_count: 2, error_count: 0, avg_latency_ms: 10 },
-      { minute: "1970-01-01T00:01:00.000Z", request_count: 2, error_count: 2, avg_latency_ms: 20 },
+      {
+        minute: "1970-01-01T00:00:00.000Z",
+        request_count: 2,
+        error_count: 0,
+        avg_latency_ms: 10,
+        count_2xx: 2,
+        count_3xx: 0,
+        count_4xx: 0,
+        count_5xx: 0,
+      },
+      {
+        minute: "1970-01-01T00:01:00.000Z",
+        request_count: 2,
+        error_count: 2,
+        avg_latency_ms: 20,
+        count_2xx: 0,
+        count_3xx: 0,
+        count_4xx: 1,
+        count_5xx: 1,
+      },
     ];
     const out = aggregateSeriesByStep(series, 2);
     expect(out).toHaveLength(1);
     expect(out[0].request_count).toBe(4);
     expect(out[0].error_count).toBe(2);
     expect(out[0].avg_latency_ms).toBe(15);
+    expect(out[0].count_2xx).toBe(2);
+    expect(out[0].count_3xx).toBe(0);
+    expect(out[0].count_4xx).toBe(1);
+    expect(out[0].count_5xx).toBe(1);
   });
 });
 

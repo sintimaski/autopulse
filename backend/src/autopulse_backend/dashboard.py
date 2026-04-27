@@ -615,11 +615,28 @@ async def get_dashboard_overview(
             bucket = _minute_bucket(timestamp)
             current = buckets.setdefault(
                 bucket,
-                {"request_count": 0, "error_count": 0, "latency_sum": 0.0},
+                {
+                    "request_count": 0,
+                    "error_count": 0,
+                    "latency_sum": 0.0,
+                    "count_2xx": 0,
+                    "count_3xx": 0,
+                    "count_4xx": 0,
+                    "count_5xx": 0,
+                },
             )
             current["request_count"] += 1
             if event_type == "error" or status_code >= 500:
                 current["error_count"] += 1
+            status_class = int(status_code or 0) // 100
+            if status_class == 2:
+                current["count_2xx"] += 1
+            elif status_class == 3:
+                current["count_3xx"] += 1
+            elif status_class == 4:
+                current["count_4xx"] += 1
+            elif status_class == 5:
+                current["count_5xx"] += 1
             current["latency_sum"] += float(latency_ms)
         series = [
             DashboardOverviewBucket(
@@ -631,6 +648,10 @@ async def get_dashboard_overview(
                     if int(data["request_count"]) > 0
                     else 0.0
                 ),
+                count_2xx=int(data["count_2xx"]),
+                count_3xx=int(data["count_3xx"]),
+                count_4xx=int(data["count_4xx"]),
+                count_5xx=int(data["count_5xx"]),
             )
             for bucket, data in sorted(buckets.items(), key=lambda item: item[0])
         ]
@@ -641,6 +662,10 @@ async def get_dashboard_overview(
                 func.count(Event.id),
                 func.sum(case((error_condition, 1), else_=0)),
                 func.avg(Event.latency_ms),
+                func.sum(case((Event.status_code.between(200, 299), 1), else_=0)),
+                func.sum(case((Event.status_code.between(300, 399), 1), else_=0)),
+                func.sum(case((Event.status_code.between(400, 499), 1), else_=0)),
+                func.sum(case((Event.status_code.between(500, 599), 1), else_=0)),
             )
             .where(
                 *filters,
@@ -655,12 +680,20 @@ async def get_dashboard_overview(
                 request_count=int(bucket_request_count or 0),
                 error_count=int(bucket_error_count or 0),
                 avg_latency_ms=float(bucket_avg_latency or 0.0),
+                count_2xx=int(bucket_2xx_count or 0),
+                count_3xx=int(bucket_3xx_count or 0),
+                count_4xx=int(bucket_4xx_count or 0),
+                count_5xx=int(bucket_5xx_count or 0),
             )
             for (
                 minute_bucket,
                 bucket_request_count,
                 bucket_error_count,
                 bucket_avg_latency,
+                bucket_2xx_count,
+                bucket_3xx_count,
+                bucket_4xx_count,
+                bucket_5xx_count,
             ) in series_result
         ]
 
