@@ -273,3 +273,33 @@ def test_ingest_rate_limit_returns_429_with_retry_after(
     assert third.headers.get("retry-after") == "60"
     assert third.json() == {"detail": "Ingest rate limit exceeded. Try again in 60 seconds."}
     assert _count_events(backend_test_database_url) == 2
+
+
+def test_internal_metrics_tracks_ingest_counters(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/metrics",
+                "status_code": 200,
+                "latency_ms": 8.5,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        accepted = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+        metrics = client.get("/internal/metrics")
+    assert accepted.status_code == 200
+    assert metrics.status_code == 200
+    counters = metrics.json()["counters"]
+    assert counters["ingest.accepted.batches"] >= 1
+    assert counters["ingest.accepted.events"] >= 1

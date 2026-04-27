@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -58,6 +59,8 @@ class CompositeAlertSender:
 class WebhookAlertSender:
     webhook_url: str
     timeout_seconds: float = 3.0
+    max_attempts: int = 3
+    initial_backoff_seconds: float = 0.25
     delivery_kind: str = "webhook"
 
     async def send(self, signal: AlertSignal) -> None:
@@ -71,8 +74,15 @@ class WebhookAlertSender:
             "detail": signal.detail,
         }
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
-            response = await client.post(self.webhook_url, json=payload)
-            response.raise_for_status()
+            for attempt in range(1, max(1, self.max_attempts) + 1):
+                try:
+                    response = await client.post(self.webhook_url, json=payload)
+                    response.raise_for_status()
+                    return
+                except Exception:
+                    if attempt >= self.max_attempts:
+                        raise
+                    await asyncio.sleep(self.initial_backoff_seconds * attempt)
 
 
 def build_alert_sender(settings: Settings) -> AlertSender:

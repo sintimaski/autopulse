@@ -26,7 +26,6 @@ import {
 import {
   buildApiUrl,
   buildUpdatesWebsocketUrl,
-  apiKey,
   type AlertDispatchesResponse,
   type AlertDispatchItem,
   compareValues,
@@ -188,7 +187,7 @@ export function useDashboardData(): DashboardDataContextValue {
 }
 
 export function DashboardDataProvider({ children }: { children: ReactNode }) {
-  const hasApiKey = Boolean(apiKey);
+  const [hasApiKey, setHasApiKey] = useState(false);
 
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
@@ -265,19 +264,45 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return absoluteWindow;
   }, [absoluteWindow]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/auth/session"), {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          setHasApiKey(false);
+          return;
+        }
+        const payload = (await response.json()) as { authenticated?: boolean };
+        if (!cancelled) {
+          setHasApiKey(Boolean(payload.authenticated));
+        }
+      } catch {
+        if (!cancelled) {
+          setHasApiKey(false);
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshToken]);
+
   // Settings endpoints rarely change; load once per API key (saves also update local state).
   useEffect(() => {
-    if (!apiKey) {
+    if (!hasApiKey) {
       return;
     }
     let cancelled = false;
     const run = async () => {
-      const headers = { Authorization: `Bearer ${apiKey}` };
       try {
         const results = (await Promise.all([
-          fetch(buildApiUrl("/dashboard/retention-settings"), { headers }),
-          fetch(buildApiUrl("/dashboard/alert-settings"), { headers }),
-          fetch(buildApiUrl("/dashboard/theme-settings"), { headers }),
+          fetch(buildApiUrl("/dashboard/retention-settings"), { credentials: "include" }),
+          fetch(buildApiUrl("/dashboard/alert-settings"), { credentials: "include" }),
+          fetch(buildApiUrl("/dashboard/theme-settings"), { credentials: "include" }),
         ]).then(([retentionSettingsResponse, alertSettingsResponse, themeSettingsResponse]) => [
           { endpoint: "retention-settings" as const, response: retentionSettingsResponse },
           { endpoint: "alert-settings" as const, response: alertSettingsResponse },
@@ -312,10 +337,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [apiKey]);
+  }, [hasApiKey]);
 
   useEffect(() => {
-    if (!apiKey) {
+    if (!hasApiKey) {
       return;
     }
 
@@ -337,7 +362,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       setErrorMessage(null);
       try {
-        const headers = { Authorization: `Bearer ${apiKey}` };
         const overviewParams = new URLSearchParams();
         if (toIsoWindow) {
           overviewParams.set("from_timestamp", toIsoWindow.from);
@@ -499,7 +523,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           {
             endpoint: "overview",
             promise: fetch(buildApiUrl(`/dashboard/overview?${overviewParams.toString()}`), {
-              headers,
+              credentials: "include",
             }),
           },
         ];
@@ -507,19 +531,21 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           fetchTasks.push({
             endpoint: "overview-extended",
             promise: fetch(buildApiUrl(`/dashboard/overview/extended?${overviewParams.toString()}`), {
-              headers,
+              credentials: "include",
             }),
           });
         }
         fetchTasks.push({
           endpoint: "requests",
-          promise: fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), { headers }),
+          promise: fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), {
+            credentials: "include",
+          }),
         });
         if (includeErrorGroups) {
           fetchTasks.push({
             endpoint: "error-groups",
             promise: fetch(buildApiUrl(`/dashboard/error-groups?${errorGroupsParams.toString()}`), {
-              headers,
+              credentials: "include",
             }),
           });
         }
@@ -528,14 +554,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             endpoint: "diagnosis-timeline",
             promise: fetch(
               buildApiUrl(`/dashboard/diagnosis/timeline?${diagnosisSharedParams.toString()}`),
-              { headers },
+              { credentials: "include" },
             ),
           });
           fetchTasks.push({
             endpoint: "diagnosis-failures",
             promise: fetch(
               buildApiUrl(`/dashboard/diagnosis/failures-by-route?${diagnosisSharedParams.toString()}`),
-              { headers },
+              { credentials: "include" },
             ),
           });
         }
@@ -544,7 +570,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             endpoint: "alert-dispatches",
             promise: fetch(
               buildApiUrl(`/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`),
-              { headers },
+              { credentials: "include" },
             ),
           });
         }
@@ -659,10 +685,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!apiKey) {
+    if (!hasApiKey) {
       return;
     }
-    const wsUrl = buildUpdatesWebsocketUrl(apiKey);
+    const wsUrl = buildUpdatesWebsocketUrl();
     const INGEST_REFRESH_DEBOUNCE_MS = 500;
     const INGEST_REFRESH_MAX_WAIT_MS = 2500;
 
@@ -764,7 +790,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       ws?.close();
     };
-  }, [apiKey]);
+  }, [hasApiKey]);
 
   const rawItems = useMemo(() => requests?.items ?? [], [requests]);
 
@@ -874,7 +900,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const saveAlertSettings = useCallback(
     async (next: AlertSettings): Promise<boolean> => {
-      if (!apiKey) {
+      if (!hasApiKey) {
         return false;
       }
       setAlertSettingsSaving(true);
@@ -883,9 +909,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const response = await fetch(buildApiUrl("/dashboard/alert-settings"), {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify(next),
         });
         if (!response.ok) {
@@ -911,7 +937,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const saveThemePreference = useCallback(
     async (next: ThemePreference): Promise<boolean> => {
-      if (!apiKey) {
+      if (!hasApiKey) {
         return false;
       }
       setThemeSettingsSaving(true);
@@ -919,9 +945,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const response = await fetch(buildApiUrl("/dashboard/theme-settings"), {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify({
             theme_preference: next,
             exclude_autopulse_traffic: excludeAutopulseTraffic,
@@ -945,7 +971,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const saveExcludeAutopulseTraffic = useCallback(
     async (next: boolean): Promise<boolean> => {
-      if (!apiKey) {
+      if (!hasApiKey) {
         return false;
       }
       setThemeSettingsSaving(true);
@@ -953,9 +979,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const response = await fetch(buildApiUrl("/dashboard/theme-settings"), {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify({
             theme_preference: themePreference,
             exclude_autopulse_traffic: next,
@@ -980,16 +1006,16 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const saveRetentionSettings = useCallback(
     async (next: RetentionSettings): Promise<boolean> => {
-      if (!apiKey) {
+      if (!hasApiKey) {
         return false;
       }
       try {
         const response = await fetch(buildApiUrl("/dashboard/retention-settings"), {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${apiKey}`,
             "Content-Type": "application/json",
           },
+          credentials: "include",
           body: JSON.stringify(next),
         });
         if (!response.ok) {
@@ -1006,7 +1032,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   );
 
   const validateSqlFilterDraft = useCallback(async (): Promise<LogQueryValidationResponse | null> => {
-    if (!apiKey) {
+    if (!hasApiKey) {
       return null;
     }
     const wrapped = wrapEventSqlWhereForValidate(sqlFilterDraft);
@@ -1024,9 +1050,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       const response = await fetch(buildApiUrl("/dashboard/log-query/validate"), {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({ query: wrapped, page_size: 100 }),
       });
       const payload = (await response.json()) as LogQueryValidationResponse;
@@ -1043,7 +1069,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     } finally {
       setSqlFilterValidating(false);
     }
-  }, [apiKey, sqlFilterDraft]);
+  }, [hasApiKey, sqlFilterDraft]);
 
   const applySqlFilter = useCallback(async (): Promise<boolean> => {
     const result = await validateSqlFilterDraft();
@@ -1144,7 +1170,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [errorGroups]);
 
   useEffect(() => {
-    if (!apiKey) {
+    if (!hasApiKey) {
       return;
     }
     if (dashboardRoutePath !== "/diagnosis") {
@@ -1175,7 +1201,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       params.set("event_sql_filter", sqlFilterApplied.trim());
     }
     void fetch(buildApiUrl(`/dashboard/diagnosis/error-group-events?${params.toString()}`), {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      credentials: "include",
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
@@ -1187,7 +1213,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setDiagnosisErrorGroupEvents(null);
       });
   }, [
-    apiKey,
+    hasApiKey,
     dashboardRoutePath,
     recentErrorsPreview,
     toIsoWindow,

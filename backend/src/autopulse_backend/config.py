@@ -65,6 +65,12 @@ class Settings:
     dev_scenarios_enabled: bool = False
     dev_scenarios_max_duration_seconds: int = 180
     dev_scenarios_max_events: int = 5000
+    dashboard_auth_enabled: bool = True
+    dashboard_auth_allowed_email: str | None = None
+    dashboard_auth_session_cookie_name: str = "autopulse_dashboard_session"
+    dashboard_auth_session_ttl_minutes: int = 720
+    dashboard_auth_magic_link_ttl_minutes: int = 15
+    dashboard_auth_magic_link_dev_expose_token: bool = True
 
 
 def get_settings() -> Settings:
@@ -139,4 +145,24 @@ def get_settings() -> Settings:
             minimum=5,
         ),
         dev_scenarios_max_events=_env_int("DEV_SCENARIOS_MAX_EVENTS", 5000, minimum=1),
+        dashboard_auth_enabled=_env_bool("DASHBOARD_AUTH_ENABLED", True),
+        dashboard_auth_allowed_email=getenv("DASHBOARD_AUTH_ALLOWED_EMAIL"),
+        dashboard_auth_session_cookie_name=(
+            getenv("DASHBOARD_AUTH_SESSION_COOKIE_NAME", "autopulse_dashboard_session").strip()
+            or "autopulse_dashboard_session"
+        ),
+        dashboard_auth_session_ttl_minutes=_env_int(
+            "DASHBOARD_AUTH_SESSION_TTL_MINUTES",
+            720,
+            minimum=5,
+        ),
+        dashboard_auth_magic_link_ttl_minutes=_env_int(
+            "DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES",
+            15,
+            minimum=1,
+        ),
+        dashboard_auth_magic_link_dev_expose_token=_env_bool(
+            "DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN",
+            True,
+        ),
     )

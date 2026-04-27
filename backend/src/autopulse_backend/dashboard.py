@@ -13,6 +13,8 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
+    Response,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -24,10 +26,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from autopulse_backend.alerts import get_or_create_project_alert_settings
 from autopulse_backend.auth import (
     ProjectContext,
-    authenticate_project,
-    authenticate_project_token,
+    authenticate_dashboard_project,
 )
 from autopulse_backend.config import get_settings
+from autopulse_backend.dashboard_auth import (
+    clear_session_cookie,
+    create_magic_link_token,
+    get_dashboard_auth_session,
+    revoke_current_dashboard_session,
+    verify_magic_link_and_create_session,
+)
 from autopulse_backend.db import get_db_session, get_engine
 from autopulse_backend.exclude_autopulse import (
     append_exclude_autopulse_event_filters,
@@ -58,6 +66,9 @@ from autopulse_backend.schemas import (
     DashboardLogQueryPageResponse,
     DashboardLogQueryRequest,
     DashboardLogQueryValidationResponse,
+    DashboardMagicLinkRequest,
+    DashboardMagicLinkRequestResponse,
+    DashboardMagicLinkVerifyRequest,
     DashboardOverviewBucket,
     DashboardOverviewExtendedResponse,
     DashboardOverviewResponse,
@@ -65,6 +76,7 @@ from autopulse_backend.schemas import (
     DashboardRequestsResponse,
     DashboardRetentionSettings,
     DashboardRetentionSettingsUpdate,
+    DashboardSessionResponse,
     DashboardThemeSettings,
     DashboardThemeSettingsUpdate,
 )
@@ -100,20 +112,26 @@ _SUPPORTED_SELECT_ALL_COLUMNS_SPACED = (
 
 @router.websocket("/updates")
 async def dashboard_updates(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Missing API key")
+    settings = get_settings()
+    session_cookie = websocket.cookies.get(settings.dashboard_auth_session_cookie_name)
+    if not session_cookie:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Missing dashboard session"
+        )
         return
-
     session_maker = async_sessionmaker(
         bind=get_engine(), expire_on_commit=False, class_=AsyncSession
     )
     async with session_maker() as session:
-        try:
-            context = await authenticate_project_token(session=session, token=token)
-        except HTTPException:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid API key")
+        auth_session = await get_dashboard_auth_session(
+            session=session, settings=settings, request=websocket
+        )
+        if auth_session is None:
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or expired dashboard session"
+            )
             return
+        context = ProjectContext(project_id=auth_session.project_id)
 
     await websocket.accept()
     project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
@@ -129,6 +147,80 @@ async def dashboard_updates(websocket: WebSocket) -> None:
         pass
     finally:
         project_websocket_hub.remove_connection(project_id=context.project_id, websocket=websocket)
+
+
+@router.post("/auth/magic-link/request", response_model=DashboardMagicLinkRequestResponse)
+async def request_dashboard_magic_link(
+    payload: DashboardMagicLinkRequest,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardMagicLinkRequestResponse:
+    settings = get_settings()
+    token = await create_magic_link_token(
+        session=session,
+        settings=settings,
+        email=payload.email,
+    )
+    return DashboardMagicLinkRequestResponse(
+        accepted=True,
+        expires_in_seconds=max(60, settings.dashboard_auth_magic_link_ttl_minutes * 60),
+        dev_magic_link_token=token if settings.dashboard_auth_magic_link_dev_expose_token else None,
+    )
+
+
+@router.post("/auth/magic-link/verify", response_model=DashboardSessionResponse)
+async def verify_dashboard_magic_link(
+    payload: DashboardMagicLinkVerifyRequest,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    auth_session = await verify_magic_link_and_create_session(
+        session=session,
+        response=response,
+        settings=settings,
+        token=payload.token,
+    )
+    return DashboardSessionResponse(
+        authenticated=True,
+        email=auth_session.email,
+        expires_at=auth_session.expires_at,
+    )
+
+
+@router.get("/auth/session", response_model=DashboardSessionResponse)
+async def get_dashboard_session(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    auth_session = await get_dashboard_auth_session(
+        session=session,
+        settings=settings,
+        request=request,
+    )
+    if auth_session is None:
+        return DashboardSessionResponse(authenticated=False)
+    return DashboardSessionResponse(
+        authenticated=True,
+        email=auth_session.email,
+        expires_at=auth_session.expires_at,
+    )
+
+
+@router.post("/auth/logout", response_model=DashboardSessionResponse)
+async def logout_dashboard_session(
+    request: Request,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    await revoke_current_dashboard_session(
+        request=request,
+        session=session,
+        settings=settings,
+    )
+    clear_session_cookie(response, settings)
+    return DashboardSessionResponse(authenticated=False)
 
 
 def _split_csv_values(value: str | None) -> list[str]:
@@ -208,7 +300,7 @@ async def _get_or_create_project_ui_settings(
             "ADD COLUMN exclude_autopulse_traffic BOOLEAN NOT NULL DEFAULT 1",
             "ALTER TABLE project_ui_settings "
             "ADD COLUMN logs_query_max_window_minutes INTEGER NOT NULL DEFAULT 1440",
-            "ALTER TABLE project_ui_settings " "ADD COLUMN retention_raw_events_days INTEGER NULL",
+            "ALTER TABLE project_ui_settings ADD COLUMN retention_raw_events_days INTEGER NULL",
         ]
         for statement in alter_statements:
             try:
@@ -475,7 +567,7 @@ def _append_event_sql_filters(filters: list, event_sql_filter: str | None) -> No
 
 @router.get("/overview", response_model=DashboardOverviewResponse)
 async def get_dashboard_overview(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -587,7 +679,7 @@ async def get_dashboard_overview(
 
 @router.get("/overview/extended", response_model=DashboardOverviewExtendedResponse)
 async def get_dashboard_overview_extended(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -673,7 +765,7 @@ async def get_dashboard_overview_extended(
 
 @router.get("/diagnosis/timeline", response_model=DashboardDiagnosisTimelineResponse)
 async def get_dashboard_diagnosis_timeline(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -720,7 +812,7 @@ async def get_dashboard_diagnosis_timeline(
 
 @router.get("/diagnosis/failures-by-route", response_model=DashboardDiagnosisFailureRoutesResponse)
 async def get_dashboard_diagnosis_failures_by_route(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -780,7 +872,7 @@ async def get_dashboard_diagnosis_failures_by_route(
 )
 async def get_dashboard_diagnosis_error_group_events(
     group_key: str,
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -879,7 +971,7 @@ async def get_dashboard_diagnosis_error_group_events(
 
 @router.get("/requests", response_model=DashboardRequestsResponse)
 async def get_dashboard_requests(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -983,7 +1075,7 @@ async def get_dashboard_requests(
 
 @router.get("/error-groups", response_model=DashboardErrorGroupsResponse)
 async def get_dashboard_error_groups(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -1233,7 +1325,7 @@ async def get_dashboard_error_groups(
 
 @router.get("/alert-settings", response_model=DashboardAlertSettings)
 async def get_dashboard_alert_settings(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardAlertSettings:
     settings = get_settings()
@@ -1247,7 +1339,7 @@ async def get_dashboard_alert_settings(
 
 @router.get("/alert-dispatches", response_model=DashboardAlertDispatchesResponse)
 async def get_dashboard_alert_dispatches(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
@@ -1292,7 +1384,7 @@ async def get_dashboard_alert_dispatches(
 @router.put("/alert-settings", response_model=DashboardAlertSettings)
 async def update_dashboard_alert_settings(
     payload: DashboardAlertSettingsUpdate,
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardAlertSettings:
     settings = get_settings()
@@ -1314,7 +1406,7 @@ async def update_dashboard_alert_settings(
 
 @router.get("/theme-settings", response_model=DashboardThemeSettings)
 async def get_dashboard_theme_settings(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardThemeSettings:
     settings = await _get_or_create_project_ui_settings(session, context.project_id)
@@ -1326,7 +1418,7 @@ async def get_dashboard_theme_settings(
 @router.put("/theme-settings", response_model=DashboardThemeSettings)
 async def update_dashboard_theme_settings(
     payload: DashboardThemeSettingsUpdate,
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardThemeSettings:
     settings = await _get_or_create_project_ui_settings(session, context.project_id)
@@ -1339,7 +1431,7 @@ async def update_dashboard_theme_settings(
 
 @router.get("/retention-settings", response_model=DashboardRetentionSettings)
 async def get_dashboard_retention_settings(
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardRetentionSettings:
     settings = get_settings()
@@ -1356,7 +1448,7 @@ async def get_dashboard_retention_settings(
 @router.put("/retention-settings", response_model=DashboardRetentionSettings)
 async def update_dashboard_retention_settings(
     payload: DashboardRetentionSettingsUpdate,
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardRetentionSettings:
     settings = get_settings()
@@ -1375,7 +1467,7 @@ async def update_dashboard_retention_settings(
 @router.post("/log-query/validate", response_model=DashboardLogQueryValidationResponse)
 async def validate_dashboard_log_query(
     payload: DashboardLogQueryRequest,
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardLogQueryValidationResponse:
     _ = context
@@ -1398,7 +1490,7 @@ async def validate_dashboard_log_query(
 @router.post("/log-query/execute", response_model=DashboardLogQueryPageResponse)
 async def execute_dashboard_log_query(
     payload: DashboardLogQueryRequest,
-    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardLogQueryPageResponse:
     server_now = datetime.now(tz=UTC)
@@ -1506,19 +1598,27 @@ async def execute_dashboard_log_query(
 
 @router.websocket("/log-query/stream")
 async def dashboard_log_query_stream(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token")
-    if not token:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Missing API key")
+    settings = get_settings()
+    session_cookie = websocket.cookies.get(settings.dashboard_auth_session_cookie_name)
+    if not session_cookie:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION, reason="Missing dashboard session"
+        )
         return
     session_maker = async_sessionmaker(
         bind=get_engine(), expire_on_commit=False, class_=AsyncSession
     )
     async with session_maker() as session:
-        try:
-            context = await authenticate_project_token(session=session, token=token)
-        except HTTPException:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid API key")
+        auth_session = await get_dashboard_auth_session(
+            session=session, settings=settings, request=websocket
+        )
+        if auth_session is None:
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Invalid or expired dashboard session",
+            )
             return
+        context = ProjectContext(project_id=auth_session.project_id)
     await websocket.accept()
     project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
     try:

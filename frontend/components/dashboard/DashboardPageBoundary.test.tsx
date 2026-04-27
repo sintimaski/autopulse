@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { ApiKeyMissing } from "./DashboardPageBoundary";
 
 describe("ApiKeyMissing", () => {
-  it("renders required frontend env variable guidance", () => {
+  it("renders sign-in guidance", () => {
     const html = renderToStaticMarkup(<ApiKeyMissing />);
-    expect(html).toContain("NEXT_PUBLIC_AUTOPULSE_API_KEY");
-    expect(html).toContain("NEXT_PUBLIC_AUTOPULSE_API_BASE_URL");
-    expect(html).toContain("frontend/.env.local");
+    expect(html).toContain("Dashboard sign in");
+    expect(html).toContain("Request magic link");
+    expect(html).toContain("Verify and continue");
   });
 });

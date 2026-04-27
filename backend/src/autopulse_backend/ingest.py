@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -14,8 +15,10 @@ from autopulse_backend.ingest_limits import ingest_rate_limiter
 from autopulse_backend.models import Event
 from autopulse_backend.realtime import IngestBroadcastMessage, project_websocket_hub
 from autopulse_backend.schemas import IngestBatchRequest, IngestBatchResponse, event_payload
+from autopulse_backend.service_metrics import service_metrics
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def persist_ingest_batch(
@@ -65,6 +68,17 @@ async def ingest_events(
         except ValueError:
             content_length_bytes = 0
         if content_length_bytes > settings.ingest_max_request_bytes:
+            service_metrics.increment("ingest.rejected.payload_too_large")
+            logger.warning(
+                "ingest_rejected payload_too_large",
+                extra={
+                    "event": "ingest_rejected",
+                    "reason": "payload_too_large",
+                    "content_length_bytes": content_length_bytes,
+                    "ingest_max_request_bytes": settings.ingest_max_request_bytes,
+                    "project_id": str(context.project_id),
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=(
@@ -77,6 +91,17 @@ async def ingest_events(
         max_requests=settings.ingest_rate_limit_requests_per_window,
         window_seconds=settings.ingest_rate_limit_window_seconds,
     ):
+        service_metrics.increment("ingest.rejected.rate_limited")
+        logger.warning(
+            "ingest_rejected rate_limited",
+            extra={
+                "event": "ingest_rejected",
+                "reason": "rate_limited",
+                "project_id": str(context.project_id),
+                "window_seconds": settings.ingest_rate_limit_window_seconds,
+                "max_requests": settings.ingest_rate_limit_requests_per_window,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
@@ -99,5 +124,15 @@ async def ingest_events(
             accepted=accepted,
             received_at=received_at,
         )
+    )
+    service_metrics.increment("ingest.accepted.batches")
+    service_metrics.increment("ingest.accepted.events", amount=accepted)
+    logger.info(
+        "ingest_accepted",
+        extra={
+            "event": "ingest_accepted",
+            "project_id": str(context.project_id),
+            "accepted_events": accepted,
+        },
     )
     return IngestBatchResponse(accepted=accepted)

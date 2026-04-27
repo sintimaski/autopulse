@@ -201,12 +201,22 @@ export type LogQueryPageResponse = {
   items: LogQueryItem[];
 };
 
+export type DashboardSessionResponse = {
+  authenticated: boolean;
+  email: string | null;
+  expires_at: string | null;
+};
+
+export type DashboardMagicLinkRequestResponse = {
+  accepted: boolean;
+  expires_in_seconds: number;
+  dev_magic_link_token: string | null;
+};
+
 export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
-export const EMBEDDED_DEFAULT_API_KEY = "ap_live_embeddedlocal_localdevsecret";
 
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? EMBEDDED_DEFAULT_API_BASE_URL;
-export const apiKey = process.env.NEXT_PUBLIC_AUTOPULSE_API_KEY ?? EMBEDDED_DEFAULT_API_KEY;
 
 function normalizeBasePath(baseUrl: string): string {
   const trimmed = baseUrl.trim();
@@ -226,7 +236,7 @@ export function buildApiUrl(path: string): string {
 }
 
 /** Build WS URL from the same path rules as {@link buildApiUrl} so mounts like `/autopulse` stay in sync. */
-function httpToWebsocketUrl(httpRef: string, token: string): string {
+function httpToWebsocketUrl(httpRef: string): string {
   const origin =
     typeof window !== "undefined" && window.location?.origin
       ? window.location.origin
@@ -236,12 +246,11 @@ function httpToWebsocketUrl(httpRef: string, token: string): string {
       ? new URL(httpRef)
       : new URL(httpRef, origin);
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
-  base.searchParams.set("token", token);
   return base.toString();
 }
 
-export function buildUpdatesWebsocketUrl(token: string): string {
-  return httpToWebsocketUrl(buildApiUrl("/dashboard/updates"), token);
+export function buildUpdatesWebsocketUrl(): string {
+  return httpToWebsocketUrl(buildApiUrl("/dashboard/updates"));
 }
 
 export const WINDOW_OPTIONS = [15, 60, 240, 1440];

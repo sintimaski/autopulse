@@ -13,6 +13,7 @@ from autopulse_backend.dev_scenarios import router as dev_scenarios_router
 from autopulse_backend.ingest import router as ingest_router
 from autopulse_backend.jobs import SchedulerHandle, start_scheduler
 from autopulse_backend.models import Base
+from autopulse_backend.service_metrics import service_metrics
 
 
 def create_app() -> FastAPI:
@@ -63,6 +64,15 @@ def create_app() -> FastAPI:
                 detail="Database not ready",
             ) from exc
         return {"status": "ready"}
+
+    @app.get("/internal/metrics")
+    async def internal_metrics() -> dict[str, object]:
+        scheduler = getattr(app.state, "_autopulse_scheduler", None)
+        return {
+            "service": "autopulse-backend",
+            "scheduler_running": isinstance(scheduler, SchedulerHandle),
+            "counters": service_metrics.snapshot(),
+        }
 
     app.include_router(ingest_router)
     app.include_router(dashboard_router)

@@ -24,7 +24,7 @@ export function buildDashboardFetchError(results: DashboardFetchResult[]): strin
   const status = failed.response.status;
   const statusText = failed.response.statusText || "Unknown";
   if (status === 401 || status === 403) {
-    return `Dashboard ${failed.endpoint} request was rejected (${status} ${statusText}). Check NEXT_PUBLIC_AUTOPULSE_API_KEY and backend auth settings.`;
+    return `Dashboard ${failed.endpoint} request was rejected (${status} ${statusText}). Check dashboard sign-in and backend auth settings.`;
   }
   if (status >= 500) {
     return `Dashboard ${failed.endpoint} request failed (${status} ${statusText}). Backend may be unavailable.`;

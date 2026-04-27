@@ -1,22 +1,112 @@
 "use client";
 
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { useDashboardData } from "./DashboardDataContext";
+import { buildApiUrl } from "./dashboardTypes";
 
 export function ApiKeyMissing() {
+  const [email, setEmail] = useState("");
+  const [token, setToken] = useState("");
+  const [magicLinkToken, setMagicLinkToken] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const requestMagicLink = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch(buildApiUrl("/dashboard/auth/magic-link/request"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!response.ok) {
+        throw new Error("Request failed");
+      }
+      const payload = (await response.json()) as { dev_magic_link_token?: string | null };
+      setMagicLinkToken(payload.dev_magic_link_token ?? null);
+      setMessage("If the email is allowed, a sign-in link was issued.");
+    } catch {
+      setMessage("Unable to send sign-in link. Check backend auth settings.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyMagicLink = async () => {
+    setLoading(true);
+    setMessage(null);
+    try {
+      const response = await fetch(buildApiUrl("/dashboard/auth/magic-link/verify"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      if (!response.ok) {
+        throw new Error("Verification failed");
+      }
+      window.location.reload();
+    } catch {
+      setMessage("Invalid or expired magic-link token.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-14 text-slate-100">
       <div className="mx-auto max-w-lg rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/50 backdrop-blur">
         <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Embedded mode provides local defaults. To point the UI at a remote backend, set{" "}
-          <code className="rounded bg-black/30 px-1.5 py-0.5">NEXT_PUBLIC_AUTOPULSE_API_KEY</code> and{" "}
-          <code className="rounded bg-black/30 px-1.5 py-0.5">NEXT_PUBLIC_AUTOPULSE_API_BASE_URL</code> in{" "}
-          <code className="rounded bg-black/30 px-1.5 py-0.5">frontend/.env.local</code>, then restart{" "}
-          <code className="rounded bg-black/30 px-1.5 py-0.5">npm run dev</code>.
+          Enter your email to request a magic link. In local/dev mode, the issued token can be shown below
+          for quick verification.
         </p>
+        <div className="mt-5 space-y-3">
+          <input
+            className="w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-400"
+            type="email"
+            value={email}
+            placeholder="you@example.com"
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <button
+            type="button"
+            className="w-full rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
+            onClick={() => void requestMagicLink()}
+            disabled={loading || !email.trim()}
+          >
+            Request magic link
+          </button>
+        </div>
+        {magicLinkToken ? (
+          <div className="mt-4 rounded-lg border border-sky-400/30 bg-sky-500/10 p-3 text-xs text-sky-100">
+            <p className="font-medium">Dev magic-link token</p>
+            <code className="mt-1 block break-all">{magicLinkToken}</code>
+          </div>
+        ) : null}
+        <div className="mt-4 space-y-3">
+          <input
+            className="w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-400"
+            type="text"
+            value={token}
+            placeholder="Paste token or open emailed link"
+            onChange={(event) => setToken(event.target.value)}
+          />
+          <button
+            type="button"
+            className="w-full rounded-lg bg-emerald-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
+            onClick={() => void verifyMagicLink()}
+            disabled={loading || !token.trim()}
+          >
+            Verify and continue
+          </button>
+        </div>
+        {message ? <p className="mt-4 text-xs text-slate-200">{message}</p> : null}
       </div>
     </main>
   );
@@ -72,7 +162,7 @@ export function DashboardPageBoundary({
           <h2 className="text-lg font-semibold">Unable to load data</h2>
           <p className="mt-2 text-sm">{d.errorMessage}</p>
           <p className="mt-2 text-xs text-rose-700/90 dark:text-rose-300/90">
-            Verify API key and backend URL, adjust scope filters, or reload the page.
+            Verify dashboard sign-in, backend URL, adjust scope filters, or reload the page.
           </p>
         </section>
       </div>

@@ -305,5 +305,41 @@ class DashboardLogQueryPageResponse(BaseModel):
     items: list[DashboardLogQueryItem]
 
 
+class DashboardMagicLinkRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized:
+            raise ValueError("email must be valid")
+        return normalized
+
+
+class DashboardMagicLinkRequestResponse(BaseModel):
+    accepted: bool
+    expires_in_seconds: int
+    dev_magic_link_token: str | None = None
+
+
+class DashboardMagicLinkVerifyRequest(BaseModel):
+    token: str
+
+    @field_validator("token")
+    @classmethod
+    def normalize_token(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("token must not be empty")
+        return normalized
+
+
+class DashboardSessionResponse(BaseModel):
+    authenticated: bool
+    email: str | None = None
+    expires_at: datetime | None = None
+
+
 def event_payload(event: IngestEvent) -> dict[str, Any]:
     return event.model_dump(mode="json")

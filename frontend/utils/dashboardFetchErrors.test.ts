@@ -23,13 +23,13 @@ describe("buildDashboardFetchError", () => {
     expect(message).toBeNull();
   });
 
-  it("returns API key guidance for auth failures", () => {
+  it("returns sign-in guidance for auth failures", () => {
     const message = buildDashboardFetchError([
       result("overview", 200),
       result("requests", 401),
       result("error-groups", 200),
     ]);
-    expect(message).toContain("NEXT_PUBLIC_AUTOPULSE_API_KEY");
+    expect(message).toContain("dashboard sign-in");
     expect(message).toContain("requests");
   });
 

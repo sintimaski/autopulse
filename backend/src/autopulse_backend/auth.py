@@ -7,10 +7,12 @@ from hashlib import pbkdf2_hmac
 from typing import Annotated, Final
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autopulse_backend.config import get_settings
+from autopulse_backend.dashboard_auth import get_dashboard_auth_session
 from autopulse_backend.db import get_db_session
 from autopulse_backend.models import ApiKey
 
@@ -102,3 +104,24 @@ async def authenticate_project_token(*, session: AsyncSession, token: str) -> Pr
     if not verify_api_key_secret(secret, api_key.key_salt, api_key.key_hash):
         raise _unauthorized()
     return ProjectContext(project_id=api_key.project_id)
+
+
+async def authenticate_dashboard_project(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> ProjectContext:
+    settings = get_settings()
+    auth_session = await get_dashboard_auth_session(
+        session=session, settings=settings, request=request
+    )
+    if auth_session is None:
+        authorization = request.headers.get("authorization")
+        if authorization:
+            scheme, _, token = authorization.partition(" ")
+            if scheme.lower() == "bearer" and token:
+                return await authenticate_project_token(session=session, token=token)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Dashboard session is required",
+        )
+    return ProjectContext(project_id=auth_session.project_id)
