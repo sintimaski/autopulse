@@ -37,6 +37,7 @@ _ENVIRONMENTS_QUERY = Query(default=None)
 _SERVICES_QUERY = Query(default=None)
 _LATENCY_MIN_MS_QUERY = Query(default=None, ge=0)
 _LATENCY_MAX_MS_QUERY = Query(default=None, ge=0)
+_WINDOW_MINUTES_QUERY = Query(default=60, ge=1, le=7 * 24 * 60)
 _LIMIT_QUERY = Query(default=50, ge=1, le=200)
 _OFFSET_QUERY = Query(default=0, ge=0)
 
@@ -61,14 +62,17 @@ def _serialize_alert_settings(settings: ProjectAlertSettings) -> DashboardAlertS
 
 
 def _resolve_time_window(
-    from_timestamp: datetime | None, to_timestamp: datetime | None
+    from_timestamp: datetime | None,
+    to_timestamp: datetime | None,
+    window_minutes: int,
+    *,
+    now_utc: datetime,
 ) -> tuple[datetime, datetime]:
-    now_utc = datetime.now(tz=UTC)
     resolved_to = to_timestamp.astimezone(UTC) if to_timestamp is not None else now_utc
     resolved_from = (
         from_timestamp.astimezone(UTC)
         if from_timestamp is not None
-        else resolved_to - timedelta(minutes=60)
+        else resolved_to - timedelta(minutes=window_minutes)
     )
     if resolved_from > resolved_to:
         resolved_from, resolved_to = resolved_to, resolved_from
@@ -147,8 +151,12 @@ async def get_dashboard_overview(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
 ) -> DashboardOverviewResponse:
-    resolved_from, resolved_to = _resolve_time_window(from_timestamp, to_timestamp)
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
     error_condition = (Event.type == "error") | (Event.status_code >= 500)
 
     totals_query = select(
@@ -236,6 +244,7 @@ async def get_dashboard_overview(
         ]
 
     return DashboardOverviewResponse(
+        server_now=server_now,
         from_timestamp=resolved_from,
         to_timestamp=resolved_to,
         request_count=request_total,
@@ -253,6 +262,7 @@ async def get_dashboard_requests(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
     method: str | None = _METHOD_QUERY,
     status_class: int | None = _STATUS_CLASS_QUERY,
     path_contains: str | None = _PATH_QUERY,
@@ -263,7 +273,10 @@ async def get_dashboard_requests(
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
 ) -> DashboardRequestsResponse:
-    resolved_from, resolved_to = _resolve_time_window(from_timestamp, to_timestamp)
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
@@ -331,6 +344,7 @@ async def get_dashboard_requests(
         ) in requests_result
     ]
     return DashboardRequestsResponse(
+        server_now=server_now,
         from_timestamp=resolved_from,
         to_timestamp=resolved_to,
         total=total,
@@ -346,6 +360,7 @@ async def get_dashboard_error_groups(
     session: Annotated[AsyncSession, Depends(get_db_session)],
     from_timestamp: datetime | None = _FROM_TIMESTAMP_QUERY,
     to_timestamp: datetime | None = _TO_TIMESTAMP_QUERY,
+    window_minutes: int = _WINDOW_MINUTES_QUERY,
     method: str | None = _METHOD_QUERY,
     status_class: int | None = _STATUS_CLASS_QUERY,
     path_contains: str | None = _PATH_QUERY,
@@ -356,7 +371,10 @@ async def get_dashboard_error_groups(
     limit: int = _LIMIT_QUERY,
     offset: int = _OFFSET_QUERY,
 ) -> DashboardErrorGroupsResponse:
-    resolved_from, resolved_to = _resolve_time_window(from_timestamp, to_timestamp)
+    server_now = datetime.now(tz=UTC)
+    resolved_from, resolved_to = _resolve_time_window(
+        from_timestamp, to_timestamp, window_minutes, now_utc=server_now
+    )
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
@@ -460,6 +478,7 @@ async def get_dashboard_error_groups(
         all_items.sort(key=lambda item: (item.last_seen, item.count), reverse=True)
         paged_items = all_items[offset : offset + limit]
         return DashboardErrorGroupsResponse(
+            server_now=server_now,
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
             total=len(all_items),
@@ -569,6 +588,7 @@ async def get_dashboard_error_groups(
             )
         )
     return DashboardErrorGroupsResponse(
+        server_now=server_now,
         from_timestamp=resolved_from,
         to_timestamp=resolved_to,
         total=total,

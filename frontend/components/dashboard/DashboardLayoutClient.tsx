@@ -221,7 +221,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
   }
 
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
-  const showServerScope = pathname === "/dashboard" || pathname === "/diagnosis" || pathname === "/logs";
+  const showServerScope = pathname === "/diagnosis" || pathname === "/logs";
   const resetServerFilters = () => {
     d.onServerMethodChange("ALL");
     d.onServerStatusClassChange("ALL");

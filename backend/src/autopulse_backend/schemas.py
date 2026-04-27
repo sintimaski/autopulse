@@ -51,6 +51,7 @@ class DashboardOverviewBucket(BaseModel):
 
 
 class DashboardOverviewResponse(BaseModel):
+    server_now: datetime
     from_timestamp: datetime
     to_timestamp: datetime
     request_count: int
@@ -73,6 +74,7 @@ class DashboardRequestItem(BaseModel):
 
 
 class DashboardRequestsResponse(BaseModel):
+    server_now: datetime
     from_timestamp: datetime
     to_timestamp: datetime
     total: int
@@ -93,6 +95,7 @@ class DashboardErrorGroupItem(BaseModel):
 
 
 class DashboardErrorGroupsResponse(BaseModel):
+    server_now: datetime
     from_timestamp: datetime
     to_timestamp: datetime
     total: int

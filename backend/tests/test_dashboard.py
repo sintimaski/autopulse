@@ -140,6 +140,7 @@ def test_dashboard_overview_returns_project_scoped_metrics(backend_test_database
 
     assert response.status_code == 200
     payload = response.json()
+    assert "server_now" in payload
     assert payload["request_count"] == 2
     assert payload["error_count"] == 1
     assert payload["error_rate"] == 0.5
@@ -170,6 +171,7 @@ def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_u
 
     assert response.status_code == 200
     payload = response.json()
+    assert "server_now" in payload
     assert payload["request_count"] == 3
     assert payload["error_count"] == 1
     series_by_minute = {entry["minute"]: entry for entry in payload["series"]}
@@ -211,6 +213,7 @@ def test_dashboard_requests_support_filters_and_pagination(backend_test_database
 
     assert filtered.status_code == 200
     payload = filtered.json()
+    assert "server_now" in payload
     assert payload["total"] == 2
     assert payload["limit"] == 1
     assert payload["offset"] == 0
@@ -392,6 +395,7 @@ def test_dashboard_error_groups_merge_hashes_and_scope_by_project(
 
     assert response.status_code == 200
     payload = response.json()
+    assert "server_now" in payload
     assert payload["total"] == 3
     assert len(payload["items"]) == 3
 

@@ -36,6 +36,22 @@ function parseLocalDateTimeInput(value: string): Date | null {
   return date;
 }
 
+function formatRelativeToUserTime(serverIso: string): string {
+  const serverMs = new Date(serverIso).getTime();
+  const userMs = Date.now();
+  if (!Number.isFinite(serverMs)) {
+    return "";
+  }
+  const diffMinutes = Math.round((serverMs - userMs) / (60 * 1000));
+  if (diffMinutes === 0) {
+    return "same as your local time";
+  }
+  if (diffMinutes > 0) {
+    return `${diffMinutes}m ahead of your local time`;
+  }
+  return `${Math.abs(diffMinutes)}m behind your local time`;
+}
+
 export function ServerQueryToolbar() {
   const d = useDashboardData();
   const activeServerFilterCount = [
@@ -271,6 +287,11 @@ export function ServerQueryToolbar() {
         <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
           Custom window active: {new Date(d.windowFromTimestamp).toLocaleString()} {" -> "}{" "}
           {new Date(d.windowToTimestamp).toLocaleString()}
+        </p>
+      ) : null}
+      {d.serverNowTimestamp ? (
+        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+          Server now: {new Date(d.serverNowTimestamp).toLocaleString()} ({formatRelativeToUserTime(d.serverNowTimestamp)})
         </p>
       ) : null}
 

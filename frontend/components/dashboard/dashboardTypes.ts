@@ -6,6 +6,7 @@ export type OverviewBucket = {
 };
 
 export type OverviewResponse = {
+  server_now: string;
   from_timestamp: string;
   to_timestamp: string;
   request_count: number;
@@ -28,6 +29,7 @@ export type RequestItem = {
 };
 
 export type RequestsResponse = {
+  server_now: string;
   from_timestamp: string;
   to_timestamp: string;
   total: number;
@@ -48,6 +50,7 @@ export type ErrorGroupItem = {
 };
 
 export type ErrorGroupsResponse = {
+  server_now: string;
   from_timestamp: string;
   to_timestamp: string;
   total: number;

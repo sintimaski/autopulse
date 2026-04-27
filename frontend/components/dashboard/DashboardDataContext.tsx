@@ -52,6 +52,7 @@ export type DashboardDataContextValue = {
   windowMinutes: number;
   windowFromTimestamp: string;
   windowToTimestamp: string;
+  serverNowTimestamp: string | null;
   isAbsoluteWindow: boolean;
   method: string;
   statusClass: string;
@@ -175,22 +176,18 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
 
-  const relativeWindow = useMemo(() => {
-    const to = new Date();
-    const from = new Date(to.getTime() - windowMinutes * 60 * 1000);
-    return { from: from.toISOString(), to: to.toISOString() };
-  }, [windowMinutes]);
+  const serverNowTimestamp = overview?.server_now ?? requests?.server_now ?? errorGroups?.server_now ?? null;
   const toIsoWindow = useMemo(() => {
     if (!absoluteWindow) {
-      return relativeWindow;
+      return null;
     }
     const fromMs = new Date(absoluteWindow.from).getTime();
     const toMs = new Date(absoluteWindow.to).getTime();
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-      return relativeWindow;
+      return null;
     }
     return absoluteWindow;
-  }, [absoluteWindow, relativeWindow]);
+  }, [absoluteWindow]);
 
   useEffect(() => {
     if (!apiKey) {
@@ -202,17 +199,24 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setErrorMessage(null);
       try {
         const headers = { Authorization: `Bearer ${apiKey}` };
-        const overviewParams = new URLSearchParams({
-          from_timestamp: toIsoWindow.from,
-          to_timestamp: toIsoWindow.to,
-        });
+        const overviewParams = new URLSearchParams();
+        if (toIsoWindow) {
+          overviewParams.set("from_timestamp", toIsoWindow.from);
+          overviewParams.set("to_timestamp", toIsoWindow.to);
+        } else {
+          overviewParams.set("window_minutes", String(windowMinutes));
+        }
 
         const requestsParams = new URLSearchParams({
-          from_timestamp: toIsoWindow.from,
-          to_timestamp: toIsoWindow.to,
           limit: String(requestLimit),
           offset: String(requestPage * requestLimit),
         });
+        if (toIsoWindow) {
+          requestsParams.set("from_timestamp", toIsoWindow.from);
+          requestsParams.set("to_timestamp", toIsoWindow.to);
+        } else {
+          requestsParams.set("window_minutes", String(windowMinutes));
+        }
         if (method !== "ALL") {
           requestsParams.set("method", method);
         }
@@ -249,11 +253,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         }
 
         const errorGroupsParams = new URLSearchParams({
-          from_timestamp: toIsoWindow.from,
-          to_timestamp: toIsoWindow.to,
           limit: String(errorGroupLimit),
           offset: String(errorGroupPage * errorGroupLimit),
         });
+        if (toIsoWindow) {
+          errorGroupsParams.set("from_timestamp", toIsoWindow.from);
+          errorGroupsParams.set("to_timestamp", toIsoWindow.to);
+        } else {
+          errorGroupsParams.set("window_minutes", String(windowMinutes));
+        }
         if (method !== "ALL") {
           errorGroupsParams.set("method", method);
         }
@@ -277,9 +285,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         }
         const alertDispatchesParams = new URLSearchParams({
           from_timestamp: new Date(
-            new Date(toIsoWindow.to).getTime() - 7 * 24 * 60 * 60 * 1000,
+            new Date(toIsoWindow?.to ?? new Date().toISOString()).getTime() - 7 * 24 * 60 * 60 * 1000,
           ).toISOString(),
-          to_timestamp: toIsoWindow.to,
+          to_timestamp: toIsoWindow?.to ?? new Date().toISOString(),
           limit: "25",
           offset: "0",
         });
@@ -341,6 +349,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     method,
     statusClass,
     toIsoWindow,
+    windowMinutes,
     refreshToken,
     requestLimit,
     requestPage,
@@ -625,11 +634,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const sparklineSeries = useMemo(
     () =>
       resolveSparklineSeries(overview, requests, {
-        // When server-side filters are active, derive buckets from the filtered request page
-        // so chart + cards reflect selected method/status.
-        preferRequests: method !== "ALL" || statusClass !== "ALL",
+        // Keep dashboard cards/charts scoped to overview response only.
+        preferRequests: false,
       }),
-    [overview, requests, method, statusClass],
+    [overview, requests],
   );
 
   const operationalSignals = useMemo(
@@ -641,8 +649,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     (): DashboardDataContextValue => ({
       hasApiKey,
       windowMinutes,
-      windowFromTimestamp: toIsoWindow.from,
-      windowToTimestamp: toIsoWindow.to,
+      windowFromTimestamp: toIsoWindow?.from ?? overview?.from_timestamp ?? "",
+      windowToTimestamp: toIsoWindow?.to ?? overview?.to_timestamp ?? "",
+      serverNowTimestamp,
       isAbsoluteWindow: absoluteWindow !== null,
       method,
       statusClass,
@@ -724,6 +733,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       windowMinutes,
       toIsoWindow,
       absoluteWindow,
+      overview,
+      requests,
+      errorGroups,
+      serverNowTimestamp,
       method,
       statusClass,
       requestLimit,
@@ -740,9 +753,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sortDir,
       envTags,
       serviceTags,
-      overview,
-      requests,
-      errorGroups,
       alertSettings,
       alertDispatches,
       errorGroupSort,
