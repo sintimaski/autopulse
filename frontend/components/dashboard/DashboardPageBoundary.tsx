@@ -6,6 +6,19 @@ import type { ReactNode } from "react";
 import { useDashboardData } from "./DashboardDataContext";
 import { buildApiUrl } from "./dashboardTypes";
 
+/** Shown while `/dashboard/auth/session` is in flight so we do not flash the sign-in screen on reload. */
+export function DashboardSessionRestoring() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 px-4 text-slate-600 dark:bg-neutral-950 dark:text-neutral-400">
+      <div
+        className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600 dark:border-neutral-600 dark:border-t-sky-400"
+        aria-hidden
+      />
+      <p className="text-sm font-medium text-slate-700 dark:text-neutral-300">Checking your session…</p>
+    </div>
+  );
+}
+
 export function ApiKeyMissing() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");

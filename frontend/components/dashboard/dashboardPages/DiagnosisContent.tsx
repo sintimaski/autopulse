@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useMemo } from "react";
 
+import { buildLogsPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
@@ -11,6 +12,47 @@ import { ExpandableTableRow } from "../ExpandableTableRow";
 export function DiagnosisContent() {
   const d = useDashboardData();
   const pathname = usePathname();
+  const scopedState = useMemo((): DashboardScopedQueryState => {
+    return {
+      isAbsoluteWindow: d.isAbsoluteWindow,
+      windowMinutes: d.windowMinutes,
+      windowFromTimestamp: d.windowFromTimestamp,
+      windowToTimestamp: d.windowToTimestamp,
+      method: d.method,
+      statusClass: d.statusClass,
+      minLatencyMs: d.minLatencyMs,
+      maxLatencyMs: d.maxLatencyMs,
+      pathQuery: d.pathQuery,
+      serverEnvironmentQuery: d.serverEnvironmentQuery,
+      serverServiceQuery: d.serverServiceQuery,
+      requestLimit: d.requestLimit,
+      requestPage: d.requestPage,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: d.errorGroupPage,
+      errorGroupSort: d.errorGroupSort,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
+    };
+  }, [
+    d.isAbsoluteWindow,
+    d.windowMinutes,
+    d.windowFromTimestamp,
+    d.windowToTimestamp,
+    d.method,
+    d.statusClass,
+    d.minLatencyMs,
+    d.maxLatencyMs,
+    d.pathQuery,
+    d.serverEnvironmentQuery,
+    d.serverServiceQuery,
+    d.requestLimit,
+    d.requestPage,
+    d.errorGroupLimit,
+    d.errorGroupPage,
+    d.errorGroupSort,
+    d.sqlFilterApplied,
+    d.sqlFilterEnabled,
+  ]);
   const requests = d.requests;
   const errorGroups = d.errorGroups;
   const timeline = d.diagnosisTimeline;
@@ -61,10 +103,13 @@ export function DiagnosisContent() {
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Recent grouped errors and top failing routes from the loaded request sample ({requests.limit} rows).
           Full request rows live on{" "}
-          <Link href="/logs" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
+          <Link
+            href={buildLogsPageHref(scopedState)}
+            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+          >
             Logs
-          </Link>
-          .
+          </Link>{" "}
+          (same time window and filters).
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
@@ -77,24 +122,35 @@ export function DiagnosisContent() {
               <ul className="mt-2 space-y-2">
                 {d.recentErrorsPreview.map((item) => (
                   <li key={item.group_key}>
-                    <a
-                      href="#grouped-errors"
-                      className="block rounded-lg border border-transparent px-1 py-1 text-sm transition-colors hover:border-slate-200 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:hover:border-neutral-700 dark:hover:bg-neutral-900 dark:focus-visible:ring-neutral-500/50"
-                    >
-                      <span className="font-medium text-slate-900 dark:text-neutral-100">
-                        {item.exception_type ?? "Error"}
-                      </span>
-                      <span className="text-slate-500 dark:text-neutral-400"> · </span>
-                      <span className="font-mono text-xs text-slate-700 dark:text-neutral-300">
-                        {item.path}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-slate-500 dark:text-neutral-400">
-                        {item.message
-                          ? `${item.message.slice(0, 80)}${item.message.length > 80 ? "…" : ""}`
-                          : "—"}{" "}
-                        <span className="tabular-nums text-rose-700">×{item.count}</span>
-                      </span>
-                    </a>
+                    <div className="rounded-lg border border-transparent px-1 py-1 text-sm transition-colors hover:border-slate-200 hover:bg-white dark:hover:border-neutral-700 dark:hover:bg-neutral-900">
+                      <a
+                        href="#grouped-errors"
+                        className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+                      >
+                        <span className="font-medium text-slate-900 dark:text-neutral-100">
+                          {item.exception_type ?? "Error"}
+                        </span>
+                        <span className="text-slate-500 dark:text-neutral-400"> · </span>
+                        <span className="font-mono text-xs text-slate-700 dark:text-neutral-300">
+                          {item.path}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500 dark:text-neutral-400">
+                          {item.message
+                            ? `${item.message.slice(0, 80)}${item.message.length > 80 ? "…" : ""}`
+                            : "—"}{" "}
+                          <span className="tabular-nums text-rose-700">×{item.count}</span>
+                        </span>
+                      </a>
+                      <Link
+                        href={buildLogsPageHref(scopedState, {
+                          pathQuery: item.path,
+                          statusClass: "ALL",
+                        })}
+                        className="mt-1 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                      >
+                        Request logs for this route
+                      </Link>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -113,7 +169,12 @@ export function DiagnosisContent() {
                     key={path}
                     className="flex items-start justify-between gap-2 text-sm text-slate-800 dark:text-neutral-200"
                   >
-                    <span className="min-w-0 truncate font-mono text-xs">{path}</span>
+                    <Link
+                      href={buildLogsPageHref(scopedState, { pathQuery: path, statusClass: "5" })}
+                      className="min-w-0 truncate font-mono text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                    >
+                      {path}
+                    </Link>
                     <span className="shrink-0 tabular-nums font-semibold text-rose-700">{count}</span>
                   </li>
                 ))}
@@ -143,7 +204,10 @@ export function DiagnosisContent() {
           <ul className="mt-3 space-y-2">
             {failures.items.slice(0, 10).map((item) => (
               <li key={item.path} className="flex items-center justify-between gap-3 text-sm">
-                <Link href={`/logs?path_contains=${encodeURIComponent(item.path)}`} className="truncate font-mono text-xs text-sky-700 hover:underline dark:text-neutral-300">
+                <Link
+                  href={buildLogsPageHref(scopedState, { pathQuery: item.path, statusClass: "5" })}
+                  className="truncate font-mono text-xs text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                >
                   {item.path}
                 </Link>
                 <span className="tabular-nums text-rose-700 dark:text-rose-300">{item.failure_count}</span>
@@ -241,6 +305,20 @@ export function DiagnosisContent() {
                       )}
                       renderDetails={() => (
                         <dl className="grid gap-3 sm:grid-cols-2">
+                          <div className="sm:col-span-2">
+                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">Request logs</dt>
+                            <dd className="mt-1">
+                              <Link
+                                href={buildLogsPageHref(scopedState, {
+                                  pathQuery: item.path,
+                                  statusClass: "ALL",
+                                })}
+                                className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                              >
+                                Open logs for this route
+                              </Link>
+                            </dd>
+                          </div>
                           <div>
                             <dt className="font-semibold text-slate-500 dark:text-neutral-400">Group key</dt>
                             <dd className="mt-0.5 break-all font-mono text-xs text-slate-800 dark:text-neutral-200">
@@ -319,6 +397,15 @@ export function DiagnosisContent() {
                 <p className="mt-1 text-slate-600 dark:text-neutral-300">
                   {formatTimestamp(event.timestamp)} · {event.status_code} · {event.latency_ms.toFixed(1)} ms
                 </p>
+                <Link
+                  href={buildLogsPageHref(scopedState, {
+                    pathQuery: event.path,
+                    statusClass: event.status_code >= 500 ? "5" : event.status_code >= 400 ? "4" : "ALL",
+                  })}
+                  className="mt-2 inline-block font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                >
+                  View in request logs
+                </Link>
               </li>
             ))}
           </ul>

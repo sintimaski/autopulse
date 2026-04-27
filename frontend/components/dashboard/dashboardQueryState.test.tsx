@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDiagnosisPageHref,
+  buildLogsPageHref,
   buildScopedQuery,
   parseScopedQuery,
   scopedQueryStringsEqual,
@@ -109,5 +111,47 @@ describe("dashboardQueryState", () => {
       sqlFilterEnabled: false,
     });
     expect(query.has("sql_filter")).toBe(false);
+  });
+
+  const baseScope = {
+    isAbsoluteWindow: false,
+    windowMinutes: 60,
+    windowFromTimestamp: "",
+    windowToTimestamp: "",
+    method: "ALL",
+    statusClass: "ALL",
+    minLatencyMs: "",
+    maxLatencyMs: "",
+    pathQuery: "",
+    serverEnvironmentQuery: "",
+    serverServiceQuery: "",
+    requestLimit: 100,
+    requestPage: 0,
+    errorGroupLimit: 25,
+    errorGroupPage: 0,
+    errorGroupSort: "last_seen" as const,
+    sqlFilterApplied: "",
+    sqlFilterEnabled: false,
+  };
+
+  it("buildLogsPageHref preserves scope and applies path patch", () => {
+    const href = buildLogsPageHref(baseScope, { pathQuery: "/api/orders", statusClass: "5" });
+    expect(href.startsWith("/logs?")).toBe(true);
+    const q = new URLSearchParams(href.slice("/logs?".length));
+    expect(q.get("window_minutes")).toBe("60");
+    expect(q.get("path_contains")).toBe("/api/orders");
+    expect(q.get("status_class")).toBe("5");
+  });
+
+  it("buildDiagnosisPageHref appends hash and resets error group page", () => {
+    const href = buildDiagnosisPageHref(
+      { ...baseScope, errorGroupPage: 2 },
+      { pathQuery: "/fail" },
+      "#grouped-errors",
+    );
+    expect(href.includes("#grouped-errors")).toBe(true);
+    const q = new URLSearchParams(href.split("#")[0].replace("/diagnosis?", ""));
+    expect(q.get("path_contains")).toBe("/fail");
+    expect(q.get("error_group_page")).toBeNull();
   });
 });

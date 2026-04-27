@@ -156,6 +156,36 @@ export function scopedQueryStringsEqual(a: string, b: string): boolean {
   return true;
 }
 
+/** Build `/logs` href preserving the current scope (optionally narrowed for a row or facet). */
+export function buildLogsPageHref(
+  state: DashboardScopedQueryState,
+  patch?: Partial<DashboardScopedQueryState>,
+): string {
+  const next: DashboardScopedQueryState = {
+    ...state,
+    ...patch,
+    requestPage: patch?.requestPage ?? 0,
+    errorGroupPage: patch?.errorGroupPage ?? state.errorGroupPage,
+  };
+  return `/logs?${buildScopedQuery(next).toString()}`;
+}
+
+/** Build `/diagnosis` href preserving the current scope (optionally narrowed); `hash` defaults to empty. */
+export function buildDiagnosisPageHref(
+  state: DashboardScopedQueryState,
+  patch?: Partial<DashboardScopedQueryState>,
+  hash = "",
+): string {
+  const next: DashboardScopedQueryState = {
+    ...state,
+    ...patch,
+    requestPage: patch?.requestPage ?? 0,
+    errorGroupPage: patch?.errorGroupPage ?? 0,
+  };
+  const q = buildScopedQuery(next).toString();
+  return `/diagnosis?${q}${hash}`;
+}
+
 export function parseScopedQuery(
   searchParams: URLSearchParams,
 ): DashboardScopedQueryState {

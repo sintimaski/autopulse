@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -55,10 +56,12 @@ import {
   type ThemePreference,
   type ThemeSettings,
 } from "./dashboardTypes";
+import { normalizeCommaSeparated, splitCommaSeparated } from "./dashboardQueryState";
 import {
-  normalizeCommaSeparated,
-  splitCommaSeparated,
-} from "./dashboardQueryState";
+  buildPersistedSessionPayload,
+  readPersistedDashboardSession,
+  writePersistedDashboardSession,
+} from "./dashboardPersistentScope";
 import {
   buildDashboardDataCacheScopeKey,
   readDashboardSnapshot,
@@ -69,6 +72,8 @@ import { toDashboardRoutePath } from "./dashboardRoutePath";
 
 export type DashboardDataContextValue = {
   hasApiKey: boolean;
+  /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
+  authSessionResolved: boolean;
   windowMinutes: number;
   windowFromTimestamp: string;
   windowToTimestamp: string;
@@ -188,6 +193,7 @@ export function useDashboardData(): DashboardDataContextValue {
 
 export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [hasApiKey, setHasApiKey] = useState(false);
+  const [authSessionResolved, setAuthSessionResolved] = useState(false);
 
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
@@ -245,6 +251,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [rawDashboardPathname],
   );
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
+  const hasHydratedPersistedScope = useRef(false);
   const serverEnvironmentTags = useMemo(
     () => splitCommaSeparated(serverEnvironmentQuery),
     [serverEnvironmentQuery],
@@ -264,6 +271,112 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return absoluteWindow;
   }, [absoluteWindow]);
 
+  useLayoutEffect(() => {
+    if (hasHydratedPersistedScope.current) {
+      return;
+    }
+    const parsed = readPersistedDashboardSession();
+    if (!parsed) {
+      hasHydratedPersistedScope.current = true;
+      return;
+    }
+    const { scoped, logsClient } = parsed;
+    if (scoped.isAbsoluteWindow && scoped.windowFromTimestamp && scoped.windowToTimestamp) {
+      setAbsoluteWindowState({ from: scoped.windowFromTimestamp, to: scoped.windowToTimestamp });
+    } else {
+      setAbsoluteWindowState(null);
+      setWindowMinutes(scoped.windowMinutes);
+    }
+    setMethod(scoped.method);
+    setStatusClass(scoped.statusClass);
+    setPathQuery(scoped.pathQuery);
+    setMinLatencyMs(scoped.minLatencyMs);
+    setMaxLatencyMs(scoped.maxLatencyMs);
+    setServerEnvironmentQuery(scoped.serverEnvironmentQuery);
+    setServerServiceQuery(scoped.serverServiceQuery);
+    setRequestLimit(scoped.requestLimit);
+    setRequestPage(scoped.requestPage);
+    setErrorGroupLimit(scoped.errorGroupLimit);
+    setErrorGroupPage(scoped.errorGroupPage);
+    setErrorGroupSort(scoped.errorGroupSort);
+    const f = (scoped.sqlFilterApplied ?? "").trim();
+    if (scoped.sqlFilterEnabled && f) {
+      setSqlFilterApplied(f);
+      setSqlFilterDraft(f);
+      setSqlFilterEnabled(true);
+    } else {
+      setSqlFilterApplied("");
+      setSqlFilterDraft("");
+      setSqlFilterEnabled(false);
+    }
+    setGroupBy(logsClient.groupBy);
+    setSortKey(logsClient.sortKey);
+    setSortDir(logsClient.sortDir);
+    setEnvTags(new Set(logsClient.envTags));
+    setServiceTags(new Set(logsClient.serviceTags));
+    hasHydratedPersistedScope.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedPersistedScope.current) {
+      return;
+    }
+    const scopedForPersist = {
+      isAbsoluteWindow: absoluteWindow !== null,
+      windowMinutes,
+      windowFromTimestamp: absoluteWindow?.from ?? "",
+      windowToTimestamp: absoluteWindow?.to ?? "",
+      method,
+      statusClass,
+      minLatencyMs,
+      maxLatencyMs,
+      pathQuery,
+      serverEnvironmentQuery,
+      serverServiceQuery,
+      requestLimit,
+      requestPage,
+      errorGroupLimit,
+      errorGroupPage,
+      errorGroupSort,
+      sqlFilterApplied,
+      sqlFilterEnabled,
+    };
+    const timer = window.setTimeout(() => {
+      writePersistedDashboardSession(
+        buildPersistedSessionPayload(scopedForPersist, {
+          groupBy,
+          sortKey,
+          sortDir,
+          envTags: [...envTags],
+          serviceTags: [...serviceTags],
+        }),
+      );
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    absoluteWindow,
+    windowMinutes,
+    method,
+    statusClass,
+    minLatencyMs,
+    maxLatencyMs,
+    pathQuery,
+    serverEnvironmentQuery,
+    serverServiceQuery,
+    requestLimit,
+    requestPage,
+    errorGroupLimit,
+    errorGroupPage,
+    errorGroupSort,
+    sqlFilterApplied,
+    sqlFilterEnabled,
+    groupBy,
+    sortKey,
+    sortDir,
+    envTags,
+    serviceTags,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -272,7 +385,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           credentials: "include",
         });
         if (!response.ok) {
-          setHasApiKey(false);
+          if (!cancelled) {
+            setHasApiKey(false);
+          }
           return;
         }
         const payload = (await response.json()) as { authenticated?: boolean };
@@ -282,6 +397,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       } catch {
         if (!cancelled) {
           setHasApiKey(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthSessionResolved(true);
         }
       }
     };
@@ -1289,6 +1408,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     (): DashboardDataContextValue => ({
       hasApiKey,
+      authSessionResolved,
       windowMinutes,
       windowFromTimestamp:
         toIsoWindow?.from ?? overview?.from_timestamp ?? requests?.from_timestamp ?? "",
@@ -1398,6 +1518,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       hasApiKey,
+      authSessionResolved,
       windowMinutes,
       toIsoWindow,
       absoluteWindow,

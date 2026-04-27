@@ -1,5 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { useMemo } from "react";
+
+import { buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
 import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
@@ -7,6 +11,47 @@ import { TagSelector } from "../TagSelector";
 
 export function LogsContent() {
   const d = useDashboardData();
+  const scopedState = useMemo((): DashboardScopedQueryState => {
+    return {
+      isAbsoluteWindow: d.isAbsoluteWindow,
+      windowMinutes: d.windowMinutes,
+      windowFromTimestamp: d.windowFromTimestamp,
+      windowToTimestamp: d.windowToTimestamp,
+      method: d.method,
+      statusClass: d.statusClass,
+      minLatencyMs: d.minLatencyMs,
+      maxLatencyMs: d.maxLatencyMs,
+      pathQuery: d.pathQuery,
+      serverEnvironmentQuery: d.serverEnvironmentQuery,
+      serverServiceQuery: d.serverServiceQuery,
+      requestLimit: d.requestLimit,
+      requestPage: d.requestPage,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: d.errorGroupPage,
+      errorGroupSort: d.errorGroupSort,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
+    };
+  }, [
+    d.isAbsoluteWindow,
+    d.windowMinutes,
+    d.windowFromTimestamp,
+    d.windowToTimestamp,
+    d.method,
+    d.statusClass,
+    d.minLatencyMs,
+    d.maxLatencyMs,
+    d.pathQuery,
+    d.serverEnvironmentQuery,
+    d.serverServiceQuery,
+    d.requestLimit,
+    d.requestPage,
+    d.errorGroupLimit,
+    d.errorGroupPage,
+    d.errorGroupSort,
+    d.sqlFilterApplied,
+    d.sqlFilterEnabled,
+  ]);
   const requests = d.requests;
   if (!requests) {
     return null;
@@ -259,7 +304,18 @@ export function LogsContent() {
                               </td>
                               </>
                             )}
-                            renderDetails={() => (
+                            renderDetails={() => {
+                              const statusClassForDiagnosis =
+                                item.status_code >= 500 ? "5" : item.status_code >= 400 ? "4" : "ALL";
+                              const diagnosisHref = buildDiagnosisPageHref(
+                                scopedState,
+                                {
+                                  pathQuery: item.path,
+                                  statusClass: statusClassForDiagnosis,
+                                },
+                                "#grouped-errors",
+                              );
+                              return (
                               <>
                                 <dl className="grid gap-3 sm:grid-cols-2">
                                   <div>
@@ -307,8 +363,21 @@ export function LogsContent() {
                                     <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.environment}</dd>
                                   </div>
                                 </dl>
+                                <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
+                                  <Link
+                                    href={diagnosisHref}
+                                    className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-400"
+                                  >
+                                    {item.status_code >= 500
+                                      ? "Open diagnosis (5xx on this route)"
+                                      : item.status_code >= 400
+                                        ? "Open diagnosis (4xx on this route)"
+                                        : "Open diagnosis for this route"}
+                                  </Link>
+                                </div>
                               </>
-                            )}
+                              );
+                            }}
                           />
                         );
                       })}

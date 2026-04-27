@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { DashboardAppShell } from "./AppShell";
-import { ApiKeyMissing } from "./DashboardPageBoundary";
+import { ApiKeyMissing, DashboardSessionRestoring } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
 import {
@@ -194,8 +194,11 @@ function ShellWithData({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intent: run only on pathname change; reads latest context inside.
   }, [pathname]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isScopedServerRoute(pathname)) {
+      return;
+    }
+    if (!searchKey) {
       return;
     }
     const search = searchKey;
@@ -312,6 +315,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.sqlFilterEnabled,
   ]);
 
+  if (!d.authSessionResolved) {
+    return <DashboardSessionRestoring />;
+  }
   if (!d.hasApiKey) {
     return <ApiKeyMissing />;
   }
