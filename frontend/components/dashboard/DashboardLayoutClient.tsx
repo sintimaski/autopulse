@@ -13,23 +13,23 @@ import { buildScopedQuery, parseScopedQuery } from "./dashboardQueryState";
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
     title: "Dashboard",
-    subtitle: "Volume and headline rates for the selected window.",
+    subtitle: "Traffic and headline rates in the selected window.",
   },
   "/diagnosis": {
     title: "Diagnosis",
-    subtitle: "Error signals and grouped stack signatures.",
+    subtitle: "Error signals and grouped failures.",
   },
   "/alerts": {
     title: "Alerts",
-    subtitle: "Heuristic preview and backend job runbook.",
+    subtitle: "Alert heuristics, settings, and runbook shortcuts.",
   },
   "/settings": {
     title: "Settings",
-    subtitle: "Project defaults and delivery channel configuration.",
+    subtitle: "Project defaults, theme, and delivery channels.",
   },
   "/logs": {
     title: "Logs",
-    subtitle: "Scope traffic fast, then inspect request-level evidence.",
+    subtitle: "Scope traffic quickly and inspect request evidence.",
   },
 };
 

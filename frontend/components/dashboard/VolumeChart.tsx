@@ -108,11 +108,11 @@ function TrendLineChart({
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/80 p-3 dark:border-neutral-700 dark:bg-neutral-900/70">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+        <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
           {title}
         </p>
         <div className="text-right">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+          <p className="text-xs text-slate-500 dark:text-neutral-400">
             {summaryLabel}
           </p>
           <p className="text-xs font-medium tabular-nums text-slate-700 dark:text-neutral-200">
@@ -148,10 +148,10 @@ function TrendLineChart({
               />
             ) : null}
           </svg>
-          <p className="mt-1 truncate text-[10px] text-slate-500 dark:text-neutral-400">
+          <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400">
             {activeLabel ? `${activeLabel} • ${formatValue(activeValue)}` : null}
           </p>
-          <p className="truncate text-[10px] text-slate-500 dark:text-neutral-400">
+          <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
             {labels[0]} {" -> "} {labels[labels.length - 1]}
           </p>
         </>
@@ -286,7 +286,7 @@ export function VolumeChart({
   return (
     <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
-        <p className="text-xs text-slate-500 dark:text-neutral-400">
+        <p className="text-sm text-slate-500 dark:text-neutral-400">
           Server window {formatMinuteLabel(fromTimestamp)} → {formatMinuteLabel(toTimestamp)} (
           {globalWindowMinutes}m)
         </p>
@@ -403,7 +403,7 @@ export function VolumeChart({
             </div>
             {liveTip && (
               <div
-                className="pointer-events-none absolute z-10 min-w-[200px] max-w-[min(280px,calc(100%-8px))] -translate-x-1/2 -translate-y-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+                className="pointer-events-none absolute z-10 min-w-[200px] max-w-[min(280px,calc(100%-8px))] -translate-x-1/2 -translate-y-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
                 style={{
                   left: Math.max(80, Math.min(liveTip.left, liveTip.containerWidth - 80)),
                   top: Math.max(4, liveTip.top - 8),
@@ -430,7 +430,7 @@ export function VolumeChart({
                     {Number(liveTip.bucket.avg_latency_ms || 0).toFixed(1)} ms
                   </span>
                 </p>
-                <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-neutral-400">
+                <p className="mt-1 text-xs leading-snug text-slate-500 dark:text-neutral-400">
                   Bucket start (your local time). Click a bar to open Diagnosis for this bucket.
                 </p>
               </div>

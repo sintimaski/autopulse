@@ -7,7 +7,6 @@ This repository treats several documents as **canonical product and engineering 
 Unless otherwise agreed, treat updates to the following as **governed**:
 
 - `DEVELOPMENT.md` — product scope, MVP definition, architecture, event model, security defaults.
-- `INIT.md` — historical or extended context that still informs decisions (prefer aligning with `DEVELOPMENT.md` when they conflict).
 - `docs/DOCUMENTATION_GOVERNANCE.md` — this file.
 - `docs/cursor/**` — Cursor and agent workflow conventions for this repo.
 - `agents/**` — task, review, and analysis playbooks.

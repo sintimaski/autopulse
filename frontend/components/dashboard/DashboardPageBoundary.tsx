@@ -28,7 +28,7 @@ export function DashboardPageBoundary({ children }: { children: ReactNode }) {
 
   if (d.loading) {
     return (
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-[88rem]">
         <section className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
           <p className="text-sm font-medium">Loading dashboard data...</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -43,7 +43,7 @@ export function DashboardPageBoundary({ children }: { children: ReactNode }) {
 
   if (d.errorMessage && !hasRenderableData) {
     return (
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-[88rem]">
         <section
           className="rounded-2xl border border-rose-200 bg-rose-50/90 p-6 text-rose-900 shadow-sm dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-100"
           role="alert"
@@ -62,5 +62,5 @@ export function DashboardPageBoundary({ children }: { children: ReactNode }) {
     return null;
   }
 
-  return <div className="mx-auto max-w-5xl space-y-6">{children}</div>;
+  return <div className="mx-auto max-w-[88rem] space-y-6">{children}</div>;
 }

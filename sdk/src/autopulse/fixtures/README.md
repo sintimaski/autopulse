@@ -33,6 +33,7 @@ uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8
 - `AUTOPULSE_MOUNT_PREFIX`: embedded mount prefix (default `/autopulse`).
 - `AUTOPULSE_DATABASE_URL`: embedded SQLite URL (default `sqlite+aiosqlite:///./autopulse_embedded.db`).
 - `AUTOPULSE_FRONTEND_MODE`: embedded frontend mode (`static` default, `sidecar` optional).
+- `AUTOPULSE_MODE=embedded` requires backend dependencies (`pip install "autopulse[embedded]"` outside this monorepo).
 - `AUTOPULSE_API_KEY`: project API key (`ap_live_...`) for remote ingest mode.
 - `AUTOPULSE_INGEST_URL`: remote ingest URL (default `http://localhost:8000/ingest`).
 - `AUTOPULSE_SERVICE_NAME`: service label (default `synthetic-test-api`).

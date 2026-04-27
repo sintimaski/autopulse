@@ -63,7 +63,7 @@ export function DashboardHomeContent() {
     <>
       <section className="grid gap-4 sm:grid-cols-3">
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+          <h3 className="text-sm font-semibold text-slate-600 dark:text-neutral-300">
             Requests / min
           </h3>
           <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-neutral-100">
@@ -71,26 +71,26 @@ export function DashboardHomeContent() {
           </p>
         </article>
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+          <h3 className="text-sm font-semibold text-slate-600 dark:text-neutral-300">
             Error rate
           </h3>
           <p className="mt-2 text-3xl font-bold tabular-nums text-rose-600 dark:text-rose-400">
             {(displayErrorRate * 100).toFixed(1)}%
           </p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
             {usingFilteredSeries
               ? "Derived from current filtered request slice"
               : "5xx + ingested error events"}
           </p>
           <Link
             href={diagnosisGroupedHref}
-            className="mt-2 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+            className="mt-2 inline-block text-sm font-medium text-sky-700 underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/50"
           >
             Open grouped errors
           </Link>
         </article>
         <article className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+          <h3 className="text-sm font-semibold text-slate-600 dark:text-neutral-300">
             Avg latency
           </h3>
           <p className="mt-2 text-3xl font-bold tabular-nums text-slate-900 dark:text-neutral-100">
@@ -101,11 +101,10 @@ export function DashboardHomeContent() {
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-          Requests (bars), plus request/error rate/error count/latency trend cards. Hover bars and trend lines
-          for exact values. Click a bar to jump to Diagnosis for that bucket. Chart span and step only change
-          how buckets are drawn (same server window as the query bar). For errors and routes, open{" "}
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Requests (bars) and trend cards for volume, error rate, error count, and latency. Hover for values or
+          click a bar to open Diagnosis for that bucket.{" "}
           <Link href={diagnosisBaseHref} className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
             Diagnosis
           </Link>
@@ -130,7 +129,7 @@ export function DashboardHomeContent() {
 
       {overview.request_count === 0 ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30">
-          <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+          <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
             No traffic in this window yet
           </h2>
           <p className="mt-1 text-sm text-amber-900/90 dark:text-amber-100/90">
@@ -147,8 +146,8 @@ export function DashboardHomeContent() {
       <section className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h2>
-            <Link href={diagnosisBaseHref} className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h2>
+            <Link href={diagnosisBaseHref} className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
               Full diagnosis
             </Link>
           </div>
@@ -174,10 +173,10 @@ export function DashboardHomeContent() {
 
         <article className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h2>
+            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h2>
             <Link
               href={diagnosisGroupedHref}
-              className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+              className="text-sm font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
               Grouped list
             </Link>

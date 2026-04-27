@@ -304,6 +304,14 @@ def monitor(app: Any, **kwargs: Any) -> None:
             from autopulse._embedded import configure_embedded
 
             resolved_kwargs.update(configure_embedded(app, kwargs=kwargs))
+        except ModuleNotFoundError as exc:
+            if exc.name and exc.name.startswith("autopulse_backend"):
+                _debug_log(
+                    bool(kwargs.get("debug", False)),
+                    "embedded mode unavailable: install the backend package or use mode='remote'",
+                )
+            else:
+                _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
         except Exception as exc:
             _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
     config = _MonitorConfig(

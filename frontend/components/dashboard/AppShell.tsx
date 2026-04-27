@@ -42,7 +42,7 @@ export function DashboardAppShell({
       <div className="flex min-h-screen bg-slate-100 text-slate-900 dark:bg-neutral-950 dark:text-neutral-100">
         <aside className="sticky top-0 flex h-screen w-56 shrink-0 flex-col border-r border-neutral-800/90 bg-neutral-950 text-neutral-100 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="border-b border-white/10 px-4 py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-400/90 dark:text-neutral-400">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-400/90 dark:text-neutral-400">
               AutoPulse
             </p>
             <p className="mt-1 text-sm font-semibold tracking-tight">Console</p>
@@ -59,7 +59,7 @@ export function DashboardAppShell({
                       : item.href
                   }
                   aria-current={active ? "page" : undefined}
-                  className={`rounded-lg px-3 py-2 transition ${
+                  className={`rounded-lg px-3 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
                     active
                       ? "bg-white/15 font-medium text-white"
                       : "text-neutral-300 hover:bg-white/10 hover:text-white"
@@ -70,8 +70,8 @@ export function DashboardAppShell({
               );
             })}
           </nav>
-          <div className="border-t border-white/10 px-4 py-3 text-[11px] leading-snug text-neutral-500">
-            FastAPI-native visibility. Tune the query bar to refetch all panels.
+          <div className="border-t border-white/10 px-4 py-3 text-xs leading-snug text-neutral-500">
+            FastAPI-native visibility. Tune scope, then inspect evidence.
           </div>
         </aside>
 
@@ -79,16 +79,16 @@ export function DashboardAppShell({
           <header className="border-b border-slate-200/90 bg-white/95 dark:border-neutral-800 dark:bg-neutral-900/95">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div>
-                <h1 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-neutral-100 sm:text-xl">
+                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-neutral-100 sm:text-2xl">
                   {title}
                 </h1>
-                <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">{subtitle}</p>
+                <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">{subtitle}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={onRefresh}
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                  className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
                 >
                   Refresh
                 </button>
@@ -107,11 +107,11 @@ export function DashboardAppShell({
 
           <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
 
-          <footer className="border-t border-slate-200/90 bg-white px-4 py-4 text-center text-xs text-slate-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400 sm:px-6">
+          <footer className="border-t border-slate-200/90 bg-white px-4 py-4 text-center text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400 sm:px-6">
             <span className="text-slate-600 dark:text-neutral-300">AutoPulse</span>
             {" — "}
             Ingest at{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
+            <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">
               POST /ingest
             </code>
             {" · "}

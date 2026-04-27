@@ -9,7 +9,8 @@ repos:
     rev: 1.8.3
     hooks:
       - id: bandit
-        args: ["-c", "pyproject.toml", "-r", "sdk/src/autopulse"]
+        args: ["-c", "pyproject.toml", "-r", "sdk/src/autopulse", "backend/src/autopulse_backend"]
+        pass_filenames: false
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

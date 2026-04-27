@@ -3,6 +3,7 @@
 import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
+import { TagSelector } from "../TagSelector";
 
 export function LogsContent() {
   const d = useDashboardData();
@@ -30,15 +31,15 @@ export function LogsContent() {
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-neutral-100">Logs triage flow</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-              1) Scope in the header, 2) refine this page view, 3) open rows to inspect exact requests.
+            <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Logs triage flow</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+              1) Scope in the header, 2) refine here, 3) open rows for request evidence.
             </p>
           </div>
           <button
             type="button"
             onClick={d.clearClientFilters}
-            className="self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+            className="self-start rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
           >
             Reset all filters
           </button>
@@ -46,7 +47,7 @@ export function LogsContent() {
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-800/70">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
               Loaded rows
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-neutral-100">
@@ -55,14 +56,14 @@ export function LogsContent() {
             <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">From {serverWindowTotal} in window</p>
           </div>
           <div className="rounded-xl border border-red-200/70 bg-red-50/70 p-3 dark:border-red-900/40 dark:bg-red-950/20">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-red-600 dark:text-red-300">
+            <p className="text-xs font-medium uppercase tracking-wide text-red-600 dark:text-red-300">
               Errors (5xx)
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-red-700 dark:text-red-200">{errorRows}</p>
             <p className="mt-1 text-xs text-red-600/80 dark:text-red-300/80">Prioritize these first</p>
           </div>
           <div className="rounded-xl border border-amber-200/70 bg-amber-50/70 p-3 dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
               Slow (300ms+)
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-amber-700 dark:text-amber-200">
@@ -71,7 +72,7 @@ export function LogsContent() {
             <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-300/80">Potential regressions</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-800/70">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
               p95 latency
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-neutral-100">
@@ -83,10 +84,10 @@ export function LogsContent() {
 
         <div className="mt-4 rounded-xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/70">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+            <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
               Local view controls
             </p>
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
               {activeClientControls} active
             </span>
           </div>
@@ -106,67 +107,32 @@ export function LogsContent() {
               </select>
             </label>
 
-            <div>
-              <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">Environment tags</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {d.availableEnvironments.length === 0 ? (
-                  <p className="text-xs text-slate-500 dark:text-neutral-400">No environment tags in this slice.</p>
-                ) : (
-                  d.availableEnvironments.map((env) => {
-                    const on = d.envTags.has(env);
-                    return (
-                      <button
-                        key={env}
-                        type="button"
-                        onClick={() => d.toggleEnv(env)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                          on
-                            ? "border-sky-500 bg-sky-500 text-white shadow-sm dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-50"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-500"
-                        }`}
-                      >
-                        {env}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-medium text-slate-600 dark:text-neutral-300">Service tags</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {d.availableServices.length === 0 ? (
-                  <p className="text-xs text-slate-500 dark:text-neutral-400">No service tags in this slice.</p>
-                ) : (
-                  d.availableServices.map((svc) => {
-                    const on = d.serviceTags.has(svc);
-                    return (
-                      <button
-                        key={svc}
-                        type="button"
-                        onClick={() => d.toggleService(svc)}
-                        className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                          on
-                            ? "border-violet-500 bg-violet-600 text-white shadow-sm dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-50"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-neutral-500"
-                        }`}
-                      >
-                        {svc}
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            </div>
+            <TagSelector
+              id="logs-environment-tags"
+              label="Environment tags"
+              options={d.availableEnvironments}
+              selected={d.envTags}
+              onToggle={d.toggleEnv}
+              emptyText="No environment tags in this slice."
+              accent="sky"
+            />
+            <TagSelector
+              id="logs-service-tags"
+              label="Service tags"
+              options={d.availableServices}
+              selected={d.serviceTags}
+              onToggle={d.toggleService}
+              emptyText="No service tags in this slice."
+              accent="violet"
+            />
           </div>
         </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Request rows</h2>
-          <p className="text-xs text-slate-500 dark:text-neutral-400">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Request rows</h2>
+          <p className="text-sm text-slate-500 dark:text-neutral-400">
             Showing <span className="font-semibold text-slate-800 dark:text-neutral-100">{d.filteredSorted.length}</span> of{" "}
             {d.rawItems.length} loaded (total in window: {requests.total})
           </p>
@@ -189,12 +155,12 @@ export function LogsContent() {
             {d.grouped.map((group) => (
               <div key={group.key}>
                 {d.groupBy !== "none" && (
-                  <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-neutral-200">
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
                       {GROUP_OPTIONS.find((g) => g.value === d.groupBy)?.label}
                     </span>
-                    <span className="text-slate-800 dark:text-neutral-100">{group.label}</span>
-                    <span className="font-normal normal-case text-slate-400 dark:text-neutral-500">
+                    <span className="text-slate-900 dark:text-neutral-100">{group.label}</span>
+                    <span className="font-normal text-slate-500 dark:text-neutral-400">
                       ({group.items.length})
                     </span>
                   </h3>
@@ -215,11 +181,17 @@ export function LogsContent() {
                             ["environment", "Env"],
                           ] as const
                         ).map(([key, label]) => (
-                          <th key={key} className="px-3 py-2">
+                          <th
+                            key={key}
+                            className="px-3 py-2"
+                            aria-sort={
+                              d.sortKey === key ? (d.sortDir === "asc" ? "ascending" : "descending") : "none"
+                            }
+                          >
                             <button
                               type="button"
                               onClick={() => d.onSortHeader(key)}
-                              className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 hover:bg-slate-200/60 dark:hover:bg-neutral-700/80"
+                              className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
                             >
                               {label}
                               {d.sortKey === key && (
@@ -347,7 +319,7 @@ export function LogsContent() {
             ))}
           </div>
         )}
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
           <p>
             Page {d.requestPage + 1} · Offset {d.requestPage * d.requestLimit}
           </p>
@@ -356,7 +328,7 @@ export function LogsContent() {
               type="button"
               disabled={d.requestPage === 0}
               onClick={() => d.setRequestPage((p) => Math.max(0, p - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
             >
               Prev
             </button>
@@ -364,7 +336,7 @@ export function LogsContent() {
               type="button"
               disabled={(d.requestPage + 1) * d.requestLimit >= requests.total}
               onClick={() => d.setRequestPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
             >
               Next
             </button>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, type KeyboardEventHandler } from "react";
+import { useMemo, useRef, useState, type KeyboardEventHandler } from "react";
 
 import { useDashboardData } from "./DashboardDataContext";
+import { TagSelector } from "./TagSelector";
 
 function isoToLocalInputValue(iso: string): string {
   const date = new Date(iso);
@@ -54,14 +55,27 @@ function formatRelativeToUserTime(serverIso: string): string {
 
 export function ServerQueryToolbar() {
   const d = useDashboardData();
+  const selectedEnvironmentTags = useMemo(
+    () => new Set(d.serverEnvironmentTags),
+    [d.serverEnvironmentTags],
+  );
+  const selectedServiceTags = useMemo(() => new Set(d.serverServiceTags), [d.serverServiceTags]);
+  const environmentOptions = useMemo(
+    () => [...new Set([...d.availableEnvironments, ...d.serverEnvironmentTags])].sort(),
+    [d.availableEnvironments, d.serverEnvironmentTags],
+  );
+  const serviceOptions = useMemo(
+    () => [...new Set([...d.availableServices, ...d.serverServiceTags])].sort(),
+    [d.availableServices, d.serverServiceTags],
+  );
   const activeServerFilterCount = [
     d.method !== "ALL",
     d.statusClass !== "ALL",
     d.pathQuery.trim() !== "",
     d.minLatencyMs.trim() !== "",
     d.maxLatencyMs.trim() !== "",
-    d.serverEnvironmentQuery.trim() !== "",
-    d.serverServiceQuery.trim() !== "",
+    d.serverEnvironmentTags.length > 0,
+    d.serverServiceTags.length > 0,
   ].filter(Boolean).length;
   const fromInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
@@ -70,8 +84,6 @@ export function ServerQueryToolbar() {
   const minLatencyRef = useRef<HTMLInputElement>(null);
   const maxLatencyRef = useRef<HTMLInputElement>(null);
   const pathRef = useRef<HTMLInputElement>(null);
-  const envRef = useRef<HTMLInputElement>(null);
-  const serviceRef = useRef<HTMLInputElement>(null);
   const errorGroupSortRef = useRef<HTMLSelectElement>(null);
   const [windowError, setWindowError] = useState<string | null>(null);
 
@@ -81,8 +93,8 @@ export function ServerQueryToolbar() {
     d.setPathQuery("");
     d.setMinLatencyMs("");
     d.setMaxLatencyMs("");
-    d.setServerEnvironmentQuery("");
-    d.setServerServiceQuery("");
+    d.setServerEnvironmentTags([]);
+    d.setServerServiceTags([]);
     d.setErrorGroupSort("last_seen");
     d.setRequestPage(0);
     d.setErrorGroupPage(0);
@@ -91,8 +103,6 @@ export function ServerQueryToolbar() {
     if (minLatencyRef.current) minLatencyRef.current.value = "";
     if (maxLatencyRef.current) maxLatencyRef.current.value = "";
     if (pathRef.current) pathRef.current.value = "";
-    if (envRef.current) envRef.current.value = "";
-    if (serviceRef.current) serviceRef.current.value = "";
     if (errorGroupSortRef.current) errorGroupSortRef.current.value = "last_seen";
   };
   const applyFilters = () => {
@@ -102,8 +112,6 @@ export function ServerQueryToolbar() {
     d.setMinLatencyMs(minLatencyRef.current?.value ?? "");
     d.setMaxLatencyMs(maxLatencyRef.current?.value ?? "");
     d.setPathQuery(pathRef.current?.value ?? "");
-    d.setServerEnvironmentQuery(envRef.current?.value ?? "");
-    d.setServerServiceQuery(serviceRef.current?.value ?? "");
     d.setErrorGroupSort((errorGroupSortRef.current?.value as "last_seen" | "count") ?? "last_seen");
     d.setRequestPage(0);
     d.setErrorGroupPage(0);
@@ -133,7 +141,7 @@ export function ServerQueryToolbar() {
     }
     const target = event.target as HTMLElement;
     const tag = target.tagName;
-    if (tag === "BUTTON" || tag === "TEXTAREA") {
+    if (tag === "BUTTON" || tag === "TEXTAREA" || tag === "SELECT") {
       return;
     }
     event.preventDefault();
@@ -147,24 +155,24 @@ export function ServerQueryToolbar() {
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+          <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
             Server scope
           </p>
-          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-300">
+          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-300">
             {activeServerFilterCount} active
           </span>
         </div>
         <button
           type="button"
           onClick={resetServerFilters}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
         >
           Reset filters
         </button>
         <button
           type="button"
           onClick={applyFilters}
-          className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1.5 text-xs font-medium text-sky-900 hover:bg-sky-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+          className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
         >
           Apply filters
         </button>
@@ -209,7 +217,7 @@ export function ServerQueryToolbar() {
           <button
             type="button"
             onClick={applyAbsoluteWindow}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
           >
             Apply window
           </button>
@@ -217,7 +225,7 @@ export function ServerQueryToolbar() {
             <button
               type="button"
               onClick={d.clearAbsoluteWindow}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
             >
               Use quick range
             </button>
@@ -284,13 +292,13 @@ export function ServerQueryToolbar() {
         <p className="mt-2 text-xs text-rose-700 dark:text-rose-400">{windowError}</p>
       ) : null}
       {d.isAbsoluteWindow ? (
-        <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+        <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
           Custom window active: {new Date(d.windowFromTimestamp).toLocaleString()} {" -> "}{" "}
           {new Date(d.windowToTimestamp).toLocaleString()}
         </p>
       ) : null}
       {d.serverNowTimestamp ? (
-        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Server now: {new Date(d.serverNowTimestamp).toLocaleString()} ({formatRelativeToUserTime(d.serverNowTimestamp)})
         </p>
       ) : null}
@@ -308,28 +316,6 @@ export function ServerQueryToolbar() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Environment tags
-          <input
-            key={`env-${d.serverEnvironmentQuery}`}
-            ref={envRef}
-            type="text"
-            defaultValue={d.serverEnvironmentQuery}
-            placeholder="prod, staging"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Service tags
-          <input
-            key={`service-${d.serverServiceQuery}`}
-            ref={serviceRef}
-            type="text"
-            defaultValue={d.serverServiceQuery}
-            placeholder="api, worker"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Error groups sort
           <select
             key={`error-group-sort-${d.errorGroupSort}`}
@@ -341,6 +327,45 @@ export function ServerQueryToolbar() {
             <option value="count">Count</option>
           </select>
         </label>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <TagSelector
+          id="server-environment-tags"
+          label="Environment tags"
+          options={environmentOptions}
+          selected={selectedEnvironmentTags}
+          onToggle={(value) => {
+            const next = new Set(selectedEnvironmentTags);
+            if (next.has(value)) {
+              next.delete(value);
+            } else {
+              next.add(value);
+            }
+            d.setServerEnvironmentTags([...next]);
+          }}
+          emptyText="No environment tags available for this loaded slice."
+          helperText="Use these options to scope server-side fetches."
+          accent="sky"
+        />
+        <TagSelector
+          id="server-service-tags"
+          label="Service tags"
+          options={serviceOptions}
+          selected={selectedServiceTags}
+          onToggle={(value) => {
+            const next = new Set(selectedServiceTags);
+            if (next.has(value)) {
+              next.delete(value);
+            } else {
+              next.add(value);
+            }
+            d.setServerServiceTags([...next]);
+          }}
+          emptyText="No service tags available for this loaded slice."
+          helperText="Selections persist in the URL for shareable scope."
+          accent="violet"
+        />
       </div>
 
       <div className="mt-3 grid gap-3 md:max-w-[380px] md:grid-cols-2">

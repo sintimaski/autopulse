@@ -86,10 +86,9 @@ export function AlertsContent() {
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Operations (M5)</h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-            Frontend preview of backend alert heuristics and retention defaults. Live traffic and errors
-            stay on{" "}
+          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Operations (M5)</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+            Preview backend heuristics and retention defaults. Live traffic details stay on{" "}
             <Link
               href="/dashboard"
               className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
@@ -106,13 +105,13 @@ export function AlertsContent() {
             .
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
+        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
           Live alert settings mode
         </span>
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
             Alert heuristic preview
           </h3>
           <ul className="mt-3 space-y-2 text-sm text-slate-700 dark:text-neutral-200">
@@ -141,20 +140,20 @@ export function AlertsContent() {
               </span>
             </li>
           </ul>
-          <p className="mt-3 text-xs text-slate-500 dark:text-neutral-400">
+          <p className="mt-3 text-sm text-slate-500 dark:text-neutral-400">
             Based on current window: {displayRequestCount} requests,{" "}
             {successfulRequests} successful,{" "}
             {(displayErrorRate * 100).toFixed(1)}% error rate.
           </p>
         </div>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
             Alert settings
           </h3>
           {form ? (
             <>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-neutral-200">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
                   <input
                     type="checkbox"
                     checked={form.enabled}
@@ -164,7 +163,7 @@ export function AlertsContent() {
                   />
                   Alerts enabled
                 </label>
-                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                <label className="text-sm text-slate-700 dark:text-neutral-200">
                   Destination email
                   <input
                     type="email"
@@ -175,11 +174,11 @@ export function AlertsContent() {
                         destination_email: event.target.value.trim() || null,
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                     placeholder="ops@example.com"
                   />
                 </label>
-                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                <label className="text-sm text-slate-700 dark:text-neutral-200">
                   Error spike threshold (0-1)
                   <input
                     type="number"
@@ -193,10 +192,10 @@ export function AlertsContent() {
                         error_spike_ratio_threshold: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                   />
                 </label>
-                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                <label className="text-sm text-slate-700 dark:text-neutral-200">
                   Error spike min requests
                   <input
                     type="number"
@@ -208,10 +207,10 @@ export function AlertsContent() {
                         error_spike_min_requests: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                   />
                 </label>
-                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                <label className="text-sm text-slate-700 dark:text-neutral-200">
                   Error spike window (minutes)
                   <input
                     type="number"
@@ -223,10 +222,10 @@ export function AlertsContent() {
                         error_spike_window_minutes: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                   />
                 </label>
-                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                <label className="text-sm text-slate-700 dark:text-neutral-200">
                   Outage min requests
                   <input
                     type="number"
@@ -238,10 +237,10 @@ export function AlertsContent() {
                         outage_min_requests: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                   />
                 </label>
-                <label className="text-xs text-slate-700 dark:text-neutral-200">
+                <label className="text-sm text-slate-700 dark:text-neutral-200">
                   Outage window (minutes)
                   <input
                     type="number"
@@ -253,7 +252,7 @@ export function AlertsContent() {
                         outage_window_minutes: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                   />
                 </label>
                 <label className="text-xs text-slate-700 dark:text-neutral-200">
@@ -277,7 +276,7 @@ export function AlertsContent() {
                   type="button"
                   onClick={onSave}
                   disabled={d.alertSettingsSaving}
-                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-900 shadow-sm transition hover:bg-sky-100 disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] disabled:opacity-60 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
                 >
                   {d.alertSettingsSaving ? "Saving..." : "Save alert settings"}
                 </button>
@@ -292,22 +291,22 @@ export function AlertsContent() {
               </div>
             </>
           ) : (
-            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+            <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
               Loading alert settings...
             </p>
           )}
         </div>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-3">
           <div className="flex items-center justify-between gap-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
               Recent dispatched alerts
             </h3>
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
+            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
               {d.alertDispatches?.total ?? 0} in current window
             </span>
           </div>
           {recentDispatches.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+            <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
               No alerts dispatched in the selected time window yet.
             </p>
           ) : (
@@ -339,7 +338,7 @@ export function AlertsContent() {
                       <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
                         {dispatch.destination_email ?? "not set"}
                       </td>
-                      <td className="max-w-[380px] px-3 py-2 font-mono text-[11px] text-slate-700 dark:text-neutral-300">
+                      <td className="max-w-[380px] px-3 py-2 font-mono text-xs text-slate-700 dark:text-neutral-300">
                         {JSON.stringify(dispatch.detail)}
                       </td>
                     </tr>
@@ -350,46 +349,45 @@ export function AlertsContent() {
           )}
         </div>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
             Runbook shortcuts
           </h3>
-          <p className="mt-2 text-[11px] leading-snug text-slate-600 dark:text-neutral-300">
-            Run from the backend package root with your virtualenv. Use the buttons to copy commands, or
-            jump to grouped errors on Diagnosis sorted by count.
+          <p className="mt-2 text-sm leading-snug text-slate-600 dark:text-neutral-300">
+            Run from the backend package root. Copy commands or jump to grouped errors on Diagnosis.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => d.copyRunbookCommand(d.RUNBOOK_ALERTS_CMD, "Alerts job command")}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 dark:focus-visible:ring-neutral-500/50"
             >
               Copy alerts-once
             </button>
             <button
               type="button"
               onClick={() => d.copyRunbookCommand(d.RUNBOOK_RETENTION_CMD, "Retention job command")}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 dark:focus-visible:ring-neutral-500/50"
             >
               Copy retention-once
             </button>
             <button
               type="button"
               onClick={goToDiagnosisGrouped}
-              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-900 shadow-sm transition hover:bg-sky-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
             >
               Sort errors by count, open Diagnosis
             </button>
           </div>
-          <pre className="mt-3 max-h-24 overflow-auto rounded-md bg-slate-900/90 p-2.5 font-mono text-[11px] leading-relaxed text-slate-100">
+          <pre className="mt-3 max-h-24 overflow-auto rounded-md bg-slate-900/90 p-2.5 font-mono text-xs leading-relaxed text-slate-100">
             {d.RUNBOOK_ALERTS_CMD}
           </pre>
-          <p className="mt-2 text-[11px] leading-snug text-slate-600 dark:text-neutral-300">
+          <p className="mt-2 text-sm leading-snug text-slate-600 dark:text-neutral-300">
             If the command prints <span className="font-semibold text-slate-800">0</span>, the job still
             ran successfully: it means no error-spike or outage rule dispatched an alert for any project in
             this pass (often no qualifying traffic yet, cooldown, or{" "}
             <code className="rounded bg-slate-200 px-1">ALERTS_ENABLED=false</code>).
           </p>
-          <pre className="mt-2 max-h-24 overflow-auto rounded-md bg-slate-900/90 p-2.5 font-mono text-[11px] leading-relaxed text-slate-100">
+          <pre className="mt-2 max-h-24 overflow-auto rounded-md bg-slate-900/90 p-2.5 font-mono text-xs leading-relaxed text-slate-100">
             {d.RUNBOOK_RETENTION_CMD}
           </pre>
           <p className="mt-3 text-xs text-slate-600 dark:text-neutral-300">

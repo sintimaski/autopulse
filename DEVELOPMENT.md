@@ -4,7 +4,7 @@ AutoPulse is a plug-and-play observability product for FastAPI applications. The
 
 > Useful visibility into a FastAPI app in two minutes, without learning observability infrastructure.
 
-This document is the cleaned development source of truth distilled from `INIT.md`.
+This document is the cleaned development source of truth.
 
 ## Product Positioning
 

@@ -41,7 +41,7 @@ export function ExpandableTableRow({
             onToggle(rowId);
           }
         }}
-        className={`cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 dark:focus-visible:ring-neutral-500/60 ${summaryClassName ?? ""}`}
+        className={`cursor-pointer outline-none transition-colors focus-visible:ring-2 focus-visible:ring-sky-400/60 active:brightness-95 dark:focus-visible:ring-neutral-500/60 ${summaryClassName ?? ""}`}
       >
         <td className="px-2 py-2 align-top">
           <span className="inline-flex h-6 w-6 items-center justify-center text-slate-700 dark:text-neutral-200">

@@ -42,8 +42,8 @@ export function SettingsContent() {
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Appearance</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Appearance</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Theme preference is now a project setting stored in the backend.
         </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -56,9 +56,9 @@ export function SettingsContent() {
                 setThemeMessage(ok ? "Theme saved." : "Failed to save theme.");
               }}
               disabled={d.themeSettingsSaving}
-              className={`rounded-xl border px-3 py-2 text-left text-xs ${
+              className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
                 d.themePreference === theme
-                  ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-neutral-500 dark:bg-neutral-800 dark:text-neutral-100"
+                  ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
                   : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
               }`}
             >
@@ -67,10 +67,10 @@ export function SettingsContent() {
           ))}
         </div>
         {themeMessage ? (
-          <p className="mt-2 text-xs text-slate-600 dark:text-neutral-300">{themeMessage}</p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{themeMessage}</p>
         ) : null}
         <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
-          <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-neutral-200">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
             <input
               type="checkbox"
               checked={d.excludeAutopulseTraffic}
@@ -86,15 +86,15 @@ export function SettingsContent() {
             />
             Exclude AutoPulse internal traffic (`/autopulse/*`) from dashboard data
           </label>
-          <p className="mt-1 text-[11px] text-slate-500 dark:text-neutral-400">
+          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
             Keeps dashboard/API requests from polluting request and error charts.
           </p>
         </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Settings model (MVP)</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Settings model (MVP)</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           This page defines project-level defaults used across Dashboard, Diagnosis, Logs, and Alerts.
         </p>
         <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
@@ -134,11 +134,11 @@ export function SettingsContent() {
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Alert policy</h2>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Alert policy</h2>
         {form ? (
           <>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center gap-2 text-xs text-slate-700 dark:text-neutral-200">
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
                 <input
                   type="checkbox"
                   checked={form.enabled}
@@ -146,7 +146,7 @@ export function SettingsContent() {
                 />
                 Alerts enabled
               </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
                 Destination email
                 <input
                   type="email"
@@ -157,11 +157,11 @@ export function SettingsContent() {
                       destination_email: event.target.value.trim() || null,
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                   placeholder="ops@example.com"
                 />
               </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
                 Error spike threshold (0-1)
                 <input
                   type="number"
@@ -175,10 +175,10 @@ export function SettingsContent() {
                       error_spike_ratio_threshold: Number(event.target.value),
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                 />
               </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
                 Error spike min requests
                 <input
                   type="number"
@@ -190,10 +190,10 @@ export function SettingsContent() {
                       error_spike_min_requests: Number(event.target.value),
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                 />
               </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
                 Error spike window (minutes)
                 <input
                   type="number"
@@ -205,10 +205,10 @@ export function SettingsContent() {
                       error_spike_window_minutes: Number(event.target.value),
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                 />
               </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
                 Outage min requests
                 <input
                   type="number"
@@ -220,10 +220,10 @@ export function SettingsContent() {
                       outage_min_requests: Number(event.target.value),
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                 />
               </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
                 Outage window (minutes)
                 <input
                   type="number"
@@ -235,7 +235,7 @@ export function SettingsContent() {
                       outage_window_minutes: Number(event.target.value),
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                 />
               </label>
               <label className="text-xs text-slate-700 dark:text-neutral-200">
@@ -259,7 +259,7 @@ export function SettingsContent() {
                 type="button"
                 onClick={onSaveAlerts}
                 disabled={d.alertSettingsSaving}
-                className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-900 shadow-sm transition hover:bg-sky-100 disabled:opacity-60 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] disabled:opacity-60 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
               >
                 {d.alertSettingsSaving ? "Saving..." : "Save policy"}
               </button>
@@ -270,22 +270,22 @@ export function SettingsContent() {
             </div>
           </>
         ) : (
-          <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">Loading settings...</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">Loading settings...</p>
         )}
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Delivery channels</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Delivery channels</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           SMTP email is currently active. Vendor channels are modeled here for the next integration phase.
         </p>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <button
             type="button"
             onClick={() => setDeliveryPreset("smtp_email")}
-            className={`rounded-xl border px-3 py-2 text-left text-xs ${
+            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
               deliveryPreset === "smtp_email"
-                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-neutral-500 dark:bg-neutral-800 dark:text-neutral-100"
+                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
                 : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
             }`}
           >
@@ -294,9 +294,9 @@ export function SettingsContent() {
           <button
             type="button"
             onClick={() => setDeliveryPreset("slack_webhook")}
-            className={`rounded-xl border px-3 py-2 text-left text-xs ${
+            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
               deliveryPreset === "slack_webhook"
-                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-neutral-500 dark:bg-neutral-800 dark:text-neutral-100"
+                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
                 : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
             }`}
           >
@@ -305,16 +305,16 @@ export function SettingsContent() {
           <button
             type="button"
             onClick={() => setDeliveryPreset("teams_webhook")}
-            className={`rounded-xl border px-3 py-2 text-left text-xs ${
+            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
               deliveryPreset === "teams_webhook"
-                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-neutral-500 dark:bg-neutral-800 dark:text-neutral-100"
+                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
                 : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
             }`}
           >
             Teams Webhook
           </button>
         </div>
-        <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-xs text-slate-700 dark:border-neutral-700 dark:bg-neutral-800/70 dark:text-neutral-200">
+        <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-sm text-slate-700 dark:border-neutral-700 dark:bg-neutral-800/70 dark:text-neutral-200">
           {deliveryPreset === "smtp_email" ? (
             <p>Active now: route alerts to `destination_email` via backend SMTP sender.</p>
           ) : deliveryPreset === "slack_webhook" ? (

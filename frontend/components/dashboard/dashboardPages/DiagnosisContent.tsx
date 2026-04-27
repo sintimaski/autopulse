@@ -30,10 +30,10 @@ export function DiagnosisContent() {
   return (
     <>
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Quick diagnosis</h2>
-        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-          Recent errors from grouped API; top routes from 5xx rows in the loaded request sample (up to{" "}
-          {requests.limit} rows). Full request rows live on{" "}
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Quick diagnosis</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Recent grouped errors and top failing routes from the loaded request sample ({requests.limit} rows).
+          Full request rows live on{" "}
           <Link href="/logs" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
             Logs
           </Link>
@@ -41,7 +41,7 @@ export function DiagnosisContent() {
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
               Recent errors
             </h3>
             {d.recentErrorsPreview.length === 0 ? (
@@ -52,7 +52,7 @@ export function DiagnosisContent() {
                   <li key={item.group_key}>
                     <a
                       href="#grouped-errors"
-                      className="block rounded-lg border border-transparent px-1 py-1 text-sm transition hover:border-slate-200 hover:bg-white dark:hover:border-neutral-700 dark:hover:bg-neutral-900"
+                      className="block rounded-lg border border-transparent px-1 py-1 text-sm transition-colors hover:border-slate-200 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:hover:border-neutral-700 dark:hover:bg-neutral-900 dark:focus-visible:ring-neutral-500/50"
                     >
                       <span className="font-medium text-slate-900 dark:text-neutral-100">
                         {item.exception_type ?? "Error"}
@@ -74,7 +74,7 @@ export function DiagnosisContent() {
             )}
           </div>
           <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
               Top failing routes
             </h3>
             {d.topFailingRoutes.length === 0 ? (
@@ -102,13 +102,13 @@ export function DiagnosisContent() {
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Grouped errors</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Grouped errors</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Same time window as overview. Full stack traces may contain sensitive data; scrub at the SDK.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+            <label className="flex flex-col gap-1 text-sm font-medium text-slate-600 dark:text-neutral-300">
               Sort by
               <select
                 value={d.errorGroupSort}
@@ -119,7 +119,7 @@ export function DiagnosisContent() {
                 <option value="count">Count</option>
               </select>
             </label>
-            <p className="text-xs text-slate-500 dark:text-neutral-400 sm:pb-2">
+            <p className="text-sm text-slate-500 dark:text-neutral-400 sm:pb-2">
               Showing {d.displayedErrorGroups.length} of {errorGroups.total} groups
             </p>
           </div>
@@ -154,7 +154,7 @@ export function DiagnosisContent() {
                       open={open}
                       onToggle={d.toggleRequestRow}
                       colSpan={8}
-                      summaryClassName="align-top hover:bg-slate-50/80 dark:hover:bg-neutral-800/80"
+                      summaryClassName="cursor-pointer border-l-2 border-transparent align-top hover:border-sky-500/80 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
                       detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
                       detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
                       renderSummary={() => (
@@ -186,7 +186,7 @@ export function DiagnosisContent() {
                         <dl className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <dt className="font-semibold text-slate-500 dark:text-neutral-400">Group key</dt>
-                            <dd className="mt-0.5 break-all font-mono text-[11px] text-slate-800 dark:text-neutral-200">
+                            <dd className="mt-0.5 break-all font-mono text-xs text-slate-800 dark:text-neutral-200">
                               {item.group_key}
                             </dd>
                           </div>
@@ -209,7 +209,7 @@ export function DiagnosisContent() {
                               Sample stack trace
                             </dt>
                             {item.sample_stack_trace ? (
-                              <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-slate-950 p-2 text-[11px] leading-5 text-slate-100">
+                              <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-slate-950 p-2 text-xs leading-5 text-slate-100">
                                 {item.sample_stack_trace}
                               </pre>
                             ) : (
@@ -227,7 +227,7 @@ export function DiagnosisContent() {
             </table>
           </div>
         )}
-        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
+        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
           <p>
             Page {d.errorGroupPage + 1} · Offset {d.errorGroupPage * d.errorGroupLimit}
           </p>
@@ -236,7 +236,7 @@ export function DiagnosisContent() {
               type="button"
               disabled={d.errorGroupPage === 0}
               onClick={() => d.setErrorGroupPage((p) => Math.max(0, p - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-neutral-500/50"
             >
               Prev
             </button>
@@ -244,7 +244,7 @@ export function DiagnosisContent() {
               type="button"
               disabled={(d.errorGroupPage + 1) * d.errorGroupLimit >= errorGroups.total}
               onClick={() => d.setErrorGroupPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-neutral-500/50"
             >
               Next
             </button>

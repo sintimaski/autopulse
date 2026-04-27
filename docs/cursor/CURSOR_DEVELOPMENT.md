@@ -41,8 +41,8 @@ Repository configuration cannot force a human to attach files; the combination o
 | Area | Path |
 |------|------|
 | Python SDK | `sdk/` |
-| Backend API | `backend/` (planned) |
-| Dashboard | `frontend/` (planned) |
+| Backend API | `backend/` |
+| Dashboard | `frontend/` |
 
 Tooling (Ruff, Mypy, Bandit, pytest, pre-commit) runs from the repo root via `uv`.
 

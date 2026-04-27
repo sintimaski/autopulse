@@ -26,6 +26,12 @@ npm --prefix frontend run build
 uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010
 ```
 
+Embedded mode depends on backend components. For standalone SDK installs, use:
+
+```bash
+pip install "autopulse[embedded]"
+```
+
 Then generate fixture traffic:
 
 ```bash
@@ -89,7 +95,7 @@ uv sync --group dev
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse
+uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 uv run pytest
 ```
 

@@ -49,6 +49,7 @@ import {
   type ThemePreference,
   type ThemeSettings,
 } from "./dashboardTypes";
+import { normalizeCommaSeparated, splitCommaSeparated } from "./dashboardQueryState";
 
 export type DashboardDataContextValue = {
   hasApiKey: boolean;
@@ -67,6 +68,8 @@ export type DashboardDataContextValue = {
   maxLatencyMs: string;
   serverServiceQuery: string;
   serverEnvironmentQuery: string;
+  serverServiceTags: string[];
+  serverEnvironmentTags: string[];
   pathQuery: string;
   groupBy: GroupBy;
   sortKey: SortKey;
@@ -97,6 +100,8 @@ export type DashboardDataContextValue = {
   setMaxLatencyMs: React.Dispatch<React.SetStateAction<string>>;
   setServerServiceQuery: React.Dispatch<React.SetStateAction<string>>;
   setServerEnvironmentQuery: React.Dispatch<React.SetStateAction<string>>;
+  setServerServiceTags: (tags: string[]) => void;
+  setServerEnvironmentTags: (tags: string[]) => void;
   setPathQuery: React.Dispatch<React.SetStateAction<string>>;
   setGroupBy: React.Dispatch<React.SetStateAction<GroupBy>>;
   setErrorGroupSort: (s: "last_seen" | "count") => void;
@@ -191,6 +196,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const wsPollingFallbackTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLoadedDashboardData = useRef(false);
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
+  const serverEnvironmentTags = useMemo(
+    () => splitCommaSeparated(serverEnvironmentQuery),
+    [serverEnvironmentQuery],
+  );
+  const serverServiceTags = useMemo(() => splitCommaSeparated(serverServiceQuery), [serverServiceQuery]);
 
   const serverNowTimestamp = overview?.server_now ?? requests?.server_now ?? errorGroups?.server_now ?? null;
   const toIsoWindow = useMemo(() => {
@@ -254,19 +264,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (serverPath) {
           requestsParams.set("path_contains", serverPath);
         }
-        const envCsv = serverEnvironmentQuery
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean)
-          .join(",");
+        const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
         if (envCsv) {
           requestsParams.set("environments", envCsv);
         }
-        const serviceCsv = serverServiceQuery
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean)
-          .join(",");
+        const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
         if (serviceCsv) {
           requestsParams.set("services", serviceCsv);
         }
@@ -557,29 +559,40 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [rawItems],
   );
 
-  const toggleEnv = useCallback((value: string) => {
-    setEnvTags((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) {
-        next.delete(value);
-      } else {
-        next.add(value);
-      }
-      return next;
-    });
+  const setServerEnvironmentTags = useCallback((tags: string[]) => {
+    setServerEnvironmentQuery(normalizeCommaSeparated(tags.join(",")));
+    setRequestPage(0);
+    setErrorGroupPage(0);
   }, []);
 
-  const toggleService = useCallback((value: string) => {
-    setServiceTags((prev) => {
-      const next = new Set(prev);
-      if (next.has(value)) {
-        next.delete(value);
-      } else {
-        next.add(value);
-      }
-      return next;
-    });
+  const setServerServiceTags = useCallback((tags: string[]) => {
+    setServerServiceQuery(normalizeCommaSeparated(tags.join(",")));
+    setRequestPage(0);
+    setErrorGroupPage(0);
   }, []);
+
+  const toggleValueInSet = useCallback(
+    (setter: React.Dispatch<React.SetStateAction<Set<string>>>, value: string) => {
+      setter((prev) => {
+        const next = new Set(prev);
+        if (next.has(value)) {
+          next.delete(value);
+        } else {
+          next.add(value);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleEnv = useCallback((value: string) => {
+    toggleValueInSet(setEnvTags, value);
+  }, [toggleValueInSet]);
+
+  const toggleService = useCallback((value: string) => {
+    toggleValueInSet(setServiceTags, value);
+  }, [toggleValueInSet]);
 
   const clearClientFilters = useCallback(() => {
     setPathQuery("");
@@ -873,6 +886,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       maxLatencyMs,
       serverServiceQuery,
       serverEnvironmentQuery,
+      serverServiceTags,
+      serverEnvironmentTags,
       pathQuery,
       groupBy,
       sortKey,
@@ -903,6 +918,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setMaxLatencyMs,
       setServerServiceQuery,
       setServerEnvironmentQuery,
+      setServerServiceTags,
+      setServerEnvironmentTags,
       setPathQuery,
       setGroupBy,
       setErrorGroupSort,
@@ -962,6 +979,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       maxLatencyMs,
       serverServiceQuery,
       serverEnvironmentQuery,
+      serverServiceTags,
+      serverEnvironmentTags,
       pathQuery,
       groupBy,
       sortKey,
@@ -986,6 +1005,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       clearAbsoluteWindow,
       onServerMethodChange,
       onServerStatusClassChange,
+      setServerServiceTags,
+      setServerEnvironmentTags,
       toggleEnv,
       toggleService,
       clearClientFilters,

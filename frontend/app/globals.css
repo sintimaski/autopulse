@@ -8,3 +8,7 @@
 .dark {
   color-scheme: dark;
 }
+
+html {
+  background-color: #ffffff;
+}

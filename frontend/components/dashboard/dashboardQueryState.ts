@@ -35,12 +35,17 @@ const DEFAULTS = {
   errorGroupSort: "last_seen" as const,
 };
 
-function toCsv(value: string): string {
+export function normalizeCommaSeparated(value: string): string {
   return value
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean)
     .join(",");
+}
+
+export function splitCommaSeparated(value: string): string[] {
+  const normalized = normalizeCommaSeparated(value);
+  return normalized ? normalized.split(",") : [];
 }
 
 function parsePositiveInt(raw: string | null, fallback: number): number {
@@ -100,11 +105,11 @@ export function buildScopedQuery(
     params.set("max_latency_ms", state.maxLatencyMs.trim());
   }
 
-  const envCsv = toCsv(state.serverEnvironmentQuery);
+  const envCsv = normalizeCommaSeparated(state.serverEnvironmentQuery);
   if (envCsv) {
     params.set("environments", envCsv);
   }
-  const serviceCsv = toCsv(state.serverServiceQuery);
+  const serviceCsv = normalizeCommaSeparated(state.serverServiceQuery);
   if (serviceCsv) {
     params.set("services", serviceCsv);
   }
