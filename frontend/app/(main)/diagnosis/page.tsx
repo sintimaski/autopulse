@@ -4,7 +4,7 @@ import { DiagnosisContent } from "../../../components/dashboard/dashboardPages/D
 import { DashboardPageBoundary } from "../../../components/dashboard/DashboardPageBoundary";
 
 export const metadata: Metadata = {
-  title: "Diagnosis",
+  title: "Errors & Diagnosis",
 };
 
 export default function DiagnosisPage() {

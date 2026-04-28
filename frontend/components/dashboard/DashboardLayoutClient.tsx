@@ -29,8 +29,8 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Traffic and headline rates in the selected window.",
   },
   "/diagnosis": {
-    title: "Diagnosis",
-    subtitle: "Error signals and grouped failures.",
+    title: "Errors & Diagnosis",
+    subtitle: "Grouped failures, evidence, and error signals.",
   },
   "/alerts": {
     title: "Alerts",
@@ -43,6 +43,10 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/logs": {
     title: "Logs",
     subtitle: "Scope traffic quickly and inspect request evidence.",
+  },
+  "/onboarding": {
+    title: "Onboarding",
+    subtitle: "Get your project from zero to first signal.",
   },
 };
 
@@ -409,6 +413,38 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
   const showServerScope = pathname === "/diagnosis" || pathname === "/logs";
+  const hasIssuedApiKey = d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey);
+  const hasFirstEvent = (d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0;
+  const latestDispatch = d.recentAlertDispatches[0] ?? null;
+  const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
+  const statusStrip = (
+    <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
+        <p className="font-medium text-slate-700 dark:text-neutral-200">Signed in</p>
+        <p className={d.hasApiKey ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>
+          {d.hasApiKey ? "Active session" : "Not signed in"}
+        </p>
+      </div>
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
+        <p className="font-medium text-slate-700 dark:text-neutral-200">API key configured</p>
+        <p className={hasIssuedApiKey ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+          {hasIssuedApiKey ? "Ready for ingest" : "Issue key in onboarding"}
+        </p>
+      </div>
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
+        <p className="font-medium text-slate-700 dark:text-neutral-200">First event received</p>
+        <p className={hasFirstEvent ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+          {hasFirstEvent ? "Telemetry active" : "Waiting for first ingest"}
+        </p>
+      </div>
+      <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
+        <p className="font-medium text-slate-700 dark:text-neutral-200">Alert delivery</p>
+        <p className={alertDeliveryHealthy ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>
+          {latestDispatch ? (alertDeliveryHealthy ? "Latest dispatch healthy" : "Latest dispatch failed") : "No dispatches yet"}
+        </p>
+      </div>
+    </div>
+  );
   const resetDiagnosisScope = () => {
     d.onServerMethodChange("ALL");
     d.onServerStatusClassChange("ALL");
@@ -445,6 +481,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       pathname={pathname}
       title={meta.title}
       subtitle={meta.subtitle}
+      statusStrip={statusStrip}
       isDark={isDark}
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}

@@ -21,8 +21,9 @@ const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
 const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/onboarding", label: "Onboarding", Icon: Activity },
   { href: "/alerts", label: "Alerts", Icon: Bell },
-  { href: "/diagnosis", label: "Diagnosis", Icon: Stethoscope },
+  { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/logs", label: "Logs", Icon: ScrollText },
   { href: "/settings", label: "Settings", Icon: Settings },
 ] as const;
@@ -37,6 +38,7 @@ export function DashboardAppShell({
   pathname,
   title,
   subtitle,
+  statusStrip,
   isDark,
   diagnosisNavQuery = "",
   logsNavQuery = "",
@@ -51,6 +53,7 @@ export function DashboardAppShell({
   pathname: string;
   title: string;
   subtitle: string;
+  statusStrip?: ReactNode;
   isDark: boolean;
   /** Last persisted or live `/diagnosis` server-scope query string (without `?`). */
   diagnosisNavQuery?: string;
@@ -193,6 +196,7 @@ export function DashboardAppShell({
                 </div>
               ) : null}
             </div>
+            {statusStrip ? <div className="border-t border-slate-200/80 px-4 py-2.5 dark:border-neutral-800 sm:px-6">{statusStrip}</div> : null}
             {filterToolbar ? (
               <AutoCollapsibleHeaderPanel
                 enabled={filterToolbarAutoCollapse}

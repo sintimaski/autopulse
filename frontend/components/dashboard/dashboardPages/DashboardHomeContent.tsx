@@ -246,6 +246,14 @@ export function DashboardHomeContent() {
 
   return (
     <>
+      {d.errorMessage ? (
+        <section
+          className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+          role="status"
+        >
+          Some dashboard sections may be stale: {d.errorMessage}
+        </section>
+      ) : null}
       <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {primarySignalCards.map((card) => (
           <div key={card.label}>
@@ -294,9 +302,9 @@ export function DashboardHomeContent() {
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Requests (bars) and trend cards for volume, error rate, error count, and latency. Hover for values or
-          click a bar to open Diagnosis for that bucket.{" "}
+          click a bar to open Errors &amp; Diagnosis for that bucket.{" "}
           <Link href={diagnosisBaseHref} className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
-            Diagnosis
+            Errors &amp; Diagnosis
           </Link>
           .
         </p>
@@ -380,7 +388,7 @@ export function DashboardHomeContent() {
             Send traffic to <code className="rounded bg-amber-100 px-1">POST /ingest</code>, then use
             refresh in the header. You can also validate grouped errors on{" "}
             <Link href={diagnosisBaseHref} className="font-medium underline underline-offset-2">
-              Diagnosis
+              Errors &amp; Diagnosis
             </Link>
             .
           </p>

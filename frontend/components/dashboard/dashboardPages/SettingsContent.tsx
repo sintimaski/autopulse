@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import type { AlertSettings } from "../dashboardTypes";
 import type {
   DashboardMembershipItem,
   DashboardOrganizationListResponse,
@@ -15,8 +14,6 @@ type DeliveryPreset = "smtp_email" | "slack_webhook" | "teams_webhook";
 
 export function SettingsContent() {
   const d = useDashboardData();
-  const form = d.alertSettings;
-  const [formError, setFormError] = useState<string | null>(null);
   const [deliveryPreset, setDeliveryPreset] = useState<DeliveryPreset>("smtp_email");
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
   const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
@@ -114,31 +111,6 @@ export function SettingsContent() {
       cancelled = true;
     };
   }, [selectedOrganizationId]);
-
-  const onSaveAlerts = async () => {
-    if (!form) {
-      return;
-    }
-    if (form.error_spike_ratio_threshold < 0 || form.error_spike_ratio_threshold > 1) {
-      setFormError("Error spike threshold must be between 0 and 1.");
-      return;
-    }
-    const integerFields: Array<keyof AlertSettings> = [
-      "error_spike_min_requests",
-      "error_spike_window_minutes",
-      "outage_min_requests",
-      "outage_window_minutes",
-      "cooldown_minutes",
-    ];
-    for (const field of integerFields) {
-      if (Number(form[field]) < 1) {
-        setFormError("Minute/request threshold fields must be at least 1.");
-        return;
-      }
-    }
-    setFormError(null);
-    await d.saveAlertSettings(form);
-  };
 
   return (
     <div className="space-y-6">
@@ -574,143 +546,15 @@ export function SettingsContent() {
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Alert policy</h2>
-        {form ? (
-          <>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
-                <input
-                  type="checkbox"
-                  checked={form.enabled}
-                  onChange={(event) => d.updateAlertSettingsDraft({ ...form, enabled: event.target.checked })}
-                />
-                Alerts enabled
-              </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Destination email
-                <input
-                  type="email"
-                  value={form.destination_email ?? ""}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      destination_email: event.target.value.trim() || null,
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-                  placeholder="ops@example.com"
-                />
-              </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Error spike threshold (0-1)
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={form.error_spike_ratio_threshold}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      error_spike_ratio_threshold: Number(event.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-                />
-              </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Error spike min requests
-                <input
-                  type="number"
-                  min={1}
-                  value={form.error_spike_min_requests}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      error_spike_min_requests: Number(event.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-                />
-              </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Error spike window (minutes)
-                <input
-                  type="number"
-                  min={1}
-                  value={form.error_spike_window_minutes}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      error_spike_window_minutes: Number(event.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-                />
-              </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Outage min requests
-                <input
-                  type="number"
-                  min={1}
-                  value={form.outage_min_requests}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      outage_min_requests: Number(event.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-                />
-              </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Outage window (minutes)
-                <input
-                  type="number"
-                  min={1}
-                  value={form.outage_window_minutes}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      outage_window_minutes: Number(event.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-                />
-              </label>
-              <label className="text-xs text-slate-700 dark:text-neutral-200">
-                Cooldown (minutes)
-                <input
-                  type="number"
-                  min={1}
-                  value={form.cooldown_minutes}
-                  onChange={(event) =>
-                    d.updateAlertSettingsDraft({
-                      ...form,
-                      cooldown_minutes: Number(event.target.value),
-                    })
-                  }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
-                />
-              </label>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onSaveAlerts}
-                disabled={d.alertSettingsSaving}
-              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] disabled:opacity-60 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
-              >
-                {d.alertSettingsSaving ? "Saving..." : "Save policy"}
-              </button>
-              {formError ? <p className="text-xs text-rose-700 dark:text-rose-400">{formError}</p> : null}
-              {d.alertSettingsMessage ? (
-                <p className="text-xs text-emerald-700 dark:text-emerald-400">{d.alertSettingsMessage}</p>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">Loading settings...</p>
-        )}
+        <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
+          Alert policy editing is centralized in the Alerts page to avoid drift between two separate forms.
+        </p>
+        <a
+          href="/alerts"
+          className="mt-3 inline-flex rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40"
+        >
+          Open Alerts policy editor
+        </a>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">

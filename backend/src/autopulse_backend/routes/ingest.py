@@ -13,6 +13,10 @@ from autopulse_backend.database import get_db_session
 from autopulse_backend.ingestion.limits import ingest_rate_limiter
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.realtime import IngestBroadcastMessage, project_websocket_hub
+from autopulse_backend.repositories.aggregates import (
+    upsert_error_group_aggregates,
+    upsert_metric_buckets,
+)
 from autopulse_backend.repositories.runtime_controls import allow_distributed_ingest_request
 from autopulse_backend.schemas import IngestBatchRequest, IngestBatchResponse
 from autopulse_backend.services.ingest_aggregate_worker import (
@@ -25,6 +29,17 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _is_https_request(request: Request, *, trust_forwarded_proto: bool) -> bool:
+    if request.url.scheme.lower() == "https":
+        return True
+    if not trust_forwarded_proto:
+        return False
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if not forwarded_proto:
+        return False
+    return any(part.strip().lower() == "https" for part in forwarded_proto.split(","))
+
+
 @router.post("/ingest", response_model=IngestBatchResponse, status_code=status.HTTP_200_OK)
 async def ingest_events(
     batch: IngestBatchRequest,
@@ -33,6 +48,16 @@ async def ingest_events(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> IngestBatchResponse:
     settings = get_settings()
+    if settings.ingest_require_https and not _is_https_request(
+        request,
+        trust_forwarded_proto=settings.ingest_trust_forwarded_proto,
+    ):
+        service_metrics.increment("ingest.rejected.non_https")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="HTTPS is required for ingest requests.",
+        )
+
     content_length = request.headers.get("content-length")
     if content_length is not None:
         try:
@@ -60,12 +85,21 @@ async def ingest_events(
             )
 
     if settings.ingest_distributed_rate_limit_enabled:
-        allowed = await allow_distributed_ingest_request(
-            session=session,
-            project_id=context.project_id,
-            max_requests=settings.ingest_rate_limit_requests_per_window,
-            window_seconds=settings.ingest_rate_limit_window_seconds,
-        )
+        try:
+            allowed = await allow_distributed_ingest_request(
+                session=session,
+                project_id=context.project_id,
+                max_requests=settings.ingest_rate_limit_requests_per_window,
+                window_seconds=settings.ingest_rate_limit_window_seconds,
+            )
+        except Exception:
+            # Fail open to in-memory limiter so ingest stays available when DB limiter is unhealthy.
+            service_metrics.increment("ingest.rate_limit.distributed_fallback")
+            allowed = ingest_rate_limiter.allow(
+                project_id=context.project_id,
+                max_requests=settings.ingest_rate_limit_requests_per_window,
+                window_seconds=settings.ingest_rate_limit_window_seconds,
+            )
     else:
         allowed = ingest_rate_limiter.allow(
             project_id=context.project_id,
@@ -112,6 +146,9 @@ async def ingest_events(
         )
         if not enqueued:
             service_metrics.increment("ingest.aggregate_worker.enqueue_failed")
+            await upsert_metric_buckets(session, persist_result.metric_bucket_deltas)
+            await upsert_error_group_aggregates(session, persist_result.error_group_deltas)
+            service_metrics.increment("ingest.aggregate_worker.sync_fallback")
     await project_websocket_hub.publish_ingest(
         message=IngestBroadcastMessage(
             project_id=context.project_id,

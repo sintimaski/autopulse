@@ -106,7 +106,7 @@ export function AlertsContent() {
               href={diagnosisBaseHref}
               className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
-              Diagnosis
+              Errors &amp; Diagnosis
             </Link>
             .
           </p>
@@ -399,7 +399,7 @@ export function AlertsContent() {
             Runbook shortcuts
           </h3>
           <p className="mt-2 text-sm leading-snug text-slate-600 dark:text-neutral-300">
-            Run from the backend package root. Copy commands or jump to grouped errors on Diagnosis.
+            Run from the backend package root. Copy commands or jump to grouped errors on Errors &amp; Diagnosis.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -421,7 +421,7 @@ export function AlertsContent() {
               onClick={goToDiagnosisGrouped}
               className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
             >
-              Sort errors by count, open Diagnosis
+              Sort errors by count, open Errors &amp; Diagnosis
             </button>
           </div>
           <pre className="mt-3 max-h-24 overflow-auto rounded-md bg-slate-900/90 p-2.5 font-mono text-xs leading-relaxed text-slate-100">

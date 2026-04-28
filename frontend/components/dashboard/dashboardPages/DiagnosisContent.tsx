@@ -76,6 +76,14 @@ export function DiagnosisContent() {
 
   return (
     <>
+      {d.errorMessage ? (
+        <section
+          className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+          role="status"
+        >
+          Some diagnosis widgets may be stale: {d.errorMessage}
+        </section>
+      ) : null}
       <section className="grid gap-4 lg:grid-cols-3">
         <MetricCard
           label="Incident summary"

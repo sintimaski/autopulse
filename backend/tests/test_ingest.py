@@ -280,6 +280,65 @@ def test_ingest_rate_limit_returns_429_with_retry_after(
     assert _count_events(backend_test_database_url) == 2
 
 
+def test_ingest_rejects_non_https_when_required(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "true")
+    monkeypatch.setenv("INGEST_TRUST_FORWARDED_PROTO", "false")
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/secure-ingest",
+                "status_code": 200,
+                "latency_ms": 10.0,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 400
+    assert response.json() == {"detail": "HTTPS is required for ingest requests."}
+    assert _count_events(backend_test_database_url) == 0
+
+
+def test_ingest_accepts_forwarded_https_when_required(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "true")
+    monkeypatch.setenv("INGEST_TRUST_FORWARDED_PROTO", "true")
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/secure-ingest",
+                "status_code": 200,
+                "latency_ms": 10.0,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {key}", "x-forwarded-proto": "https"}
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    assert _count_events(backend_test_database_url) == 1
+
+
 def test_ingest_rate_limit_isolated_per_project(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

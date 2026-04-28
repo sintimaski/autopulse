@@ -49,6 +49,8 @@ class Settings:
     ingest_distributed_rate_limit_enabled: bool = False
     ingest_async_aggregate_enabled: bool = True
     ingest_async_aggregate_queue_max_size: int = 2000
+    ingest_require_https: bool = False
+    ingest_trust_forwarded_proto: bool = True
     default_sdk_version: str = "unknown"
     alerts_enabled: bool = True
     alert_default_destination_email: str | None = None
@@ -126,6 +128,8 @@ def get_settings() -> Settings:
             2000,
             minimum=1,
         ),
+        ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", False),
+        ingest_trust_forwarded_proto=_env_bool("INGEST_TRUST_FORWARDED_PROTO", True),
         alerts_enabled=_env_bool("ALERTS_ENABLED", True),
         alert_default_destination_email=getenv("ALERT_DEFAULT_DESTINATION_EMAIL"),
         alert_error_spike_ratio_threshold=_env_float(

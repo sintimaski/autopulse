@@ -11,7 +11,7 @@ import { TagSelector } from "../TagSelector";
 
 export function LogsContent() {
   const d = useDashboardData();
-  const [rowsPerGroup, setRowsPerGroup] = useState(200);
+  const [rowsPerGroup, setRowsPerGroup] = useState(100);
   const scopedState = useMemo((): DashboardScopedQueryState => {
     return {
       isAbsoluteWindow: d.isAbsoluteWindow,
@@ -74,6 +74,14 @@ export function LogsContent() {
 
   return (
     <>
+      {d.errorMessage ? (
+        <section
+          className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
+          role="status"
+        >
+          Some logs data may be stale: {d.errorMessage}
+        </section>
+      ) : null}
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -387,10 +395,10 @@ export function LogsContent() {
                                     className="text-sm font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                                   >
                                     {item.status_code >= 500
-                                      ? "Open diagnosis (5xx on this route)"
+                                      ? "Open errors and diagnosis (5xx on this route)"
                                       : item.status_code >= 400
-                                        ? "Open diagnosis (4xx on this route)"
-                                        : "Open diagnosis for this route"}
+                                        ? "Open errors and diagnosis (4xx on this route)"
+                                        : "Open errors and diagnosis for this route"}
                                   </Link>
                                 </div>
                               </>
@@ -406,10 +414,10 @@ export function LogsContent() {
                   <div className="mt-2">
                     <button
                       type="button"
-                      onClick={() => setRowsPerGroup((prev) => prev + 200)}
+                      onClick={() => setRowsPerGroup((prev) => prev + 100)}
                       className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
                     >
-                      Load 200 more rows in this group
+                      Load 100 more rows in this group
                     </button>
                   </div>
                 ) : null}

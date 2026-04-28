@@ -92,6 +92,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   const pathRef = useRef<HTMLInputElement>(null);
   const errorGroupSortRef = useRef<HTMLSelectElement>(null);
   const [windowError, setWindowError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   /** Rolling-window API timestamps change on every refresh; keys must not, or inputs remount and layout jumps while scrolled. */
   const dateTimeFieldResetKey = useMemo(
@@ -468,61 +469,71 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
 
       <div className="mt-2.5 rounded-lg border border-slate-200 bg-white/90 p-2 dark:border-neutral-700 dark:bg-neutral-950/40">
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-slate-700 dark:text-neutral-200">
-            SQL WHERE filter
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          >
+            {showAdvanced ? "Hide advanced" : "Show advanced"}
+          </button>
+          <span className="text-xs text-slate-500 dark:text-neutral-400">SQL WHERE filter controls</span>
+        </div>
+        {showAdvanced ? (
+          <>
+            <textarea
+              value={d.sqlFilterDraft}
+              onChange={(event) => d.setSqlFilterDraft(event.target.value)}
+              placeholder="e.g. status_code >= 500 AND method = 'GET'"
+              className="h-16 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={d.sqlFilterValidating}
+                onClick={() => void d.validateSqlFilterDraft()}
+                title="Validate SQL filter"
+                aria-label="Validate SQL filter"
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              >
+                <ListChecks className="size-3.5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                disabled={d.sqlFilterValidating}
+                onClick={() => void d.applySqlFilter()}
+                title="Apply SQL filter to scope"
+                aria-label="Apply SQL filter to scope"
+                className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 p-1.5 text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+              >
+                <Check className="size-3.5" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => d.disableSqlFilter()}
+                disabled={!d.sqlFilterEnabled}
+                title="Disable SQL filter"
+                aria-label="Disable SQL filter"
+                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              >
+                <Ban className="size-3.5" aria-hidden />
+              </button>
+              {d.sqlFilterValidation ? (
+                <span
+                  className={`text-xs ${d.sqlFilterValidation.valid ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
+                >
+                  {d.sqlFilterValidation.valid ? "Valid WHERE" : d.sqlFilterValidation.error ?? "Invalid"}
+                </span>
+              ) : null}
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-slate-500 dark:text-neutral-400">
+            Keep this hidden for quick triage. Expand when you need precise SQL-level scoping.
           </p>
-          <span className="text-xs text-slate-500 dark:text-neutral-400">
-            AND-separated clauses; same grammar as the Logs SQL query panel
-          </span>
-        </div>
-        <textarea
-          value={d.sqlFilterDraft}
-          onChange={(event) => d.setSqlFilterDraft(event.target.value)}
-          placeholder="e.g. status_code >= 500 AND method = 'GET'"
-          className="h-16 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-        />
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            disabled={d.sqlFilterValidating}
-            onClick={() => void d.validateSqlFilterDraft()}
-            title="Validate SQL filter"
-            aria-label="Validate SQL filter"
-            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-          >
-            <ListChecks className="size-3.5" aria-hidden />
-          </button>
-          <button
-            type="button"
-            disabled={d.sqlFilterValidating}
-            onClick={() => void d.applySqlFilter()}
-            title="Apply SQL filter to scope"
-            aria-label="Apply SQL filter to scope"
-            className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 p-1.5 text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
-          >
-            <Check className="size-3.5" aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => d.disableSqlFilter()}
-            disabled={!d.sqlFilterEnabled}
-            title="Disable SQL filter"
-            aria-label="Disable SQL filter"
-            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-          >
-            <Ban className="size-3.5" aria-hidden />
-          </button>
-          {d.sqlFilterValidation ? (
-            <span
-              className={`text-xs ${d.sqlFilterValidation.valid ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
-            >
-              {d.sqlFilterValidation.valid ? "Valid WHERE" : d.sqlFilterValidation.error ?? "Invalid"}
-            </span>
-          ) : null}
-          {d.sqlFilterEnabled ? (
-            <span className="text-xs font-medium text-sky-800 dark:text-sky-200">Filter on</span>
-          ) : null}
-        </div>
+        )}
+        {d.sqlFilterEnabled ? (
+          <p className="mt-2 text-xs font-medium text-sky-800 dark:text-sky-200">SQL filter enabled for current scope.</p>
+        ) : null}
       </div>
     </div>
   );
