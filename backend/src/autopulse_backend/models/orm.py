@@ -157,9 +157,14 @@ class AlertDispatch(Base):
     alert_type: Mapped[str] = mapped_column(String(32), nullable=False)
     destination_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     delivered_via: Mapped[str] = mapped_column(String(32), nullable=False, default="stub")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="sent")
+    reason_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     triggered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
 
 

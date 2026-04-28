@@ -766,6 +766,63 @@ def test_dashboard_alert_settings_are_scoped_by_project(backend_test_database_ur
         assert payload["error_spike_ratio_threshold"] == 0.4
 
 
+def test_dashboard_alert_dispatches_include_delivery_status_fields(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, project_id = _seed_project_and_key(backend_test_database_url, "Project Alerts Dispatches")
+    now = datetime.now(tz=UTC).replace(microsecond=0)
+
+    async def seed_dispatch() -> None:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                await session.execute(
+                    text(
+                        "INSERT INTO alert_dispatches "
+                        "(project_id, alert_type, destination_email, delivered_via, "
+                        "status, reason_code, "
+                        "attempt_count, triggered_at, window_start, window_end, "
+                        "delivered_at, provider_message_id, detail) "
+                        "VALUES "
+                        "(:project_id, 'error_spike', 'ops@example.com', 'email', "
+                        "'failed', 'provider_rejected', "
+                        "2, :triggered_at, :window_start, :window_end, NULL, NULL, :detail)"
+                    ),
+                    {
+                        "project_id": project_id,
+                        "triggered_at": now,
+                        "window_start": now - timedelta(minutes=5),
+                        "window_end": now,
+                        "detail": {"request_count": 42},
+                    },
+                )
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(seed_dispatch())
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/alert-dispatches",
+            params={
+                "from_timestamp": (now - timedelta(minutes=10)).isoformat(),
+                "to_timestamp": (now + timedelta(minutes=1)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    item = payload["items"][0]
+    assert item["status"] == "failed"
+    assert item["reason_code"] == "provider_rejected"
+    assert item["attempt_count"] == 2
+    assert item["delivered_at"] is None
+
+
 def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
     backend_test_database_url: str,
 ) -> None:

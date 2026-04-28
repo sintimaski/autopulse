@@ -62,6 +62,11 @@ class Settings:
     jobs_retention_interval_seconds: float = 3600.0
     alert_sender_mode: str = "stub"
     alert_webhook_url: str | None = None
+    alert_email_provider: str = "resend"
+    alert_email_api_key: str | None = None
+    alert_email_from: str | None = None
+    alert_slack_webhook_url: str | None = None
+    alert_discord_webhook_url: str | None = None
     dev_scenarios_enabled: bool = False
     dev_scenarios_max_duration_seconds: int = 180
     dev_scenarios_max_events: int = 5000
@@ -138,6 +143,11 @@ def get_settings() -> Settings:
         ),
         alert_sender_mode=getenv("ALERT_SENDER_MODE", "stub").strip().lower() or "stub",
         alert_webhook_url=getenv("ALERT_WEBHOOK_URL"),
+        alert_email_provider=getenv("ALERT_EMAIL_PROVIDER", "resend").strip().lower() or "resend",
+        alert_email_api_key=getenv("ALERT_EMAIL_API_KEY"),
+        alert_email_from=getenv("ALERT_EMAIL_FROM"),
+        alert_slack_webhook_url=getenv("ALERT_SLACK_WEBHOOK_URL"),
+        alert_discord_webhook_url=getenv("ALERT_DISCORD_WEBHOOK_URL"),
         dev_scenarios_enabled=_env_bool("DEV_SCENARIOS_ENABLED", False),
         dev_scenarios_max_duration_seconds=_env_int(
             "DEV_SCENARIOS_MAX_DURATION_SECONDS",

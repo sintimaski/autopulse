@@ -149,9 +149,14 @@ export type AlertDispatchItem = {
   alert_type: string;
   destination_email: string | null;
   delivered_via: string;
+  status: string;
+  reason_code: string | null;
+  attempt_count: number;
   triggered_at: string;
   window_start: string;
   window_end: string;
+  delivered_at: string | null;
+  provider_message_id: string | null;
   detail: Record<string, number | string>;
 };
 

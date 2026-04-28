@@ -79,9 +79,18 @@ async def get_dashboard_alert_dispatches(
             alert_type=dispatch.alert_type,
             destination_email=dispatch.destination_email,
             delivered_via=dispatch.delivered_via,
+            status=dispatch.status,
+            reason_code=dispatch.reason_code,
+            attempt_count=int(dispatch.attempt_count),
             triggered_at=as_utc_datetime(dispatch.triggered_at),
             window_start=as_utc_datetime(dispatch.window_start),
             window_end=as_utc_datetime(dispatch.window_end),
+            delivered_at=(
+                as_utc_datetime(dispatch.delivered_at)
+                if dispatch.delivered_at is not None
+                else None
+            ),
+            provider_message_id=dispatch.provider_message_id,
             detail=dispatch.detail,
         )
         for dispatch in rows.scalars().all()

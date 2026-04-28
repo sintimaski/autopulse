@@ -29,10 +29,21 @@ class AlertSignal:
     detail: dict[str, float | int | str]
 
 
+@dataclass(slots=True)
+class AlertDeliveryResult:
+    status: str
+    delivered_via: str
+    reason_code: str | None = None
+    attempt_count: int = 1
+    delivered_at: datetime | None = None
+    provider_message_id: str | None = None
+    detail: dict[str, float | int | str] | None = None
+
+
 class AlertSender(Protocol):
     delivery_kind: str
 
-    def send(self, signal: AlertSignal) -> Awaitable[None]: ...
+    def send(self, signal: AlertSignal) -> Awaitable[AlertDeliveryResult]: ...
 
 
 @dataclass(slots=True)
@@ -40,8 +51,13 @@ class StubAlertSender:
     delivery_kind: str = "stub"
     sent: list[AlertSignal] = field(default_factory=list)
 
-    async def send(self, signal: AlertSignal) -> None:
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
         self.sent.append(signal)
+        return AlertDeliveryResult(
+            status="sent",
+            delivered_via=self.delivery_kind,
+            delivered_at=_as_utc(datetime.now(tz=UTC)),
+        )
 
 
 @dataclass(slots=True)
@@ -49,9 +65,33 @@ class CompositeAlertSender:
     senders: list[AlertSender]
     delivery_kind: str = "composite"
 
-    async def send(self, signal: AlertSignal) -> None:
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
+        delivered_via_parts: list[str] = []
+        provider_message_ids: list[str] = []
+        total_attempts = 0
+        failure_reason: str | None = None
+        failed = False
+        sent_at: datetime | None = None
         for sender in self.senders:
-            await sender.send(signal)
+            result = await sender.send(signal)
+            delivered_via_parts.append(result.delivered_via)
+            total_attempts += max(1, result.attempt_count)
+            if result.provider_message_id:
+                provider_message_ids.append(result.provider_message_id)
+            if result.delivered_at is not None:
+                sent_at = result.delivered_at
+            if result.status != "sent":
+                failed = True
+                failure_reason = failure_reason or result.reason_code or "unknown"
+        return AlertDeliveryResult(
+            status="failed" if failed else "sent",
+            delivered_via="composite",
+            reason_code=failure_reason,
+            attempt_count=max(1, total_attempts),
+            delivered_at=sent_at,
+            provider_message_id=",".join(provider_message_ids) or None,
+            detail={"channels": ",".join(delivered_via_parts)},
+        )
 
 
 @dataclass(slots=True)
@@ -62,7 +102,7 @@ class WebhookAlertSender:
     initial_backoff_seconds: float = 0.25
     delivery_kind: str = "webhook"
 
-    async def send(self, signal: AlertSignal) -> None:
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
         payload = {
             "alert_type": signal.alert_type,
             "project_id": str(signal.project_id),
@@ -77,22 +117,246 @@ class WebhookAlertSender:
                 try:
                     response = await client.post(self.webhook_url, json=payload)
                     response.raise_for_status()
-                    return
-                except Exception:
+                    return AlertDeliveryResult(
+                        status="sent",
+                        delivered_via=self.delivery_kind,
+                        attempt_count=attempt,
+                        delivered_at=_as_utc(datetime.now(tz=UTC)),
+                        provider_message_id=response.headers.get("x-request-id"),
+                    )
+                except Exception as exc:
                     if attempt >= self.max_attempts:
-                        raise
+                        return AlertDeliveryResult(
+                            status="failed",
+                            delivered_via=self.delivery_kind,
+                            reason_code=_reason_code_for_exception(exc),
+                            attempt_count=attempt,
+                            detail={"delivery_error": str(exc)},
+                        )
                     await asyncio.sleep(self.initial_backoff_seconds * attempt)
+
+
+@dataclass(slots=True)
+class EmailAlertSender:
+    provider: str
+    api_key: str
+    from_email: str
+    timeout_seconds: float = 3.0
+    max_attempts: int = 3
+    initial_backoff_seconds: float = 0.25
+    delivery_kind: str = "email"
+
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
+        destination = (signal.destination_email or "").strip()
+        if not destination:
+            return AlertDeliveryResult(
+                status="skipped",
+                delivered_via=self.delivery_kind,
+                reason_code="missing_destination",
+                attempt_count=1,
+            )
+        provider = self.provider.strip().lower()
+        if provider == "resend":
+            url = "https://api.resend.com/emails"
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+            payload = {
+                "from": self.from_email,
+                "to": [destination],
+                "subject": f"[AutoPulse] {signal.alert_type} for project {signal.project_id}",
+                "text": _format_alert_text(signal),
+            }
+        elif provider == "postmark":
+            url = "https://api.postmarkapp.com/email"
+            headers = {"X-Postmark-Server-Token": self.api_key}
+            payload = {
+                "From": self.from_email,
+                "To": destination,
+                "Subject": f"[AutoPulse] {signal.alert_type} for project {signal.project_id}",
+                "TextBody": _format_alert_text(signal),
+            }
+        else:
+            return AlertDeliveryResult(
+                status="failed",
+                delivered_via=self.delivery_kind,
+                reason_code="unknown_provider",
+                attempt_count=1,
+            )
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
+            for attempt in range(1, max(1, self.max_attempts) + 1):
+                try:
+                    response = await client.post(url, json=payload, headers=headers)
+                    response.raise_for_status()
+                    provider_message_id = _extract_provider_message_id(provider, response)
+                    return AlertDeliveryResult(
+                        status="sent",
+                        delivered_via=self.delivery_kind,
+                        attempt_count=attempt,
+                        delivered_at=_as_utc(datetime.now(tz=UTC)),
+                        provider_message_id=provider_message_id,
+                    )
+                except Exception as exc:
+                    if attempt >= self.max_attempts:
+                        return AlertDeliveryResult(
+                            status="failed",
+                            delivered_via=self.delivery_kind,
+                            reason_code=_reason_code_for_exception(exc),
+                            attempt_count=attempt,
+                            detail={"delivery_error": str(exc), "provider": provider},
+                        )
+                    await asyncio.sleep(self.initial_backoff_seconds * attempt)
+
+
+@dataclass(slots=True)
+class SlackWebhookAlertSender(WebhookAlertSender):
+    delivery_kind: str = "slack"
+
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
+        payload = {"text": _format_alert_text(signal)}
+        return await _send_webhook_payload(
+            self.webhook_url,
+            payload,
+            timeout_seconds=self.timeout_seconds,
+            max_attempts=self.max_attempts,
+            initial_backoff_seconds=self.initial_backoff_seconds,
+            delivery_kind=self.delivery_kind,
+        )
+
+
+@dataclass(slots=True)
+class DiscordWebhookAlertSender(WebhookAlertSender):
+    delivery_kind: str = "discord"
+
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
+        payload = {"content": _format_alert_text(signal)}
+        return await _send_webhook_payload(
+            self.webhook_url,
+            payload,
+            timeout_seconds=self.timeout_seconds,
+            max_attempts=self.max_attempts,
+            initial_backoff_seconds=self.initial_backoff_seconds,
+            delivery_kind=self.delivery_kind,
+        )
+
+
+async def _send_webhook_payload(
+    webhook_url: str,
+    payload: dict[str, str | dict[str, float | int | str] | list[str] | None],
+    *,
+    timeout_seconds: float,
+    max_attempts: int,
+    initial_backoff_seconds: float,
+    delivery_kind: str,
+) -> AlertDeliveryResult:
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        for attempt in range(1, max(1, max_attempts) + 1):
+            try:
+                response = await client.post(webhook_url, json=payload)
+                response.raise_for_status()
+                return AlertDeliveryResult(
+                    status="sent",
+                    delivered_via=delivery_kind,
+                    attempt_count=attempt,
+                    delivered_at=_as_utc(datetime.now(tz=UTC)),
+                    provider_message_id=response.headers.get("x-request-id"),
+                )
+            except Exception as exc:
+                if attempt >= max_attempts:
+                    return AlertDeliveryResult(
+                        status="failed",
+                        delivered_via=delivery_kind,
+                        reason_code=_reason_code_for_exception(exc),
+                        attempt_count=attempt,
+                        detail={"delivery_error": str(exc)},
+                    )
+                await asyncio.sleep(initial_backoff_seconds * attempt)
 
 
 def build_alert_sender(settings: Settings) -> AlertSender:
     mode = (settings.alert_sender_mode or "stub").strip().lower()
-    if mode == "webhook":
-        if settings.alert_webhook_url:
-            return WebhookAlertSender(webhook_url=settings.alert_webhook_url)
-        return StubAlertSender()
+    senders: list[AlertSender] = []
+    if mode in {"email", "composite"}:
+        if settings.alert_email_api_key and settings.alert_email_from:
+            senders.append(
+                EmailAlertSender(
+                    provider=settings.alert_email_provider,
+                    api_key=settings.alert_email_api_key,
+                    from_email=settings.alert_email_from,
+                )
+            )
+        elif mode == "email":
+            return StubAlertSender()
+    if mode in {"webhook", "composite"} and settings.alert_webhook_url:
+        senders.append(WebhookAlertSender(webhook_url=settings.alert_webhook_url))
+    if mode in {"slack", "composite"}:
+        if settings.alert_slack_webhook_url:
+            senders.append(SlackWebhookAlertSender(webhook_url=settings.alert_slack_webhook_url))
+        elif mode == "slack":
+            return StubAlertSender()
+    if mode in {"discord", "composite"}:
+        if settings.alert_discord_webhook_url:
+            senders.append(
+                DiscordWebhookAlertSender(webhook_url=settings.alert_discord_webhook_url)
+            )
+        elif mode == "discord":
+            return StubAlertSender()
+    if mode == "webhook" and settings.alert_webhook_url and not senders:
+        senders.append(WebhookAlertSender(webhook_url=settings.alert_webhook_url))
     if mode == "stub":
         return StubAlertSender()
+    if len(senders) == 1:
+        return senders[0]
+    if len(senders) > 1:
+        return CompositeAlertSender(senders=senders)
     return StubAlertSender()
+
+
+def _extract_provider_message_id(provider: str, response: httpx.Response) -> str | None:
+    if provider == "resend":
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                value = payload.get("id")
+                if isinstance(value, str):
+                    return value
+        except ValueError:
+            return None
+    if provider == "postmark":
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                value = payload.get("MessageID")
+                if isinstance(value, str):
+                    return value
+        except ValueError:
+            return None
+    return response.headers.get("x-request-id")
+
+
+def _format_alert_text(signal: AlertSignal) -> str:
+    return (
+        f"AutoPulse alert: {signal.alert_type}\n"
+        f"project_id: {signal.project_id}\n"
+        f"triggered_at: {signal.triggered_at.isoformat()}\n"
+        f"window_start: {signal.window_start.isoformat()}\n"
+        f"window_end: {signal.window_end.isoformat()}\n"
+        f"detail: {signal.detail}"
+    )
+
+
+def _reason_code_for_exception(exc: Exception) -> str:
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 429:
+            return "rate_limited"
+        if 400 <= status < 500:
+            return "provider_rejected"
+        if status >= 500:
+            return "provider_unavailable"
+    if isinstance(exc, httpx.HTTPError):
+        return "network_error"
+    return "unknown"
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -118,7 +382,7 @@ async def evaluate_alerts_once(
     if not settings.alerts_enabled:
         return 0
 
-    resolved_sender = sender or StubAlertSender()
+    resolved_sender = sender or build_alert_sender(settings)
     resolved_now = _as_utc(now or datetime.now(tz=UTC))
     dispatch_count = 0
 
@@ -162,22 +426,26 @@ async def evaluate_alerts_once(
                     "threshold": round(alert_settings.error_spike_ratio_threshold, 4),
                 },
             )
-            try:
-                await resolved_sender.send(signal)
-                record_alert_dispatch(
-                    session,
-                    signal,
-                    delivered_via=getattr(resolved_sender, "delivery_kind", "unknown"),
-                )
+            dispatch_result = await resolved_sender.send(signal)
+            if dispatch_result.status == "sent":
                 alert_settings.last_error_spike_alert_at = resolved_now
                 dispatch_count += 1
-            except Exception as exc:  # pragma: no cover - defensive fail-silent behavior
-                record_alert_dispatch(
-                    session,
-                    signal,
-                    delivered_via=f"{getattr(resolved_sender, 'delivery_kind', 'unknown')}-failed",
-                    detail={**signal.detail, "delivery_error": str(exc)},
-                )
+            merged_detail = (
+                {**signal.detail, **dispatch_result.detail}
+                if dispatch_result.detail is not None
+                else signal.detail
+            )
+            record_alert_dispatch(
+                session,
+                signal,
+                delivered_via=dispatch_result.delivered_via,
+                detail=merged_detail,
+                status=dispatch_result.status,
+                reason_code=dispatch_result.reason_code,
+                attempt_count=dispatch_result.attempt_count,
+                delivered_at=dispatch_result.delivered_at,
+                provider_message_id=dispatch_result.provider_message_id,
+            )
 
         outage_window_start = resolved_now - timedelta(minutes=alert_settings.outage_window_minutes)
         outage_requests, _, outage_success = await request_window_counts(
@@ -209,22 +477,26 @@ async def evaluate_alerts_once(
                     "min_requests_threshold": alert_settings.outage_min_requests,
                 },
             )
-            try:
-                await resolved_sender.send(signal)
-                record_alert_dispatch(
-                    session,
-                    signal,
-                    delivered_via=getattr(resolved_sender, "delivery_kind", "unknown"),
-                )
+            dispatch_result = await resolved_sender.send(signal)
+            if dispatch_result.status == "sent":
                 alert_settings.last_outage_alert_at = resolved_now
                 dispatch_count += 1
-            except Exception as exc:  # pragma: no cover - defensive fail-silent behavior
-                record_alert_dispatch(
-                    session,
-                    signal,
-                    delivered_via=f"{getattr(resolved_sender, 'delivery_kind', 'unknown')}-failed",
-                    detail={**signal.detail, "delivery_error": str(exc)},
-                )
+            merged_detail = (
+                {**signal.detail, **dispatch_result.detail}
+                if dispatch_result.detail is not None
+                else signal.detail
+            )
+            record_alert_dispatch(
+                session,
+                signal,
+                delivered_via=dispatch_result.delivered_via,
+                detail=merged_detail,
+                status=dispatch_result.status,
+                reason_code=dispatch_result.reason_code,
+                attempt_count=dispatch_result.attempt_count,
+                delivered_at=dispatch_result.delivered_at,
+                provider_message_id=dispatch_result.provider_message_id,
+            )
 
     await session.commit()
     return dispatch_count

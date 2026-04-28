@@ -12,6 +12,7 @@ export function AlertsContent() {
   const d = useDashboardData();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
+  const [showFailedOnly, setShowFailedOnly] = useState(false);
   const form = d.alertSettings;
 
   const overview = d.overview;
@@ -30,6 +31,9 @@ export function AlertsContent() {
   const errorSpikeCandidate = d.operationalSignals.errorSpikeCandidate;
   const outageCandidate = d.operationalSignals.outageCandidate;
   const recentDispatches = d.recentAlertDispatches;
+  const visibleDispatches = showFailedOnly
+    ? recentDispatches.filter((dispatch) => dispatch.status === "failed")
+    : recentDispatches;
   const diagnosisParams = buildScopedQuery({
     isAbsoluteWindow: d.isAbsoluteWindow,
     windowMinutes: d.windowMinutes,
@@ -303,13 +307,23 @@ export function AlertsContent() {
             <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
               Recent dispatched alerts
             </h3>
-            <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
-              {d.alertDispatches?.total ?? 0} in current window
-            </span>
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={showFailedOnly}
+                  onChange={(event) => setShowFailedOnly(event.target.checked)}
+                />
+                Failed only
+              </label>
+              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-700 dark:bg-neutral-700 dark:text-neutral-200">
+                {visibleDispatches.length} shown
+              </span>
+            </div>
           </div>
-          {recentDispatches.length === 0 ? (
+          {visibleDispatches.length === 0 ? (
             <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
-              No alerts dispatched in the selected time window yet.
+              No matching alerts in the selected time window.
             </p>
           ) : (
             <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-neutral-700">
@@ -319,12 +333,14 @@ export function AlertsContent() {
                     <th className="px-3 py-2 font-semibold">Triggered</th>
                     <th className="px-3 py-2 font-semibold">Type</th>
                     <th className="px-3 py-2 font-semibold">Delivery</th>
+                    <th className="px-3 py-2 font-semibold">Status</th>
+                    <th className="px-3 py-2 font-semibold">Reason</th>
                     <th className="px-3 py-2 font-semibold">Destination</th>
                     <th className="px-3 py-2 font-semibold">Detail</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
-                  {recentDispatches.map((dispatch) => (
+                  {visibleDispatches.map((dispatch) => (
                     <tr key={dispatch.id}>
                       <td className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-neutral-200">
                         {new Date(dispatch.triggered_at).toLocaleString()}
@@ -335,7 +351,35 @@ export function AlertsContent() {
                         </span>
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                        {dispatch.delivered_via}
+                        <div className="flex flex-col">
+                          <span>{dispatch.delivered_via}</span>
+                          {dispatch.provider_message_id ? (
+                            <span className="text-[10px] text-slate-500 dark:text-neutral-400">
+                              {dispatch.provider_message_id}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-medium ${
+                            dispatch.status === "sent"
+                              ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
+                              : dispatch.status === "failed"
+                                ? "bg-rose-500/15 text-rose-800 dark:text-rose-300"
+                                : "bg-slate-300/30 text-slate-700 dark:text-neutral-300"
+                          }`}
+                        >
+                          {dispatch.status}
+                        </span>
+                        {dispatch.delivered_at ? (
+                          <div className="mt-1 text-[10px] text-slate-500 dark:text-neutral-400">
+                            {new Date(dispatch.delivered_at).toLocaleString()}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                        {dispatch.reason_code ?? "none"}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
                         {dispatch.destination_email ?? "not set"}

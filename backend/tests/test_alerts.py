@@ -9,7 +9,13 @@ from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.alerts import StubAlertSender, evaluate_alerts_once
+from autopulse_backend.alerts import (
+    AlertDeliveryResult,
+    AlertSignal,
+    EmailAlertSender,
+    StubAlertSender,
+    evaluate_alerts_once,
+)
 from autopulse_backend.config import get_settings
 from autopulse_backend.models import Event, Project
 
@@ -234,3 +240,87 @@ def test_alert_sender_defaults_to_stub_when_webhook_mode_missing_url() -> None:
     settings = replace(get_settings(), alert_sender_mode="webhook", alert_webhook_url=None)
     sender = build_alert_sender(settings)
     assert isinstance(sender, StubAlertSender)
+
+
+class FailingSender:
+    delivery_kind = "email"
+
+    async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
+        return AlertDeliveryResult(
+            status="failed",
+            delivered_via=self.delivery_kind,
+            reason_code="provider_rejected",
+            attempt_count=3,
+            detail={"delivery_error": "provider rejected"},
+        )
+
+
+def test_alert_dispatch_records_status_fields_on_failure(backend_test_database_url: str) -> None:
+    truncate_full_schema(backend_test_database_url)
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    _seed_request_events(
+        backend_test_database_url,
+        request_count=10,
+        error_count=7,
+        base_time=base_time,
+    )
+
+    async def run() -> tuple[str, str | None, int]:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                settings = replace(
+                    get_settings(),
+                    alert_default_destination_email="ops@example.com",
+                    alert_error_spike_min_requests=5,
+                    alert_error_spike_ratio_threshold=0.5,
+                    alert_outage_min_requests=100,
+                    alert_cooldown_minutes=30,
+                )
+                triggered = await evaluate_alerts_once(
+                    session,
+                    settings,
+                    sender=FailingSender(),
+                    now=base_time + timedelta(minutes=1),
+                )
+                assert triggered == 0
+                row = await session.execute(
+                    text(
+                        "SELECT status, reason_code, attempt_count FROM alert_dispatches "
+                        "ORDER BY id DESC LIMIT 1"
+                    )
+                )
+                status, reason_code, attempt_count = row.one()
+                return (
+                    str(status),
+                    (str(reason_code) if reason_code is not None else None),
+                    int(attempt_count),
+                )
+        finally:
+            await engine.dispose()
+
+    status, reason_code, attempt_count = asyncio.run(run())
+    assert status == "failed"
+    assert reason_code == "provider_rejected"
+    assert attempt_count == 3
+
+
+def test_email_sender_returns_missing_destination_when_email_not_set() -> None:
+    sender = EmailAlertSender(
+        provider="resend",
+        api_key="test-key",
+        from_email="alerts@example.com",
+    )
+    signal = AlertSignal(
+        project_id=uuid4(),
+        alert_type="error_spike",
+        destination_email=None,
+        triggered_at=datetime.now(tz=UTC),
+        window_start=datetime.now(tz=UTC) - timedelta(minutes=1),
+        window_end=datetime.now(tz=UTC),
+        detail={"request_count": 10},
+    )
+    result = asyncio.run(sender.send(signal))
+    assert result.status == "skipped"
+    assert result.reason_code == "missing_destination"

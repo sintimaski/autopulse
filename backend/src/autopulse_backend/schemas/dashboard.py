@@ -195,9 +195,14 @@ class DashboardAlertDispatchItem(BaseModel):
     alert_type: str
     destination_email: str | None
     delivered_via: str
+    status: str
+    reason_code: str | None = None
+    attempt_count: int
     triggered_at: datetime
     window_start: datetime
     window_end: datetime
+    delivered_at: datetime | None = None
+    provider_message_id: str | None = None
     detail: dict[str, Any]
 
 
