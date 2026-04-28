@@ -324,3 +324,27 @@ def test_email_sender_returns_missing_destination_when_email_not_set() -> None:
     result = asyncio.run(sender.send(signal))
     assert result.status == "skipped"
     assert result.reason_code == "missing_destination"
+
+
+def test_email_sender_file_provider_writes_outbox(tmp_path) -> None:
+    sender = EmailAlertSender(
+        provider="file",
+        from_email="alerts@example.com",
+        file_outbox_dir=str(tmp_path),
+    )
+    signal = AlertSignal(
+        project_id=uuid4(),
+        alert_type="error_spike",
+        destination_email="ops@example.com",
+        triggered_at=datetime.now(tz=UTC),
+        window_start=datetime.now(tz=UTC) - timedelta(minutes=1),
+        window_end=datetime.now(tz=UTC),
+        detail={"request_count": 10},
+    )
+    result = asyncio.run(sender.send(signal))
+    assert result.status == "sent"
+    assert result.delivered_via == "email"
+    assert result.detail is not None
+    outbox_path = result.detail.get("outbox_path")
+    assert isinstance(outbox_path, str)
+    assert outbox_path.endswith(".eml")

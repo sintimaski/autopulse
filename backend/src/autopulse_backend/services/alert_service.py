@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import uuid
 from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
+from pathlib import Path
 from typing import Protocol
 from uuid import UUID
 
@@ -139,8 +144,14 @@ class WebhookAlertSender:
 @dataclass(slots=True)
 class EmailAlertSender:
     provider: str
-    api_key: str
-    from_email: str
+    api_key: str | None = None
+    from_email: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 25
+    smtp_use_tls: bool = False
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    file_outbox_dir: str | None = None
     timeout_seconds: float = 3.0
     max_attempts: int = 3
     initial_backoff_seconds: float = 0.25
@@ -156,20 +167,40 @@ class EmailAlertSender:
                 attempt_count=1,
             )
         provider = self.provider.strip().lower()
+        if provider in {"file", "outbox"}:
+            return await self._send_file(destination, signal)
+        if provider == "sendmail":
+            return await self._send_sendmail(destination, signal)
+        if provider in {"smtp", "smtp_localhost"}:
+            return await self._send_smtp(destination, signal)
         if provider == "resend":
             url = "https://api.resend.com/emails"
+            if not self.api_key:
+                return AlertDeliveryResult(
+                    status="failed",
+                    delivered_via=self.delivery_kind,
+                    reason_code="missing_api_key",
+                    attempt_count=1,
+                )
             headers = {"Authorization": f"Bearer {self.api_key}"}
             payload = {
-                "from": self.from_email,
+                "from": self.from_email or "autopulse@localhost",
                 "to": [destination],
                 "subject": f"[AutoPulse] {signal.alert_type} for project {signal.project_id}",
                 "text": _format_alert_text(signal),
             }
         elif provider == "postmark":
             url = "https://api.postmarkapp.com/email"
+            if not self.api_key:
+                return AlertDeliveryResult(
+                    status="failed",
+                    delivered_via=self.delivery_kind,
+                    reason_code="missing_api_key",
+                    attempt_count=1,
+                )
             headers = {"X-Postmark-Server-Token": self.api_key}
             payload = {
-                "From": self.from_email,
+                "From": self.from_email or "autopulse@localhost",
                 "To": destination,
                 "Subject": f"[AutoPulse] {signal.alert_type} for project {signal.project_id}",
                 "TextBody": _format_alert_text(signal),
@@ -204,6 +235,138 @@ class EmailAlertSender:
                             detail={"delivery_error": str(exc), "provider": provider},
                         )
                     await asyncio.sleep(self.initial_backoff_seconds * attempt)
+
+    async def _send_file(self, destination: str, signal: AlertSignal) -> AlertDeliveryResult:
+        message = _build_email_message(self.from_email, destination, signal)
+        outbox_dir = Path(self.file_outbox_dir or "./.autopulse/emails").resolve()
+        try:
+            outbox_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            return AlertDeliveryResult(
+                status="failed",
+                delivered_via=self.delivery_kind,
+                reason_code="outbox_unwritable",
+                attempt_count=1,
+                detail={"delivery_error": str(exc), "outbox_dir": str(outbox_dir)},
+            )
+        filename = (
+            f"{_safe_slug(signal.alert_type)}-"
+            f"{signal.project_id}-"
+            f"{signal.triggered_at.strftime('%Y%m%dT%H%M%SZ')}-"
+            f"{uuid.uuid4().hex}.eml"
+        )
+        path = outbox_dir / filename
+        try:
+            await asyncio.to_thread(path.write_bytes, message.as_bytes())
+            return AlertDeliveryResult(
+                status="sent",
+                delivered_via=self.delivery_kind,
+                attempt_count=1,
+                delivered_at=_as_utc(datetime.now(tz=UTC)),
+                provider_message_id=message.get("Message-Id"),
+                detail={"outbox_path": str(path)},
+            )
+        except Exception as exc:
+            return AlertDeliveryResult(
+                status="failed",
+                delivered_via=self.delivery_kind,
+                reason_code="outbox_write_failed",
+                attempt_count=1,
+                detail={"delivery_error": str(exc), "outbox_path": str(path)},
+            )
+
+    async def _send_sendmail(self, destination: str, signal: AlertSignal) -> AlertDeliveryResult:
+        message = _build_email_message(self.from_email, destination, signal)
+        sendmail_path = os.getenv("ALERT_SENDMAIL_PATH", "/usr/sbin/sendmail")
+        args = [sendmail_path, "-t", "-i"]
+        for attempt in range(1, max(1, self.max_attempts) + 1):
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate(input=message.as_bytes())
+                if proc.returncode == 0:
+                    return AlertDeliveryResult(
+                        status="sent",
+                        delivered_via=self.delivery_kind,
+                        attempt_count=attempt,
+                        delivered_at=_as_utc(datetime.now(tz=UTC)),
+                        provider_message_id=message.get("Message-Id"),
+                    )
+                error_text = (stderr or stdout or b"").decode(errors="replace").strip()
+                raise RuntimeError(error_text or f"sendmail exited with {proc.returncode}")
+            except FileNotFoundError as exc:
+                return AlertDeliveryResult(
+                    status="failed",
+                    delivered_via=self.delivery_kind,
+                    reason_code="sendmail_missing",
+                    attempt_count=attempt,
+                    detail={"delivery_error": str(exc), "sendmail_path": sendmail_path},
+                )
+            except Exception as exc:
+                if attempt >= self.max_attempts:
+                    return AlertDeliveryResult(
+                        status="failed",
+                        delivered_via=self.delivery_kind,
+                        reason_code="sendmail_failed",
+                        attempt_count=attempt,
+                        detail={"delivery_error": str(exc), "sendmail_path": sendmail_path},
+                    )
+                await asyncio.sleep(self.initial_backoff_seconds * attempt)
+        return AlertDeliveryResult(
+            status="failed",
+            delivered_via=self.delivery_kind,
+            reason_code="sendmail_failed",
+            attempt_count=max(1, self.max_attempts),
+        )
+
+    async def _send_smtp(self, destination: str, signal: AlertSignal) -> AlertDeliveryResult:
+        # Uses stdlib smtplib (blocking) off the event loop.
+        message = _build_email_message(self.from_email, destination, signal)
+        host = (self.smtp_host or "127.0.0.1").strip() or "127.0.0.1"
+        port = int(self.smtp_port or 25)
+
+        def _sync_send() -> None:
+            import smtplib
+
+            timeout = float(self.timeout_seconds)
+            with smtplib.SMTP(host=host, port=port, timeout=timeout) as client:
+                client.ehlo()
+                if self.smtp_use_tls:
+                    client.starttls()
+                    client.ehlo()
+                if self.smtp_username and self.smtp_password:
+                    client.login(self.smtp_username, self.smtp_password)
+                client.send_message(message)
+
+        for attempt in range(1, max(1, self.max_attempts) + 1):
+            try:
+                await asyncio.to_thread(_sync_send)
+                return AlertDeliveryResult(
+                    status="sent",
+                    delivered_via=self.delivery_kind,
+                    attempt_count=attempt,
+                    delivered_at=_as_utc(datetime.now(tz=UTC)),
+                    provider_message_id=message.get("Message-Id"),
+                    detail={"smtp_host": host, "smtp_port": port},
+                )
+            except Exception as exc:
+                if attempt >= self.max_attempts:
+                    return AlertDeliveryResult(
+                        status="failed",
+                        delivered_via=self.delivery_kind,
+                        reason_code="smtp_failed",
+                        attempt_count=attempt,
+                        detail={
+                            "delivery_error": str(exc),
+                            "smtp_host": host,
+                            "smtp_port": port,
+                        },
+                    )
+                await asyncio.sleep(self.initial_backoff_seconds * attempt)
 
 
 @dataclass(slots=True)
@@ -275,7 +438,35 @@ def build_alert_sender(settings: Settings) -> AlertSender:
     mode = (settings.alert_sender_mode or "stub").strip().lower()
     senders: list[AlertSender] = []
     if mode in {"email", "composite"}:
-        if settings.alert_email_api_key and settings.alert_email_from:
+        if settings.alert_email_provider in {"file", "outbox"}:
+            senders.append(
+                EmailAlertSender(
+                    provider=settings.alert_email_provider,
+                    from_email=settings.alert_email_from,
+                    file_outbox_dir=getattr(settings, "alert_email_file_outbox_dir", None),
+                )
+            )
+        elif settings.alert_email_provider == "sendmail":
+            senders.append(
+                EmailAlertSender(
+                    provider=settings.alert_email_provider,
+                    from_email=settings.alert_email_from,
+                    max_attempts=3,
+                )
+            )
+        elif settings.alert_email_provider in {"smtp", "smtp_localhost"}:
+            senders.append(
+                EmailAlertSender(
+                    provider=settings.alert_email_provider,
+                    from_email=settings.alert_email_from,
+                    smtp_host=getattr(settings, "alert_email_smtp_host", None),
+                    smtp_port=getattr(settings, "alert_email_smtp_port", 25),
+                    smtp_use_tls=getattr(settings, "alert_email_smtp_use_tls", False),
+                    smtp_username=getattr(settings, "alert_email_smtp_username", None),
+                    smtp_password=getattr(settings, "alert_email_smtp_password", None),
+                )
+            )
+        elif settings.alert_email_api_key and settings.alert_email_from:
             senders.append(
                 EmailAlertSender(
                     provider=settings.alert_email_provider,
@@ -333,6 +524,23 @@ def _extract_provider_message_id(provider: str, response: httpx.Response) -> str
 
 
 def _format_alert_text(signal: AlertSignal) -> str:
+    if signal.alert_type == "dashboard_magic_link":
+        detail = signal.detail
+        magic_link = str(detail.get("magic_link", "")).strip()
+        expires_at = str(detail.get("expires_at", "")).strip()
+        email = str(detail.get("email", signal.destination_email or "")).strip()
+        link_value = ""
+        if "token=" in magic_link:
+            link_value = magic_link.split("token=", 1)[1]
+        return (
+            "AutoPulse dashboard sign-in link\n"
+            f"email: {email}\n"
+            f"expires_at: {expires_at}\n"
+            "magic_link:\n"
+            f"{magic_link}\n"
+            "token:\n"
+            f"{link_value}"
+        )
     return (
         f"AutoPulse alert: {signal.alert_type}\n"
         f"project_id: {signal.project_id}\n"
@@ -341,6 +549,25 @@ def _format_alert_text(signal: AlertSignal) -> str:
         f"window_end: {signal.window_end.isoformat()}\n"
         f"detail: {signal.detail}"
     )
+
+
+def _build_email_message(
+    from_email: str | None, to_email: str, signal: AlertSignal
+) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"] = (from_email or "autopulse@localhost").strip() or "autopulse@localhost"
+    msg["To"] = to_email
+    msg["Subject"] = f"[AutoPulse] {signal.alert_type} for project {signal.project_id}"
+    msg["Date"] = formatdate(localtime=False)
+    msg["Message-Id"] = make_msgid(domain="autopulse.local")
+    msg.set_content(_format_alert_text(signal))
+    return msg
+
+
+def _safe_slug(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in value.strip())
+    cleaned = "_".join(part for part in cleaned.split("_") if part)
+    return cleaned[:40] or "alert"
 
 
 def _reason_code_for_exception(exc: Exception) -> str:

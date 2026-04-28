@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import quopri
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Response, status
@@ -15,6 +18,7 @@ from starlette.requests import HTTPConnection
 from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
 from autopulse_backend.models import DashboardMagicLink, DashboardSession, DashboardUser, Project
+from autopulse_backend.services.alert_service import AlertSignal, EmailAlertSender
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +90,7 @@ async def create_magic_link_token(
     session: AsyncSession,
     settings: Settings,
     email: str,
+    magic_link_base_url: str | None = None,
 ) -> str | None:
     normalized_email = _normalize_email(email)
     allowed_email = _normalize_email(settings.dashboard_auth_allowed_email or "")
@@ -105,7 +110,69 @@ async def create_magic_link_token(
         )
     )
     await session.commit()
+    await _send_magic_link_email_best_effort(
+        session=session,
+        settings=settings,
+        email=normalized_email,
+        token=raw_token,
+        expires_at=expires_at,
+        magic_link_base_url=magic_link_base_url,
+    )
     return raw_token
+
+
+def _build_magic_link_url(settings: Settings, token: str, *, base_url: str | None = None) -> str:
+    resolved_base_url = (
+        base_url if base_url is not None else settings.dashboard_auth_magic_link_base_url
+    )
+    base = (resolved_base_url or "").strip() or "/auth/magic-link"
+    query = urlencode({"token": token})
+    return f"{base}?{query}" if "?" not in base else f"{base}&{query}"
+
+
+async def _send_magic_link_email_best_effort(
+    *,
+    session: AsyncSession,
+    settings: Settings,
+    email: str,
+    token: str,
+    expires_at: datetime,
+    magic_link_base_url: str | None = None,
+) -> None:
+    provider = (settings.alert_email_provider or "").strip().lower()
+    if not provider:
+        return
+    link = _build_magic_link_url(settings, token, base_url=magic_link_base_url)
+    project_id = await _resolve_default_project_id(session)
+    signal = AlertSignal(
+        project_id=project_id,
+        alert_type="dashboard_magic_link",
+        destination_email=email,
+        triggered_at=_now(),
+        window_start=_now(),
+        window_end=expires_at,
+        detail={
+            "magic_link": link,
+            "expires_at": expires_at.isoformat(),
+            "email": email,
+        },
+    )
+    sender = EmailAlertSender(
+        provider=provider,
+        api_key=settings.alert_email_api_key,
+        from_email=settings.alert_email_from,
+        smtp_host=settings.alert_email_smtp_host,
+        smtp_port=settings.alert_email_smtp_port,
+        smtp_use_tls=settings.alert_email_smtp_use_tls,
+        smtp_username=settings.alert_email_smtp_username,
+        smtp_password=settings.alert_email_smtp_password,
+        file_outbox_dir=settings.alert_email_file_outbox_dir,
+    )
+    try:
+        await sender.send(signal)
+    except (TimeoutError, OSError, RuntimeError, ValueError):
+        # Keep magic-link request non-failing even when delivery is misconfigured.
+        return
 
 
 async def verify_magic_link_and_create_session(
@@ -115,15 +182,19 @@ async def verify_magic_link_and_create_session(
     settings: Settings,
     token: str,
 ) -> DashboardAuthSession:
-    token_hash = _hash_token(token)
+    token_hashes = {_hash_token(candidate) for candidate in _token_candidates(token)}
     now = _now()
-    magic_link = await session.scalar(
-        select(DashboardMagicLink).where(
-            DashboardMagicLink.token_hash == token_hash,
-            DashboardMagicLink.used_at.is_(None),
-            DashboardMagicLink.expires_at >= now,
+    magic_link = None
+    for token_hash in token_hashes:
+        magic_link = await session.scalar(
+            select(DashboardMagicLink).where(
+                DashboardMagicLink.token_hash == token_hash,
+                DashboardMagicLink.used_at.is_(None),
+                DashboardMagicLink.expires_at >= now,
+            )
         )
-    )
+        if magic_link is not None:
+            break
     if magic_link is None:
         raise _unauthorized("Invalid or expired magic link.")
 
@@ -155,6 +226,46 @@ async def verify_magic_link_and_create_session(
         email=email,
         expires_at=expires_at,
     )
+
+
+def _token_candidates(raw_token: str) -> list[str]:
+    """
+    Accept small token corruptions that commonly happen when users copy from raw
+    quoted-printable `.eml` files (e.g. leading `3D`, inserted spaces, soft-break `=`).
+    """
+    base = (raw_token or "").strip()
+    if not base:
+        return []
+    candidates: list[str] = [base]
+    collapsed = "".join(base.split())
+    candidates.append(collapsed)
+    no_equals = collapsed.replace("=", "")
+    candidates.append(no_equals)
+    if no_equals.startswith("3D"):
+        candidates.append(no_equals[2:])
+    # Raw .eml copy can contain quoted-printable escapes (`=3D...`) in query token.
+    qp_decoded = quopri.decodestring(collapsed.encode("utf-8")).decode("utf-8", "ignore").strip()
+    if qp_decoded:
+        candidates.append(qp_decoded)
+        qp_no_equals = qp_decoded.replace("=", "")
+        candidates.append(qp_no_equals)
+        if qp_no_equals.startswith("3D"):
+            candidates.append(qp_no_equals[2:])
+    # Keep only url-safe token characters for recovery from punctuation artifacts.
+    for candidate in list(candidates):
+        cleaned = re.sub(r"[^A-Za-z0-9_-]", "", candidate)
+        if cleaned:
+            candidates.append(cleaned)
+            if cleaned.startswith("3D"):
+                candidates.append(cleaned[2:])
+    # Preserve order, drop empties and duplicates.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for candidate in candidates:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
+            ordered.append(candidate)
+    return ordered
 
 
 async def get_dashboard_auth_session(

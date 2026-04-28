@@ -65,6 +65,12 @@ class Settings:
     alert_email_provider: str = "resend"
     alert_email_api_key: str | None = None
     alert_email_from: str | None = None
+    alert_email_file_outbox_dir: str = "./.autopulse/emails"
+    alert_email_smtp_host: str | None = None
+    alert_email_smtp_port: int = 25
+    alert_email_smtp_use_tls: bool = False
+    alert_email_smtp_username: str | None = None
+    alert_email_smtp_password: str | None = None
     alert_slack_webhook_url: str | None = None
     alert_discord_webhook_url: str | None = None
     dev_scenarios_enabled: bool = False
@@ -76,6 +82,7 @@ class Settings:
     dashboard_auth_session_ttl_minutes: int = 720
     dashboard_auth_magic_link_ttl_minutes: int = 15
     dashboard_auth_magic_link_dev_expose_token: bool = True
+    dashboard_auth_magic_link_base_url: str | None = None
 
 
 def get_settings() -> Settings:
@@ -146,6 +153,15 @@ def get_settings() -> Settings:
         alert_email_provider=getenv("ALERT_EMAIL_PROVIDER", "resend").strip().lower() or "resend",
         alert_email_api_key=getenv("ALERT_EMAIL_API_KEY"),
         alert_email_from=getenv("ALERT_EMAIL_FROM"),
+        alert_email_file_outbox_dir=(
+            getenv("ALERT_EMAIL_FILE_OUTBOX_DIR", "./.autopulse/emails").strip()
+            or "./.autopulse/emails"
+        ),
+        alert_email_smtp_host=getenv("ALERT_EMAIL_SMTP_HOST"),
+        alert_email_smtp_port=_env_int("ALERT_EMAIL_SMTP_PORT", 25, minimum=1),
+        alert_email_smtp_use_tls=_env_bool("ALERT_EMAIL_SMTP_USE_TLS", False),
+        alert_email_smtp_username=getenv("ALERT_EMAIL_SMTP_USERNAME"),
+        alert_email_smtp_password=getenv("ALERT_EMAIL_SMTP_PASSWORD"),
         alert_slack_webhook_url=getenv("ALERT_SLACK_WEBHOOK_URL"),
         alert_discord_webhook_url=getenv("ALERT_DISCORD_WEBHOOK_URL"),
         dev_scenarios_enabled=_env_bool("DEV_SCENARIOS_ENABLED", False),
@@ -174,5 +190,8 @@ def get_settings() -> Settings:
         dashboard_auth_magic_link_dev_expose_token=_env_bool(
             "DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN",
             True,
+        ),
+        dashboard_auth_magic_link_base_url=(
+            getenv("DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "").strip() or None
         ),
     )

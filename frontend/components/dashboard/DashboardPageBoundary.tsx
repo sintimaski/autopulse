@@ -23,6 +23,7 @@ export function ApiKeyMissing() {
   const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [magicLinkToken, setMagicLinkToken] = useState<string | null>(null);
+  const [magicLinkHref, setMagicLinkHref] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -40,7 +41,15 @@ export function ApiKeyMissing() {
         throw new Error("Request failed");
       }
       const payload = (await response.json()) as { dev_magic_link_token?: string | null };
-      setMagicLinkToken(payload.dev_magic_link_token ?? null);
+      const issuedToken = payload.dev_magic_link_token ?? null;
+      setMagicLinkToken(issuedToken);
+      if (issuedToken) {
+        setToken(issuedToken);
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        setMagicLinkHref(`${origin}/auth/magic-link?token=${encodeURIComponent(issuedToken)}`);
+      } else {
+        setMagicLinkHref(null);
+      }
       setMessage("If the email is allowed, a sign-in link was issued.");
     } catch {
       setMessage("Unable to send sign-in link. Check backend auth settings.");
@@ -100,6 +109,14 @@ export function ApiKeyMissing() {
           <div className="mt-4 rounded-lg border border-sky-400/30 bg-sky-500/10 p-3 text-xs text-sky-100">
             <p className="font-medium">Dev magic-link token</p>
             <code className="mt-1 block break-all">{magicLinkToken}</code>
+            {magicLinkHref ? (
+              <a
+                className="mt-2 inline-block rounded-md bg-sky-400/20 px-2 py-1 text-[11px] font-semibold text-sky-50 hover:bg-sky-400/30"
+                href={magicLinkHref}
+              >
+                Open magic link
+              </a>
+            ) : null}
           </div>
         ) : null}
         <div className="mt-4 space-y-3">

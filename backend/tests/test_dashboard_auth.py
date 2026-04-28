@@ -59,11 +59,15 @@ def _truncate_tables(database_url: str) -> None:
 def test_dashboard_magic_link_session_flow(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
     monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
@@ -79,6 +83,11 @@ def test_dashboard_magic_link_session_flow(
         payload = request_response.json()
         token = payload.get("dev_magic_link_token")
         assert isinstance(token, str) and token
+        outbox_files = list(tmp_path.glob("*.eml"))
+        assert len(outbox_files) == 1
+        outbox_content = outbox_files[0].read_text()
+        assert token in outbox_content
+        assert "dashboard_magic_link" in outbox_content
 
         verify_response = client.post(
             "/dashboard/auth/magic-link/verify",
@@ -109,3 +118,34 @@ def test_dashboard_magic_link_session_flow(
         post_logout_session = client.get("/dashboard/auth/session")
         assert post_logout_session.status_code == 200
         assert post_logout_session.json()["authenticated"] is False
+
+
+def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        request_response = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        )
+        assert request_response.status_code == 200
+        token = request_response.json().get("dev_magic_link_token")
+        assert isinstance(token, str) and token
+
+        # Simulates copy-paste from raw quoted-printable email body:
+        # `token=3D<token with soft-break '=' + inserted space>`
+        split_at = max(1, len(token) // 2)
+        corrupted = f"3D{token[:split_at]}= {token[split_at:]}"
+        verify_response = client.post(
+            "/dashboard/auth/magic-link/verify",
+            json={"token": corrupted},
+        )
+        assert verify_response.status_code == 200
+        assert verify_response.json()["authenticated"] is True

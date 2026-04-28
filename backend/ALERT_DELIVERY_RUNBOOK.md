@@ -11,6 +11,23 @@ Set one of the minimal sender configurations:
   - `ALERT_EMAIL_PROVIDER=resend` (or `postmark`)
   - `ALERT_EMAIL_API_KEY=...`
   - `ALERT_EMAIL_FROM=alerts@example.com`
+- Email (zero-config dev outbox; writes `.eml` locally):
+  - `ALERT_SENDER_MODE=email`
+  - `ALERT_EMAIL_PROVIDER=file`
+  - optional: `ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails`
+  - optional: `ALERT_EMAIL_FROM=alerts@localhost`
+- Email (no SaaS, requires local MTA present):
+  - `ALERT_SENDER_MODE=email`
+  - `ALERT_EMAIL_PROVIDER=sendmail`
+  - optional: `ALERT_SENDMAIL_PATH=/usr/sbin/sendmail`
+- Email (no SaaS, requires SMTP server reachable):
+  - `ALERT_SENDER_MODE=email`
+  - `ALERT_EMAIL_PROVIDER=smtp`
+  - `ALERT_EMAIL_SMTP_HOST=127.0.0.1` (or your SMTP host)
+  - optional: `ALERT_EMAIL_SMTP_PORT=25`
+  - optional: `ALERT_EMAIL_SMTP_USE_TLS=true`
+  - optional: `ALERT_EMAIL_SMTP_USERNAME=...`
+  - optional: `ALERT_EMAIL_SMTP_PASSWORD=...`
 - Slack webhook:
   - `ALERT_SENDER_MODE=slack`
   - `ALERT_SLACK_WEBHOOK_URL=...`
