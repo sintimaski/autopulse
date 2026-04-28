@@ -193,10 +193,10 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
 
   return (
     <div
-      className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-neutral-700 dark:bg-neutral-900/80"
+      className="rounded-xl border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/80"
       onKeyDown={onToolbarKeyDown}
     >
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 flex-1 flex-col gap-0">
           <div className="flex flex-wrap items-center gap-2">
             <SlidersHorizontal className="size-4 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
@@ -205,7 +205,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               {activeServerFilterCount} active
             </span>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-neutral-400">
+          <p className="text-[11px] leading-tight text-slate-500 dark:text-neutral-400">
             {variant === "diagnosis"
               ? "Applies to grouped errors, diagnosis timeline, and the loaded request slice."
               : "Applies to the request log table and server-backed log queries."}
@@ -233,13 +233,13 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         </div>
       </div>
 
-      <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Quick range
           <select
             value={d.windowMinutes}
             onChange={(e) => d.onServerWindowChange(Number(e.target.value))}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           >
             {d.WINDOW_OPTIONS.map((minutes) => (
               <option key={minutes} value={minutes}>
@@ -248,27 +248,27 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           From
           <input
             key={`from-${dateTimeFieldResetKey}`}
             ref={fromInputRef}
             type="datetime-local"
             defaultValue={isoToLocalInputValue(d.windowFromTimestamp)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           To
           <input
             key={`to-${dateTimeFieldResetKey}`}
             ref={toInputRef}
             type="datetime-local"
             defaultValue={isoToLocalInputValue(d.windowToTimestamp)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
-        <div className="flex items-end gap-2 lg:col-span-2 xl:col-span-1">
+        <div className="flex items-end gap-2 lg:col-span-1 xl:col-span-1">
           <button
             type="button"
             onClick={applyAbsoluteWindow}
@@ -290,13 +290,13 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             </button>
           ) : null}
         </div>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Method
           <select
             key={`method-${d.method}`}
             ref={methodRef}
             defaultValue={d.method}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           >
             {d.METHOD_OPTIONS.map((value) => (
               <option key={value} value={value}>
@@ -305,13 +305,13 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Status class
           <select
             key={`status-${d.statusClass}`}
             ref={statusClassRef}
             defaultValue={d.statusClass}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           >
             {d.STATUS_CLASS_OPTIONS.map((value) => (
               <option key={value} value={value}>
@@ -320,7 +320,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Min latency (ms)
           <input
             key={`min-${d.minLatencyMs}`}
@@ -330,10 +330,10 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             step="1"
             defaultValue={d.minLatencyMs}
             placeholder="0"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Max latency (ms)
           <input
             key={`max-${d.maxLatencyMs}`}
@@ -343,7 +343,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             step="1"
             defaultValue={d.maxLatencyMs}
             placeholder="5000"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
       </div>
@@ -362,8 +362,8 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         </p>
       ) : null}
 
-      <div className="mt-2.5 grid gap-2.5 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <label className="md:col-span-2 xl:col-span-4 flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+      <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+        <label className="md:col-span-2 lg:col-span-2 xl:col-span-4 flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Path contains
           <input
             key={`path-${d.pathQuery}`}
@@ -371,24 +371,24 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             type="search"
             defaultValue={d.pathQuery}
             placeholder="/orders, /health, ..."
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
         {variant === "diagnosis" ? (
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+          <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
             Grouped errors sort
             <select
               key={`error-group-sort-${d.errorGroupSort}`}
               ref={errorGroupSortRef}
               defaultValue={d.errorGroupSort}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
               <option value="last_seen">Last seen</option>
               <option value="count">Count</option>
             </select>
           </label>
         ) : (
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+          <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
             Request rows per page
             <select
               value={d.requestLimit}
@@ -396,7 +396,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 d.setRequestLimit(Number(e.target.value));
                 d.setRequestPage(0);
               }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
               {d.REQUEST_LIMIT_OPTIONS.map((value) => (
                 <option key={value} value={value}>
@@ -406,6 +406,25 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             </select>
           </label>
         )}
+        {variant === "diagnosis" ? (
+          <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
+            Grouped errors per page
+            <select
+              value={d.errorGroupLimit}
+              onChange={(e) => {
+                d.setErrorGroupLimit(Number(e.target.value));
+                d.setErrorGroupPage(0);
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            >
+              {d.ERROR_GROUP_LIMIT_OPTIONS.map((value) => (
+                <option key={value} value={value}>
+                  {value} / page
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       <div className="mt-3 grid gap-3 xl:grid-cols-2">
@@ -447,30 +466,8 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         />
       </div>
 
-      {variant === "diagnosis" ? (
-        <div className="mt-2.5 max-w-[220px]">
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
-            Grouped errors per page
-            <select
-              value={d.errorGroupLimit}
-              onChange={(e) => {
-                d.setErrorGroupLimit(Number(e.target.value));
-                d.setErrorGroupPage(0);
-              }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
-            >
-              {d.ERROR_GROUP_LIMIT_OPTIONS.map((value) => (
-                <option key={value} value={value}>
-                  {value} / page
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      ) : null}
-
-      <div className="mt-3 rounded-lg border border-slate-200 bg-white/90 p-2.5 dark:border-neutral-700 dark:bg-neutral-950/40">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="mt-2.5 rounded-lg border border-slate-200 bg-white/90 p-2 dark:border-neutral-700 dark:bg-neutral-950/40">
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold text-slate-700 dark:text-neutral-200">
             SQL WHERE filter
           </p>
@@ -482,7 +479,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           value={d.sqlFilterDraft}
           onChange={(event) => d.setSqlFilterDraft(event.target.value)}
           placeholder="e.g. status_code >= 500 AND method = 'GET'"
-          className="h-20 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+          className="h-16 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
         />
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
