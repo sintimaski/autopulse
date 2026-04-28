@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import text
 
 from autopulse_backend.core.config import get_settings
@@ -40,3 +40,24 @@ async def internal_metrics(request: Request) -> dict[str, object]:
         "counters": service_metrics.snapshot(),
         "jobs": service_metrics.job_snapshot(),
     }
+
+
+@router.get("/metrics")
+async def prometheus_metrics(request: Request) -> Response:
+    snapshot = await internal_metrics(request)
+    counters = snapshot.get("counters", {})
+    jobs = snapshot.get("jobs", {})
+    lines = [
+        "# TYPE autopulse_scheduler_running gauge",
+        f"autopulse_scheduler_running {1 if snapshot.get('scheduler_running') else 0}",
+    ]
+    for name, value in counters.items():
+        metric_name = f"autopulse_{name.replace('.', '_')}"
+        lines.append(f"# TYPE {metric_name} counter")
+        lines.append(f"{metric_name} {int(value)}")
+    for job_name, telemetry in jobs.items():
+        metric_name = f"autopulse_job_{job_name}_last_duration_ms"
+        lines.append(f"# TYPE {metric_name} gauge")
+        lines.append(f"{metric_name} {int(telemetry.get('duration_ms', 0))}")
+    lines.append("")
+    return Response(content="\n".join(lines), media_type="text/plain; version=0.0.4")

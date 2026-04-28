@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -22,13 +23,21 @@ from autopulse_backend.repositories.aggregates import (
 from autopulse_backend.schemas import IngestBatchRequest, event_payload
 
 
+@dataclass(frozen=True, slots=True)
+class PersistIngestResult:
+    accepted: int
+    metric_bucket_deltas: list[MetricBucketDelta]
+    error_group_deltas: list[ErrorGroupAggregateDelta]
+
+
 async def persist_ingest_batch(
     *,
     session: AsyncSession,
     project_id: UUID,
     batch: IngestBatchRequest,
     received_at: datetime,
-) -> int:
+    persist_aggregates: bool = True,
+) -> PersistIngestResult:
     settings = get_settings()
     sdk_version = batch.sdk_version or settings.default_sdk_version
     rows = [
@@ -54,9 +63,14 @@ async def persist_ingest_batch(
         project_id=project_id,
         rows=rows,
     )
-    await upsert_metric_buckets(session, metric_bucket_deltas)
-    await upsert_error_group_aggregates(session, error_group_deltas)
-    return accepted
+    if persist_aggregates:
+        await upsert_metric_buckets(session, metric_bucket_deltas)
+        await upsert_error_group_aggregates(session, error_group_deltas)
+    return PersistIngestResult(
+        accepted=accepted,
+        metric_bucket_deltas=metric_bucket_deltas,
+        error_group_deltas=error_group_deltas,
+    )
 
 
 def _build_aggregate_deltas(

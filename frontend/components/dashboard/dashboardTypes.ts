@@ -263,6 +263,29 @@ export type DashboardMagicLinkRequestResponse = {
   dev_magic_link_token: string | null;
 };
 
+export type DashboardApiKeyItem = {
+  key_id: string;
+  created_at: string;
+  revoked_at: string | null;
+};
+
+export type DashboardApiKeyListResponse = {
+  items: DashboardApiKeyItem[];
+};
+
+export type DashboardApiKeyIssueResponse = {
+  key_id: string;
+  api_key: string;
+  created_at: string;
+};
+
+export type DashboardApiKeyRotateResponse = {
+  revoked_key_id: string;
+  replacement_key_id: string;
+  replacement_api_key: string;
+  rotated_at: string;
+};
+
 export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
 
 export const apiBaseUrl =

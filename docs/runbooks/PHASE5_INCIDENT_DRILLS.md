@@ -9,8 +9,9 @@ This runbook phase name maps to the post-MVP roadmap release-hardening stage in 
 - Expected signal: `POST /ingest` starts returning explicit overload responses.
 - Evidence:
   - `/ready` remains healthy.
-  - `/internal/metrics` counters increase for ingest rejections.
+  - `/internal/metrics` and `/metrics` counters increase for ingest rejections.
   - No scheduler crash.
+  - Aggregate freshness recovers inside target window after load stops.
 
 ## Drill 2: Alert Delivery Failure
 
@@ -31,6 +32,25 @@ This runbook phase name maps to the post-MVP roadmap release-hardening stage in 
 - Evidence:
   - Archived rows are not duplicated on retry.
   - Cleanup resumes after configuration fix.
+
+## Drill 5: Scheduler Lease / Leader Handoff
+
+- Trigger: run two backend instances with scheduler enabled and lease mode on.
+- Expected signal:
+  - Only one instance executes each periodic job at a time.
+  - Lease handoff occurs when leader instance is terminated.
+- Evidence:
+  - Job counters increase once per interval (no duplicate bursts).
+  - `/internal/metrics` shows continued progress after failover.
+
+## Escalation and rollback template
+
+- Severity: `SEV-2` or higher if ingest SLO is breached for more than 15 minutes.
+- Escalate to: on-call backend owner, then product owner if customer impact persists.
+- Rollback:
+  1. Disable async aggregate processing (`INGEST_ASYNC_AGGREGATE_ENABLED=0`) if queue/worker is unhealthy.
+  2. Disable lease mode (`JOBS_SCHEDULER_LEASE_ENABLED=0`) if lock backend is unstable.
+  3. Re-deploy previous release tag and confirm `/ready` and `/metrics`.
 
 ## Drill 4: Auth and Session Scope
 

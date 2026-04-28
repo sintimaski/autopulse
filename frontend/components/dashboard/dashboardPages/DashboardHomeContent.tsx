@@ -110,29 +110,125 @@ export function DashboardHomeContent() {
       values: d.sparklineSeries.map((bucket) => Number(bucket.count_5xx || 0)),
     },
   ];
+  const total2xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_2xx || 0), 0);
+  const total3xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_3xx || 0), 0);
+  const total4xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_4xx || 0), 0);
+  const total5xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_5xx || 0), 0);
+  const statusClassTotal = total2xx + total3xx + total4xx + total5xx;
+  const statusCoveragePct = displayRequestCount
+    ? Math.min(100, (statusClassTotal / displayRequestCount) * 100)
+    : 0;
+  const fullMetricRows: Array<{ label: string; value: string; helper?: string }> = [
+    { label: "Requests (total)", value: String(displayRequestCount), helper: "Overview scope" },
+    { label: "Errors (total)", value: String(displayErrorCount), helper: "5xx + error events" },
+    { label: "Error rate", value: `${(displayErrorRate * 100).toFixed(2)}%` },
+    { label: "Requests / min", value: displayRequestsPerMinute.toFixed(2) },
+    { label: "Latency avg", value: `${displayAvgLatencyMs.toFixed(1)} ms` },
+    { label: "Latency p50", value: `${overviewExtended.p50_latency_ms.toFixed(1)} ms` },
+    { label: "Latency p95", value: `${overviewExtended.p95_latency_ms.toFixed(1)} ms` },
+    { label: "Latency p99", value: `${overviewExtended.p99_latency_ms.toFixed(1)} ms` },
+    { label: "Active incidents", value: String(overviewExtended.active_incident_count) },
+    { label: "Error bursts (5m)", value: String(overviewExtended.error_burst_count) },
+    { label: "Service breakdown rows", value: String(overviewExtended.service_breakdown.length) },
+    { label: "Route breakdown rows", value: String(overviewExtended.route_breakdown.length) },
+    { label: "Series minute buckets", value: String(d.sparklineSeries.length) },
+    { label: "Status 2xx total", value: String(total2xx) },
+    { label: "Status 3xx total", value: String(total3xx) },
+    { label: "Status 4xx total", value: String(total4xx) },
+    { label: "Status 5xx total", value: String(total5xx) },
+    {
+      label: "Status-class coverage",
+      value: `${statusCoveragePct.toFixed(1)}%`,
+      helper: "Status totals vs request total",
+    },
+  ];
+  const primarySignalCards: Array<{
+    label: string;
+    value: string;
+    helper?: string;
+    tone: "neutral" | "warning" | "danger";
+    wide?: boolean;
+  }> = [
+    {
+      label: "Active incidents",
+      value: String(overviewExtended.active_incident_count),
+      helper: `Error bursts (5m): ${overviewExtended.error_burst_count}`,
+      tone: overviewExtended.active_incident_count > 0 ? "danger" : "neutral",
+      wide: overviewExtended.active_incident_count > 0,
+    },
+    {
+      label: "Error rate",
+      value: `${(displayErrorRate * 100).toFixed(2)}%`,
+      helper: usingFilteredSeries
+        ? "Derived from current filtered request slice"
+        : "5xx + ingested error events",
+      tone: displayErrorRate >= 0.1 ? "danger" : displayErrorRate >= 0.03 ? "warning" : "neutral",
+      wide: displayErrorRate >= 0.1,
+    },
+    {
+      label: "Latency p95",
+      value: `${overviewExtended.p95_latency_ms.toFixed(1)} ms`,
+      helper: `p50 ${overviewExtended.p50_latency_ms.toFixed(1)} · p99 ${overviewExtended.p99_latency_ms.toFixed(1)}`,
+      tone: overviewExtended.p95_latency_ms >= 300 ? "danger" : overviewExtended.p95_latency_ms >= 120 ? "warning" : "neutral",
+    },
+    {
+      label: "Requests / min",
+      value: displayRequestsPerMinute.toFixed(2),
+      helper: `Total requests: ${displayRequestCount}`,
+      tone: "neutral",
+    },
+  ];
+  const metricsByGroup: Array<{ title: string; rows: Array<{ label: string; value: string; helper?: string }> }> = [
+    {
+      title: "Volume and errors",
+      rows: fullMetricRows.filter((row) =>
+        [
+          "Requests (total)",
+          "Errors (total)",
+          "Error rate",
+          "Requests / min",
+          "Error bursts (5m)",
+          "Active incidents",
+        ].includes(row.label),
+      ),
+    },
+    {
+      title: "Latency",
+      rows: fullMetricRows.filter((row) =>
+        ["Latency avg", "Latency p50", "Latency p95", "Latency p99"].includes(row.label),
+      ),
+    },
+    {
+      title: "Status-class and breakdown coverage",
+      rows: fullMetricRows.filter((row) =>
+        [
+          "Status 2xx total",
+          "Status 3xx total",
+          "Status 4xx total",
+          "Status 5xx total",
+          "Status-class coverage",
+          "Service breakdown rows",
+          "Route breakdown rows",
+          "Series minute buckets",
+        ].includes(row.label),
+      ),
+    },
+  ];
+  const denseInsightLayout = d.recentErrorsPreview.length > 0 && d.topFailingRoutes.length > 0;
 
   return (
     <>
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Requests / min" value={displayRequestsPerMinute.toFixed(2)} />
-        <MetricCard
-          label="Error rate"
-          value={`${(displayErrorRate * 100).toFixed(1)}%`}
-          helper={usingFilteredSeries ? "Derived from current filtered request slice" : "5xx + ingested error events"}
-          tone="danger"
-        />
-        <MetricCard
-          label="Latency (p95)"
-          value={`${overviewExtended.p95_latency_ms.toFixed(1)} ms`}
-          helper={`p50 ${overviewExtended.p50_latency_ms.toFixed(1)} · p99 ${overviewExtended.p99_latency_ms.toFixed(1)}`}
-          tone={overviewExtended.p95_latency_ms >= 300 ? "warning" : "neutral"}
-        />
-        <MetricCard
-          label="Active incidents"
-          value={String(overviewExtended.active_incident_count)}
-          helper={`Error bursts (5m): ${overviewExtended.error_burst_count}`}
-          tone={overviewExtended.active_incident_count > 0 ? "danger" : "neutral"}
-        />
+      <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {primarySignalCards.map((card) => (
+          <div key={card.label} className={card.wide ? "xl:col-span-2" : ""}>
+            <MetricCard
+              label={card.label}
+              value={card.value}
+              helper={card.helper}
+              tone={card.tone}
+            />
+          </div>
+        ))}
       </section>
 
       <GuidedTroubleshootingPanel />
@@ -202,6 +298,41 @@ export function DashboardHomeContent() {
         </ChartPanel>
       </section>
 
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">All available metrics</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Metrics are grouped by purpose so operational signals stay readable under high data volume.
+        </p>
+        <div className="mt-4 space-y-3">
+          {metricsByGroup.map((group, index) => (
+            <details
+              key={group.title}
+              open={index === 0}
+              className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/70"
+            >
+              <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800 dark:text-neutral-100">
+                {group.title}
+              </summary>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {group.rows.map((row) => (
+                  <div key={row.label} className="rounded-lg bg-white/80 px-2.5 py-2 dark:bg-neutral-900/70">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                      {row.label}
+                    </p>
+                    <p className="mt-1 text-base font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
+                      {row.value}
+                    </p>
+                    {row.helper ? (
+                      <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">{row.helper}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      </section>
+
       {overview.request_count === 0 ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30">
           <h2 className="text-base font-semibold text-amber-900 dark:text-amber-200">
@@ -218,7 +349,7 @@ export function DashboardHomeContent() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className={`grid gap-4 ${denseInsightLayout ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
         <ChartPanel title="Top failing routes" actionHref={diagnosisBaseHref} actionLabel="Full diagnosis">
           {d.topFailingRoutes.length === 0 ? (
             <p className="text-sm text-slate-600 dark:text-neutral-300">
@@ -240,7 +371,11 @@ export function DashboardHomeContent() {
           )}
         </ChartPanel>
 
-        <ChartPanel title="Recent errors" actionHref={diagnosisGroupedHref} actionLabel="Grouped list">
+        <ChartPanel
+          title="Recent errors"
+          actionHref={diagnosisGroupedHref}
+          actionLabel="Grouped list"
+        >
           {d.recentErrorsPreview.length === 0 ? (
             <p className="text-sm text-slate-600 dark:text-neutral-300">
               No grouped errors in this time window.
@@ -277,23 +412,25 @@ export function DashboardHomeContent() {
           )}
         </ChartPanel>
 
-        <ChartPanel
-          title="Top services by request volume"
-          description="Highest traffic services in this window."
-          actionHref={diagnosisBaseHref}
-          actionLabel="Open diagnosis"
-        >
-          <BreakdownBarChart
-            items={serviceBreakdownByVolume.map((item) => ({
-              key: item.key,
-              value: item.request_count,
-              secondaryLabel: "error rate",
-              secondaryValue: item.error_rate * 100,
-            }))}
-            valueLabel="req"
-            emptyMessage="No service-level data yet."
-          />
-        </ChartPanel>
+        {denseInsightLayout ? (
+          <ChartPanel
+            title="Top services by request volume"
+            description="Highest traffic services in this window."
+            actionHref={diagnosisBaseHref}
+            actionLabel="Open diagnosis"
+          >
+            <BreakdownBarChart
+              items={serviceBreakdownByVolume.map((item) => ({
+                key: item.key,
+                value: item.request_count,
+                secondaryLabel: "error rate",
+                secondaryValue: item.error_rate * 100,
+              }))}
+              valueLabel="req"
+              emptyMessage="No service-level data yet."
+            />
+          </ChartPanel>
+        ) : null}
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">

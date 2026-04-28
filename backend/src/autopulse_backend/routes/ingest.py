@@ -13,7 +13,12 @@ from autopulse_backend.database import get_db_session
 from autopulse_backend.ingestion.limits import ingest_rate_limiter
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.realtime import IngestBroadcastMessage, project_websocket_hub
+from autopulse_backend.repositories.runtime_controls import allow_distributed_ingest_request
 from autopulse_backend.schemas import IngestBatchRequest, IngestBatchResponse
+from autopulse_backend.services.ingest_aggregate_worker import (
+    IngestAggregatePayload,
+    enqueue_ingest_aggregate_payload,
+)
 from autopulse_backend.services.ingest_service import persist_ingest_batch
 
 router = APIRouter()
@@ -54,11 +59,20 @@ async def ingest_events(
                 ),
             )
 
-    if not ingest_rate_limiter.allow(
-        project_id=context.project_id,
-        max_requests=settings.ingest_rate_limit_requests_per_window,
-        window_seconds=settings.ingest_rate_limit_window_seconds,
-    ):
+    if settings.ingest_distributed_rate_limit_enabled:
+        allowed = await allow_distributed_ingest_request(
+            session=session,
+            project_id=context.project_id,
+            max_requests=settings.ingest_rate_limit_requests_per_window,
+            window_seconds=settings.ingest_rate_limit_window_seconds,
+        )
+    else:
+        allowed = ingest_rate_limiter.allow(
+            project_id=context.project_id,
+            max_requests=settings.ingest_rate_limit_requests_per_window,
+            window_seconds=settings.ingest_rate_limit_window_seconds,
+        )
+    if not allowed:
         service_metrics.increment("ingest.rejected.rate_limited")
         logger.warning(
             "ingest_rejected rate_limited",
@@ -80,12 +94,24 @@ async def ingest_events(
         )
 
     received_at = datetime.now(tz=UTC)
-    accepted = await persist_ingest_batch(
+    persist_result = await persist_ingest_batch(
         session=session,
         project_id=context.project_id,
         batch=batch,
         received_at=received_at,
+        persist_aggregates=not settings.ingest_async_aggregate_enabled,
     )
+    accepted = persist_result.accepted
+    if settings.ingest_async_aggregate_enabled:
+        enqueued = enqueue_ingest_aggregate_payload(
+            IngestAggregatePayload(
+                metric_bucket_deltas=persist_result.metric_bucket_deltas,
+                error_group_deltas=persist_result.error_group_deltas,
+                enqueued_at=received_at,
+            )
+        )
+        if not enqueued:
+            service_metrics.increment("ingest.aggregate_worker.enqueue_failed")
     await project_websocket_hub.publish_ingest(
         message=IngestBroadcastMessage(
             project_id=context.project_id,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
 import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
@@ -11,6 +11,7 @@ import { TagSelector } from "../TagSelector";
 
 export function LogsContent() {
   const d = useDashboardData();
+  const [rowsPerGroup, setRowsPerGroup] = useState(200);
   const scopedState = useMemo((): DashboardScopedQueryState => {
     return {
       isAbsoluteWindow: d.isAbsoluteWindow,
@@ -251,7 +252,7 @@ export function LogsContent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-950">
-                      {group.items.map((item, rowIndex) => {
+                      {group.items.slice(0, rowsPerGroup).map((item, rowIndex) => {
                         const rowId = [
                           group.key,
                           String(rowIndex),
@@ -401,6 +402,17 @@ export function LogsContent() {
                     </tbody>
                   </table>
                 </div>
+                {group.items.length > rowsPerGroup ? (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setRowsPerGroup((prev) => prev + 200)}
+                      className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                    >
+                      Load 200 more rows in this group
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

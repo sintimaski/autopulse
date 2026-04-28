@@ -11,12 +11,14 @@ from autopulse_backend.models.orm import (
     ErrorGroupAggregate,
     Event,
     GovernanceAuditEvent,
+    IngestRateLimitWindow,
     MetricBucket,
     Organization,
     OrganizationMembership,
     Project,
     ProjectAlertSettings,
     ProjectUiSettings,
+    SchedulerJobLease,
 )
 
 __all__ = [
@@ -29,11 +31,13 @@ __all__ = [
     "DashboardUser",
     "ErrorGroupAggregate",
     "Event",
-    "MetricBucket",
     "GovernanceAuditEvent",
+    "IngestRateLimitWindow",
+    "MetricBucket",
     "Organization",
     "OrganizationMembership",
     "Project",
     "ProjectAlertSettings",
     "ProjectUiSettings",
+    "SchedulerJobLease",
 ]

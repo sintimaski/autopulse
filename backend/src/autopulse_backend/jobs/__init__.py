@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import secrets
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_engine
 from autopulse_backend.maintenance.retention import run_retention_cleanup_once
 from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
+from autopulse_backend.repositories.runtime_controls import acquire_scheduler_lease
 
 
 @dataclass(slots=True)
@@ -95,11 +97,30 @@ async def _record_job_execution(
 
 async def _run_periodic(
     *,
+    job_name: str,
+    settings: Settings,
+    scheduler_owner_token: str,
     interval_seconds: float,
     stop_event: asyncio.Event,
     operation: Callable[[], Awaitable[None]],
 ) -> None:
+    engine = get_engine(settings.database_url)
+    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     while not stop_event.is_set():
+        if settings.jobs_scheduler_lease_enabled:
+            async with session_maker() as session:
+                lease_acquired = await acquire_scheduler_lease(
+                    session=session,
+                    job_name=job_name,
+                    owner_token=scheduler_owner_token,
+                    lease_ttl_seconds=settings.jobs_scheduler_lease_ttl_seconds,
+                )
+            if not lease_acquired:
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+                except TimeoutError:
+                    continue
+                continue
         with suppress(Exception):
             await operation()
         try:
@@ -114,6 +135,7 @@ def start_scheduler(
     sender: AlertSender | None = None,
 ) -> SchedulerHandle:
     resolved_settings = settings or get_settings()
+    scheduler_owner_token = secrets.token_hex(16)
     stop_event = asyncio.Event()
 
     async def alert_tick() -> None:
@@ -131,6 +153,9 @@ def start_scheduler(
     tasks = [
         asyncio.create_task(
             _run_periodic(
+                job_name="alerts",
+                settings=resolved_settings,
+                scheduler_owner_token=scheduler_owner_token,
                 interval_seconds=resolved_settings.jobs_alert_interval_seconds,
                 stop_event=stop_event,
                 operation=alert_tick,
@@ -138,6 +163,9 @@ def start_scheduler(
         ),
         asyncio.create_task(
             _run_periodic(
+                job_name="retention",
+                settings=resolved_settings,
+                scheduler_owner_token=scheduler_owner_token,
                 interval_seconds=resolved_settings.jobs_retention_interval_seconds,
                 stop_event=stop_event,
                 operation=retention_tick,

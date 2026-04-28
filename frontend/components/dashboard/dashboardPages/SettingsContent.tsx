@@ -36,6 +36,7 @@ export function SettingsContent() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"owner" | "member">("member");
   const [orgMessage, setOrgMessage] = useState<string | null>(null);
+  const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
 
   const selectedOrganization = organizations.find((organization) => organization.organization_id === selectedOrganizationId);
@@ -387,6 +388,95 @@ export function SettingsContent() {
             {orgMessage ? <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{orgMessage}</p> : null}
           </>
         )}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">API key lifecycle</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Issue, rotate, and revoke ingest keys. These actions are owner-only and audited.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              const ok = await d.issueApiKey();
+              setApiKeyMessage(ok ? "New API key issued." : "Failed to issue API key.");
+            }}
+            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+          >
+            Issue new key
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              await d.refreshApiKeys();
+              setApiKeyMessage("API keys refreshed.");
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          >
+            Refresh
+          </button>
+        </div>
+        {d.lastIssuedApiKey ? (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-200">
+            <p className="font-semibold">Copy this key now (shown once):</p>
+            <code className="mt-1 block break-all">{d.lastIssuedApiKey}</code>
+          </div>
+        ) : null}
+        <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
+          <table className="min-w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Key ID</th>
+                <th className="px-3 py-2 font-semibold">Created</th>
+                <th className="px-3 py-2 font-semibold">Revoked</th>
+                <th className="px-3 py-2 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
+              {d.apiKeys.map((item) => (
+                <tr key={item.key_id}>
+                  <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-200">{item.key_id}</td>
+                  <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                    {new Date(item.created_at).toLocaleString()}
+                  </td>
+                  <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                    {item.revoked_at ? new Date(item.revoked_at).toLocaleString() : "active"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {item.revoked_at ? (
+                      <span className="text-xs text-slate-500 dark:text-neutral-400">No actions</span>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await d.rotateApiKey(item.key_id);
+                            setApiKeyMessage(ok ? "API key rotated." : "Failed to rotate API key.");
+                          }}
+                          className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-900 hover:bg-sky-100"
+                        >
+                          Rotate
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const ok = await d.revokeApiKey(item.key_id);
+                            setApiKeyMessage(ok ? "API key revoked." : "Failed to revoke API key.");
+                          }}
+                          className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-900 hover:bg-rose-100"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {apiKeyMessage ? <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{apiKeyMessage}</p> : null}
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">

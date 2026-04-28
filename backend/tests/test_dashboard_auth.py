@@ -285,3 +285,86 @@ def test_dashboard_api_key_fallback_is_opt_in(
             headers={"Authorization": f"Bearer {key}"},
         )
         assert allowed_response.status_code == 200
+
+
+def test_dashboard_api_key_lifecycle_owner_flow(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        ).json()["dev_magic_link_token"]
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        issue_response = client.post("/dashboard/auth/api-keys/issue")
+        assert issue_response.status_code == 200
+        issued_key_id = issue_response.json()["key_id"]
+        assert issue_response.json()["api_key"].startswith("ap_live_")
+
+        list_response = client.get("/dashboard/auth/api-keys")
+        assert list_response.status_code == 200
+        assert any(item["key_id"] == issued_key_id for item in list_response.json()["items"])
+
+        rotate_response = client.post(
+            "/dashboard/auth/api-keys/rotate",
+            json={"key_id": issued_key_id},
+        )
+        assert rotate_response.status_code == 200
+        assert rotate_response.json()["revoked_key_id"] == issued_key_id
+        replacement = rotate_response.json()["replacement_key_id"]
+
+        revoke_response = client.post(
+            "/dashboard/auth/api-keys/revoke",
+            json={"key_id": replacement},
+        )
+        assert revoke_response.status_code == 200
+        assert revoke_response.json()["key_id"] == replacement
+        assert revoke_response.json()["revoked_at"] is not None
+
+
+def test_dashboard_member_cannot_manage_api_keys(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        owner_token = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        ).json()["dev_magic_link_token"]
+        verify_owner = client.post("/dashboard/auth/magic-link/verify", json={"token": owner_token})
+        assert verify_owner.status_code == 200
+        orgs = client.get("/dashboard/organizations").json()["organizations"]
+        assert orgs
+        organization_id = orgs[0]["organization_id"]
+        invite = client.post(
+            f"/dashboard/organizations/{organization_id}/members/invite",
+            json={"email": "member@example.com", "role": "member"},
+        )
+        assert invite.status_code == 200
+        assert client.post("/dashboard/auth/logout").status_code == 200
+
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    app = create_app()
+    with TestClient(app) as member_client:
+        member_token = member_client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "member@example.com"},
+        ).json()["dev_magic_link_token"]
+        member_client.post("/dashboard/auth/magic-link/verify", json={"token": member_token})
+        member_issue = member_client.post("/dashboard/auth/api-keys/issue")
+        assert member_issue.status_code == 403

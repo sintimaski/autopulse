@@ -166,6 +166,51 @@ class ErrorGroupAggregate(Base):
     )
 
 
+class IngestRateLimitWindow(Base):
+    __tablename__ = "ingest_rate_limit_windows"
+    __table_args__ = (
+        Index(
+            "ux_ingest_rate_limit_windows_project_window",
+            "project_id",
+            "window_start",
+            unique=True,
+        ),
+        Index("ix_ingest_rate_limit_windows_window_start", "window_start"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class SchedulerJobLease(Base):
+    __tablename__ = "scheduler_job_leases"
+    __table_args__ = (
+        Index("ux_scheduler_job_leases_job_name", "job_name", unique=True),
+        Index("ix_scheduler_job_leases_expires_at", "lease_expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    owner_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class ProjectAlertSettings(Base):
     __tablename__ = "project_alert_settings"
 

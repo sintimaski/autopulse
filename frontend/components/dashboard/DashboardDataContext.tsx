@@ -30,6 +30,10 @@ import {
   type AlertDispatchesResponse,
   type AlertDispatchItem,
   compareValues,
+  type DashboardApiKeyIssueResponse,
+  type DashboardApiKeyItem,
+  type DashboardApiKeyListResponse,
+  type DashboardApiKeyRotateResponse,
   ERROR_GROUP_LIMIT_OPTIONS,
   GROUP_OPTIONS,
   METHOD_OPTIONS,
@@ -107,6 +111,8 @@ export type DashboardDataContextValue = {
   diagnosisFailures: DiagnosisFailureRoutesResponse | null;
   diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
   alertSettings: AlertSettings | null;
+  apiKeys: DashboardApiKeyItem[];
+  lastIssuedApiKey: string | null;
   alertDispatches: AlertDispatchesResponse | null;
   retentionSettings: RetentionSettings | null;
   themePreference: ThemePreference;
@@ -149,6 +155,10 @@ export type DashboardDataContextValue = {
   saveThemePreference: (next: ThemePreference) => Promise<boolean>;
   saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
   saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
+  refreshApiKeys: () => Promise<void>;
+  issueApiKey: () => Promise<boolean>;
+  rotateApiKey: (keyId: string) => Promise<boolean>;
+  revokeApiKey: (keyId: string) => Promise<boolean>;
   validateSqlFilterDraft: () => Promise<LogQueryValidationResponse | null>;
   applySqlFilter: () => Promise<boolean>;
   disableSqlFilter: () => void;
@@ -222,6 +232,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [diagnosisFailures, setDiagnosisFailures] = useState<DiagnosisFailureRoutesResponse | null>(null);
   const [diagnosisErrorGroupEvents, setDiagnosisErrorGroupEvents] = useState<DiagnosisErrorGroupEventsResponse | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
+  const [apiKeys, setApiKeys] = useState<DashboardApiKeyItem[]>([]);
+  const [lastIssuedApiKey, setLastIssuedApiKey] = useState<string | null>(null);
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
   const [retentionSettings, setRetentionSettings] = useState<RetentionSettings | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
@@ -344,15 +356,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const run = async () => {
       try {
-        const results = (await Promise.all([
+        const [
+          retentionSettingsResponse,
+          alertSettingsResponse,
+          themeSettingsResponse,
+          apiKeysResponse,
+        ] = await Promise.all([
           fetch(buildApiUrl("/dashboard/retention-settings"), { credentials: "include" }),
           fetch(buildApiUrl("/dashboard/alert-settings"), { credentials: "include" }),
           fetch(buildApiUrl("/dashboard/theme-settings"), { credentials: "include" }),
-        ]).then(([retentionSettingsResponse, alertSettingsResponse, themeSettingsResponse]) => [
-          { endpoint: "retention-settings" as const, response: retentionSettingsResponse },
-          { endpoint: "alert-settings" as const, response: alertSettingsResponse },
-          { endpoint: "theme-settings" as const, response: themeSettingsResponse },
-        ])) as DashboardFetchResult[];
+          fetch(buildApiUrl("/dashboard/auth/api-keys"), { credentials: "include" }),
+        ]);
+        const results = [
+          { endpoint: "retention-settings", response: retentionSettingsResponse },
+          { endpoint: "alert-settings", response: alertSettingsResponse },
+          { endpoint: "theme-settings", response: themeSettingsResponse },
+        ] as DashboardFetchResult[];
 
         const fetchError = buildDashboardFetchError(results);
         if (fetchError) {
@@ -370,6 +389,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAlertSettings(alertSettingsData);
         setThemePreference(themeSettingsData.theme_preference);
         setExcludeAutopulseTraffic(themeSettingsData.exclude_autopulse_traffic);
+        if (apiKeysResponse.ok) {
+          const apiKeyPayload = (await apiKeysResponse.json()) as DashboardApiKeyListResponse;
+          setApiKeys(apiKeyPayload.items ?? []);
+        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -1140,6 +1163,80 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [hasApiKey],
   );
 
+  const refreshApiKeys = useCallback(async (): Promise<void> => {
+    if (!hasApiKey) {
+      setApiKeys([]);
+      return;
+    }
+    const response = await fetch(buildApiUrl("/dashboard/auth/api-keys"), {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      return;
+    }
+    const payload = (await response.json()) as DashboardApiKeyListResponse;
+    setApiKeys(payload.items ?? []);
+  }, [hasApiKey]);
+
+  const issueApiKey = useCallback(async (): Promise<boolean> => {
+    if (!hasApiKey) {
+      return false;
+    }
+    const response = await fetch(buildApiUrl("/dashboard/auth/api-keys/issue"), {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const payload = (await response.json()) as DashboardApiKeyIssueResponse;
+    setLastIssuedApiKey(payload.api_key);
+    await refreshApiKeys();
+    return true;
+  }, [hasApiKey, refreshApiKeys]);
+
+  const rotateApiKey = useCallback(
+    async (keyId: string): Promise<boolean> => {
+      if (!hasApiKey) {
+        return false;
+      }
+      const response = await fetch(buildApiUrl("/dashboard/auth/api-keys/rotate"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ key_id: keyId }),
+      });
+      if (!response.ok) {
+        return false;
+      }
+      const payload = (await response.json()) as DashboardApiKeyRotateResponse;
+      setLastIssuedApiKey(payload.replacement_api_key);
+      await refreshApiKeys();
+      return true;
+    },
+    [hasApiKey, refreshApiKeys],
+  );
+
+  const revokeApiKey = useCallback(
+    async (keyId: string): Promise<boolean> => {
+      if (!hasApiKey) {
+        return false;
+      }
+      const response = await fetch(buildApiUrl("/dashboard/auth/api-keys/revoke"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ key_id: keyId }),
+      });
+      if (!response.ok) {
+        return false;
+      }
+      await refreshApiKeys();
+      return true;
+    },
+    [hasApiKey, refreshApiKeys],
+  );
+
   const validateSqlFilterDraft = useCallback(async (): Promise<LogQueryValidationResponse | null> => {
     if (!hasApiKey) {
       return null;
@@ -1438,6 +1535,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       diagnosisFailures,
       diagnosisErrorGroupEvents,
       alertSettings,
+      apiKeys,
+      lastIssuedApiKey,
       alertDispatches,
       retentionSettings,
       themePreference,
@@ -1479,6 +1578,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveThemePreference,
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
+      refreshApiKeys,
+      issueApiKey,
+      rotateApiKey,
+      revokeApiKey,
       validateSqlFilterDraft,
       applySqlFilter,
       disableSqlFilter,
@@ -1547,6 +1650,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       envTags,
       serviceTags,
       alertSettings,
+      apiKeys,
+      lastIssuedApiKey,
       alertDispatches,
       retentionSettings,
       themePreference,
@@ -1576,6 +1681,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveThemePreference,
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
+      refreshApiKeys,
+      issueApiKey,
+      rotateApiKey,
+      revokeApiKey,
       validateSqlFilterDraft,
       applySqlFilter,
       disableSqlFilter,

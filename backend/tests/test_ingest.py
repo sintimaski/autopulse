@@ -356,3 +356,59 @@ def test_internal_metrics_tracks_ingest_counters(
     counters = metrics.json()["counters"]
     assert counters["ingest.accepted.batches"] >= 1
     assert counters["ingest.accepted.events"] >= 1
+
+
+def test_prometheus_metrics_endpoint_exposes_ingest_counters(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/metrics",
+                "status_code": 200,
+                "latency_ms": 6.0,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        ingest = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+        metrics = client.get("/metrics")
+    assert ingest.status_code == 200
+    assert metrics.status_code == 200
+    assert "autopulse_ingest_accepted_batches" in metrics.text
+
+
+def test_ingest_accepts_optional_unknown_event_fields(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "sdk_version": "sdk-contract-test",
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/contract",
+                "status_code": 200,
+                "latency_ms": 12.0,
+                "extra_client_field": "ignored",
+            }
+        ],
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 200
+    assert response.json()["accepted"] == 1

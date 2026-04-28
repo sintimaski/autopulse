@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import sys
 import traceback
@@ -49,6 +50,9 @@ class _MonitorConfig:
     # When set (e.g. "/autopulse"), requests under this prefix use request.url.path so DB
     # "exclude internal traffic" filters match embedded dashboard/ingest routes.
     mount_prefix: str | None
+    capture_headers: bool
+    capture_query_params: bool
+    scrub_keys: frozenset[str]
 
 
 def _utc_now_iso() -> str:
@@ -110,10 +114,53 @@ def _resolve_route_path(request: Request, *, mount_prefix: str | None) -> str:
     return wire
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _is_sensitive_key(key: str, scrub_keys: frozenset[str]) -> bool:
+    lowered = key.lower()
+    if lowered in scrub_keys:
+        return True
+    return any(
+        marker in lowered
+        for marker in (
+            "token",
+            "secret",
+            "password",
+            "passwd",
+            "api_key",
+            "apikey",
+            "authorization",
+            "cookie",
+        )
+    )
+
+
 def _scrub_value(value: Any, scrub_keys: frozenset[str]) -> Any:
     if isinstance(value, Mapping):
         return {
-            key: ("[REDACTED]" if key.lower() in scrub_keys else _scrub_value(item, scrub_keys))
+            key: (
+                "[REDACTED]"
+                if _is_sensitive_key(key, scrub_keys)
+                else _scrub_value(item, scrub_keys)
+            )
             for key, item in value.items()
         }
     if isinstance(value, list):
@@ -185,7 +232,7 @@ class _EventDispatcher:
         if not self._send_enabled:
             return
         try:
-            self._queue.put_nowait(_scrub_value(event, DEFAULT_SCRUB_KEYS))
+            self._queue.put_nowait(_scrub_value(event, self._config.scrub_keys))
             _debug_log(
                 self._config.debug,
                 f"event enqueued type={event.get('type')} queue_size={self._queue.qsize()}",
@@ -268,9 +315,11 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             "environment": self._config.environment,
             "method": request.method,
             "request_id": request.headers.get("x-request-id"),
-            "headers": dict(request.headers.items()),
-            "query_params": dict(request.query_params.multi_items()),
         }
+        if self._config.capture_headers:
+            common["headers"] = dict(request.headers.items())
+        if self._config.capture_query_params:
+            common["query_params"] = dict(request.query_params.multi_items())
         try:
             response = await call_next(request)
         except Exception as exc:
@@ -328,6 +377,8 @@ def monitor(app: Any, **kwargs: Any) -> None:
     if getattr(app.state, "_autopulse_configured", False):
         return
     resolved_kwargs = dict(kwargs)
+    env_api_key = os.getenv("AUTOPULSE_API_KEY")
+    env_ingest_url = os.getenv("AUTOPULSE_INGEST_URL") or os.getenv("AUTOPULSE_ENDPOINT")
     mode = str(kwargs.get("mode", "remote")).strip().lower()
     if mode == "embedded":
         try:
@@ -344,18 +395,52 @@ def monitor(app: Any, **kwargs: Any) -> None:
                 _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
         except Exception as exc:
             _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
+    extra_scrub = resolved_kwargs.get("scrub_keys", ())
+    scrub_keys = frozenset(
+        {
+            *DEFAULT_SCRUB_KEYS,
+            *(
+                str(value).strip().lower()
+                for value in (extra_scrub if isinstance(extra_scrub, list | tuple | set) else [])
+                if str(value).strip()
+            ),
+        }
+    )
     config = _MonitorConfig(
-        api_key=resolved_kwargs.get("api_key"),
-        ingest_url=resolved_kwargs.get("ingest_url"),
+        api_key=resolved_kwargs.get("api_key", env_api_key),
+        ingest_url=resolved_kwargs.get("ingest_url", env_ingest_url),
         service_name=resolved_kwargs.get("service_name", "api"),
         environment=resolved_kwargs.get("environment", "production"),
-        queue_maxsize=int(resolved_kwargs.get("queue_maxsize", 1000)),
-        batch_size=int(resolved_kwargs.get("batch_size", 50)),
-        flush_interval_s=float(resolved_kwargs.get("flush_interval_s", 2.0)),
+        queue_maxsize=int(
+            resolved_kwargs.get(
+                "queue_maxsize",
+                _env_int("AUTOPULSE_MAX_QUEUE_SIZE", 1000),
+            )
+        ),
+        batch_size=int(
+            resolved_kwargs.get(
+                "batch_size",
+                _env_int("AUTOPULSE_BATCH_MAX_EVENTS", 50),
+            )
+        ),
+        flush_interval_s=float(
+            resolved_kwargs.get(
+                "flush_interval_s",
+                _env_float("AUTOPULSE_FLUSH_INTERVAL_SECONDS", 2.0),
+            )
+        ),
         max_retries=int(resolved_kwargs.get("max_retries", 3)),
         retry_backoff_s=float(resolved_kwargs.get("retry_backoff_s", 0.1)),
-        debug=bool(resolved_kwargs.get("debug", False)),
+        debug=bool(
+            resolved_kwargs.get(
+                "debug",
+                os.getenv("AUTOPULSE_DEBUG", "").strip() in {"1", "true", "yes"},
+            )
+        ),
         mount_prefix=_normalize_mount_prefix(resolved_kwargs.get("mount_prefix")),
+        capture_headers=bool(resolved_kwargs.get("capture_headers", True)),
+        capture_query_params=bool(resolved_kwargs.get("capture_query_params", True)),
+        scrub_keys=scrub_keys,
     )
     dispatcher = _EventDispatcher(
         config,

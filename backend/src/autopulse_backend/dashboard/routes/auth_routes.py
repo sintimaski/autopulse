@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import (
@@ -18,8 +20,14 @@ from autopulse_backend.auth import (
 )
 from autopulse_backend.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
-from autopulse_backend.models import ApiKey
+from autopulse_backend.models import ApiKey, GovernanceAuditEvent
 from autopulse_backend.schemas import (
+    DashboardApiKeyIssueResponse,
+    DashboardApiKeyItem,
+    DashboardApiKeyListResponse,
+    DashboardApiKeyRevokeRequest,
+    DashboardApiKeyRotateRequest,
+    DashboardApiKeyRotateResponse,
     DashboardBootstrapTenantRequest,
     DashboardBootstrapTenantResponse,
     DashboardMagicLinkRequest,
@@ -29,6 +37,11 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
+
+
+def _require_owner(auth_session: DashboardAuthSession) -> None:
+    if auth_session.membership_role != "owner":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner role required")
 
 
 @router.post("/auth/magic-link/request", response_model=DashboardMagicLinkRequestResponse)
@@ -124,6 +137,152 @@ async def bootstrap_dashboard_tenant(
         organization_name=payload.organization_name,
         project_name=payload.project_name,
         api_key=raw_api_key,
+    )
+
+
+@router.get("/auth/api-keys", response_model=DashboardApiKeyListResponse)
+async def list_dashboard_api_keys(
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardApiKeyListResponse:
+    _require_owner(auth_session)
+    rows = (
+        (
+            await session.execute(
+                select(ApiKey)
+                .where(ApiKey.project_id == auth_session.project_id)
+                .order_by(ApiKey.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return DashboardApiKeyListResponse(
+        items=[
+            DashboardApiKeyItem(
+                key_id=row.key_id,
+                created_at=row.created_at,
+                revoked_at=row.revoked_at,
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.post("/auth/api-keys/issue", response_model=DashboardApiKeyIssueResponse)
+async def issue_dashboard_api_key(
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardApiKeyIssueResponse:
+    _require_owner(auth_session)
+    raw_api_key, key_id, key_salt, key_hash = generate_api_key()
+    created_at = datetime.now(tz=UTC)
+    session.add(
+        ApiKey(
+            project_id=auth_session.project_id,
+            key_id=key_id,
+            key_salt=key_salt,
+            key_hash=key_hash,
+            created_at=created_at,
+        )
+    )
+    session.add(
+        GovernanceAuditEvent(
+            organization_id=auth_session.organization_id,
+            actor_user_id=auth_session.user_id,
+            action="api_key_issued",
+            target_type="api_key",
+            target_id=key_id,
+            detail={"project_id": str(auth_session.project_id)},
+        )
+    )
+    await session.commit()
+    return DashboardApiKeyIssueResponse(
+        key_id=key_id,
+        api_key=raw_api_key,
+        created_at=created_at,
+    )
+
+
+@router.post("/auth/api-keys/rotate", response_model=DashboardApiKeyRotateResponse)
+async def rotate_dashboard_api_key(
+    payload: DashboardApiKeyRotateRequest,
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardApiKeyRotateResponse:
+    _require_owner(auth_session)
+    existing = await session.scalar(
+        select(ApiKey).where(
+            ApiKey.project_id == auth_session.project_id,
+            ApiKey.key_id == payload.key_id,
+            ApiKey.revoked_at.is_(None),
+        )
+    )
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
+    rotated_at = datetime.now(tz=UTC)
+    existing.revoked_at = rotated_at
+    raw_api_key, next_key_id, key_salt, key_hash = generate_api_key()
+    session.add(
+        ApiKey(
+            project_id=auth_session.project_id,
+            key_id=next_key_id,
+            key_salt=key_salt,
+            key_hash=key_hash,
+            created_at=rotated_at,
+        )
+    )
+    session.add(
+        GovernanceAuditEvent(
+            organization_id=auth_session.organization_id,
+            actor_user_id=auth_session.user_id,
+            action="api_key_rotated",
+            target_type="api_key",
+            target_id=payload.key_id,
+            detail={"replacement_key_id": next_key_id, "project_id": str(auth_session.project_id)},
+        )
+    )
+    await session.commit()
+    return DashboardApiKeyRotateResponse(
+        revoked_key_id=payload.key_id,
+        replacement_key_id=next_key_id,
+        replacement_api_key=raw_api_key,
+        rotated_at=rotated_at,
+    )
+
+
+@router.post("/auth/api-keys/revoke", response_model=DashboardApiKeyItem)
+async def revoke_dashboard_api_key(
+    payload: DashboardApiKeyRevokeRequest,
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardApiKeyItem:
+    _require_owner(auth_session)
+    existing = await session.scalar(
+        select(ApiKey).where(
+            ApiKey.project_id == auth_session.project_id,
+            ApiKey.key_id == payload.key_id,
+            ApiKey.revoked_at.is_(None),
+        )
+    )
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
+    existing.revoked_at = datetime.now(tz=UTC)
+    session.add(
+        GovernanceAuditEvent(
+            organization_id=auth_session.organization_id,
+            actor_user_id=auth_session.user_id,
+            action="api_key_revoked",
+            target_type="api_key",
+            target_id=payload.key_id,
+            detail={"project_id": str(auth_session.project_id)},
+        )
+    )
+    await session.commit()
+    return DashboardApiKeyItem(
+        key_id=existing.key_id,
+        created_at=existing.created_at,
+        revoked_at=existing.revoked_at,
     )
 
 

@@ -19,7 +19,15 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 
 - [ ] Alert delivery status remains visible with reason codes.
 - [ ] `/internal/metrics` contains job start/success/failure counters.
+- [ ] `/metrics` exposes ingest and job counters in Prometheus text format.
 - [ ] Latest job execution telemetry appears for alerts and retention.
+- [ ] Scheduler lease mode (`JOBS_SCHEDULER_LEASE_ENABLED=1`) is validated in multi-instance staging.
+
+## SLO Gate
+
+- [ ] Ingest request path SLOs meet target (p95 under agreed threshold, 5xx rate within budget).
+- [ ] Aggregate freshness SLO is within target window after ingest bursts.
+- [ ] Alert job success ratio stays within target during drill runs.
 
 ## UI and Guided Troubleshooting
 
@@ -31,4 +39,5 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 
 - [ ] Run `./scripts/release_gates.sh` from repository root.
 - [ ] Run incident drills from `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`.
+- [ ] Capture rollback command sequence and escalation owner in release notes.
 - [ ] Attach evidence links to PR before merge.

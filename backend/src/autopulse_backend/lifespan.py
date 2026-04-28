@@ -9,6 +9,11 @@ from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_engine
 from autopulse_backend.jobs import SchedulerHandle, start_scheduler
 from autopulse_backend.models import Base
+from autopulse_backend.services.ingest_aggregate_worker import (
+    IngestAggregateWorkerHandle,
+    start_ingest_aggregate_worker,
+    stop_ingest_aggregate_worker,
+)
 
 
 @asynccontextmanager
@@ -25,6 +30,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state._autopulse_scheduler = start_scheduler(settings=settings)
     else:
         app.state._autopulse_scheduler = None
+    if settings.ingest_async_aggregate_enabled:
+        app.state._autopulse_ingest_aggregate_worker = start_ingest_aggregate_worker(settings)
+    else:
+        app.state._autopulse_ingest_aggregate_worker = None
 
     yield
 
@@ -32,3 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if isinstance(scheduler, SchedulerHandle):
         await scheduler.stop()
     app.state._autopulse_scheduler = None
+    aggregate_worker = getattr(app.state, "_autopulse_ingest_aggregate_worker", None)
+    if isinstance(aggregate_worker, IngestAggregateWorkerHandle):
+        await stop_ingest_aggregate_worker()
+    app.state._autopulse_ingest_aggregate_worker = None

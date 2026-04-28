@@ -46,6 +46,9 @@ class Settings:
     ingest_max_request_bytes: int = 1_048_576
     ingest_rate_limit_requests_per_window: int = 1200
     ingest_rate_limit_window_seconds: int = 60
+    ingest_distributed_rate_limit_enabled: bool = False
+    ingest_async_aggregate_enabled: bool = True
+    ingest_async_aggregate_queue_max_size: int = 2000
     default_sdk_version: str = "unknown"
     alerts_enabled: bool = True
     alert_default_destination_email: str | None = None
@@ -58,6 +61,8 @@ class Settings:
     retention_raw_events_days: int = 14
     logs_query_max_window_minutes: int = 1440
     jobs_enable_scheduler: bool = False
+    jobs_scheduler_lease_enabled: bool = False
+    jobs_scheduler_lease_ttl_seconds: int = 120
     jobs_alert_interval_seconds: float = 60.0
     jobs_retention_interval_seconds: float = 3600.0
     alert_sender_mode: str = "stub"
@@ -108,6 +113,19 @@ def get_settings() -> Settings:
             60,
             minimum=1,
         ),
+        ingest_distributed_rate_limit_enabled=_env_bool(
+            "INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED",
+            False,
+        ),
+        ingest_async_aggregate_enabled=_env_bool(
+            "INGEST_ASYNC_AGGREGATE_ENABLED",
+            True,
+        ),
+        ingest_async_aggregate_queue_max_size=_env_int(
+            "INGEST_ASYNC_AGGREGATE_QUEUE_MAX_SIZE",
+            2000,
+            minimum=1,
+        ),
         alerts_enabled=_env_bool("ALERTS_ENABLED", True),
         alert_default_destination_email=getenv("ALERT_DEFAULT_DESTINATION_EMAIL"),
         alert_error_spike_ratio_threshold=_env_float(
@@ -139,6 +157,12 @@ def get_settings() -> Settings:
         retention_raw_events_days=_env_int("RETENTION_RAW_EVENTS_DAYS", 14, minimum=1),
         logs_query_max_window_minutes=_env_int("LOGS_QUERY_MAX_WINDOW_MINUTES", 1440, minimum=1),
         jobs_enable_scheduler=_env_bool("JOBS_ENABLE_SCHEDULER", False),
+        jobs_scheduler_lease_enabled=_env_bool("JOBS_SCHEDULER_LEASE_ENABLED", False),
+        jobs_scheduler_lease_ttl_seconds=_env_int(
+            "JOBS_SCHEDULER_LEASE_TTL_SECONDS",
+            120,
+            minimum=5,
+        ),
         jobs_alert_interval_seconds=_env_float(
             "JOBS_ALERT_INTERVAL_SECONDS",
             60.0,

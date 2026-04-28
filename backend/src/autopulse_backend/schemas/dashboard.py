@@ -347,6 +347,53 @@ class DashboardBootstrapTenantResponse(BaseModel):
     api_key: str
 
 
+class DashboardApiKeyItem(BaseModel):
+    key_id: str
+    created_at: datetime
+    revoked_at: datetime | None = None
+
+
+class DashboardApiKeyListResponse(BaseModel):
+    items: list[DashboardApiKeyItem]
+
+
+class DashboardApiKeyIssueResponse(BaseModel):
+    key_id: str
+    api_key: str
+    created_at: datetime
+
+
+class DashboardApiKeyRotateRequest(BaseModel):
+    key_id: str
+
+    @field_validator("key_id")
+    @classmethod
+    def normalize_key_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("key_id must not be empty")
+        return normalized
+
+
+class DashboardApiKeyRotateResponse(BaseModel):
+    revoked_key_id: str
+    replacement_key_id: str
+    replacement_api_key: str
+    rotated_at: datetime
+
+
+class DashboardApiKeyRevokeRequest(BaseModel):
+    key_id: str
+
+    @field_validator("key_id")
+    @classmethod
+    def normalize_revoke_key_id(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("key_id must not be empty")
+        return normalized
+
+
 class DashboardProjectSummary(BaseModel):
     project_id: str
     project_name: str

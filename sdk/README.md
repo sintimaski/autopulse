@@ -21,11 +21,17 @@ By default, the SDK uses bounded in-memory buffering, async background sending, 
 ## Key runtime controls
 
 - `AUTOPULSE_API_KEY`
-- `AUTOPULSE_ENDPOINT`
+- `AUTOPULSE_INGEST_URL` (or `AUTOPULSE_ENDPOINT`)
 - `AUTOPULSE_FLUSH_INTERVAL_SECONDS`
 - `AUTOPULSE_BATCH_MAX_EVENTS`
 - `AUTOPULSE_MAX_QUEUE_SIZE`
 - `AUTOPULSE_DEBUG`
+
+`monitor()` also supports explicit kwargs for runtime behavior:
+- `capture_headers` (default `True`)
+- `capture_query_params` (default `True`)
+- `scrub_keys` (additional sensitive keys to redact)
+- `queue_maxsize`, `batch_size`, `flush_interval_s`, `max_retries`, `retry_backoff_s`
 
 ## Security defaults
 

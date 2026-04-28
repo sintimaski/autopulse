@@ -31,7 +31,12 @@ Backend defaults to `http://localhost:8000`.
 - `INGEST_MAX_REQUEST_BYTES`
 - `INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW`
 - `INGEST_RATE_LIMIT_WINDOW_SECONDS`
+- `INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED` (enables DB-backed distributed limiter)
+- `INGEST_ASYNC_AGGREGATE_ENABLED` (keeps ingest hot path raw-write-first)
+- `INGEST_ASYNC_AGGREGATE_QUEUE_MAX_SIZE`
 - `JOBS_ENABLE_SCHEDULER`
+- `JOBS_SCHEDULER_LEASE_ENABLED` (prevents duplicate periodic job execution across instances)
+- `JOBS_SCHEDULER_LEASE_TTL_SECONDS`
 
 See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.
 
