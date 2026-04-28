@@ -147,14 +147,12 @@ export function DashboardHomeContent() {
     value: string;
     helper?: string;
     tone: "neutral" | "warning" | "danger";
-    wide?: boolean;
   }> = [
     {
       label: "Active incidents",
       value: String(overviewExtended.active_incident_count),
       helper: `Error bursts (5m): ${overviewExtended.error_burst_count}`,
       tone: overviewExtended.active_incident_count > 0 ? "danger" : "neutral",
-      wide: overviewExtended.active_incident_count > 0,
     },
     {
       label: "Error rate",
@@ -163,7 +161,6 @@ export function DashboardHomeContent() {
         ? "Derived from current filtered request slice"
         : "5xx + ingested error events",
       tone: displayErrorRate >= 0.1 ? "danger" : displayErrorRate >= 0.03 ? "warning" : "neutral",
-      wide: displayErrorRate >= 0.1,
     },
     {
       label: "Latency p95",
@@ -176,6 +173,37 @@ export function DashboardHomeContent() {
       value: displayRequestsPerMinute.toFixed(2),
       helper: `Total requests: ${displayRequestCount}`,
       tone: "neutral",
+    },
+  ];
+  const secondarySignalCards: Array<{
+    label: string;
+    value: string;
+    helper?: string;
+    tone: "neutral" | "warning" | "danger";
+  }> = [
+    {
+      label: "Errors (total)",
+      value: String(displayErrorCount),
+      helper: "Across selected window",
+      tone: displayErrorCount > 0 ? "warning" : "neutral",
+    },
+    {
+      label: "Latency avg",
+      value: `${displayAvgLatencyMs.toFixed(1)} ms`,
+      helper: `vs p95 ${overviewExtended.p95_latency_ms.toFixed(1)} ms`,
+      tone: displayAvgLatencyMs >= 200 ? "warning" : "neutral",
+    },
+    {
+      label: "Latency p99",
+      value: `${overviewExtended.p99_latency_ms.toFixed(1)} ms`,
+      helper: `p95 ${overviewExtended.p95_latency_ms.toFixed(1)} ms`,
+      tone: overviewExtended.p99_latency_ms >= 500 ? "danger" : overviewExtended.p99_latency_ms >= 250 ? "warning" : "neutral",
+    },
+    {
+      label: "Status coverage",
+      value: `${statusCoveragePct.toFixed(1)}%`,
+      helper: "Status totals vs requests",
+      tone: statusCoveragePct < 95 ? "warning" : "neutral",
     },
   ];
   const metricsByGroup: Array<{ title: string; rows: Array<{ label: string; value: string; helper?: string }> }> = [
@@ -218,9 +246,19 @@ export function DashboardHomeContent() {
 
   return (
     <>
-      <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {primarySignalCards.map((card) => (
-          <div key={card.label} className={card.wide ? "xl:col-span-2" : ""}>
+          <div key={card.label}>
+            <MetricCard
+              label={card.label}
+              value={card.value}
+              helper={card.helper}
+              tone={card.tone}
+            />
+          </div>
+        ))}
+        {secondarySignalCards.map((card) => (
+          <div key={card.label}>
             <MetricCard
               label={card.label}
               value={card.value}

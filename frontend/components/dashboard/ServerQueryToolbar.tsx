@@ -193,11 +193,11 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
 
   return (
     <div
-      className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-900/80"
+      className="rounded-xl border border-slate-200 bg-slate-50/80 p-2.5 dark:border-neutral-700 dark:bg-neutral-900/80"
       onKeyDown={onToolbarKeyDown}
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-0">
           <div className="flex flex-wrap items-center gap-2">
             <SlidersHorizontal className="size-4 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
             <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">{scopeTitle}</p>
@@ -205,7 +205,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               {activeServerFilterCount} active
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-neutral-400">
+          <p className="text-[11px] text-slate-500 dark:text-neutral-400">
             {variant === "diagnosis"
               ? "Applies to grouped errors, diagnosis timeline, and the loaded request slice."
               : "Applies to the request log table and server-backed log queries."}
@@ -233,7 +233,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Quick range
           <select
@@ -268,7 +268,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
           />
         </label>
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-2 lg:col-span-2 xl:col-span-1">
           <button
             type="button"
             onClick={applyAbsoluteWindow}
@@ -362,8 +362,8 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         </p>
       ) : null}
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <label className="xl:col-span-2 flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
+      <div className="mt-2.5 grid gap-2.5 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+        <label className="md:col-span-2 xl:col-span-4 flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Path contains
           <input
             key={`path-${d.pathQuery}`}
@@ -408,7 +408,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         )}
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-3 grid gap-3 xl:grid-cols-2">
         <TagSelector
           id="server-environment-tags"
           label="Environment tags"
@@ -448,7 +448,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
       </div>
 
       {variant === "diagnosis" ? (
-        <div className="mt-3 max-w-[220px]">
+        <div className="mt-2.5 max-w-[220px]">
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
             Grouped errors per page
             <select
@@ -469,7 +469,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         </div>
       ) : null}
 
-      <div className="mt-4 rounded-lg border border-slate-200 bg-white/90 p-3 dark:border-neutral-700 dark:bg-neutral-950/40">
+      <div className="mt-3 rounded-lg border border-slate-200 bg-white/90 p-2.5 dark:border-neutral-700 dark:bg-neutral-950/40">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-semibold text-slate-700 dark:text-neutral-200">
             SQL WHERE filter
