@@ -1,6 +1,6 @@
-# Frontend Dashboard (M3 shell)
+# Frontend Dashboard
 
-This directory now contains the M3 dashboard shell implemented with Next.js.
+This directory contains the Next.js dashboard UI for overview, diagnosis, logs, alerts, and settings.
 
 ## Run locally
 
@@ -12,15 +12,16 @@ npm run dev
 Environment variables:
 
 - `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (default: `/autopulse`)
-- `NEXT_PUBLIC_AUTOPULSE_API_KEY` (default: embedded local key for one-process mode)
 
 Build modes:
 
 - `AUTOPULSE_FRONTEND_MODE=static` (default): builds static export for embedding.
 - `AUTOPULSE_FRONTEND_MODE=sidecar`: keeps regular Next runtime output.
 
-The M3 shell renders:
+Core surfaces:
 
 - Overview metrics: requests/minute, error rate, average latency
-- Recent request list: time, method, path, status, latency, service, environment
-- Setup, loading, error, and empty-data states
+- Requests and error-group investigation views
+- Diagnosis drill-downs and guided troubleshooting
+- Alert settings/history and retention/theme settings
+- Loading, auth/session, error, and empty-data states

@@ -5,6 +5,8 @@ from autopulse_backend.schemas.dashboard import (
     DashboardAlertDispatchItem,
     DashboardAlertSettings,
     DashboardAlertSettingsUpdate,
+    DashboardBootstrapTenantRequest,
+    DashboardBootstrapTenantResponse,
     DashboardBreakdownItem,
     DashboardDiagnosisErrorGroupEventItem,
     DashboardDiagnosisErrorGroupEventsResponse,
@@ -49,6 +51,8 @@ from autopulse_backend.schemas.ingest import (
 __all__ = [
     "DashboardAlertDispatchItem",
     "DashboardAlertDispatchesResponse",
+    "DashboardBootstrapTenantRequest",
+    "DashboardBootstrapTenantResponse",
     "DashboardAlertSettings",
     "DashboardAlertSettingsUpdate",
     "DashboardBreakdownItem",

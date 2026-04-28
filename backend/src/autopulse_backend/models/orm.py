@@ -92,6 +92,80 @@ class Event(Base):
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class MetricBucket(Base):
+    __tablename__ = "metric_buckets"
+    __table_args__ = (
+        Index("ix_metric_buckets_project_minute", "project_id", "minute_start"),
+        Index(
+            "ux_metric_buckets_project_minute_service_env",
+            "project_id",
+            "minute_start",
+            "service_name",
+            "environment",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    minute_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    service_name: Mapped[str] = mapped_column(String(255), nullable=False, default="unknown")
+    environment: Mapped[str] = mapped_column(String(128), nullable=False, default="unknown")
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latency_total_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    count_2xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    count_3xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    count_4xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    count_5xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class ErrorGroupAggregate(Base):
+    __tablename__ = "error_group_aggregates"
+    __table_args__ = (
+        Index("ix_error_group_aggregates_project_last_seen", "project_id", "last_seen"),
+        Index(
+            "ux_error_group_aggregates_project_group_key",
+            "project_id",
+            "group_key",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    group_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    exception_type: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sample_stack_trace: Mapped[str | None] = mapped_column(Text, nullable=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class ProjectAlertSettings(Base):
     __tablename__ = "project_alert_settings"
 

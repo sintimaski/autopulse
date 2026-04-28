@@ -12,6 +12,7 @@ from autopulse_backend.auth.api_keys import (
 )
 from autopulse_backend.auth.dashboard import (
     DashboardAuthSession,
+    bootstrap_dashboard_tenant_for_user,
     clear_session_cookie,
     create_magic_link_token,
     get_dashboard_auth_session,
@@ -27,6 +28,7 @@ __all__ = [
     "authenticate_project",
     "authenticate_project_token",
     "build_api_key_record",
+    "bootstrap_dashboard_tenant_for_user",
     "clear_session_cookie",
     "create_magic_link_token",
     "generate_api_key",

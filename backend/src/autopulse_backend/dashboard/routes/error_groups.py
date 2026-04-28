@@ -38,7 +38,7 @@ from autopulse_backend.ingestion.exclude_autopulse import (
     append_exclude_autopulse_event_filters,
     resolve_exclude_autopulse_traffic,
 )
-from autopulse_backend.models import Event
+from autopulse_backend.models import ErrorGroupAggregate, Event
 from autopulse_backend.schemas import DashboardErrorGroupItem, DashboardErrorGroupsResponse
 
 router = APIRouter()
@@ -95,6 +95,80 @@ async def get_dashboard_error_groups(
         filters.append(Event.latency_ms <= max_latency_ms)
     append_event_sql_filters(filters, event_sql_filter)
     dialect_name = session.bind.dialect.name if session.bind is not None else ""
+
+    has_extended_filters = any(
+        value is not None and value != ""
+        for value in (
+            method,
+            status_class,
+            path_contains,
+            environments,
+            services,
+            min_latency_ms,
+            max_latency_ms,
+            event_sql_filter,
+        )
+    )
+    if not exclude_autopulse_traffic and not has_extended_filters:
+        total_result = await session.execute(
+            select(func.count(ErrorGroupAggregate.id)).where(
+                ErrorGroupAggregate.project_id == context.project_id,
+                ErrorGroupAggregate.last_seen >= resolved_from,
+                ErrorGroupAggregate.last_seen <= resolved_to,
+            )
+        )
+        total = int(total_result.scalar_one() or 0)
+        rows = await session.execute(
+            select(
+                ErrorGroupAggregate.group_key,
+                ErrorGroupAggregate.exception_type,
+                ErrorGroupAggregate.message,
+                ErrorGroupAggregate.path,
+                ErrorGroupAggregate.count,
+                ErrorGroupAggregate.first_seen,
+                ErrorGroupAggregate.last_seen,
+                ErrorGroupAggregate.sample_stack_trace,
+            )
+            .where(
+                ErrorGroupAggregate.project_id == context.project_id,
+                ErrorGroupAggregate.last_seen >= resolved_from,
+                ErrorGroupAggregate.last_seen <= resolved_to,
+            )
+            .order_by(ErrorGroupAggregate.last_seen.desc(), ErrorGroupAggregate.count.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        items = [
+            DashboardErrorGroupItem(
+                group_key=group_key,
+                exception_type=exception_type,
+                message=message,
+                path=path,
+                count=int(count),
+                first_seen=as_utc_datetime(first_seen),
+                last_seen=as_utc_datetime(last_seen),
+                sample_stack_trace=sample_stack_trace,
+            )
+            for (
+                group_key,
+                exception_type,
+                message,
+                path,
+                count,
+                first_seen,
+                last_seen,
+                sample_stack_trace,
+            ) in rows
+        ]
+        return DashboardErrorGroupsResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            total=total,
+            limit=limit,
+            offset=offset,
+            items=items,
+        )
 
     if dialect_name == "sqlite":
         rows_result = await session.execute(

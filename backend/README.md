@@ -1,5 +1,45 @@
-# Backend (planned)
+# AutoPulse Backend
 
-FastAPI ingestion (`POST /ingest`), dashboard API, workers, and Postgres access will live here.
+FastAPI backend for ingest, dashboard APIs, auth/session flows, alerts, retention jobs, and realtime updates.
 
-See `DEVELOPMENT.md` for API shape, tables, and security requirements.
+## What lives here
+
+- Ingest API: `POST /ingest` with API-key authentication.
+- Dashboard API: overview, requests, error groups, diagnosis, alerts, settings, log query, organizations.
+- Dashboard auth: magic-link sign-in, cookie sessions, tenant bootstrap endpoint.
+- Background jobs: alert evaluation and retention cleanup.
+- Internal ops endpoints: health/ready and service metrics.
+
+## Run locally
+
+From repository root:
+
+```bash
+uv sync --group dev
+uv run python -m autopulse_backend.main
+```
+
+Backend defaults to `http://localhost:8000`.
+
+## Key environment variables
+
+- `DATABASE_URL`
+- `CORS_ALLOW_ORIGINS`
+- `DASHBOARD_AUTH_ALLOWED_EMAIL`
+- `DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN` (dev-only convenience; default is disabled)
+- `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK` (disabled by default; enable only for controlled non-browser flows)
+- `INGEST_MAX_REQUEST_BYTES`
+- `INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW`
+- `INGEST_RATE_LIMIT_WINDOW_SECONDS`
+- `JOBS_ENABLE_SCHEDULER`
+
+See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.
+
+## Operational runbooks
+
+- Alert delivery setup and verification: `backend/ALERT_DELIVERY_RUNBOOK.md`
+- Release/incident drill gates: `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md` and `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`
+
+## Scope and constraints
+
+Product/architecture source of truth remains `DEVELOPMENT.md`.

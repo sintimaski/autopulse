@@ -47,7 +47,8 @@ def _truncate_tables(database_url: str) -> None:
                     text(
                         "TRUNCATE TABLE dashboard_sessions, dashboard_magic_links, "
                         "governance_audit_events, organization_memberships, archived_events, "
-                        "dashboard_users, events, api_keys, projects, organizations "
+                        "error_group_aggregates, metric_buckets, dashboard_users, events, "
+                        "api_keys, projects, organizations "
                         "RESTART IDENTITY CASCADE"
                     )
                 )
@@ -199,3 +200,88 @@ def test_dashboard_organization_governance_flow(
         )
         assert promote_response.status_code == 200
         assert promote_response.json()["role"] == "owner"
+
+
+def test_dashboard_magic_link_bootstraps_default_project_when_empty(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        request_response = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        )
+        assert request_response.status_code == 200
+        token = request_response.json().get("dev_magic_link_token")
+        assert isinstance(token, str) and token
+        verify_response = client.post(
+            "/dashboard/auth/magic-link/verify",
+            json={"token": token},
+        )
+        assert verify_response.status_code == 200
+        payload = verify_response.json()
+        assert payload["authenticated"] is True
+        assert isinstance(payload.get("project_id"), str) and payload["project_id"]
+        assert isinstance(payload.get("organization_id"), str) and payload["organization_id"]
+
+
+def test_dashboard_bootstrap_creates_org_project_and_api_key(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        ).json()["dev_magic_link_token"]
+        client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        bootstrap_response = client.post(
+            "/dashboard/auth/bootstrap",
+            json={
+                "organization_name": "Acme Org",
+                "project_name": "Acme API",
+            },
+        )
+        assert bootstrap_response.status_code == 200
+        payload = bootstrap_response.json()
+        assert payload["organization_name"] == "Acme Org"
+        assert payload["project_name"] == "Acme API"
+        assert isinstance(payload["api_key"], str) and payload["api_key"].startswith("ap_live_")
+
+
+def test_dashboard_api_key_fallback_is_opt_in(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", raising=False)
+    app = create_app()
+
+    with TestClient(app) as client:
+        denied_response = client.get(
+            "/dashboard/overview",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        assert denied_response.status_code == 401
+
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    app = create_app()
+    with TestClient(app) as client:
+        allowed_response = client.get(
+            "/dashboard/overview",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        assert allowed_response.status_code == 200

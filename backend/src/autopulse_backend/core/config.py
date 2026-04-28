@@ -81,7 +81,8 @@ class Settings:
     dashboard_auth_session_cookie_name: str = "autopulse_dashboard_session"
     dashboard_auth_session_ttl_minutes: int = 720
     dashboard_auth_magic_link_ttl_minutes: int = 15
-    dashboard_auth_magic_link_dev_expose_token: bool = True
+    dashboard_auth_magic_link_dev_expose_token: bool = False
+    dashboard_auth_allow_api_key_fallback: bool = False
     dashboard_auth_magic_link_base_url: str | None = None
 
 
@@ -189,7 +190,11 @@ def get_settings() -> Settings:
         ),
         dashboard_auth_magic_link_dev_expose_token=_env_bool(
             "DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN",
-            True,
+            False,
+        ),
+        dashboard_auth_allow_api_key_fallback=_env_bool(
+            "DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK",
+            False,
         ),
         dashboard_auth_magic_link_base_url=(
             getenv("DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "").strip() or None

@@ -116,7 +116,7 @@ async def authenticate_dashboard_project(
     )
     if auth_session is None:
         authorization = request.headers.get("authorization")
-        if authorization:
+        if settings.dashboard_auth_allow_api_key_fallback and authorization:
             scheme, _, token = authorization.partition(" ")
             if scheme.lower() == "bearer" and token:
                 return await authenticate_project_token(session=session, token=token)

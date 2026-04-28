@@ -1,6 +1,7 @@
 # Phase 5 Release Checklist
 
 Use this checklist before promoting any Phase 5 changes.
+Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardening stage in `docs/POST_MVP_REAL_APP_ROADMAP.md`.
 
 ## Auth and Governance
 

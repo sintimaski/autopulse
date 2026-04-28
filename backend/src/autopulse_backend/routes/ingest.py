@@ -55,6 +55,7 @@ async def ingest_events(
             )
 
     if not ingest_rate_limiter.allow(
+        project_id=context.project_id,
         max_requests=settings.ingest_rate_limit_requests_per_window,
         window_seconds=settings.ingest_rate_limit_window_seconds,
     ):

@@ -62,14 +62,28 @@ def _cookie_name(settings: Settings) -> str:
     return settings.dashboard_auth_session_cookie_name or "autopulse_dashboard_session"
 
 
+def _request_is_secure(request: HTTPConnection) -> bool:
+    forwarded_proto = request.headers.get("x-forwarded-proto", "")
+    if forwarded_proto:
+        first_proto = forwarded_proto.split(",", maxsplit=1)[0].strip().lower()
+        if first_proto:
+            return first_proto == "https"
+    return request.url.scheme == "https"
+
+
 def _set_session_cookie(
-    response: Response, settings: Settings, token: str, *, expires_at: datetime
+    response: Response,
+    settings: Settings,
+    request: HTTPConnection,
+    token: str,
+    *,
+    expires_at: datetime,
 ) -> None:
     response.set_cookie(
         key=_cookie_name(settings),
         value=token,
         httponly=True,
-        secure=False,
+        secure=_request_is_secure(request),
         samesite="lax",
         expires=int(expires_at.timestamp()),
         max_age=max(1, int((expires_at - _now()).total_seconds())),
@@ -87,10 +101,12 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
 async def _resolve_default_project_id(session: AsyncSession) -> UUID:
     project = await session.scalar(select(Project).order_by(Project.created_at.asc()).limit(1))
     if project is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No project exists yet for dashboard access.",
-        )
+        organization = Organization(name="Default Organization")
+        session.add(organization)
+        await session.flush()
+        project = Project(name="Default Project", organization_id=organization.id)
+        session.add(project)
+        await session.flush()
     return project.id
 
 
@@ -128,6 +144,34 @@ async def _ensure_project_organization_membership(
         session.add(membership)
         await session.flush()
     return organization_id, membership.role
+
+
+async def bootstrap_dashboard_tenant_for_user(
+    *,
+    session: AsyncSession,
+    user_id: UUID,
+    email: str,
+    organization_name: str,
+    project_name: str,
+) -> tuple[UUID, UUID]:
+    organization = Organization(name=organization_name.strip() or "Default Organization")
+    session.add(organization)
+    await session.flush()
+    project = Project(
+        name=project_name.strip() or "Default Project",
+        organization_id=organization.id,
+    )
+    session.add(project)
+    await session.flush()
+    membership = OrganizationMembership(
+        organization_id=organization.id,
+        user_id=user_id,
+        role="owner",
+        invited_email=email,
+    )
+    session.add(membership)
+    await session.commit()
+    return organization.id, project.id
 
 
 async def create_magic_link_token(
@@ -226,6 +270,7 @@ async def verify_magic_link_and_create_session(
     response: Response,
     settings: Settings,
     token: str,
+    request: HTTPConnection,
 ) -> DashboardAuthSession:
     token_hashes = {_hash_token(candidate) for candidate in _token_candidates(token)}
     now = _now()
@@ -271,7 +316,7 @@ async def verify_magic_link_and_create_session(
     )
     session.add(session_row)
     await session.commit()
-    _set_session_cookie(response, settings, raw_session_token, expires_at=expires_at)
+    _set_session_cookie(response, settings, request, raw_session_token, expires_at=expires_at)
     return DashboardAuthSession(
         user_id=user.id,
         project_id=project_id,

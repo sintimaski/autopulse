@@ -199,6 +199,10 @@ uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_ba
 
 ### M3 - Read API and dashboard shell (Build Order 9-11)
 
+**Status**
+
+- Completed for MVP baseline; now in post-MVP scalability hardening.
+
 **Goal**
 
 - Developers can see overview trends and recent requests quickly after integration.
@@ -233,6 +237,10 @@ uv run mypy
 ---
 
 ### M4 - Errors and aggregation intelligence (Build Order 12-13)
+
+**Status**
+
+- Completed for MVP baseline; now in post-MVP scale/performance hardening.
 
 **Goal**
 
@@ -269,6 +277,10 @@ uv run mypy
 ---
 
 ### M5 - Alerts, retention, and hardening (Build Order 14-16)
+
+**Status**
+
+- Completed for MVP baseline; release/incident hardening continues in post-MVP phases.
 
 **Goal**
 

@@ -78,7 +78,10 @@ def _truncate_tables(database_url: str) -> None:
         try:
             async with session_maker() as session:
                 await session.execute(
-                    text("TRUNCATE TABLE events, api_keys, projects RESTART IDENTITY CASCADE")
+                    text(
+                        "TRUNCATE TABLE error_group_aggregates, metric_buckets, events, "
+                        "api_keys, projects RESTART IDENTITY CASCADE"
+                    )
                 )
                 await session.commit()
         finally:
@@ -118,6 +121,8 @@ def test_migration_creates_tables_and_indexes(backend_test_database_url: str) ->
     assert "ix_events_project_path_timestamp_desc" in indexes
     assert "ix_alert_dispatches_project_triggered_at" in indexes
     assert "ix_alert_dispatches_project_type_triggered_at" in indexes
+    assert "ix_metric_buckets_project_minute" in indexes
+    assert "ix_error_group_aggregates_project_last_seen" in indexes
 
 
 def test_ingest_rejects_missing_auth_header(backend_test_database_url: str) -> None:
@@ -273,6 +278,54 @@ def test_ingest_rate_limit_returns_429_with_retry_after(
     assert third.headers.get("retry-after") == "60"
     assert third.json() == {"detail": "Ingest rate limit exceeded. Try again in 60 seconds."}
     assert _count_events(backend_test_database_url) == 2
+
+
+def test_ingest_rate_limit_isolated_per_project(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key_one, _ = _seed_project_and_key(backend_test_database_url)
+    key_two, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "2")
+    monkeypatch.setenv("INGEST_RATE_LIMIT_WINDOW_SECONDS", "60")
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/rate-limit",
+                "status_code": 200,
+                "latency_ms": 12.5,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        first = client.post(
+            "/ingest",
+            json=payload,
+            headers={"Authorization": f"Bearer {key_one}"},
+        )
+        second = client.post(
+            "/ingest",
+            json=payload,
+            headers={"Authorization": f"Bearer {key_one}"},
+        )
+        blocked = client.post(
+            "/ingest",
+            json=payload,
+            headers={"Authorization": f"Bearer {key_one}"},
+        )
+        allowed_other_project = client.post(
+            "/ingest", json=payload, headers={"Authorization": f"Bearer {key_two}"}
+        )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert blocked.status_code == 429
+    assert allowed_other_project.status_code == 200
 
 
 def test_internal_metrics_tracks_ingest_counters(

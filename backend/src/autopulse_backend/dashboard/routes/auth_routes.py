@@ -6,15 +6,22 @@ from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import (
+    DashboardAuthSession,
+    bootstrap_dashboard_tenant_for_user,
     clear_session_cookie,
     create_magic_link_token,
+    generate_api_key,
     get_dashboard_auth_session,
+    require_dashboard_auth_session,
     revoke_current_dashboard_session,
     verify_magic_link_and_create_session,
 )
 from autopulse_backend.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
+from autopulse_backend.models import ApiKey
 from autopulse_backend.schemas import (
+    DashboardBootstrapTenantRequest,
+    DashboardBootstrapTenantResponse,
     DashboardMagicLinkRequest,
     DashboardMagicLinkRequestResponse,
     DashboardMagicLinkVerifyRequest,
@@ -60,6 +67,7 @@ def _derive_magic_link_base_url(request: Request, settings: Settings) -> str | N
 @router.post("/auth/magic-link/verify", response_model=DashboardSessionResponse)
 async def verify_dashboard_magic_link(
     payload: DashboardMagicLinkVerifyRequest,
+    request: Request,
     response: Response,
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardSessionResponse:
@@ -69,6 +77,7 @@ async def verify_dashboard_magic_link(
         response=response,
         settings=settings,
         token=payload.token,
+        request=request,
     )
     return DashboardSessionResponse(
         authenticated=True,
@@ -83,6 +92,38 @@ async def verify_dashboard_magic_link(
             if auth_session.membership_role in {"owner", "member"}
             else None
         ),
+    )
+
+
+@router.post("/auth/bootstrap", response_model=DashboardBootstrapTenantResponse)
+async def bootstrap_dashboard_tenant(
+    payload: DashboardBootstrapTenantRequest,
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardBootstrapTenantResponse:
+    organization_id, project_id = await bootstrap_dashboard_tenant_for_user(
+        session=session,
+        user_id=auth_session.user_id,
+        email=auth_session.email,
+        organization_name=payload.organization_name,
+        project_name=payload.project_name,
+    )
+    raw_api_key, key_id, key_salt, key_hash = generate_api_key()
+    session.add(
+        ApiKey(
+            project_id=project_id,
+            key_id=key_id,
+            key_salt=key_salt,
+            key_hash=key_hash,
+        )
+    )
+    await session.commit()
+    return DashboardBootstrapTenantResponse(
+        organization_id=str(organization_id),
+        project_id=str(project_id),
+        organization_name=payload.organization_name,
+        project_name=payload.project_name,
+        api_key=raw_api_key,
     )
 
 

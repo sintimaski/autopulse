@@ -57,7 +57,10 @@ def _truncate_tables(database_url: str) -> None:
         try:
             async with session_maker() as session:
                 await session.execute(
-                    text("TRUNCATE TABLE events, api_keys, projects RESTART IDENTITY CASCADE")
+                    text(
+                        "TRUNCATE TABLE error_group_aggregates, metric_buckets, events, "
+                        "api_keys, projects RESTART IDENTITY CASCADE"
+                    )
                 )
                 await session.commit()
         finally:

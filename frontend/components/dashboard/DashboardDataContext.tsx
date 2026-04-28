@@ -70,6 +70,7 @@ import {
 } from "./dashboardSnapshotCache";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
+import { useDashboardAuthSession } from "./useDashboardAuthSession";
 
 export type DashboardDataContextValue = {
   hasApiKey: boolean;
@@ -195,9 +196,6 @@ export function useDashboardData(): DashboardDataContextValue {
 }
 
 export function DashboardDataProvider({ children }: { children: ReactNode }) {
-  const [hasApiKey, setHasApiKey] = useState(false);
-  const [authSessionResolved, setAuthSessionResolved] = useState(false);
-
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
   const [method, setMethod] = useState("ALL");
@@ -232,6 +230,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const { hasApiKey, authSessionResolved } = useDashboardAuthSession(refreshToken);
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
@@ -312,6 +311,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [
+    hasApiKey,
     dashboardRoutePath,
     absoluteWindow,
     windowMinutes,
@@ -335,39 +335,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     envTags,
     serviceTags,
   ]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const response = await fetch(buildApiUrl("/dashboard/auth/session"), {
-          credentials: "include",
-        });
-        if (!response.ok) {
-          if (!cancelled) {
-            setHasApiKey(false);
-          }
-          return;
-        }
-        const payload = (await response.json()) as { authenticated?: boolean };
-        if (!cancelled) {
-          setHasApiKey(Boolean(payload.authenticated));
-        }
-      } catch {
-        if (!cancelled) {
-          setHasApiKey(false);
-        }
-      } finally {
-        if (!cancelled) {
-          setAuthSessionResolved(true);
-        }
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshToken]);
 
   // Settings endpoints rarely change; load once per API key (saves also update local state).
   useEffect(() => {
@@ -723,6 +690,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
     void run();
   }, [
+    hasApiKey,
     dashboardRoutePath,
     method,
     statusClass,
@@ -1069,7 +1037,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAlertSettingsSaving(false);
       }
     },
-    [],
+    [hasApiKey],
   );
 
   const updateAlertSettingsDraft = useCallback((next: AlertSettings) => {
@@ -1107,7 +1075,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setThemeSettingsSaving(false);
       }
     },
-    [excludeAutopulseTraffic],
+    [excludeAutopulseTraffic, hasApiKey],
   );
 
   const saveExcludeAutopulseTraffic = useCallback(
@@ -1142,7 +1110,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setThemeSettingsSaving(false);
       }
     },
-    [themePreference],
+    [hasApiKey, themePreference],
   );
 
   const saveRetentionSettings = useCallback(
@@ -1169,7 +1137,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [],
+    [hasApiKey],
   );
 
   const validateSqlFilterDraft = useCallback(async (): Promise<LogQueryValidationResponse | null> => {

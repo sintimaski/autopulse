@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 _FULL_RESET_SQL = text(
     "TRUNCATE TABLE alert_dispatches, project_alert_settings, "
-    "events, api_keys, projects "
+    "error_group_aggregates, metric_buckets, events, api_keys, projects "
     "RESTART IDENTITY CASCADE"
 )
 

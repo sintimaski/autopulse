@@ -26,7 +26,7 @@ from autopulse_backend.ingestion.exclude_autopulse import (
     append_exclude_autopulse_event_filters,
     resolve_exclude_autopulse_traffic,
 )
-from autopulse_backend.models import Event
+from autopulse_backend.models import Event, MetricBucket
 from autopulse_backend.schemas import (
     DashboardBreakdownItem,
     DashboardOverviewBucket,
@@ -87,6 +87,79 @@ async def get_dashboard_overview(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+
+    if not exclude_autopulse_traffic and not event_sql_filter:
+        bucket_rows = await session.execute(
+            select(
+                MetricBucket.minute_start,
+                func.sum(MetricBucket.request_count),
+                func.sum(MetricBucket.error_count),
+                func.sum(MetricBucket.latency_total_ms),
+                func.sum(MetricBucket.count_2xx),
+                func.sum(MetricBucket.count_3xx),
+                func.sum(MetricBucket.count_4xx),
+                func.sum(MetricBucket.count_5xx),
+            )
+            .where(
+                MetricBucket.project_id == context.project_id,
+                MetricBucket.minute_start >= resolved_from,
+                MetricBucket.minute_start <= resolved_to,
+            )
+            .group_by(MetricBucket.minute_start)
+            .order_by(MetricBucket.minute_start.asc())
+        )
+        sparse_series: list[DashboardOverviewBucket] = []
+        request_total = 0
+        error_total = 0
+        latency_total = 0.0
+        for (
+            minute_start,
+            bucket_request_count,
+            bucket_error_count,
+            bucket_latency_total,
+            bucket_2xx_count,
+            bucket_3xx_count,
+            bucket_4xx_count,
+            bucket_5xx_count,
+        ) in bucket_rows:
+            request_count = int(bucket_request_count or 0)
+            request_total += request_count
+            error_total += int(bucket_error_count or 0)
+            latency_total += float(bucket_latency_total or 0.0)
+            sparse_series.append(
+                DashboardOverviewBucket(
+                    minute=as_utc_datetime(minute_start),
+                    request_count=request_count,
+                    error_count=int(bucket_error_count or 0),
+                    avg_latency_ms=(
+                        float(bucket_latency_total or 0.0) / request_count if request_count else 0.0
+                    ),
+                    count_2xx=int(bucket_2xx_count or 0),
+                    count_3xx=int(bucket_3xx_count or 0),
+                    count_4xx=int(bucket_4xx_count or 0),
+                    count_5xx=int(bucket_5xx_count or 0),
+                )
+            )
+        window_minutes_val = max((resolved_to - resolved_from).total_seconds() / 60.0, 1.0)
+        error_rate = (error_total / request_total) if request_total else 0.0
+        requests_per_minute = request_total / window_minutes_val
+        avg_latency_ms = latency_total / request_total if request_total else 0.0
+        series = _fill_overview_series_gaps(
+            sparse_series=sparse_series,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+        )
+        return DashboardOverviewResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            request_count=request_total,
+            error_count=error_total,
+            error_rate=error_rate,
+            avg_latency_ms=avg_latency_ms,
+            requests_per_minute=requests_per_minute,
+            series=series,
+        )
 
     totals_query = select(
         func.count(Event.id),

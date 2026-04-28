@@ -40,7 +40,7 @@ Answer briefly:
 
 - Run targeted tests: `uv run pytest` (narrow path if large suite).
 - Run linters: `uv run ruff check`, `uv run ruff format --check`, `uv run mypy` as configured.
-- For security-sensitive paths: `uv run bandit -c pyproject.toml -r sdk/src`.
+- For security-sensitive paths: `uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend`.
 
 ## Phase 6 — Handoff
 

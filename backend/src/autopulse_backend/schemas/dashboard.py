@@ -326,6 +326,27 @@ class DashboardSessionResponse(BaseModel):
     membership_role: Literal["owner", "member"] | None = None
 
 
+class DashboardBootstrapTenantRequest(BaseModel):
+    organization_name: str = "Default Organization"
+    project_name: str = "Default Project"
+
+    @field_validator("organization_name", "project_name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("must not be empty")
+        return normalized[:255]
+
+
+class DashboardBootstrapTenantResponse(BaseModel):
+    organization_id: str
+    project_id: str
+    organization_name: str
+    project_name: str
+    api_key: str
+
+
 class DashboardProjectSummary(BaseModel):
     project_id: str
     project_name: str

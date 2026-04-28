@@ -20,15 +20,15 @@ AutoPulse already has a usable end-to-end MVP loop:
 - Backend `POST /ingest` accepts authenticated batches and stores raw events.
 - Dashboard APIs provide overview metrics, requests, and grouped errors.
 - Frontend shows overview/diagnosis/log views and renders core request and error context.
-- Alert evaluation and retention jobs exist, but delivery and operational hardening are not complete.
+- Alert evaluation and retention jobs exist, with runbooks and release drills in place; remaining work focuses on delivery reliability telemetry and team-facing UX polish.
 
 ### Known Post-MVP Gaps
 
-- Multi-tenant lifecycle is incomplete (project/workspace provisioning, user roles, key lifecycle UX).
-- Frontend currently relies on a browser-visible API key model that must be replaced for production.
-- Metrics and error grouping are mostly computed from raw events at read time, which will not scale.
-- Alert delivery is heuristic-first and needs production integrations and delivery observability.
-- Reliability/operations are missing production maturity (health/readiness, stronger job failure visibility, hardened ingest controls).
+- Multi-tenant lifecycle is still incomplete as a polished self-serve product flow (project/workspace provisioning UX, key lifecycle UX).
+- Dashboard auth now supports cookie sessions and optional API-key fallback, but session-only browser policy remains the target default.
+- Metrics and error grouping need fuller scale hardening beyond initial persisted aggregates and fast-path reads.
+- Alert delivery needs richer provider observability and stronger customer-facing dispatch diagnostics.
+- Reliability/operations need deeper SLO instrumentation and failure-mode automation, even with existing health/readiness and runbook foundations.
 
 ## What "Real App" Means
 
@@ -146,6 +146,18 @@ Cross-phase dependency notes:
 - Phase 5 depends on mature reliability and team foundations from Phases 2-4.
 
 ## Phased Execution Plan
+
+### Phase 3/4 sequencing decisions
+
+To keep scope balanced across product, engineering, and documentation:
+
+1. **Phase 3 first priority:** diagnosis performance and data-path scalability
+   - Ship persisted metric buckets and durable error-group metadata as the default fast path.
+   - Add high-volume query ergonomics (cursor navigation and selective server filters).
+2. **Phase 4 first priority:** trusted alerting and collaborative workflows
+   - Expand dispatch status/retry observability before adding broad channel surface area.
+   - Add Slack/Discord only after delivery diagnostics are visible and actionable.
+3. **Commercial features placement:** keep billing/tiering mechanics in later execution windows (post-Phase 4 stabilization), so growth controls do not displace diagnosis reliability work.
 
 ## Phase 1 - Foundation Hardening (4-6 weeks)
 
