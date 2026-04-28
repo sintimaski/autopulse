@@ -148,3 +148,65 @@ def test_retention_cleanup_respects_project_override(
     deleted, remaining = asyncio.run(run())
     assert deleted == 1
     assert remaining == 0
+
+
+def test_retention_cleanup_archives_before_delete_when_enabled(
+    backend_test_database_url: str,
+) -> None:
+    now = datetime.now(tz=UTC)
+
+    async def run() -> tuple[int, int]:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="Archive Project")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    ProjectUiSettings(
+                        project_id=project.id,
+                        theme_preference="system",
+                        exclude_autopulse_traffic=True,
+                        retention_raw_events_days=2,
+                        retention_plan="extended",
+                        archival_enabled=True,
+                        archival_mode="db_archive",
+                        archival_status="idle",
+                        logs_query_max_window_minutes=60,
+                    )
+                )
+                old_time = now - timedelta(days=10)
+                session.add(
+                    Event(
+                        project_id=project.id,
+                        timestamp=old_time,
+                        received_at=old_time,
+                        sdk_version="0.1.0",
+                        type="request",
+                        service_name="api",
+                        environment="test",
+                        method="GET",
+                        path="/archive-me",
+                        status_code=500,
+                        latency_ms=10.0,
+                        payload={"path": "/archive-me"},
+                        request_id="archive-1",
+                    )
+                )
+                await session.commit()
+                settings = replace(get_settings(), retention_raw_events_days=14)
+                result = await run_retention_cleanup_once(session, settings, now=now)
+                archived_count = int(
+                    (
+                        await session.execute(text("SELECT COUNT(*) FROM archived_events"))
+                    ).scalar_one()
+                )
+                return result.deleted_events, archived_count
+        finally:
+            await engine.dispose()
+
+    truncate_full_schema(backend_test_database_url)
+    deleted, archived = asyncio.run(run())
+    assert deleted == 1
+    assert archived == 1

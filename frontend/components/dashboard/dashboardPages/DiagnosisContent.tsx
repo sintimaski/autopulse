@@ -8,6 +8,7 @@ import { buildLogsPageHref, type DashboardScopedQueryState } from "../dashboardQ
 import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
+import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { MetricCard } from "../MetricCard";
 
 export function DiagnosisContent() {
@@ -84,6 +85,8 @@ export function DiagnosisContent() {
         <MetricCard label="Timeline buckets" value={String(timeline.buckets.length)} helper="Minutes with traffic" />
         <MetricCard label="Error groups" value={String(errorGroups.total)} helper="Grouped anchors" />
       </section>
+
+      <GuidedTroubleshootingPanel />
 
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-neutral-50">Quick diagnosis</h2>

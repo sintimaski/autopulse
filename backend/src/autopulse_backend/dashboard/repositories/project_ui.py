@@ -22,6 +22,12 @@ async def get_or_create_project_ui_settings(
             "project_ui_settings.exclude_autopulse_traffic" not in error_text
             and "project_ui_settings.logs_query_max_window_minutes" not in error_text
             and "project_ui_settings.retention_raw_events_days" not in error_text
+            and "project_ui_settings.retention_plan" not in error_text
+            and "project_ui_settings.archival_enabled" not in error_text
+            and "project_ui_settings.archival_mode" not in error_text
+            and "project_ui_settings.archival_status" not in error_text
+            and "project_ui_settings.archival_last_success_at" not in error_text
+            and "project_ui_settings.archival_last_error" not in error_text
         ):
             raise
         alter_statements = [
@@ -30,6 +36,16 @@ async def get_or_create_project_ui_settings(
             "ALTER TABLE project_ui_settings "
             "ADD COLUMN logs_query_max_window_minutes INTEGER NOT NULL DEFAULT 1440",
             "ALTER TABLE project_ui_settings ADD COLUMN retention_raw_events_days INTEGER NULL",
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN retention_plan VARCHAR(32) NOT NULL DEFAULT 'standard'",
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN archival_enabled BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN archival_mode VARCHAR(32) NOT NULL DEFAULT 'db_archive'",
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN archival_status VARCHAR(16) NOT NULL DEFAULT 'idle'",
+            "ALTER TABLE project_ui_settings " "ADD COLUMN archival_last_success_at DATETIME NULL",
+            "ALTER TABLE project_ui_settings ADD COLUMN archival_last_error TEXT NULL",
         ]
         for statement in alter_statements:
             try:

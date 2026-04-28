@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AlertSettings } from "../dashboardTypes";
+import type {
+  DashboardMembershipItem,
+  DashboardOrganizationListResponse,
+  DashboardOrganizationSummary,
+} from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { buildApiUrl } from "../dashboardTypes";
 
 type DeliveryPreset = "smtp_email" | "slack_webhook" | "teams_webhook";
 
@@ -17,8 +23,96 @@ export function SettingsContent() {
   const [retentionDraft, setRetentionDraft] = useState<{
     raw_events_days: number;
     logs_query_max_window_minutes: number;
+    retention_plan: "starter" | "standard" | "extended";
+    archival_enabled: boolean;
+    archival_mode: "db_archive";
+    archival_status: "idle" | "running" | "failed";
+    archival_last_success_at: string | null;
+    archival_last_error: string | null;
   } | null>(null);
+  const [organizations, setOrganizations] = useState<DashboardOrganizationSummary[]>([]);
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
+  const [members, setMembers] = useState<DashboardMembershipItem[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"owner" | "member">("member");
+  const [orgMessage, setOrgMessage] = useState<string | null>(null);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
+
+  const selectedOrganization = organizations.find((organization) => organization.organization_id === selectedOrganizationId);
+
+  const loadMembers = async (organizationId: string) => {
+    try {
+      const response = await fetch(buildApiUrl(`/dashboard/organizations/${organizationId}/members`), {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        setMembers([]);
+        return;
+      }
+      const payload = (await response.json()) as { members: DashboardMembershipItem[] };
+      setMembers(payload.members);
+    } catch {
+      setMembers([]);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/organizations"), {
+          credentials: "include",
+        });
+        if (!response.ok || cancelled) {
+          return;
+        }
+        const payload = (await response.json()) as DashboardOrganizationListResponse;
+        if (cancelled) {
+          return;
+        }
+        setOrganizations(payload.organizations);
+        if (payload.organizations[0]) {
+          setSelectedOrganizationId((prev) => prev ?? payload.organizations[0].organization_id);
+        }
+      } catch {
+        // no-op
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (selectedOrganizationId) {
+      void (async () => {
+        try {
+          const response = await fetch(
+            buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members`),
+            {
+              credentials: "include",
+            },
+          );
+          if (!response.ok || cancelled) {
+            setMembers([]);
+            return;
+          }
+          const payload = (await response.json()) as { members: DashboardMembershipItem[] };
+          if (!cancelled) {
+            setMembers(payload.members);
+          }
+        } catch {
+          if (!cancelled) {
+            setMembers([]);
+          }
+        }
+      })();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedOrganizationId]);
 
   const onSaveAlerts = async () => {
     if (!form) {
@@ -66,6 +160,12 @@ export function SettingsContent() {
                       raw_events_days: Number(event.target.value),
                       logs_query_max_window_minutes:
                         effectiveRetentionDraft.logs_query_max_window_minutes,
+                      retention_plan: effectiveRetentionDraft.retention_plan,
+                      archival_enabled: effectiveRetentionDraft.archival_enabled,
+                      archival_mode: effectiveRetentionDraft.archival_mode,
+                      archival_status: effectiveRetentionDraft.archival_status,
+                      archival_last_success_at: effectiveRetentionDraft.archival_last_success_at,
+                      archival_last_error: effectiveRetentionDraft.archival_last_error,
                     })
                   }
                   className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
@@ -81,12 +181,57 @@ export function SettingsContent() {
                     setRetentionDraft({
                       raw_events_days: effectiveRetentionDraft.raw_events_days,
                       logs_query_max_window_minutes: Number(event.target.value),
+                      retention_plan: effectiveRetentionDraft.retention_plan,
+                      archival_enabled: effectiveRetentionDraft.archival_enabled,
+                      archival_mode: effectiveRetentionDraft.archival_mode,
+                      archival_status: effectiveRetentionDraft.archival_status,
+                      archival_last_success_at: effectiveRetentionDraft.archival_last_success_at,
+                      archival_last_error: effectiveRetentionDraft.archival_last_error,
                     })
                   }
                   className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
                 />
               </label>
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
+                Retention tier
+                <select
+                  value={effectiveRetentionDraft.retention_plan}
+                  onChange={(event) =>
+                    setRetentionDraft({
+                      ...effectiveRetentionDraft,
+                      retention_plan: event.target.value as "starter" | "standard" | "extended",
+                    })
+                  }
+                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                >
+                  <option value="starter">Starter</option>
+                  <option value="standard">Standard</option>
+                  <option value="extended">Extended</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
+                <input
+                  type="checkbox"
+                  checked={effectiveRetentionDraft.archival_enabled}
+                  onChange={(event) =>
+                    setRetentionDraft({
+                      ...effectiveRetentionDraft,
+                      archival_enabled: event.target.checked,
+                    })
+                  }
+                />
+                Archive expired events before delete
+              </label>
             </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+              Archive status: {effectiveRetentionDraft.archival_status}
+              {effectiveRetentionDraft.archival_last_success_at
+                ? ` · last success ${new Date(effectiveRetentionDraft.archival_last_success_at).toLocaleString()}`
+                : ""}
+              {effectiveRetentionDraft.archival_last_error
+                ? ` · last error ${effectiveRetentionDraft.archival_last_error}`
+                : ""}
+            </p>
             <button
               type="button"
               onClick={async () => {
@@ -106,6 +251,141 @@ export function SettingsContent() {
           </>
         ) : (
           <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">Loading retention settings...</p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Organization governance</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Manage small-team membership with owner/member roles.
+        </p>
+        {organizations.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">No organizations available for this account.</p>
+        ) : (
+          <>
+            <label className="mt-3 block text-sm text-slate-700 dark:text-neutral-200">
+              Organization
+              <select
+                value={selectedOrganizationId ?? ""}
+                onChange={(event) => {
+                  setSelectedOrganizationId(event.target.value);
+                  void loadMembers(event.target.value);
+                }}
+                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              >
+                {organizations.map((organization) => (
+                  <option key={organization.organization_id} value={organization.organization_id}>
+                    {organization.organization_name} ({organization.role})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Email</th>
+                    <th className="px-3 py-2 font-semibold">Role</th>
+                    <th className="px-3 py-2 font-semibold">Joined</th>
+                    <th className="px-3 py-2 font-semibold">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
+                  {members.map((member) => (
+                    <tr key={member.user_id}>
+                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{member.email}</td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{member.role}</td>
+                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                        {new Date(member.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        {selectedOrganization?.role === "owner" ? (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!selectedOrganizationId) {
+                                return;
+                              }
+                              const nextRole = member.role === "owner" ? "member" : "owner";
+                              const response = await fetch(
+                                buildApiUrl(
+                                  `/dashboard/organizations/${selectedOrganizationId}/members/${member.user_id}/role`,
+                                ),
+                                {
+                                  method: "PUT",
+                                  headers: { "Content-Type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({ role: nextRole }),
+                                },
+                              );
+                              if (response.ok) {
+                                setOrgMessage("Member role updated.");
+                                void loadMembers(selectedOrganizationId);
+                              } else {
+                                setOrgMessage("Failed to update member role.");
+                              }
+                            }}
+                            className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+                          >
+                            Set {member.role === "owner" ? "member" : "owner"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-500 dark:text-neutral-400">Owner only</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {selectedOrganization?.role === "owner" ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  placeholder="new-member@example.com"
+                  onChange={(event) => setInviteEmail(event.target.value)}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                />
+                <select
+                  value={inviteRole}
+                  onChange={(event) => setInviteRole(event.target.value as "owner" | "member")}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                >
+                  <option value="member">Member</option>
+                  <option value="owner">Owner</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!selectedOrganizationId) {
+                      return;
+                    }
+                    const response = await fetch(
+                      buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+                      },
+                    );
+                    if (response.ok) {
+                      setInviteEmail("");
+                      setOrgMessage("Member invited.");
+                      void loadMembers(selectedOrganizationId);
+                    } else {
+                      setOrgMessage("Failed to invite member.");
+                    }
+                  }}
+                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+                >
+                  Invite member
+                </button>
+              </div>
+            ) : null}
+            {orgMessage ? <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{orgMessage}</p> : null}
+          </>
         )}
       </section>
 

@@ -48,4 +48,18 @@ def serialize_retention_settings(
         logs_query_max_window_minutes=max(
             1, int(settings.logs_query_max_window_minutes or fallback_query_window_minutes)
         ),
+        retention_plan=(
+            settings.retention_plan
+            if settings.retention_plan in {"starter", "standard", "extended"}
+            else "standard"
+        ),
+        archival_enabled=bool(settings.archival_enabled),
+        archival_mode="db_archive",
+        archival_status=(
+            settings.archival_status
+            if settings.archival_status in {"idle", "running", "failed"}
+            else "idle"
+        ),
+        archival_last_success_at=settings.archival_last_success_at,
+        archival_last_error=settings.archival_last_error,
     )

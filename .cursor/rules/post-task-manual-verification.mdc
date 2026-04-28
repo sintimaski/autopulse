@@ -1,0 +1,14 @@
+---
+description: Always include manual verification steps after completion
+alwaysApply: true
+---
+
+# Post-Task Response Requirement
+
+After reporting a completed implementation, include a `Manual verification steps` section.
+
+Requirements:
+- Provide copy-pasteable steps to verify the change end-to-end.
+- Cover backend and frontend checks when both were modified.
+- Include expected results for each step.
+- Keep steps concise and ordered.

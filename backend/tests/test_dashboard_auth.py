@@ -46,7 +46,9 @@ def _truncate_tables(database_url: str) -> None:
                 await session.execute(
                     text(
                         "TRUNCATE TABLE dashboard_sessions, dashboard_magic_links, "
-                        "dashboard_users, events, api_keys, projects RESTART IDENTITY CASCADE"
+                        "governance_audit_events, organization_memberships, archived_events, "
+                        "dashboard_users, events, api_keys, projects, organizations "
+                        "RESTART IDENTITY CASCADE"
                     )
                 )
                 await session.commit()
@@ -149,3 +151,51 @@ def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
         )
         assert verify_response.status_code == 200
         assert verify_response.json()["authenticated"] is True
+
+
+def test_dashboard_organization_governance_flow(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        ).json()["dev_magic_link_token"]
+        assert isinstance(token, str)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        orgs_response = client.get("/dashboard/organizations")
+        assert orgs_response.status_code == 200
+        organizations = orgs_response.json()["organizations"]
+        assert organizations
+        organization_id = organizations[0]["organization_id"]
+
+        invite_response = client.post(
+            f"/dashboard/organizations/{organization_id}/members/invite",
+            json={"email": "member@example.com", "role": "member"},
+        )
+        assert invite_response.status_code == 200
+
+        members_response = client.get(f"/dashboard/organizations/{organization_id}/members")
+        assert members_response.status_code == 200
+        members = members_response.json()["members"]
+        invited = next(
+            (member for member in members if member["email"] == "member@example.com"),
+            None,
+        )
+        assert invited is not None
+
+        promote_response = client.put(
+            f"/dashboard/organizations/{organization_id}/members/{invited['user_id']}/role",
+            json={"role": "owner"},
+        )
+        assert promote_response.status_code == 200
+        assert promote_response.json()["role"] == "owner"

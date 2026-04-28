@@ -7,6 +7,7 @@ from db_reset import truncate_full_schema
 from test_alerts import _seed_request_events
 
 from autopulse_backend import jobs
+from autopulse_backend.metrics import service_metrics
 
 
 def test_jobs_cli_alerts_once_prints_zero_with_no_projects(
@@ -49,3 +50,16 @@ def test_jobs_cli_retention_once_runs(
 
     assert exit_code == 0
     assert capsys.readouterr().out.strip().isdigit()
+
+
+def test_jobs_cli_records_last_run_telemetry(
+    backend_test_database_url: str,
+) -> None:
+    truncate_full_schema(backend_test_database_url)
+
+    jobs.main(["retention-once"])
+    snapshot = service_metrics.job_snapshot()
+
+    assert "retention" in snapshot
+    assert snapshot["retention"]["status"] == "succeeded"
+    assert isinstance(snapshot["retention"]["duration_ms"], int)

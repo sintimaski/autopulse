@@ -8,6 +8,7 @@ from autopulse_backend.dashboard.routes import (
     diagnosis,
     error_groups,
     log_query_routes,
+    organization_routes,
     overview,
     requests_routes,
     ui_settings,
@@ -24,5 +25,6 @@ router.include_router(error_groups.router)
 router.include_router(alert_routes.router)
 router.include_router(ui_settings.router)
 router.include_router(log_query_routes.router)
+router.include_router(organization_routes.router)
 
 __all__ = ["router"]

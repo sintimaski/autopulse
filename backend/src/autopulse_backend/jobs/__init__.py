@@ -5,6 +5,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -12,6 +13,7 @@ from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_a
 from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_engine
 from autopulse_backend.maintenance.retention import run_retention_cleanup_once
+from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
 
 
 @dataclass(slots=True)
@@ -48,6 +50,49 @@ async def run_retention_once(*, settings: Settings | None = None) -> int:
     return result.deleted_events
 
 
+async def _record_job_execution(
+    *,
+    job_name: str,
+    operation: Callable[[], Awaitable[int]],
+) -> int:
+    started_at = datetime.now(tz=UTC)
+    service_metrics.increment(f"jobs.{job_name}.started")
+    try:
+        processed = await operation()
+    except Exception as exc:
+        finished_at = datetime.now(tz=UTC)
+        duration_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
+        service_metrics.increment(f"jobs.{job_name}.failed")
+        service_metrics.set_job_last_run(
+            JobExecutionTelemetry(
+                job_name=job_name,
+                status="failed",
+                started_at=started_at,
+                finished_at=finished_at,
+                duration_ms=duration_ms,
+                records_processed=0,
+                failure_reason=exc.__class__.__name__,
+            )
+        )
+        raise
+    finished_at = datetime.now(tz=UTC)
+    duration_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
+    service_metrics.increment(f"jobs.{job_name}.succeeded")
+    service_metrics.increment(f"jobs.{job_name}.records_processed", max(0, int(processed)))
+    service_metrics.set_job_last_run(
+        JobExecutionTelemetry(
+            job_name=job_name,
+            status="succeeded",
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+            records_processed=max(0, int(processed)),
+            failure_reason=None,
+        )
+    )
+    return processed
+
+
 async def _run_periodic(
     *,
     interval_seconds: float,
@@ -72,10 +117,16 @@ def start_scheduler(
     stop_event = asyncio.Event()
 
     async def alert_tick() -> None:
-        await run_alerts_once(settings=resolved_settings, sender=sender)
+        await _record_job_execution(
+            job_name="alerts",
+            operation=lambda: run_alerts_once(settings=resolved_settings, sender=sender),
+        )
 
     async def retention_tick() -> None:
-        await run_retention_once(settings=resolved_settings)
+        await _record_job_execution(
+            job_name="retention",
+            operation=lambda: run_retention_once(settings=resolved_settings),
+        )
 
     tasks = [
         asyncio.create_task(
@@ -108,9 +159,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 async def _run_command(command: str) -> int:
     if command == "alerts-once":
-        return await run_alerts_once()
+        return await _record_job_execution(job_name="alerts", operation=run_alerts_once)
     if command == "retention-once":
-        return await run_retention_once()
+        return await _record_job_execution(job_name="retention", operation=run_retention_once)
     raise ValueError(f"Unsupported command: {command}")
 
 

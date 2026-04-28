@@ -17,7 +17,14 @@ from starlette.requests import HTTPConnection
 
 from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
-from autopulse_backend.models import DashboardMagicLink, DashboardSession, DashboardUser, Project
+from autopulse_backend.models import (
+    DashboardMagicLink,
+    DashboardSession,
+    DashboardUser,
+    Organization,
+    OrganizationMembership,
+    Project,
+)
 from autopulse_backend.services.alert_service import AlertSignal, EmailAlertSender
 
 
@@ -25,6 +32,8 @@ from autopulse_backend.services.alert_service import AlertSignal, EmailAlertSend
 class DashboardAuthSession:
     user_id: UUID
     project_id: UUID
+    organization_id: UUID | None
+    membership_role: str | None
     email: str
     expires_at: datetime
 
@@ -83,6 +92,42 @@ async def _resolve_default_project_id(session: AsyncSession) -> UUID:
             detail="No project exists yet for dashboard access.",
         )
     return project.id
+
+
+async def _ensure_project_organization_membership(
+    *,
+    session: AsyncSession,
+    project_id: UUID,
+    user_id: UUID,
+    email: str,
+) -> tuple[UUID | None, str | None]:
+    project = await session.scalar(select(Project).where(Project.id == project_id))
+    if project is None:
+        return None, None
+    if project.organization_id is None:
+        organization = Organization(name=f"{project.name} Organization")
+        session.add(organization)
+        await session.flush()
+        project.organization_id = organization.id
+    organization_id = project.organization_id
+    if organization_id is None:
+        return None, None
+    membership = await session.scalar(
+        select(OrganizationMembership).where(
+            OrganizationMembership.organization_id == organization_id,
+            OrganizationMembership.user_id == user_id,
+        )
+    )
+    if membership is None:
+        membership = OrganizationMembership(
+            organization_id=organization_id,
+            user_id=user_id,
+            role="owner",
+            invited_email=email,
+        )
+        session.add(membership)
+        await session.flush()
+    return organization_id, membership.role
 
 
 async def create_magic_link_token(
@@ -210,8 +255,15 @@ async def verify_magic_link_and_create_session(
     raw_session_token = secrets.token_urlsafe(48)
     expires_at = now + timedelta(minutes=settings.dashboard_auth_session_ttl_minutes)
     project_id = await _resolve_default_project_id(session)
+    organization_id, membership_role = await _ensure_project_organization_membership(
+        session=session,
+        project_id=project_id,
+        user_id=user.id,
+        email=email,
+    )
     session_row = DashboardSession(
         user_id=user.id,
+        organization_id=organization_id,
         project_id=project_id,
         token_hash=_hash_token(raw_session_token),
         expires_at=expires_at,
@@ -223,6 +275,8 @@ async def verify_magic_link_and_create_session(
     return DashboardAuthSession(
         user_id=user.id,
         project_id=project_id,
+        organization_id=organization_id,
+        membership_role=membership_role,
         email=email,
         expires_at=expires_at,
     )
@@ -293,10 +347,30 @@ async def get_dashboard_auth_session(
     if user is None:
         return None
     session_row.last_seen_at = now
+    organization_id = session_row.organization_id
+    membership_role = None
+    if organization_id is None:
+        organization_id, membership_role = await _ensure_project_organization_membership(
+            session=session,
+            project_id=session_row.project_id,
+            user_id=user.id,
+            email=user.email,
+        )
+        session_row.organization_id = organization_id
+    if organization_id is not None and membership_role is None:
+        membership = await session.scalar(
+            select(OrganizationMembership).where(
+                OrganizationMembership.organization_id == organization_id,
+                OrganizationMembership.user_id == user.id,
+            )
+        )
+        membership_role = membership.role if membership is not None else None
     await session.commit()
     return DashboardAuthSession(
         user_id=user.id,
         project_id=session_row.project_id,
+        organization_id=organization_id,
+        membership_role=membership_role,
         email=user.email,
         expires_at=session_row.expires_at,
     )

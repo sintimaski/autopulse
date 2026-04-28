@@ -74,6 +74,15 @@ async def verify_dashboard_magic_link(
         authenticated=True,
         email=auth_session.email,
         expires_at=auth_session.expires_at,
+        project_id=str(auth_session.project_id),
+        organization_id=(
+            str(auth_session.organization_id) if auth_session.organization_id is not None else None
+        ),
+        membership_role=(
+            auth_session.membership_role
+            if auth_session.membership_role in {"owner", "member"}
+            else None
+        ),
     )
 
 
@@ -94,6 +103,15 @@ async def get_dashboard_session(
         authenticated=True,
         email=auth_session.email,
         expires_at=auth_session.expires_at,
+        project_id=str(auth_session.project_id),
+        organization_id=(
+            str(auth_session.organization_id) if auth_session.organization_id is not None else None
+        ),
+        membership_role=(
+            auth_session.membership_role
+            if auth_session.membership_role in {"owner", "member"}
+            else None
+        ),
     )
 
 

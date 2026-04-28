@@ -226,11 +226,20 @@ class DashboardThemeSettingsUpdate(BaseModel):
 class DashboardRetentionSettings(BaseModel):
     raw_events_days: int
     logs_query_max_window_minutes: int
+    retention_plan: Literal["starter", "standard", "extended"] = "standard"
+    archival_enabled: bool = False
+    archival_mode: Literal["db_archive"] = "db_archive"
+    archival_status: Literal["idle", "running", "failed"] = "idle"
+    archival_last_success_at: datetime | None = None
+    archival_last_error: str | None = None
 
 
 class DashboardRetentionSettingsUpdate(BaseModel):
     raw_events_days: int
     logs_query_max_window_minutes: int
+    retention_plan: Literal["starter", "standard", "extended"] = "standard"
+    archival_enabled: bool = False
+    archival_mode: Literal["db_archive"] = "db_archive"
 
     @field_validator("raw_events_days", "logs_query_max_window_minutes")
     @classmethod
@@ -312,3 +321,53 @@ class DashboardSessionResponse(BaseModel):
     authenticated: bool
     email: str | None = None
     expires_at: datetime | None = None
+    project_id: str | None = None
+    organization_id: str | None = None
+    membership_role: Literal["owner", "member"] | None = None
+
+
+class DashboardProjectSummary(BaseModel):
+    project_id: str
+    project_name: str
+    organization_id: str | None = None
+
+
+class DashboardOrganizationSummary(BaseModel):
+    organization_id: str
+    organization_name: str
+    projects: list[DashboardProjectSummary]
+    role: Literal["owner", "member"]
+
+
+class DashboardOrganizationListResponse(BaseModel):
+    organizations: list[DashboardOrganizationSummary]
+
+
+class DashboardMembershipItem(BaseModel):
+    user_id: str
+    email: str
+    role: Literal["owner", "member"]
+    invited_email: str | None = None
+    created_at: datetime
+
+
+class DashboardMembershipListResponse(BaseModel):
+    organization_id: str
+    members: list[DashboardMembershipItem]
+
+
+class DashboardInviteMemberRequest(BaseModel):
+    email: str
+    role: Literal["owner", "member"] = "member"
+
+    @field_validator("email")
+    @classmethod
+    def normalize_invite_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if "@" not in normalized:
+            raise ValueError("email must be valid")
+        return normalized
+
+
+class DashboardUpdateMemberRoleRequest(BaseModel):
+    role: Literal["owner", "member"]

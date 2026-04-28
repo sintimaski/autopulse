@@ -38,4 +38,5 @@ async def internal_metrics(request: Request) -> dict[str, object]:
         "service": "autopulse-backend",
         "scheduler_running": isinstance(scheduler, SchedulerHandle),
         "counters": service_metrics.snapshot(),
+        "jobs": service_metrics.job_snapshot(),
     }

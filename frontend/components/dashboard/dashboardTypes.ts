@@ -177,6 +177,12 @@ export type ThemeSettings = {
 export type RetentionSettings = {
   raw_events_days: number;
   logs_query_max_window_minutes: number;
+  retention_plan: "starter" | "standard" | "extended";
+  archival_enabled: boolean;
+  archival_mode: "db_archive";
+  archival_status: "idle" | "running" | "failed";
+  archival_last_success_at: string | null;
+  archival_last_error: string | null;
 };
 
 export type LogQueryRequest = {
@@ -216,6 +222,39 @@ export type DashboardSessionResponse = {
   authenticated: boolean;
   email: string | null;
   expires_at: string | null;
+  project_id: string | null;
+  organization_id: string | null;
+  membership_role: "owner" | "member" | null;
+};
+
+export type DashboardProjectSummary = {
+  project_id: string;
+  project_name: string;
+  organization_id: string | null;
+};
+
+export type DashboardOrganizationSummary = {
+  organization_id: string;
+  organization_name: string;
+  projects: DashboardProjectSummary[];
+  role: "owner" | "member";
+};
+
+export type DashboardOrganizationListResponse = {
+  organizations: DashboardOrganizationSummary[];
+};
+
+export type DashboardMembershipItem = {
+  user_id: string;
+  email: string;
+  role: "owner" | "member";
+  invited_email: string | null;
+  created_at: string;
+};
+
+export type DashboardMembershipListResponse = {
+  organization_id: string;
+  members: DashboardMembershipItem[];
 };
 
 export type DashboardMagicLinkRequestResponse = {

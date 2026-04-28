@@ -7,6 +7,7 @@ import { OverviewScopeFacetBoard } from "../OverviewScopeFacetBoard";
 import { SparklineMini } from "../SparklineMini";
 import { StatusPill } from "../StatusPill";
 import { VolumeChart } from "../VolumeChart";
+import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { useDashboardData } from "../DashboardDataContext";
 import {
   BreakdownBarChart,
@@ -133,6 +134,8 @@ export function DashboardHomeContent() {
           tone={overviewExtended.active_incident_count > 0 ? "danger" : "neutral"}
         />
       </section>
+
+      <GuidedTroubleshootingPanel />
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-2.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
