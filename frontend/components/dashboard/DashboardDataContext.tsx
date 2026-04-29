@@ -28,12 +28,15 @@ import {
   buildApiUrl,
   buildUpdatesWebsocketUrl,
   type AlertDispatchesResponse,
+  type AlertCapabilitiesResponse,
+  type AlertChannelCapability,
   type AlertDispatchItem,
   compareValues,
   type DashboardApiKeyIssueResponse,
   type DashboardApiKeyItem,
   type DashboardApiKeyListResponse,
   type DashboardApiKeyRotateResponse,
+  type DashboardOnboardingStatusResponse,
   ERROR_GROUP_LIMIT_OPTIONS,
   GROUP_OPTIONS,
   METHOD_OPTIONS,
@@ -114,6 +117,8 @@ export type DashboardDataContextValue = {
   apiKeys: DashboardApiKeyItem[];
   lastIssuedApiKey: string | null;
   alertDispatches: AlertDispatchesResponse | null;
+  alertCapabilities: AlertChannelCapability[];
+  onboardingStatus: DashboardOnboardingStatusResponse | null;
   retentionSettings: RetentionSettings | null;
   themePreference: ThemePreference;
   excludeAutopulseTraffic: boolean;
@@ -235,6 +240,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [apiKeys, setApiKeys] = useState<DashboardApiKeyItem[]>([]);
   const [lastIssuedApiKey, setLastIssuedApiKey] = useState<string | null>(null);
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
+  const [alertCapabilities, setAlertCapabilities] = useState<AlertChannelCapability[]>([]);
+  const [onboardingStatus, setOnboardingStatus] = useState<DashboardOnboardingStatusResponse | null>(null);
   const [retentionSettings, setRetentionSettings] = useState<RetentionSettings | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [excludeAutopulseTraffic, setExcludeAutopulseTraffic] = useState(true);
@@ -242,7 +249,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
-  const { hasApiKey, authSessionResolved } = useDashboardAuthSession(refreshToken);
+  const { hasSession: hasApiKey, authSessionResolved } = useDashboardAuthSession(refreshToken);
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
@@ -361,11 +368,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           alertSettingsResponse,
           themeSettingsResponse,
           apiKeysResponse,
+          alertCapabilitiesResponse,
+          onboardingStatusResponse,
         ] = await Promise.all([
           fetch(buildApiUrl("/dashboard/retention-settings"), { credentials: "include" }),
           fetch(buildApiUrl("/dashboard/alert-settings"), { credentials: "include" }),
           fetch(buildApiUrl("/dashboard/theme-settings"), { credentials: "include" }),
           fetch(buildApiUrl("/dashboard/auth/api-keys"), { credentials: "include" }),
+          fetch(buildApiUrl("/dashboard/alert-capabilities"), { credentials: "include" }),
+          fetch(buildApiUrl("/dashboard/auth/onboarding-status"), { credentials: "include" }),
         ]);
         const results = [
           { endpoint: "retention-settings", response: retentionSettingsResponse },
@@ -392,6 +403,18 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (apiKeysResponse.ok) {
           const apiKeyPayload = (await apiKeysResponse.json()) as DashboardApiKeyListResponse;
           setApiKeys(apiKeyPayload.items ?? []);
+        }
+        if (alertCapabilitiesResponse.ok) {
+          const capabilitiesPayload = (await alertCapabilitiesResponse.json()) as AlertCapabilitiesResponse;
+          setAlertCapabilities(capabilitiesPayload.channels ?? []);
+        } else {
+          setAlertCapabilities([]);
+        }
+        if (onboardingStatusResponse.ok) {
+          const onboardingPayload = (await onboardingStatusResponse.json()) as DashboardOnboardingStatusResponse;
+          setOnboardingStatus(onboardingPayload);
+        } else {
+          setOnboardingStatus(null);
         }
       } catch (error) {
         if (cancelled) {
@@ -1538,6 +1561,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       apiKeys,
       lastIssuedApiKey,
       alertDispatches,
+      alertCapabilities,
+      onboardingStatus,
       retentionSettings,
       themePreference,
       excludeAutopulseTraffic,
@@ -1653,6 +1678,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       apiKeys,
       lastIssuedApiKey,
       alertDispatches,
+      alertCapabilities,
+      onboardingStatus,
       retentionSettings,
       themePreference,
       excludeAutopulseTraffic,

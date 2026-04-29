@@ -420,7 +420,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const statusStrip = (
     <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
-        <p className="font-medium text-slate-700 dark:text-neutral-200">Signed in</p>
+        <p className="font-medium text-slate-700 dark:text-neutral-200">Session access</p>
         <p className={d.hasApiKey ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}>
           {d.hasApiKey ? "Active session" : "Not signed in"}
         </p>

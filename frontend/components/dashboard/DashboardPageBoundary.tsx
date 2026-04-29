@@ -85,8 +85,7 @@ export function ApiKeyMissing() {
         <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Enter your email to request a magic link. In local/dev mode, the issued token can be shown below
-          for quick verification.
+          Enter your email to request a magic link. Dashboard access is session-first; ingest API keys are only for your app SDK.
         </p>
         <div className="mt-5 space-y-3">
           <input

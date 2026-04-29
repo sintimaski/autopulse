@@ -197,6 +197,7 @@ class DashboardAlertDispatchItem(BaseModel):
     delivered_via: str
     status: str
     reason_code: str | None = None
+    reason_message: str | None = None
     attempt_count: int
     triggered_at: datetime
     window_start: datetime
@@ -211,6 +212,17 @@ class DashboardAlertDispatchesResponse(BaseModel):
     limit: int
     offset: int
     items: list[DashboardAlertDispatchItem]
+
+
+class DashboardAlertChannelCapability(BaseModel):
+    channel: Literal["email", "slack", "discord", "webhook"]
+    status: Literal["active", "planned", "unavailable"]
+    enabled: bool
+    reason: str
+
+
+class DashboardAlertCapabilitiesResponse(BaseModel):
+    channels: list[DashboardAlertChannelCapability]
 
 
 class DashboardThemeSettings(BaseModel):
@@ -324,6 +336,22 @@ class DashboardSessionResponse(BaseModel):
     project_id: str | None = None
     organization_id: str | None = None
     membership_role: Literal["owner", "member"] | None = None
+
+
+class DashboardOnboardingStatusResponse(BaseModel):
+    session_authenticated: bool
+    project_ready: bool
+    ingest_key_ready: bool
+    first_event_received: bool
+    first_diagnostic_signal_ready: bool
+    current_step: Literal[
+        "authenticate_session",
+        "confirm_project",
+        "provision_ingest_key",
+        "send_first_event",
+        "open_diagnosis",
+        "completed",
+    ]
 
 
 class DashboardBootstrapTenantRequest(BaseModel):

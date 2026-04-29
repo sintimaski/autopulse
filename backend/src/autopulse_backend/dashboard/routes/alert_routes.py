@@ -22,6 +22,8 @@ from autopulse_backend.database import get_db_session
 from autopulse_backend.models import AlertDispatch
 from autopulse_backend.repositories.alert_settings import get_or_create_project_alert_settings
 from autopulse_backend.schemas import (
+    DashboardAlertCapabilitiesResponse,
+    DashboardAlertChannelCapability,
     DashboardAlertDispatchesResponse,
     DashboardAlertDispatchItem,
     DashboardAlertSettings,
@@ -29,6 +31,20 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
+
+
+def _reason_message_for_dispatch(reason_code: str | None) -> str | None:
+    if reason_code is None:
+        return None
+    normalized = reason_code.strip().lower()
+    mapping = {
+        "provider_timeout": "Provider timed out. Verify provider health and retry later.",
+        "provider_rejected": "Provider rejected the request. Verify destination and credentials.",
+        "rate_limited": "Provider rate limited this alert. Retry after cooldown.",
+        "missing_destination": "Destination is missing. Update the alert destination settings.",
+        "disabled": "Alert policy is disabled for this project.",
+    }
+    return mapping.get(normalized, normalized.replace("_", " "))
 
 
 @router.get("/alert-settings", response_model=DashboardAlertSettings)
@@ -81,6 +97,7 @@ async def get_dashboard_alert_dispatches(
             delivered_via=dispatch.delivered_via,
             status=dispatch.status,
             reason_code=dispatch.reason_code,
+            reason_message=_reason_message_for_dispatch(dispatch.reason_code),
             attempt_count=int(dispatch.attempt_count),
             triggered_at=as_utc_datetime(dispatch.triggered_at),
             window_start=as_utc_datetime(dispatch.window_start),
@@ -96,6 +113,42 @@ async def get_dashboard_alert_dispatches(
         for dispatch in rows.scalars().all()
     ]
     return DashboardAlertDispatchesResponse(total=total, limit=limit, offset=offset, items=items)
+
+
+@router.get("/alert-capabilities", response_model=DashboardAlertCapabilitiesResponse)
+async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesResponse:
+    settings = get_settings()
+    channels = [
+        DashboardAlertChannelCapability(
+            channel="email",
+            status="active" if settings.alerts_enabled else "unavailable",
+            enabled=bool(settings.alerts_enabled),
+            reason=(
+                "SMTP/email dispatch is available and used by default."
+                if settings.alerts_enabled
+                else "Alert dispatch is disabled by configuration."
+            ),
+        ),
+        DashboardAlertChannelCapability(
+            channel="slack",
+            status="planned",
+            enabled=False,
+            reason="Slack delivery is not enabled in the current MVP release.",
+        ),
+        DashboardAlertChannelCapability(
+            channel="discord",
+            status="planned",
+            enabled=False,
+            reason="Discord delivery is not enabled in the current MVP release.",
+        ),
+        DashboardAlertChannelCapability(
+            channel="webhook",
+            status="planned",
+            enabled=False,
+            reason="Generic webhook delivery is planned for a future phase.",
+        ),
+    ]
+    return DashboardAlertCapabilitiesResponse(channels=channels)
 
 
 @router.put("/alert-settings", response_model=DashboardAlertSettings)

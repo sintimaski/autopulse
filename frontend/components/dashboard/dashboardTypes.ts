@@ -151,6 +151,7 @@ export type AlertDispatchItem = {
   delivered_via: string;
   status: string;
   reason_code: string | null;
+  reason_message: string | null;
   attempt_count: number;
   triggered_at: string;
   window_start: string;
@@ -158,6 +159,17 @@ export type AlertDispatchItem = {
   delivered_at: string | null;
   provider_message_id: string | null;
   detail: Record<string, number | string>;
+};
+
+export type AlertChannelCapability = {
+  channel: "email" | "slack" | "discord" | "webhook";
+  status: "active" | "planned" | "unavailable";
+  enabled: boolean;
+  reason: string;
+};
+
+export type AlertCapabilitiesResponse = {
+  channels: AlertChannelCapability[];
 };
 
 export type AlertDispatchesResponse = {
@@ -225,6 +237,21 @@ export type DashboardSessionResponse = {
   project_id: string | null;
   organization_id: string | null;
   membership_role: "owner" | "member" | null;
+};
+
+export type DashboardOnboardingStatusResponse = {
+  session_authenticated: boolean;
+  project_ready: boolean;
+  ingest_key_ready: boolean;
+  first_event_received: boolean;
+  first_diagnostic_signal_ready: boolean;
+  current_step:
+    | "authenticate_session"
+    | "confirm_project"
+    | "provision_ingest_key"
+    | "send_first_event"
+    | "open_diagnosis"
+    | "completed";
 };
 
 export type DashboardProjectSummary = {

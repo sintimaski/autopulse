@@ -368,3 +368,43 @@ def test_dashboard_member_cannot_manage_api_keys(
         member_client.post("/dashboard/auth/magic-link/verify", json={"token": member_token})
         member_issue = member_client.post("/dashboard/auth/api-keys/issue")
         assert member_issue.status_code == 403
+
+
+def test_dashboard_onboarding_status_and_alert_capabilities(
+    backend_test_database_url: str,
+    monkeypatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    app = create_app()
+
+    with TestClient(app) as client:
+        unauth = client.get("/dashboard/auth/onboarding-status")
+        assert unauth.status_code == 401
+
+        token = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        ).json()["dev_magic_link_token"]
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        onboarding = client.get("/dashboard/auth/onboarding-status")
+        assert onboarding.status_code == 200
+        payload = onboarding.json()
+        assert payload["session_authenticated"] is True
+        assert payload["project_ready"] is True
+        assert payload["ingest_key_ready"] is True
+        assert payload["current_step"] in {
+            "send_first_event",
+            "open_diagnosis",
+            "completed",
+        }
+
+        capabilities = client.get("/dashboard/alert-capabilities")
+        assert capabilities.status_code == 200
+        channels = {item["channel"]: item for item in capabilities.json()["channels"]}
+        assert channels["email"]["status"] in {"active", "unavailable"}
+        assert channels["slack"]["status"] == "planned"

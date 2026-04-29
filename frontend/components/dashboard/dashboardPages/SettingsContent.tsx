@@ -10,11 +10,8 @@ import type {
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl } from "../dashboardTypes";
 
-type DeliveryPreset = "smtp_email" | "slack_webhook" | "teams_webhook";
-
 export function SettingsContent() {
   const d = useDashboardData();
-  const [deliveryPreset, setDeliveryPreset] = useState<DeliveryPreset>("smtp_email");
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
   const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<{
@@ -535,9 +532,9 @@ export function SettingsContent() {
               <tr>
                 <td className="px-3 py-2 font-medium text-slate-800 dark:text-neutral-100">Delivery channels</td>
                 <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                  SMTP email now; Slack/Teams webhook presets scaffolded for next phase.
+                  Email dispatch is active. Additional channels are explicitly marked as planned until implemented.
                 </td>
-                <td className="px-3 py-2 text-amber-700 dark:text-amber-400">Email live, vendors next</td>
+                <td className="px-3 py-2 text-amber-700 dark:text-amber-400">Capability-driven</td>
               </tr>
             </tbody>
           </table>
@@ -560,51 +557,31 @@ export function SettingsContent() {
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Delivery channels</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          SMTP email is currently active. Vendor channels are modeled here for the next integration phase.
+          Channel availability is sourced from backend capabilities.
         </p>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <button
-            type="button"
-            onClick={() => setDeliveryPreset("smtp_email")}
-            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
-              deliveryPreset === "smtp_email"
-                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
-                : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-            }`}
-          >
-            SMTP Email
-          </button>
-          <button
-            type="button"
-            onClick={() => setDeliveryPreset("slack_webhook")}
-            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
-              deliveryPreset === "slack_webhook"
-                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
-                : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-            }`}
-          >
-            Slack Webhook
-          </button>
-          <button
-            type="button"
-            onClick={() => setDeliveryPreset("teams_webhook")}
-            className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
-              deliveryPreset === "teams_webhook"
-                ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
-                : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-            }`}
-          >
-            Teams Webhook
-          </button>
-        </div>
-        <div className="mt-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 text-sm text-slate-700 dark:border-neutral-700 dark:bg-neutral-800/70 dark:text-neutral-200">
-          {deliveryPreset === "smtp_email" ? (
-            <p>Active now: route alerts to `destination_email` via backend SMTP sender.</p>
-          ) : deliveryPreset === "slack_webhook" ? (
-            <p>Planned: add provider-neutral webhook sender and Slack-compatible message template.</p>
-          ) : (
-            <p>Planned: add Teams webhook sender with provider template adapter.</p>
-          )}
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {d.alertCapabilities.map((capability) => (
+            <div
+              key={capability.channel}
+              className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-neutral-700 dark:bg-neutral-800/70"
+            >
+              <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">
+                {capability.channel.toUpperCase()}
+              </p>
+              <p
+                className={`mt-1 text-xs font-medium ${
+                  capability.status === "active"
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : capability.status === "planned"
+                      ? "text-amber-700 dark:text-amber-300"
+                      : "text-rose-700 dark:text-rose-300"
+                }`}
+              >
+                {capability.status === "active" ? "Active" : capability.status === "planned" ? "Planned" : "Unavailable"}
+              </p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">{capability.reason}</p>
+            </div>
+          ))}
         </div>
       </section>
     </div>

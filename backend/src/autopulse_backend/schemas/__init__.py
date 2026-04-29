@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from autopulse_backend.schemas.dashboard import (
+    DashboardAlertCapabilitiesResponse,
+    DashboardAlertChannelCapability,
     DashboardAlertDispatchesResponse,
     DashboardAlertDispatchItem,
     DashboardAlertSettings,
@@ -32,6 +34,7 @@ from autopulse_backend.schemas.dashboard import (
     DashboardMagicLinkVerifyRequest,
     DashboardMembershipItem,
     DashboardMembershipListResponse,
+    DashboardOnboardingStatusResponse,
     DashboardOrganizationListResponse,
     DashboardOrganizationSummary,
     DashboardOverviewBucket,
@@ -56,6 +59,8 @@ from autopulse_backend.schemas.ingest import (
 
 __all__ = [
     "DashboardAlertDispatchItem",
+    "DashboardAlertChannelCapability",
+    "DashboardAlertCapabilitiesResponse",
     "DashboardAlertDispatchesResponse",
     "DashboardApiKeyIssueResponse",
     "DashboardApiKeyItem",
@@ -88,6 +93,7 @@ __all__ = [
     "DashboardOverviewResponse",
     "DashboardOrganizationListResponse",
     "DashboardOrganizationSummary",
+    "DashboardOnboardingStatusResponse",
     "DashboardProjectSummary",
     "DashboardRequestItem",
     "DashboardRequestsResponse",

@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import exists
 
 from autopulse_backend.auth import (
     DashboardAuthSession,
@@ -20,7 +21,13 @@ from autopulse_backend.auth import (
 )
 from autopulse_backend.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
-from autopulse_backend.models import ApiKey, GovernanceAuditEvent
+from autopulse_backend.models import (
+    ApiKey,
+    ErrorGroupAggregate,
+    Event,
+    GovernanceAuditEvent,
+    Project,
+)
 from autopulse_backend.schemas import (
     DashboardApiKeyIssueResponse,
     DashboardApiKeyItem,
@@ -33,6 +40,7 @@ from autopulse_backend.schemas import (
     DashboardMagicLinkRequest,
     DashboardMagicLinkRequestResponse,
     DashboardMagicLinkVerifyRequest,
+    DashboardOnboardingStatusResponse,
     DashboardSessionResponse,
 )
 
@@ -312,6 +320,63 @@ async def get_dashboard_session(
             if auth_session.membership_role in {"owner", "member"}
             else None
         ),
+    )
+
+
+@router.get("/auth/onboarding-status", response_model=DashboardOnboardingStatusResponse)
+async def get_dashboard_onboarding_status(
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardOnboardingStatusResponse:
+    project_exists = await session.scalar(
+        select(exists().where(Project.id == auth_session.project_id))
+    )
+    has_ingest_key = await session.scalar(
+        select(
+            exists().where(
+                ApiKey.project_id == auth_session.project_id, ApiKey.revoked_at.is_(None)
+            )
+        )
+    )
+    has_first_event = await session.scalar(
+        select(exists().where(Event.project_id == auth_session.project_id))
+    )
+    has_diagnostic_signal = await session.scalar(
+        select(
+            exists().where(
+                ErrorGroupAggregate.project_id == auth_session.project_id,
+                ErrorGroupAggregate.count > 0,
+            )
+        )
+    )
+    if has_diagnostic_signal:
+        current_step = "completed"
+    elif has_first_event:
+        current_step = "open_diagnosis"
+    elif has_ingest_key:
+        current_step = "send_first_event"
+    elif project_exists:
+        current_step = "provision_ingest_key"
+    else:
+        current_step = "confirm_project"
+    session.add(
+        GovernanceAuditEvent(
+            organization_id=auth_session.organization_id,
+            actor_user_id=auth_session.user_id,
+            action="onboarding_status_checked",
+            target_type="onboarding",
+            target_id=str(auth_session.project_id),
+            detail={"current_step": current_step},
+        )
+    )
+    await session.commit()
+    return DashboardOnboardingStatusResponse(
+        session_authenticated=True,
+        project_ready=bool(project_exists),
+        ingest_key_ready=bool(has_ingest_key),
+        first_event_received=bool(has_first_event),
+        first_diagnostic_signal_ready=bool(has_diagnostic_signal),
+        current_step=current_step,
     )
 
 

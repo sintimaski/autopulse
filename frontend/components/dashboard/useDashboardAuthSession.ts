@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
 import { buildApiUrl } from "./dashboardTypes";
 
 export function useDashboardAuthSession(refreshToken: number): {
-  hasApiKey: boolean;
+  hasSession: boolean;
   authSessionResolved: boolean;
 } {
-  const [hasApiKey, setHasApiKey] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
   const [authSessionResolved, setAuthSessionResolved] = useState(false);
 
   useEffect(() => {
@@ -20,17 +20,17 @@ export function useDashboardAuthSession(refreshToken: number): {
         });
         if (!response.ok) {
           if (!cancelled) {
-            setHasApiKey(false);
+            setHasSession(false);
           }
           return;
         }
         const payload = (await response.json()) as { authenticated?: boolean };
         if (!cancelled) {
-          setHasApiKey(Boolean(payload.authenticated));
+          setHasSession(Boolean(payload.authenticated));
         }
       } catch {
         if (!cancelled) {
-          setHasApiKey(false);
+          setHasSession(false);
         }
       } finally {
         if (!cancelled) {
@@ -44,5 +44,5 @@ export function useDashboardAuthSession(refreshToken: number): {
     };
   }, [refreshToken]);
 
-  return { hasApiKey, authSessionResolved };
+  return { hasSession, authSessionResolved };
 }

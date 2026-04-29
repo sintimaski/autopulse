@@ -379,7 +379,7 @@ export function AlertsContent() {
                         ) : null}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                        {dispatch.reason_code ?? "none"}
+                        {dispatch.reason_message ?? dispatch.reason_code ?? "none"}
                       </td>
                       <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
                         {dispatch.destination_email ?? "not set"}
