@@ -37,6 +37,17 @@ class DashboardBreakdownItem(BaseModel):
     avg_latency_ms: float
 
 
+class DashboardErrorTypeBreakdownItem(BaseModel):
+    error_type: str
+    count: int
+
+
+class DashboardAlertTimelineItem(BaseModel):
+    triggered_at: datetime
+    alert_type: str
+    status: str
+
+
 class DashboardOverviewExtendedResponse(BaseModel):
     server_now: datetime
     from_timestamp: datetime
@@ -44,8 +55,12 @@ class DashboardOverviewExtendedResponse(BaseModel):
     p50_latency_ms: float
     p95_latency_ms: float
     p99_latency_ms: float
+    apdex_score: float
+    active_sessions_estimate: int
     error_burst_count: int
     active_incident_count: int
+    error_type_breakdown: list[DashboardErrorTypeBreakdownItem]
+    alerts_timeline: list[DashboardAlertTimelineItem]
     service_breakdown: list[DashboardBreakdownItem]
     route_breakdown: list[DashboardBreakdownItem]
 

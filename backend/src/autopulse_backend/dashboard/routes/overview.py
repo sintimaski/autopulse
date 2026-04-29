@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -26,15 +27,66 @@ from autopulse_backend.ingestion.exclude_autopulse import (
     append_exclude_autopulse_event_filters,
     resolve_exclude_autopulse_traffic,
 )
-from autopulse_backend.models import Event, MetricBucket
+from autopulse_backend.models import AlertDispatch, Event, MetricBucket
 from autopulse_backend.schemas import (
+    DashboardAlertTimelineItem,
     DashboardBreakdownItem,
+    DashboardErrorTypeBreakdownItem,
     DashboardOverviewBucket,
     DashboardOverviewExtendedResponse,
     DashboardOverviewResponse,
 )
 
 router = APIRouter()
+APDEX_SATISFIED_THRESHOLD_MS = 300.0
+APDEX_TOLERATED_THRESHOLD_MS = 1200.0
+
+
+def _compute_apdex(latencies: list[float]) -> float:
+    total = len(latencies)
+    if total == 0:
+        return 1.0
+    satisfied = sum(1 for latency in latencies if latency <= APDEX_SATISFIED_THRESHOLD_MS)
+    tolerated = sum(
+        1
+        for latency in latencies
+        if APDEX_SATISFIED_THRESHOLD_MS < latency <= APDEX_TOLERATED_THRESHOLD_MS
+    )
+    return (satisfied + (tolerated / 2.0)) / float(total)
+
+
+def _classify_error_type(
+    *, event_type: str, status_code: int, payload: dict[str, object]
+) -> str | None:
+    if event_type != "error" and status_code < 500:
+        return None
+    exception_type = str(payload.get("exception_type") or "")
+    exception_message = str(payload.get("exception_message") or "")
+    raw = f"{exception_type} {exception_message}".lower()
+    if "timeout" in raw or "timed out" in raw:
+        return "timeout"
+    if any(token in raw for token in ("sql", "database", "db", "postgres", "mysql", "sqlite")):
+        return "database"
+    if any(token in raw for token in ("validation", "pydantic", "invalid")):
+        return "validation"
+    if any(
+        token in raw
+        for token in ("network", "connection", "dns", "socket", "refused", "unreachable")
+    ):
+        return "network"
+    if any(token in raw for token in ("auth", "unauthorized", "forbidden", "token")):
+        return "auth"
+    return "server"
+
+
+def _extract_session_key(payload: dict[str, object]) -> str | None:
+    for candidate in ("session_id", "sessionId", "user_id", "userId", "distinct_id"):
+        raw = payload.get(candidate)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        if isinstance(raw, int):
+            return str(raw)
+    return None
 
 
 def _empty_overview_bucket(minute: datetime) -> DashboardOverviewBucket:
@@ -313,19 +365,34 @@ async def get_dashboard_overview_extended(
         select(
             Event.path,
             Event.service_name,
+            Event.type,
             Event.status_code,
             Event.latency_ms,
             Event.timestamp,
+            Event.payload,
+            Event.request_id,
         ).where(*filters)
     )
     items = list(rows)
-    latencies = [float(latency) for _, _, _, latency, _ in items]
+    latencies = [float(latency) for _, _, _, _, latency, _, _, _ in items]
 
     service_stats: dict[str, dict[str, float | int]] = {}
     route_stats: dict[str, dict[str, float | int]] = {}
+    error_type_counts: Counter[str] = Counter()
+    active_session_keys: set[str] = set()
     error_burst_count = 0
     error_window_start = resolved_to - timedelta(minutes=5)
-    for path, service_name, status_code, latency_ms, timestamp in items:
+    for (
+        path,
+        service_name,
+        event_type,
+        status_code,
+        latency_ms,
+        timestamp,
+        payload,
+        request_id,
+    ) in items:
+        payload_dict = payload if isinstance(payload, dict) else {}
         is_error = int(status_code) >= 500
         key_service = service_name or "unknown"
         key_route = path or "unknown"
@@ -338,6 +405,19 @@ async def get_dashboard_overview_extended(
             current["latency_sum"] += float(latency_ms)
             if is_error:
                 current["errors"] += 1
+        classified = _classify_error_type(
+            event_type=str(event_type or ""),
+            status_code=int(status_code or 0),
+            payload=payload_dict,
+        )
+        if classified is not None:
+            error_type_counts[classified] += 1
+        session_key = _extract_session_key(payload_dict)
+        if session_key:
+            active_session_keys.add(session_key)
+        elif isinstance(request_id, str) and request_id.strip():
+            # Fallback approximation when SDK does not send session/user ids.
+            active_session_keys.add(request_id.strip())
         if is_error and as_utc_datetime(timestamp) >= error_window_start:
             error_burst_count += 1
 
@@ -358,6 +438,25 @@ async def get_dashboard_overview_extended(
         rows_result.sort(key=lambda row: (row.error_count, row.request_count), reverse=True)
         return rows_result[:8]
 
+    alert_rows = await session.execute(
+        select(AlertDispatch.triggered_at, AlertDispatch.alert_type, AlertDispatch.status)
+        .where(
+            AlertDispatch.project_id == context.project_id,
+            AlertDispatch.triggered_at >= resolved_from,
+            AlertDispatch.triggered_at <= resolved_to,
+        )
+        .order_by(AlertDispatch.triggered_at.asc(), AlertDispatch.id.asc())
+        .limit(200)
+    )
+    alerts_timeline = [
+        DashboardAlertTimelineItem(
+            triggered_at=as_utc_datetime(triggered_at),
+            alert_type=str(alert_type),
+            status=str(status),
+        )
+        for triggered_at, alert_type, status in alert_rows
+    ]
+
     return DashboardOverviewExtendedResponse(
         server_now=server_now,
         from_timestamp=resolved_from,
@@ -365,8 +464,15 @@ async def get_dashboard_overview_extended(
         p50_latency_ms=percentile(latencies, 0.50),
         p95_latency_ms=percentile(latencies, 0.95),
         p99_latency_ms=percentile(latencies, 0.99),
+        apdex_score=_compute_apdex(latencies),
+        active_sessions_estimate=len(active_session_keys),
         error_burst_count=error_burst_count,
         active_incident_count=1 if error_burst_count > 0 else 0,
+        error_type_breakdown=[
+            DashboardErrorTypeBreakdownItem(error_type=error_type, count=count)
+            for error_type, count in error_type_counts.most_common(8)
+        ],
+        alerts_timeline=alerts_timeline,
         service_breakdown=to_breakdown(service_stats),
         route_breakdown=to_breakdown(route_stats),
     )

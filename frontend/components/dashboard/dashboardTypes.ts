@@ -36,8 +36,19 @@ export type OverviewExtendedResponse = {
   p50_latency_ms: number;
   p95_latency_ms: number;
   p99_latency_ms: number;
+  apdex_score: number;
+  active_sessions_estimate: number;
   error_burst_count: number;
   active_incident_count: number;
+  error_type_breakdown: Array<{
+    error_type: string;
+    count: number;
+  }>;
+  alerts_timeline: Array<{
+    triggered_at: string;
+    alert_type: string;
+    status: string;
+  }>;
   service_breakdown: BreakdownItem[];
   route_breakdown: BreakdownItem[];
 };

@@ -177,14 +177,28 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
                             "description": "Current queue size",
                             "order": 10,
                             "config": {"unit": "jobs", "tone": "warning"},
-                        }
+                        },
+                        {
+                            "widget_id": "latency_hist",
+                            "type": "histogram",
+                            "title": "Latency distribution",
+                            "description": "Latency buckets",
+                            "order": 20,
+                            "config": {"unit": "req"},
+                        },
                     ],
                     "points": [
                         {
                             "widget_id": "queue_depth",
                             "timestamp": base_time.isoformat(),
                             "value": 7.0,
-                        }
+                        },
+                        {
+                            "widget_id": "latency_hist",
+                            "timestamp": base_time.isoformat(),
+                            "label": "<50ms",
+                            "value": 12.0,
+                        },
                     ],
                 }
             },
@@ -199,10 +213,14 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
         )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["definitions"][0]["widget_id"] == "queue_depth"
-    assert payload["definitions"][0]["type"] == "card"
-    assert payload["points"][0]["widget_id"] == "queue_depth"
-    assert payload["points"][0]["value"] == 7.0
+    by_id = {item["widget_id"]: item for item in payload["definitions"]}
+    assert by_id["queue_depth"]["type"] == "card"
+    assert by_id["latency_hist"]["type"] == "histogram"
+    points_by_widget: dict[str, list[dict[str, object]]] = {}
+    for point in payload["points"]:
+        points_by_widget.setdefault(str(point["widget_id"]), []).append(point)
+    assert points_by_widget["queue_depth"][0]["value"] == 7.0
+    assert points_by_widget["latency_hist"][0]["label"] == "<50ms"
 
 
 def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_url: str) -> None:
@@ -986,6 +1004,10 @@ def test_dashboard_overview_extended_and_diagnosis_endpoints(
     assert extended.status_code == 200
     extended_payload = extended.json()
     assert extended_payload["p95_latency_ms"] > 0
+    assert 0.0 <= extended_payload["apdex_score"] <= 1.0
+    assert isinstance(extended_payload["active_sessions_estimate"], int)
+    assert isinstance(extended_payload["error_type_breakdown"], list)
+    assert isinstance(extended_payload["alerts_timeline"], list)
     assert isinstance(extended_payload["service_breakdown"], list)
     assert isinstance(extended_payload["route_breakdown"], list)
     assert timeline.status_code == 200

@@ -221,7 +221,15 @@ def _extract_dashboard_widget_rows(
                 title = item.get("title")
                 if not isinstance(widget_id, str) or not widget_id.strip():
                     continue
-                if widget_type not in {"card", "line", "bar", "donut"}:
+                if widget_type not in {
+                    "card",
+                    "line",
+                    "bar",
+                    "donut",
+                    "histogram",
+                    "scatter",
+                    "stacked_area",
+                }:
                     continue
                 if not isinstance(title, str) or not title.strip():
                     continue
