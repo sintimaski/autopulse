@@ -17,7 +17,12 @@ export function SparklineMini({
   if (values.length === 0) {
     return <div className="h-8 w-full rounded bg-slate-100 dark:bg-neutral-800" />;
   }
-  const max = Math.max(...values, 1);
+  let max = 1;
+  for (const value of values) {
+    if (value > max) {
+      max = value;
+    }
+  }
   const points = values
     .map((value, index) => `${(index / Math.max(values.length - 1, 1)) * 100},${100 - (value / max) * 100}`)
     .join(" ");

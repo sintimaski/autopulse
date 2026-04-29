@@ -37,6 +37,7 @@ import {
   type DashboardApiKeyListResponse,
   type DashboardApiKeyRotateResponse,
   type DashboardOnboardingStatusResponse,
+  type DashboardWidgetsResponse,
   ERROR_GROUP_LIMIT_OPTIONS,
   GROUP_OPTIONS,
   METHOD_OPTIONS,
@@ -117,6 +118,7 @@ export type DashboardDataContextValue = {
   serviceTags: Set<string>;
   overview: OverviewResponse | null;
   overviewExtended: OverviewExtendedResponse | null;
+  dashboardWidgets: DashboardWidgetsResponse | null;
   requests: RequestsResponse | null;
   errorGroups: ErrorGroupsResponse | null;
   diagnosisTimeline: DiagnosisTimelineResponse | null;
@@ -247,6 +249,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [serviceTags, setServiceTags] = useState<Set<string>>(new Set());
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [overviewExtended, setOverviewExtended] = useState<OverviewExtendedResponse | null>(null);
+  const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetsResponse | null>(null);
   const [requests, setRequests] = useState<RequestsResponse | null>(null);
   const [errorGroups, setErrorGroups] = useState<ErrorGroupsResponse | null>(null);
   const [diagnosisTimeline, setDiagnosisTimeline] = useState<DiagnosisTimelineResponse | null>(null);
@@ -466,6 +469,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
 
       const includeExtended = routePath === "/dashboard" || routePath === "/diagnosis";
+      const includeWidgets = routePath === "/dashboard";
       const includeErrorGroups = routePath === "/dashboard" || routePath === "/diagnosis";
       const includeDiagnosis = routePath === "/diagnosis";
       const includeAlertDispatches = routePath === "/alerts";
@@ -650,6 +654,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             }),
           });
         }
+        if (includeWidgets) {
+          fetchTasks.push({
+            endpoint: "widgets",
+            promise: fetch(buildApiUrl(`/dashboard/widgets?${overviewParams.toString()}`), {
+              credentials: "include",
+            }),
+          });
+        }
         fetchTasks.push({
           endpoint: "requests",
           promise: fetch(buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`), {
@@ -725,6 +737,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setOverviewExtended(byEndpoint.get("overview-extended") as OverviewExtendedResponse);
         } else {
           setOverviewExtended(null);
+        }
+        if (includeWidgets && byEndpoint.has("widgets")) {
+          setDashboardWidgets(byEndpoint.get("widgets") as DashboardWidgetsResponse);
+        } else {
+          setDashboardWidgets(null);
         }
         if (includeErrorGroups && byEndpoint.has("error-groups")) {
           setErrorGroups(byEndpoint.get("error-groups") as ErrorGroupsResponse);
@@ -1753,6 +1770,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       serviceTags,
       overview,
       overviewExtended,
+      dashboardWidgets,
       requests,
       errorGroups,
       diagnosisTimeline,
@@ -1856,6 +1874,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       absoluteWindow,
       overview,
       overviewExtended,
+      dashboardWidgets,
       requests,
       errorGroups,
       diagnosisTimeline,

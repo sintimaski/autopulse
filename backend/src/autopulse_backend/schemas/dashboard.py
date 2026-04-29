@@ -50,6 +50,30 @@ class DashboardOverviewExtendedResponse(BaseModel):
     route_breakdown: list[DashboardBreakdownItem]
 
 
+class DashboardWidgetDefinition(BaseModel):
+    widget_id: str
+    type: Literal["card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"]
+    title: str
+    description: str | None = None
+    order: int
+    config: dict[str, Any] = {}
+
+
+class DashboardWidgetPoint(BaseModel):
+    widget_id: str
+    timestamp: datetime
+    label: str | None = None
+    value: float
+
+
+class DashboardWidgetsResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    definitions: list[DashboardWidgetDefinition]
+    points: list[DashboardWidgetPoint]
+
+
 class DashboardRequestItem(BaseModel):
     timestamp: datetime
     method: str

@@ -42,6 +42,39 @@ export type OverviewExtendedResponse = {
   route_breakdown: BreakdownItem[];
 };
 
+export type DashboardWidgetType =
+  | "card"
+  | "line"
+  | "bar"
+  | "donut"
+  | "histogram"
+  | "scatter"
+  | "stacked_area";
+
+export type DashboardWidgetDefinition = {
+  widget_id: string;
+  type: DashboardWidgetType;
+  title: string;
+  description: string | null;
+  order: number;
+  config: Record<string, string | number | boolean | null>;
+};
+
+export type DashboardWidgetPoint = {
+  widget_id: string;
+  timestamp: string;
+  label: string | null;
+  value: number;
+};
+
+export type DashboardWidgetsResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  definitions: DashboardWidgetDefinition[];
+  points: DashboardWidgetPoint[];
+};
+
 export type RequestItem = {
   timestamp: string;
   method: string;

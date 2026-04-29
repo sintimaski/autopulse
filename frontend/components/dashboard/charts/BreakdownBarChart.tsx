@@ -27,7 +27,12 @@ export function BreakdownBarChart({
   if (!items.length) {
     return <p className="text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>;
   }
-  const maxValue = Math.max(...items.map((item) => item.value), 1);
+  let maxValue = 1;
+  for (const item of items) {
+    if (item.value > maxValue) {
+      maxValue = item.value;
+    }
+  }
 
   return (
     <ul className={`space-y-2 ${className ?? ""}`}>

@@ -13,6 +13,7 @@ from autopulse_backend.dashboard.routes import (
     requests_routes,
     ui_settings,
     websockets,
+    widgets,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -26,5 +27,6 @@ router.include_router(alert_routes.router)
 router.include_router(ui_settings.router)
 router.include_router(log_query_routes.router)
 router.include_router(organization_routes.router)
+router.include_router(widgets.router)
 
 __all__ = ["router"]

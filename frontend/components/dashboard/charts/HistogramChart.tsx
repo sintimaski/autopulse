@@ -17,7 +17,12 @@ export function HistogramChart({
   if (!buckets.length) {
     return <p className="text-sm text-slate-500 dark:text-neutral-400">No distribution data available.</p>;
   }
-  const max = Math.max(...buckets.map((bucket) => bucket.count), 1);
+  let max = 1;
+  for (const bucket of buckets) {
+    if (bucket.count > max) {
+      max = bucket.count;
+    }
+  }
   return (
     <div className="space-y-2">
       <ul className="space-y-1.5">

@@ -36,6 +36,7 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "capture_headers": True,
         "capture_query_params": True,
         "scrub_keys": frozenset({"authorization", "cookie", "token", "api_key"}),
+        "dashboard_widgets": tuple(),
     }
     values.update(overrides)
     return _MonitorConfig(**values)

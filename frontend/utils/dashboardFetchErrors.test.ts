@@ -6,7 +6,10 @@ import {
   type DashboardFetchResult,
 } from "./dashboardFetchErrors";
 
-function result(endpoint: "overview" | "requests" | "error-groups", status: number): DashboardFetchResult {
+function result(
+  endpoint: "overview" | "widgets" | "requests" | "error-groups",
+  status: number,
+): DashboardFetchResult {
   return {
     endpoint,
     response: new Response(null, { status, statusText: `S${status}` }),
@@ -35,12 +38,12 @@ describe("buildDashboardFetchError", () => {
 
   it("returns backend guidance for 5xx failures", () => {
     const message = buildDashboardFetchError([
-      result("overview", 500),
+      result("widgets", 500),
       result("requests", 200),
       result("error-groups", 200),
     ]);
     expect(message).toContain("Backend may be unavailable");
-    expect(message).toContain("overview");
+    expect(message).toContain("widgets");
   });
 });
 

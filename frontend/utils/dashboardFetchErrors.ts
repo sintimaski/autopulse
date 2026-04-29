@@ -1,6 +1,7 @@
 type DashboardEndpointLabel =
   | "overview"
   | "overview-extended"
+  | "widgets"
   | "requests"
   | "error-groups"
   | "diagnosis-timeline"

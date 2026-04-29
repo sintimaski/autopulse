@@ -12,7 +12,16 @@ from typing import Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
-from autopulse import autopulse
+from autopulse import (
+    BarChartWidget,
+    CardWidget,
+    DonutChartWidget,
+    HistogramWidget,
+    LineChartWidget,
+    ScatterPlotWidget,
+    StackedAreaWidget,
+    autopulse,
+)
 
 logger = logging.getLogger("autopulse.synthetic_test_app")
 
@@ -90,6 +99,118 @@ def _stable_roll(salt: str) -> float:
 def _should_happen(*, probability: float, salt: str) -> bool:
     bounded_probability = min(max(probability, 0.0), 1.0)
     return _stable_roll(salt) < bounded_probability
+
+
+def _build_demo_dashboard_widgets() -> list[object]:
+    # Simple deterministic processing over fixture data to showcase each widget type.
+    total_users = len(_USERS)
+    total_orders = len(_ORDERS)
+    avg_order_value = (
+        sum(int(order["amount_cents"]) for order in _ORDERS.values()) / max(total_orders, 1) / 100.0
+    )
+    role_counts: dict[str, int] = {"viewer": 0, "editor": 0, "admin": 0}
+    for user in _USERS.values():
+        role = str(user.get("role", "viewer"))
+        if role in role_counts:
+            role_counts[role] += 1
+    recent_load_points = [
+        ("-5m", float(total_orders + 1)),
+        ("-4m", float(total_orders + 2)),
+        ("-3m", float(total_orders + 3)),
+        ("-2m", float(total_orders + 2)),
+        ("-1m", float(total_orders + 4)),
+    ]
+    orders_by_item = [
+        (str(order["item"]), float(order["amount_cents"]) / 100.0) for order in _ORDERS.values()
+    ]
+    latency_histogram = [
+        ("<50ms", 12.0),
+        ("50-100ms", 24.0),
+        ("100-250ms", 18.0),
+        ("250ms+", 6.0),
+    ]
+    route_risk_scatter = [
+        (130.0, 0.8, "/health"),
+        (88.0, 2.4, "/users/{id}"),
+        (62.0, 6.9, "/orders"),
+        (20.0, 12.3, "/reports/daily"),
+    ]
+    stacked_mix = [
+        ("-5m", "success", 18.0),
+        ("-5m", "client", 2.0),
+        ("-5m", "server", 1.0),
+        ("-4m", "success", 21.0),
+        ("-4m", "client", 3.0),
+        ("-4m", "server", 1.0),
+        ("-3m", "success", 22.0),
+        ("-3m", "client", 2.0),
+        ("-3m", "server", 2.0),
+        ("-2m", "success", 20.0),
+        ("-2m", "client", 4.0),
+        ("-2m", "server", 2.0),
+        ("-1m", "success", 24.0),
+        ("-1m", "client", 3.0),
+        ("-1m", "server", 1.0),
+    ]
+    return [
+        CardWidget(
+            widget_id="synthetic_avg_order_usd",
+            title="Avg order value",
+            description="Computed from seeded synthetic orders",
+            value=round(avg_order_value, 2),
+            unit="USD",
+            tone="neutral",
+            order=10,
+        ),
+        LineChartWidget(
+            widget_id="synthetic_recent_load",
+            title="Recent synthetic load",
+            description="Derived minute trend for fixture traffic",
+            points=recent_load_points,
+            color="#818cf8",
+            unit="req",
+            order=20,
+        ),
+        BarChartWidget(
+            widget_id="synthetic_orders_by_item",
+            title="Order value by item",
+            description="Current fixture order mix",
+            bars=orders_by_item,
+            unit="USD",
+            order=30,
+        ),
+        DonutChartWidget(
+            widget_id="synthetic_user_roles",
+            title="User role distribution",
+            description=f"Roles across {total_users} users",
+            slices=[(key, float(value)) for key, value in role_counts.items()],
+            order=40,
+        ),
+        HistogramWidget(
+            widget_id="synthetic_latency_histogram",
+            title="Latency distribution",
+            description="Synthetic request-latency buckets",
+            buckets=latency_histogram,
+            unit="req",
+            order=50,
+        ),
+        ScatterPlotWidget(
+            widget_id="synthetic_route_risk",
+            title="Route risk scatter",
+            description="x=request volume, y=error rate %",
+            points=route_risk_scatter,
+            x_label="Request volume",
+            y_label="Error rate %",
+            order=60,
+        ),
+        StackedAreaWidget(
+            widget_id="synthetic_outcome_stack",
+            title="Outcome stack",
+            description="Success/client/server composition over time",
+            points=stacked_mix,
+            order=70,
+        ),
+    ]
 
 
 def _parse_test_token(x_auth_token: str | None) -> AuthContext | None:
@@ -202,6 +323,7 @@ def create_app(*, enable_monitor: bool = True) -> FastAPI:
                 "sqlite+aiosqlite:///./autopulse_embedded.db",
             ),
             "frontend_mode": os.getenv("AUTOPULSE_FRONTEND_MODE", "static"),
+            "dashboard_widgets": _build_demo_dashboard_widgets(),
         }
         if mode == "remote":
             monitor_kwargs["api_key"] = os.getenv("AUTOPULSE_API_KEY")

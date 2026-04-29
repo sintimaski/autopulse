@@ -18,6 +18,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from autopulse.widgets import BaseDashboardWidget, serialize_dashboard_widgets
+
 DEFAULT_SCRUB_KEYS = frozenset(
     {
         "authorization",
@@ -53,6 +55,7 @@ class _MonitorConfig:
     capture_headers: bool
     capture_query_params: bool
     scrub_keys: frozenset[str]
+    dashboard_widgets: tuple[BaseDashboardWidget, ...]
 
 
 def _utc_now_iso() -> str:
@@ -316,6 +319,10 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             "method": request.method,
             "request_id": request.headers.get("x-request-id"),
         }
+        if self._config.dashboard_widgets:
+            widget_payload = serialize_dashboard_widgets(list(self._config.dashboard_widgets))
+            if widget_payload["definitions"] or widget_payload["points"]:
+                common["dashboard_widgets"] = widget_payload
         if self._config.capture_headers:
             common["headers"] = dict(request.headers.items())
         if self._config.capture_query_params:
@@ -441,6 +448,15 @@ def monitor(app: Any, **kwargs: Any) -> None:
         capture_headers=bool(resolved_kwargs.get("capture_headers", True)),
         capture_query_params=bool(resolved_kwargs.get("capture_query_params", True)),
         scrub_keys=scrub_keys,
+        dashboard_widgets=tuple(
+            widget
+            for widget in (
+                resolved_kwargs.get("dashboard_widgets")
+                if isinstance(resolved_kwargs.get("dashboard_widgets"), list | tuple)
+                else []
+            )
+            if isinstance(widget, BaseDashboardWidget)
+        ),
     )
     dispatcher = _EventDispatcher(
         config,
@@ -452,4 +468,5 @@ def monitor(app: Any, **kwargs: Any) -> None:
         return
     if not _add_event_handler(app, "shutdown", dispatcher.stop):
         return
+    app.state._autopulse_config = config
     app.state._autopulse_configured = True

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from autopulse_backend.dashboard.error_grouping import (
 )
 from autopulse_backend.dashboard.time_window import minute_bucket
 from autopulse_backend.models import Event
+from autopulse_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from autopulse_backend.repositories import events as events_repo
 from autopulse_backend.repositories.aggregates import (
     ErrorGroupAggregateDelta,
@@ -63,6 +64,13 @@ async def persist_ingest_batch(
         project_id=project_id,
         rows=rows,
     )
+    widget_definitions, widget_points = _extract_dashboard_widget_rows(
+        project_id=project_id, rows=rows
+    )
+    # Widget payload persistence must not depend on metric aggregate mode.
+    # Some deployments disable inline aggregate writes and rely on workers.
+    await dashboard_widgets_repo.upsert_widget_definitions(session, widget_definitions)
+    await dashboard_widgets_repo.insert_widget_points(session, widget_points)
     if persist_aggregates:
         await upsert_metric_buckets(session, metric_bucket_deltas)
         await upsert_error_group_aggregates(session, error_group_deltas)
@@ -176,3 +184,83 @@ def _build_aggregate_deltas(
             last_seen=max(existing_error_group.last_seen, delta.last_seen),
         )
     return list(metric_by_key.values()), list(error_group_by_key.values())
+
+
+def _as_utc_datetime(raw: object, *, fallback: datetime) -> datetime:
+    if isinstance(raw, datetime):
+        value = raw
+    elif isinstance(raw, str):
+        try:
+            value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return fallback
+    else:
+        return fallback
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _extract_dashboard_widget_rows(
+    *, project_id: UUID, rows: list[Event]
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    definitions_by_id: dict[str, dict[str, object]] = {}
+    points: list[dict[str, object]] = []
+    for row in rows:
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        widget_payload = payload.get("dashboard_widgets")
+        if not isinstance(widget_payload, dict):
+            continue
+        definitions = widget_payload.get("definitions")
+        if isinstance(definitions, list):
+            for item in definitions:
+                if not isinstance(item, dict):
+                    continue
+                widget_id = item.get("widget_id")
+                widget_type = item.get("type")
+                title = item.get("title")
+                if not isinstance(widget_id, str) or not widget_id.strip():
+                    continue
+                if widget_type not in {"card", "line", "bar", "donut"}:
+                    continue
+                if not isinstance(title, str) or not title.strip():
+                    continue
+                definitions_by_id[widget_id] = {
+                    "project_id": project_id,
+                    "widget_id": widget_id,
+                    "widget_type": widget_type,
+                    "title": title.strip()[:255],
+                    "description": (
+                        str(item.get("description"))[:2000]
+                        if isinstance(item.get("description"), str)
+                        else None
+                    ),
+                    "display_order": int(item.get("order") or 100),
+                    "config": item.get("config") if isinstance(item.get("config"), dict) else {},
+                    "updated_at": row.timestamp,
+                }
+        datapoints = widget_payload.get("points")
+        if isinstance(datapoints, list):
+            for point in datapoints:
+                if not isinstance(point, dict):
+                    continue
+                widget_id = point.get("widget_id")
+                value = point.get("value")
+                if not isinstance(widget_id, str) or not widget_id.strip():
+                    continue
+                if not isinstance(value, int | float):
+                    continue
+                points.append(
+                    {
+                        "project_id": project_id,
+                        "widget_id": widget_id,
+                        "timestamp": _as_utc_datetime(
+                            point.get("timestamp"), fallback=row.timestamp
+                        ),
+                        "label": str(point.get("label"))[:255]
+                        if isinstance(point.get("label"), str)
+                        else None,
+                        "value": float(value),
+                    }
+                )
+    return list(definitions_by_id.values()), points

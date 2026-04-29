@@ -166,6 +166,53 @@ class ErrorGroupAggregate(Base):
     )
 
 
+class DashboardWidgetDefinition(Base):
+    __tablename__ = "dashboard_widget_definitions"
+    __table_args__ = (
+        Index("ix_dashboard_widget_definitions_project_order", "project_id", "display_order"),
+        Index(
+            "ux_dashboard_widget_definitions_project_widget_id",
+            "project_id",
+            "widget_id",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    widget_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    widget_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class DashboardWidgetPoint(Base):
+    __tablename__ = "dashboard_widget_points"
+    __table_args__ = (
+        Index("ix_dashboard_widget_points_project_timestamp", "project_id", "timestamp"),
+        Index("ix_dashboard_widget_points_project_widget_id", "project_id", "widget_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    widget_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
 class IngestRateLimitWindow(Base):
     __tablename__ = "ingest_rate_limit_windows"
     __table_args__ = (

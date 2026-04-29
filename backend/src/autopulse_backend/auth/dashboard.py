@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
@@ -391,7 +392,6 @@ async def get_dashboard_auth_session(
     )
     if user is None:
         return None
-    session_row.last_seen_at = now
     organization_id = session_row.organization_id
     membership_role = None
     if organization_id is None:
@@ -410,7 +410,15 @@ async def get_dashboard_auth_session(
             )
         )
         membership_role = membership.role if membership is not None else None
-    await session.commit()
+    # Defer mutable writes until all read queries complete so auth checks do not
+    # trigger an autoflush UPDATE in the middle of SELECT statements.
+    session_row.last_seen_at = now
+    try:
+        await session.commit()
+    except OperationalError:
+        # SQLite can transiently lock under concurrent local requests.
+        # Keep auth read-path healthy even if the heartbeat write is skipped.
+        await session.rollback()
     return DashboardAuthSession(
         user_id=user.id,
         project_id=session_row.project_id,

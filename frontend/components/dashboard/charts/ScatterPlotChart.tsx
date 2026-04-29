@@ -29,8 +29,18 @@ export function ScatterPlotChart({
     return <p className="text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>;
   }
 
-  const maxX = Math.max(...points.map((point) => Math.max(0, point.x)), 1);
-  const maxY = Math.max(...points.map((point) => Math.max(0, point.y)), 1);
+  let maxX = 1;
+  let maxY = 1;
+  for (const point of points) {
+    const x = Math.max(0, point.x);
+    const y = Math.max(0, point.y);
+    if (x > maxX) {
+      maxX = x;
+    }
+    if (y > maxY) {
+      maxY = y;
+    }
+  }
   const toneColor = (tone: ScatterPlotPoint["tone"]) => {
     if (tone === "danger") return "#f43f5e";
     if (tone === "warning") return "#f59e0b";

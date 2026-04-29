@@ -152,6 +152,59 @@ def test_dashboard_overview_returns_project_scoped_metrics(backend_test_database
     assert len(payload["series"]) >= 2
 
 
+def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Widgets")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=5)
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            200,
+            "GET",
+            "/widgets",
+            payload_overrides={
+                "dashboard_widgets": {
+                    "definitions": [
+                        {
+                            "widget_id": "queue_depth",
+                            "type": "card",
+                            "title": "Queue depth",
+                            "description": "Current queue size",
+                            "order": 10,
+                            "config": {"unit": "jobs", "tone": "warning"},
+                        }
+                    ],
+                    "points": [
+                        {
+                            "widget_id": "queue_depth",
+                            "timestamp": base_time.isoformat(),
+                            "value": 7.0,
+                        }
+                    ],
+                }
+            },
+        )
+        response = client.get(
+            "/dashboard/widgets",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=1)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["definitions"][0]["widget_id"] == "queue_depth"
+    assert payload["definitions"][0]["type"] == "card"
+    assert payload["points"][0]["widget_id"] == "queue_depth"
+    assert payload["points"][0]["value"] == 7.0
+
+
 def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project Series")

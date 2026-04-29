@@ -6,7 +6,12 @@ function makeTrendPoints(values: number[], width: number, height: number): strin
   if (values.length === 0) {
     return "";
   }
-  const max = Math.max(...values, 1);
+  let max = 1;
+  for (const value of values) {
+    if (value > max) {
+      max = value;
+    }
+  }
   const stepX = values.length > 1 ? width / (values.length - 1) : width / 2;
   return values
     .map((value, idx) => {
@@ -45,7 +50,12 @@ export function TimeSeriesLineChart({
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const latest = values.length ? values[values.length - 1] : 0;
   const displayValue = summaryValue ?? latest;
-  const maxValue = Math.max(...values, 1);
+  let maxValue = 1;
+  for (const value of values) {
+    if (value > maxValue) {
+      maxValue = value;
+    }
+  }
   const activeIndex = hoverIndex ?? (values.length ? values.length - 1 : null);
   const activeValue = activeIndex === null ? 0 : values[activeIndex] ?? 0;
   const activeLabel = activeIndex === null ? "" : labels[activeIndex] ?? "";

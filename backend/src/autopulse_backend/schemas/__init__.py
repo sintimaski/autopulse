@@ -49,6 +49,9 @@ from autopulse_backend.schemas.dashboard import (
     DashboardThemeSettings,
     DashboardThemeSettingsUpdate,
     DashboardUpdateMemberRoleRequest,
+    DashboardWidgetDefinition,
+    DashboardWidgetPoint,
+    DashboardWidgetsResponse,
 )
 from autopulse_backend.schemas.ingest import (
     IngestBatchRequest,
@@ -97,6 +100,9 @@ __all__ = [
     "DashboardProjectSummary",
     "DashboardRequestItem",
     "DashboardRequestsResponse",
+    "DashboardWidgetDefinition",
+    "DashboardWidgetPoint",
+    "DashboardWidgetsResponse",
     "DashboardInviteMemberRequest",
     "DashboardMembershipItem",
     "DashboardMembershipListResponse",

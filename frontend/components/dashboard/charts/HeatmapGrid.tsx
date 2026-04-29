@@ -21,7 +21,12 @@ export function HeatmapGrid({
     return <p className="text-sm text-slate-500 dark:text-neutral-400">No heatmap data available.</p>;
   }
   const lookup = new Map(cells.map((cell) => [`${cell.x}|${cell.y}`, cell.value] as const));
-  const max = Math.max(...cells.map((cell) => cell.value), 1);
+  let max = 1;
+  for (const cell of cells) {
+    if (cell.value > max) {
+      max = cell.value;
+    }
+  }
   const tone = (value: number) => {
     const ratio = value / max;
     if (ratio >= 0.75) return "bg-rose-500/80 text-white";
