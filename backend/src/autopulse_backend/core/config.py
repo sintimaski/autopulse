@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from os import getenv
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -92,6 +94,33 @@ class Settings:
     dashboard_auth_magic_link_base_url: str | None = None
 
 
+def normalize_database_url(database_url: str) -> str:
+    normalized = database_url.strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"sqlite", "sqlite+aiosqlite"}:
+        return normalized
+    raw_path = unquote(parsed.path or "")
+    if normalized.endswith(":memory:") or raw_path == ":memory:":
+        return normalized
+    if not raw_path:
+        return normalized
+    # Keep a single project-root DB path regardless of caller cwd.
+    project_root = Path(__file__).resolve().parents[4]
+    if (
+        raw_path.startswith("/./")
+        or raw_path.startswith("/../")
+        or raw_path.startswith("/")
+        and not parsed.netloc
+    ):
+        resolved = (project_root / raw_path[1:]).resolve()
+    elif raw_path.startswith("/") and parsed.netloc:
+        resolved = Path(raw_path).resolve()
+    else:
+        resolved = (project_root / raw_path).resolve()
+    normalized_path = str(resolved).replace("\\", "/")
+    return f"{parsed.scheme}:///{normalized_path}"
+
+
 def get_settings() -> Settings:
     raw_cors_origins = getenv(
         "CORS_ALLOW_ORIGINS",
@@ -101,7 +130,9 @@ def get_settings() -> Settings:
         origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()
     )
     return Settings(
-        database_url=getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db"),
+        database_url=normalize_database_url(
+            getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+        ),
         cors_allow_origins=cors_allow_origins,
         ingest_max_request_bytes=_env_int("INGEST_MAX_REQUEST_BYTES", 1_048_576, minimum=1),
         ingest_rate_limit_requests_per_window=_env_int(

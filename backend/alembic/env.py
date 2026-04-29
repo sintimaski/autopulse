@@ -6,6 +6,7 @@ from os import getenv
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from autopulse_backend.core.config import normalize_database_url
 from autopulse_backend.models import Base
 
 config = context.config
@@ -17,9 +18,11 @@ target_metadata = Base.metadata
 
 def _database_url() -> str:
     return (
-        getenv(
-            "DATABASE_URL",
-            config.get_main_option("sqlalchemy.url"),
+        normalize_database_url(
+            getenv(
+                "DATABASE_URL",
+                config.get_main_option("sqlalchemy.url"),
+            )
         )
         .replace("+asyncpg", "+psycopg")
         .replace("+aiosqlite", "")

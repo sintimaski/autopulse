@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess  # nosec B404
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,9 @@ def _normalize_prefix(raw_prefix: str) -> str:
 
 def _apply_backend_environment(*, database_url: str) -> None:
     os.environ["DATABASE_URL"] = database_url
-    os.environ.setdefault("JOBS_ENABLE_SCHEDULER", "0")
+    # Embedded mode must run retention housekeeping; otherwise local DB caps are never enforced.
+    os.environ.setdefault("JOBS_ENABLE_SCHEDULER", "1")
+    os.environ.setdefault("JOBS_RETENTION_INTERVAL_SECONDS", "300")
 
 
 def _add_event_handler(app: Any, event: str, handler: Any) -> bool:
@@ -51,7 +54,7 @@ async def _ensure_embedded_project_and_key(
 ) -> None:
     from autopulse_backend.auth import build_api_key_record
     from autopulse_backend.database import get_engine
-    from autopulse_backend.models import ApiKey, Base, Project
+    from autopulse_backend.models import ApiKey, Base, Project, ProjectUiSettings
 
     key_record = build_api_key_record(api_key)
     if key_record is None:
@@ -72,6 +75,18 @@ async def _ensure_embedded_project_and_key(
             project = Project(name=project_name)
             session.add(project)
             await session.flush()
+        ui_settings = await session.scalar(
+            select(ProjectUiSettings).where(ProjectUiSettings.project_id == project.id)
+        )
+        if ui_settings is None:
+            # Keep embedded SQLite storage bounded by default.
+            session.add(
+                ProjectUiSettings(
+                    project_id=project.id,
+                    theme_preference="system",
+                    retention_max_db_size_mb=100,
+                )
+            )
         session.add(
             ApiKey(
                 project_id=project.id,
@@ -155,6 +170,12 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
         kwargs.get("api_key") or os.getenv("AUTOPULSE_EMBEDDED_API_KEY") or DEFAULT_EMBEDDED_API_KEY
     )
     frontend_mode = str(kwargs.get("frontend_mode", "static")).strip().lower()
+    probe_interval_ms = float(
+        kwargs.get(
+            "infrastructure_probe_interval_ms",
+            os.getenv("AUTOPULSE_INFRA_PROBE_INTERVAL_MS", "100"),
+        )
+    )
     _apply_backend_environment(database_url=database_url)
 
     if not getattr(app.state, "_autopulse_embedded_configured", False):
@@ -163,11 +184,17 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
         backend_app = mount_on_app(app, prefix=prefix)
 
         async def ensure_project_key() -> None:
+            from autopulse_backend.config import get_settings
+            from autopulse_backend.jobs import run_retention_once
+
             await _ensure_embedded_project_and_key(
                 database_url=database_url,
                 project_name=project_name,
                 api_key=api_key,
             )
+            # Enforce limits at startup so oversized DBs are corrected immediately.
+            with suppress(Exception):
+                await run_retention_once(settings=get_settings())
 
         _add_event_handler(app, "startup", ensure_project_key)
         if frontend_mode == "static":
@@ -185,6 +212,7 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
     return {
         "api_key": api_key,
         "ingest_url": ingest_url,
+        "infrastructure_probe_interval_ms": probe_interval_ms,
         "http_client": provided_http_client
         or httpx.AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False)),
         "owns_http_client": provided_http_client is None,

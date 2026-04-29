@@ -1,0 +1,79 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from time import monotonic
+from typing import Any
+
+try:
+    import psutil
+except Exception:  # pragma: no cover - optional dependency
+    psutil = None
+
+
+@dataclass(slots=True)
+class InfrastructureMetricsSampler:
+    ttl_seconds: float = 2.0
+    _last_sample: dict[str, float] = field(default_factory=dict)
+    _last_sampled_at: float = 0.0
+
+    def sample(self) -> dict[str, float]:
+        if psutil is None:
+            return {}
+        now = monotonic()
+        if self._last_sample and (now - self._last_sampled_at) < self.ttl_seconds:
+            return dict(self._last_sample)
+        process = psutil.Process()
+        vm = psutil.virtual_memory()
+        disk = psutil.disk_usage("/")
+        net = psutil.net_io_counters()
+        sample: dict[str, float] = {
+            "host_cpu_percent": float(psutil.cpu_percent(interval=None)),
+            "host_memory_used_percent": float(vm.percent),
+            "host_memory_total_bytes": float(vm.total),
+            "host_memory_used_bytes": float(vm.used),
+            "process_cpu_percent": float(process.cpu_percent(interval=None)),
+            "process_memory_percent": float(process.memory_percent()),
+            "process_memory_rss_bytes": float(process.memory_info().rss),
+            "disk_used_percent": float(disk.percent),
+            "disk_total_bytes": float(disk.total),
+            "disk_used_bytes": float(disk.used),
+            "network_bytes_sent": float(net.bytes_sent),
+            "network_bytes_recv": float(net.bytes_recv),
+        }
+        self._last_sample = sample
+        self._last_sampled_at = now
+        return dict(sample)
+
+
+def to_widget_payload(metrics: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    specs: tuple[tuple[str, str, str, str, int], ...] = (
+        ("host_cpu_percent", "infra_host_cpu_percent", "Host CPU", "%", 500),
+        ("host_memory_used_percent", "infra_host_memory_percent", "Host memory used", "%", 510),
+        ("process_cpu_percent", "infra_process_cpu_percent", "App CPU", "%", 520),
+        ("process_memory_percent", "infra_process_memory_percent", "App memory share", "%", 530),
+        ("process_memory_rss_bytes", "infra_process_memory_rss_mb", "App RSS memory", "MB", 540),
+        ("disk_used_percent", "infra_disk_used_percent", "Host disk used", "%", 550),
+        ("network_bytes_recv", "infra_network_received_mb", "Network received", "MB", 560),
+        ("network_bytes_sent", "infra_network_sent_mb", "Network sent", "MB", 570),
+    )
+    definitions: list[dict[str, Any]] = []
+    points: list[dict[str, Any]] = []
+    for source_key, widget_id, title, unit, order in specs:
+        raw_value = metrics.get(source_key)
+        if not isinstance(raw_value, int | float):
+            continue
+        value = float(raw_value)
+        if source_key.endswith("_bytes"):
+            value = value / (1024 * 1024)
+        definitions.append(
+            {
+                "widget_id": widget_id,
+                "widget_type": "line",
+                "title": title,
+                "description": "AutoPulse host/app infrastructure metric",
+                "display_order": order,
+                "config": {"unit": unit},
+            }
+        )
+        points.append({"widget_id": widget_id, "value": value})
+    return definitions, points

@@ -37,6 +37,8 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "capture_query_params": True,
         "scrub_keys": frozenset({"authorization", "cookie", "token", "api_key"}),
         "dashboard_widgets": tuple(),
+        "infrastructure_sampler": None,
+        "infrastructure_probe_interval_s": 0.0,
     }
     values.update(overrides)
     return _MonitorConfig(**values)
@@ -48,6 +50,14 @@ class _CapturingDispatcher:
 
     def enqueue(self, event: dict[str, Any]) -> None:
         self.events.append(event)
+
+
+@dataclass
+class _StaticInfrastructureSampler:
+    payload: dict[str, Any]
+
+    def sample(self) -> dict[str, Any]:
+        return dict(self.payload)
 
 
 @dataclass
@@ -171,6 +181,86 @@ def test_middleware_respects_capture_toggles() -> None:
     event = dispatcher.events[0]
     assert "headers" not in event
     assert "query_params" not in event
+
+
+def test_middleware_attaches_infrastructure_metrics_when_enabled() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config(
+        infrastructure_sampler=_StaticInfrastructureSampler(
+            payload={
+                "host_cpu_percent": 35.0,
+                "process_memory_percent": 3.1,
+                "process_memory_rss_bytes": 157286400.0,
+            }
+        )
+    )
+    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/status")
+    async def status() -> dict[str, bool]:
+        return {"ok": True}
+
+    with TestClient(app) as client:
+        response = client.get("/status")
+
+    assert response.status_code == 200
+    assert len(dispatcher.events) == 1
+    event = dispatcher.events[0]
+    assert "infrastructure_metrics" in event
+    assert event["infrastructure_metrics"]["host_cpu_percent"] == 35.0
+    assert event["infrastructure_metrics"]["process_memory_percent"] == 3.1
+    widgets = event.get("dashboard_widgets")
+    assert isinstance(widgets, dict)
+    definitions = widgets.get("definitions", [])
+    points = widgets.get("points", [])
+    assert any(item.get("widget_id") == "infra_host_cpu_percent" for item in definitions)
+    infra_cpu_points = [
+        point for point in points if point.get("widget_id") == "infra_host_cpu_percent"
+    ]
+    assert infra_cpu_points
+    assert float(infra_cpu_points[0]["value"]) == 35.0
+
+
+def test_dispatcher_emits_infrastructure_probe_events() -> None:
+    async def run() -> None:
+        config = _make_config(
+            batch_size=1,
+            flush_interval_s=10.0,
+            infrastructure_sampler=_StaticInfrastructureSampler(
+                payload={
+                    "host_cpu_percent": 31.5,
+                    "host_memory_used_percent": 72.2,
+                    "process_memory_percent": 2.9,
+                    "process_memory_rss_bytes": 160000000.0,
+                    "disk_used_percent": 61.0,
+                    "network_bytes_recv": 500000000.0,
+                    "network_bytes_sent": 125000000.0,
+                }
+            ),
+            infrastructure_probe_interval_s=0.05,
+        )
+        client = _FailingClient(failures_before_success=0)
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher.start()
+        await asyncio.sleep(0.12)
+        await dispatcher.stop()
+        flattened_events = [
+            event for payload in client.sent_payloads for event in payload["json"].get("events", [])
+        ]
+        probe_events = [
+            event
+            for event in flattened_events
+            if event.get("path") == "/autopulse/internal/infrastructure-probe"
+        ]
+        assert probe_events
+        first = probe_events[0]
+        assert "dashboard_widgets" in first
+        assert "infrastructure_metrics" in first
+        definitions = first["dashboard_widgets"]["definitions"]
+        assert any(item.get("widget_id") == "infra_host_cpu_percent" for item in definitions)
+
+    asyncio.run(run())
 
 
 def test_middleware_captures_error_and_reraises_original_exception() -> None:

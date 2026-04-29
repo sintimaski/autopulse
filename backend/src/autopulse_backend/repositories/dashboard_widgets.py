@@ -73,7 +73,29 @@ async def upsert_widget_definitions(
 async def insert_widget_points(session: AsyncSession, points: list[dict[str, object]]) -> None:
     if not points:
         return
-    await session.execute(insert(DashboardWidgetPoint).values(points))
+    normalized_points: list[dict[str, object]] = []
+    for point in points:
+        widget_id = point.get("widget_id")
+        timestamp = point.get("timestamp")
+        value = point.get("value")
+        if (
+            not isinstance(widget_id, str)
+            or timestamp is None
+            or not isinstance(value, int | float)
+        ):
+            continue
+        normalized_points.append(
+            {
+                "project_id": point.get("project_id"),
+                "widget_id": widget_id,
+                "timestamp": timestamp,
+                "label": point.get("label") if isinstance(point.get("label"), str) else None,
+                "value": float(value),
+            }
+        )
+    if not normalized_points:
+        return
+    await session.execute(insert(DashboardWidgetPoint).values(normalized_points))
 
 
 async def list_widget_definitions(

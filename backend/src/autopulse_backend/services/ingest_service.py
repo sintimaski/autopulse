@@ -22,6 +22,12 @@ from autopulse_backend.repositories.aggregates import (
     upsert_metric_buckets,
 )
 from autopulse_backend.schemas import IngestBatchRequest, event_payload
+from autopulse_backend.services.infrastructure_metrics import (
+    InfrastructureMetricsSampler,
+)
+from autopulse_backend.services.infrastructure_metrics import (
+    to_widget_payload as infrastructure_to_widget_payload,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +35,9 @@ class PersistIngestResult:
     accepted: int
     metric_bucket_deltas: list[MetricBucketDelta]
     error_group_deltas: list[ErrorGroupAggregateDelta]
+
+
+_infrastructure_sampler = InfrastructureMetricsSampler()
 
 
 async def persist_ingest_batch(
@@ -67,6 +76,25 @@ async def persist_ingest_batch(
     widget_definitions, widget_points = _extract_dashboard_widget_rows(
         project_id=project_id, rows=rows
     )
+    has_infrastructure_points = any(
+        isinstance(point.get("widget_id"), str) and str(point["widget_id"]).startswith("infra_")
+        for point in widget_points
+    )
+    if not has_infrastructure_points:
+        sampled = _infrastructure_sampler.sample()
+        fallback_definitions, fallback_points = infrastructure_to_widget_payload(sampled)
+        widget_definitions.extend(
+            [
+                {"project_id": project_id, "updated_at": received_at, **definition}
+                for definition in fallback_definitions
+            ]
+        )
+        widget_points.extend(
+            [
+                {"project_id": project_id, "timestamp": received_at, **point}
+                for point in fallback_points
+            ]
+        )
     # Widget payload persistence must not depend on metric aggregate mode.
     # Some deployments disable inline aggregate writes and rely on workers.
     await dashboard_widgets_repo.upsert_widget_definitions(session, widget_definitions)
@@ -271,4 +299,83 @@ def _extract_dashboard_widget_rows(
                         "value": float(value),
                     }
                 )
+        infra_payload = payload.get("infrastructure_metrics")
+        if isinstance(infra_payload, dict):
+            infra_definitions, infra_points = _extract_infrastructure_widget_rows(
+                project_id=project_id,
+                timestamp=row.timestamp,
+                payload=infra_payload,
+            )
+            for definition in infra_definitions:
+                definitions_by_id[str(definition["widget_id"])] = definition
+            points.extend(infra_points)
     return list(definitions_by_id.values()), points
+
+
+def _extract_infrastructure_widget_rows(
+    *,
+    project_id: UUID,
+    timestamp: datetime,
+    payload: dict[str, object],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    metric_specs: tuple[tuple[str, str, str, str, str, int], ...] = (
+        ("host_cpu_percent", "infra_host_cpu_percent", "Host CPU", "%", "line", 500),
+        (
+            "host_memory_used_percent",
+            "infra_host_memory_percent",
+            "Host memory used",
+            "%",
+            "line",
+            510,
+        ),
+        ("process_cpu_percent", "infra_process_cpu_percent", "App CPU", "%", "line", 520),
+        (
+            "process_memory_percent",
+            "infra_process_memory_percent",
+            "App memory share",
+            "%",
+            "line",
+            530,
+        ),
+        (
+            "process_memory_rss_bytes",
+            "infra_process_memory_rss_mb",
+            "App RSS memory",
+            "MB",
+            "line",
+            540,
+        ),
+        ("disk_used_percent", "infra_disk_used_percent", "Host disk used", "%", "line", 550),
+        ("network_bytes_recv", "infra_network_received_mb", "Network received", "MB", "line", 560),
+        ("network_bytes_sent", "infra_network_sent_mb", "Network sent", "MB", "line", 570),
+    )
+    definitions: list[dict[str, object]] = []
+    points: list[dict[str, object]] = []
+    for source_key, widget_id, title, unit, widget_type, order in metric_specs:
+        raw_value = payload.get(source_key)
+        if not isinstance(raw_value, int | float):
+            continue
+        value = float(raw_value)
+        if source_key.endswith("_bytes"):
+            value = value / (1024 * 1024)
+        definitions.append(
+            {
+                "project_id": project_id,
+                "widget_id": widget_id,
+                "widget_type": widget_type,
+                "title": title,
+                "description": "AutoPulse SDK host/app infrastructure metric",
+                "display_order": order,
+                "config": {"unit": unit},
+                "updated_at": timestamp,
+            }
+        )
+        points.append(
+            {
+                "project_id": project_id,
+                "widget_id": widget_id,
+                "timestamp": timestamp,
+                "value": value,
+            }
+        )
+    return definitions, points

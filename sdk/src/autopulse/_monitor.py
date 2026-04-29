@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from autopulse._infrastructure import InfrastructureSampler
 from autopulse.widgets import BaseDashboardWidget, serialize_dashboard_widgets
 
 DEFAULT_SCRUB_KEYS = frozenset(
@@ -56,6 +57,8 @@ class _MonitorConfig:
     capture_query_params: bool
     scrub_keys: frozenset[str]
     dashboard_widgets: tuple[BaseDashboardWidget, ...]
+    infrastructure_sampler: InfrastructureSampler | None
+    infrastructure_probe_interval_s: float
 
 
 def _utc_now_iso() -> str:
@@ -184,6 +187,55 @@ def _add_event_handler(app: Any, event: str, handler: Callable[[], Awaitable[Non
     return False
 
 
+def _build_infrastructure_widget_payload(metrics: Mapping[str, Any]) -> dict[str, Any]:
+    specs: tuple[tuple[str, str, str, str, int], ...] = (
+        ("host_cpu_percent", "infra_host_cpu_percent", "Host CPU", "%", 500),
+        ("host_memory_used_percent", "infra_host_memory_percent", "Host memory used", "%", 510),
+        ("process_cpu_percent", "infra_process_cpu_percent", "App CPU", "%", 520),
+        ("process_memory_percent", "infra_process_memory_percent", "App memory share", "%", 530),
+        ("process_memory_rss_bytes", "infra_process_memory_rss_mb", "App RSS memory", "MB", 540),
+        ("disk_used_percent", "infra_disk_used_percent", "Host disk used", "%", 550),
+        ("network_bytes_recv", "infra_network_received_mb", "Network received", "MB", 560),
+        ("network_bytes_sent", "infra_network_sent_mb", "Network sent", "MB", 570),
+    )
+    now = _utc_now_iso()
+    definitions: list[dict[str, Any]] = []
+    points: list[dict[str, Any]] = []
+    for source_key, widget_id, title, unit, order in specs:
+        raw = metrics.get(source_key)
+        if not isinstance(raw, int | float):
+            continue
+        value = float(raw)
+        if source_key.endswith("_bytes"):
+            value = value / (1024 * 1024)
+        definitions.append(
+            {
+                "widget_id": widget_id,
+                "type": "line",
+                "title": title,
+                "description": "Auto-captured infrastructure metric",
+                "order": order,
+                "config": {"unit": unit},
+            }
+        )
+        points.append({"widget_id": widget_id, "timestamp": now, "value": value})
+    return {"definitions": definitions, "points": points}
+
+
+def _merge_widget_payloads(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
+    definitions_by_id: dict[str, dict[str, Any]] = {}
+    for source in (primary, secondary):
+        for item in source.get("definitions", []):
+            if isinstance(item, dict) and isinstance(item.get("widget_id"), str):
+                definitions_by_id[item["widget_id"]] = item
+    points: list[dict[str, Any]] = []
+    for source in (primary, secondary):
+        for point in source.get("points", []):
+            if isinstance(point, dict):
+                points.append(point)
+    return {"definitions": list(definitions_by_id.values()), "points": points}
+
+
 class _EventDispatcher:
     def __init__(
         self,
@@ -195,6 +247,7 @@ class _EventDispatcher:
         self._config = config
         self._queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=config.queue_maxsize)
         self._task: asyncio.Task[None] | None = None
+        self._infrastructure_probe_task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
         self._client = client
         self._owns_client = client is None if owns_client is None else owns_client
@@ -213,6 +266,11 @@ class _EventDispatcher:
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=5.0)
         self._task = asyncio.create_task(self._sender_loop())
+        if (
+            self._config.infrastructure_sampler is not None
+            and self._config.infrastructure_probe_interval_s > 0
+        ):
+            self._infrastructure_probe_task = asyncio.create_task(self._infrastructure_probe_loop())
         _debug_log(
             self._config.debug,
             "sender started "
@@ -227,6 +285,9 @@ class _EventDispatcher:
         self._stopping.set()
         await self._task
         self._task = None
+        if self._infrastructure_probe_task is not None:
+            await self._infrastructure_probe_task
+            self._infrastructure_probe_task = None
         if self._owns_client and self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -301,6 +362,37 @@ class _EventDispatcher:
                 sleep_seconds = self._config.retry_backoff_s * (2**attempt)
                 await asyncio.sleep(sleep_seconds)
 
+    async def _infrastructure_probe_loop(self) -> None:
+        while not self._stopping.is_set():
+            sampler = self._config.infrastructure_sampler
+            if sampler is None:
+                return
+            metrics = sampler.sample()
+            if metrics:
+                infra_widgets = _build_infrastructure_widget_payload(metrics)
+                self.enqueue(
+                    {
+                        "type": "request",
+                        "timestamp": _utc_now_iso(),
+                        "service_name": self._config.service_name,
+                        "environment": self._config.environment,
+                        "method": "GET",
+                        "path": "/autopulse/internal/infrastructure-probe",
+                        "status_code": 204,
+                        "latency_ms": 0.0,
+                        "request_id": None,
+                        "infrastructure_metrics": metrics,
+                        "dashboard_widgets": infra_widgets,
+                    }
+                )
+            try:
+                await asyncio.wait_for(
+                    self._stopping.wait(),
+                    timeout=self._config.infrastructure_probe_interval_s,
+                )
+            except TimeoutError:
+                continue
+
 
 class _AutoPulseMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: Any, dispatcher: _EventDispatcher, config: _MonitorConfig) -> None:
@@ -323,6 +415,22 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             widget_payload = serialize_dashboard_widgets(list(self._config.dashboard_widgets))
             if widget_payload["definitions"] or widget_payload["points"]:
                 common["dashboard_widgets"] = widget_payload
+        if self._config.infrastructure_sampler is not None:
+            infrastructure_metrics = self._config.infrastructure_sampler.sample()
+            if infrastructure_metrics:
+                common["infrastructure_metrics"] = infrastructure_metrics
+                infra_widget_payload = _build_infrastructure_widget_payload(infrastructure_metrics)
+                existing_widgets = common.get("dashboard_widgets")
+                if (
+                    isinstance(existing_widgets, dict)
+                    and isinstance(existing_widgets.get("definitions"), list)
+                    and isinstance(existing_widgets.get("points"), list)
+                ):
+                    common["dashboard_widgets"] = _merge_widget_payloads(
+                        existing_widgets, infra_widget_payload
+                    )
+                else:
+                    common["dashboard_widgets"] = infra_widget_payload
         if self._config.capture_headers:
             common["headers"] = dict(request.headers.items())
         if self._config.capture_query_params:
@@ -456,6 +564,23 @@ def monitor(app: Any, **kwargs: Any) -> None:
                 else []
             )
             if isinstance(widget, BaseDashboardWidget)
+        ),
+        infrastructure_sampler=(
+            InfrastructureSampler()
+            if bool(resolved_kwargs.get("capture_infrastructure_metrics", True))
+            else None
+        ),
+        infrastructure_probe_interval_s=(
+            max(
+                0.0,
+                float(
+                    resolved_kwargs.get(
+                        "infrastructure_probe_interval_ms",
+                        _env_float("AUTOPULSE_INFRA_PROBE_INTERVAL_MS", 0.0),
+                    )
+                ),
+            )
+            / 1000.0
         ),
     )
     dispatcher = _EventDispatcher(

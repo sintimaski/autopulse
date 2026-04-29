@@ -485,6 +485,68 @@ export function DashboardHomeContent() {
       values: points.map((point) => Number(point.value)),
     };
   };
+  const formatMetricValue = (value: number, unit: string | null | undefined) => {
+    const normalized = (unit ?? "").toLowerCase();
+    if (normalized === "%" || normalized === "percent") {
+      return `${value.toFixed(1)}%`;
+    }
+    if (normalized === "mb") {
+      return value >= 1024 ? `${(value / 1024).toFixed(2)} GB` : `${value.toFixed(1)} MB`;
+    }
+    if (normalized === "gb") {
+      return `${value.toFixed(2)} GB`;
+    }
+    return unit ? `${value.toFixed(2)} ${unit}` : value.toFixed(2);
+  };
+  const latestWidgetValue = (widget: DashboardWidgetDefinition | undefined) => {
+    if (!widget) {
+      return null;
+    }
+    const points = widgetPointsById.get(widget.widget_id) ?? [];
+    if (!points.length) {
+      return null;
+    }
+    const latest = points.reduce((winner, point) =>
+      winner.timestamp > point.timestamp ? winner : point,
+    );
+    return Number(latest.value || 0);
+  };
+  const toInfrastructureCard = ({
+    label,
+    rawValue,
+    unit,
+    helper,
+    warningThreshold,
+    dangerThreshold,
+  }: {
+    label: string;
+    rawValue: number | null;
+    unit?: string;
+    helper: string;
+    warningThreshold?: number;
+    dangerThreshold?: number;
+  }) => {
+    if (rawValue === null || Number.isNaN(rawValue)) {
+      return {
+        label,
+        value: "No data yet",
+        helper: `${helper} (waiting for infrastructure samples)`,
+        tone: "neutral" as const,
+      };
+    }
+    const tone =
+      typeof dangerThreshold === "number" && rawValue >= dangerThreshold
+        ? ("danger" as const)
+        : typeof warningThreshold === "number" && rawValue >= warningThreshold
+          ? ("warning" as const)
+          : ("neutral" as const);
+    return {
+      label,
+      value: formatMetricValue(rawValue, unit),
+      helper,
+      tone,
+    };
+  };
   const latestLabeledBars = (widget: DashboardWidgetDefinition | undefined) => {
     if (!widget) {
       return [] as Array<{ key: string; value: number }>;
@@ -600,6 +662,56 @@ export function DashboardHomeContent() {
       : incidentState === "degraded"
         ? "bg-amber-500 text-amber-950"
         : "bg-emerald-600 text-white";
+  const infrastructureConcreteCards = [
+    toInfrastructureCard({
+      label: "Host CPU load",
+      rawValue: latestWidgetValue(cpuWidget),
+      unit: typeof cpuWidget?.config?.unit === "string" ? cpuWidget.config.unit : "%",
+      helper: "Current host machine CPU usage",
+      warningThreshold: 65,
+      dangerThreshold: 85,
+    }),
+    toInfrastructureCard({
+      label: "Host memory load",
+      rawValue: latestWidgetValue(memoryWidget),
+      unit: typeof memoryWidget?.config?.unit === "string" ? memoryWidget.config.unit : "%",
+      helper: "Current host RAM usage",
+      warningThreshold: 75,
+      dangerThreshold: 90,
+    }),
+    toInfrastructureCard({
+      label: "App memory share",
+      rawValue: latestWidgetValue(findWidgetByKeywords(["process memory", "app memory share"])),
+      unit: "%",
+      helper: "Process percent of total host memory",
+    }),
+    toInfrastructureCard({
+      label: "App RSS memory",
+      rawValue: latestWidgetValue(findWidgetByKeywords(["rss memory", "app rss"])),
+      unit: "MB",
+      helper: "Resident set size used by app process",
+    }),
+    toInfrastructureCard({
+      label: "Host disk used",
+      rawValue: latestWidgetValue(diskWidget),
+      unit: typeof diskWidget?.config?.unit === "string" ? diskWidget.config.unit : "%",
+      helper: "Current host disk occupancy",
+      warningThreshold: 80,
+      dangerThreshold: 92,
+    }),
+    toInfrastructureCard({
+      label: "Network received",
+      rawValue: latestWidgetValue(findWidgetByKeywords(["network received"])),
+      unit: "MB",
+      helper: "Total bytes received by host interfaces",
+    }),
+    toInfrastructureCard({
+      label: "Network sent",
+      rawValue: latestWidgetValue(findWidgetByKeywords(["network sent"])),
+      unit: "MB",
+      helper: "Total bytes sent by host interfaces",
+    }),
+  ];
 
   return (
     <>
@@ -946,6 +1058,24 @@ export function DashboardHomeContent() {
             </p>
           ) : null}
         </ChartPanel>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Infrastructure now</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Concrete host and app load values captured across macOS, Windows, and Linux.
+        </p>
+        <div className="mt-4 grid auto-rows-fr gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {infrastructureConcreteCards.map((card) => (
+            <MetricCard
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              helper={card.helper}
+              tone={card.tone}
+            />
+          ))}
+        </div>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">

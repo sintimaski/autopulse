@@ -168,6 +168,15 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
             "GET",
             "/widgets",
             payload_overrides={
+                "infrastructure_metrics": {
+                    "host_cpu_percent": 35.0,
+                    "host_memory_used_percent": 72.4,
+                    "process_memory_percent": 3.0,
+                    "process_memory_rss_bytes": 157286400.0,
+                    "disk_used_percent": 61.2,
+                    "network_bytes_recv": 524288000.0,
+                    "network_bytes_sent": 104857600.0,
+                },
                 "dashboard_widgets": {
                     "definitions": [
                         {
@@ -200,7 +209,7 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
                             "value": 12.0,
                         },
                     ],
-                }
+                },
             },
         )
         response = client.get(
@@ -216,11 +225,42 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
     by_id = {item["widget_id"]: item for item in payload["definitions"]}
     assert by_id["queue_depth"]["type"] == "card"
     assert by_id["latency_hist"]["type"] == "histogram"
+    assert by_id["infra_host_cpu_percent"]["type"] == "line"
+    assert by_id["infra_process_memory_rss_mb"]["type"] == "line"
     points_by_widget: dict[str, list[dict[str, object]]] = {}
     for point in payload["points"]:
         points_by_widget.setdefault(str(point["widget_id"]), []).append(point)
     assert points_by_widget["queue_depth"][0]["value"] == 7.0
     assert points_by_widget["latency_hist"][0]["label"] == "<50ms"
+    assert points_by_widget["infra_host_cpu_percent"][0]["value"] == 35.0
+    assert points_by_widget["infra_process_memory_rss_mb"][0]["value"] == 150.0
+
+
+def test_dashboard_widgets_include_infrastructure_fallback_when_sdk_payload_missing(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Infra Fallback")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=3)
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/health")
+        response = client.get(
+            "/dashboard/widgets",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=1)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    by_id = {item["widget_id"]: item for item in payload["definitions"]}
+    assert by_id["infra_host_cpu_percent"]["type"] == "line"
+    assert by_id["infra_process_memory_percent"]["type"] == "line"
+    point_widget_ids = {str(point["widget_id"]) for point in payload["points"]}
+    assert "infra_host_cpu_percent" in point_widget_ids
+    assert "infra_process_memory_percent" in point_widget_ids
 
 
 def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_url: str) -> None:
