@@ -4,7 +4,7 @@ import { DashboardHomeContent } from "../../../components/dashboard/dashboardPag
 import { DashboardPageBoundary } from "../../../components/dashboard/DashboardPageBoundary";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
+  title: "Overview",
 };
 
 export default function DashboardPage() {

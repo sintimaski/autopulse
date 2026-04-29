@@ -79,8 +79,17 @@ import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
 
+export type SavedSqlFilterPreset = {
+  id: string;
+  name: string;
+  where: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DashboardDataContextValue = {
   hasApiKey: boolean;
+  sessionEmail: string | null;
   /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
   authSessionResolved: boolean;
   windowMinutes: number;
@@ -189,6 +198,13 @@ export type DashboardDataContextValue = {
   sqlFilterEnabled: boolean;
   sqlFilterValidation: LogQueryValidationResponse | null;
   sqlFilterValidating: boolean;
+  savedSqlFilterPresets: SavedSqlFilterPreset[];
+  saveSqlFilterPreset: (name: string, where: string) => {
+    ok: boolean;
+    error?: string;
+  };
+  removeSqlFilterPreset: (id: string) => void;
+  applySavedSqlFilterPreset: (id: string) => void;
   WINDOW_OPTIONS: typeof WINDOW_OPTIONS;
   METHOD_OPTIONS: typeof METHOD_OPTIONS;
   STATUS_CLASS_OPTIONS: typeof STATUS_CLASS_OPTIONS;
@@ -249,7 +265,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
-  const { hasSession: hasApiKey, authSessionResolved } = useDashboardAuthSession(refreshToken);
+  const { hasSession: hasApiKey, authSessionResolved, sessionEmail } =
+    useDashboardAuthSession(refreshToken);
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
@@ -259,6 +276,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [sqlFilterEnabled, setSqlFilterEnabled] = useState(false);
   const [sqlFilterValidation, setSqlFilterValidation] = useState<LogQueryValidationResponse | null>(null);
   const [sqlFilterValidating, setSqlFilterValidating] = useState(false);
+  const [savedSqlFilterPresets, setSavedSqlFilterPresets] = useState<SavedSqlFilterPreset[]>([]);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRefreshDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -296,7 +314,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!hasHydratedPersistedScope.current) {
       return;
     }
-    if (dashboardRoutePath !== "/diagnosis" && dashboardRoutePath !== "/logs") {
+    if (
+      dashboardRoutePath !== "/diagnosis" &&
+      dashboardRoutePath !== "/logs" &&
+      dashboardRoutePath !== "/requests"
+    ) {
       return;
     }
     const scopedForPersist: DashboardScopedQueryState = {
@@ -320,7 +342,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterEnabled,
     };
     const timer = window.setTimeout(() => {
-      mergePersistedScopedSession(dashboardRoutePath, scopedForPersist, {
+      const persistenceRoute = dashboardRoutePath === "/requests" ? "/logs" : dashboardRoutePath;
+      mergePersistedScopedSession(persistenceRoute, scopedForPersist, {
         groupBy,
         sortKey,
         sortDir,
@@ -1171,7 +1194,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             "Content-Type": "application/json",
           },
           credentials: "include",
-          body: JSON.stringify(next),
+          body: JSON.stringify({
+            raw_events_days: next.raw_events_days,
+            logs_query_max_window_minutes: next.logs_query_max_window_minutes,
+            retention_plan: next.retention_plan,
+            archival_enabled: next.archival_enabled,
+            archival_mode: next.archival_mode,
+          }),
         });
         if (!response.ok) {
           throw new Error(`retention-settings update failed (${response.status})`);
@@ -1259,6 +1288,125 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     },
     [hasApiKey, refreshApiKeys],
   );
+
+  const sqlFilterStorageKey = useMemo(
+    () => `autopulse.sql-filter-presets.${(sessionEmail ?? "anonymous").toLowerCase()}`,
+    [sessionEmail],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(sqlFilterStorageKey);
+      if (!raw) {
+        setSavedSqlFilterPresets([]);
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setSavedSqlFilterPresets([]);
+        return;
+      }
+      const normalized: SavedSqlFilterPreset[] = parsed
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return null;
+          }
+          const obj = entry as Record<string, unknown>;
+          if (
+            typeof obj.id !== "string" ||
+            typeof obj.name !== "string" ||
+            typeof obj.where !== "string" ||
+            typeof obj.createdAt !== "string" ||
+            typeof obj.updatedAt !== "string"
+          ) {
+            return null;
+          }
+          return {
+            id: obj.id,
+            name: obj.name,
+            where: obj.where,
+            createdAt: obj.createdAt,
+            updatedAt: obj.updatedAt,
+          };
+        })
+        .filter((item): item is SavedSqlFilterPreset => item !== null);
+      setSavedSqlFilterPresets(normalized);
+    } catch {
+      setSavedSqlFilterPresets([]);
+    }
+  }, [sqlFilterStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(sqlFilterStorageKey, JSON.stringify(savedSqlFilterPresets));
+    } catch {
+      // ignore quota/private mode
+    }
+  }, [savedSqlFilterPresets, sqlFilterStorageKey]);
+
+  const saveSqlFilterPreset = useCallback(
+    (name: string, where: string): { ok: boolean; error?: string } => {
+      const cleanName = name.trim();
+      const cleanWhere = where.trim();
+      if (!cleanName) {
+        return { ok: false, error: "Preset name is required." };
+      }
+      if (!cleanWhere) {
+        return { ok: false, error: "WHERE filter text is required." };
+      }
+      if (cleanName.length > 80) {
+        return { ok: false, error: "Preset name must be 80 characters or less." };
+      }
+      setSavedSqlFilterPresets((prev) => {
+        const existing = prev.find(
+          (preset) => preset.name.toLowerCase() === cleanName.toLowerCase(),
+        );
+        const now = new Date().toISOString();
+        if (existing) {
+          return prev.map((preset) =>
+            preset.id === existing.id
+              ? { ...preset, where: cleanWhere, updatedAt: now, name: cleanName }
+              : preset,
+          );
+        }
+        const next: SavedSqlFilterPreset = {
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: cleanName,
+          where: cleanWhere,
+          createdAt: now,
+          updatedAt: now,
+        };
+        return [next, ...prev].slice(0, 100);
+      });
+      return { ok: true };
+    },
+    [],
+  );
+
+  const removeSqlFilterPreset = useCallback((id: string) => {
+    setSavedSqlFilterPresets((prev) => prev.filter((preset) => preset.id !== id));
+  }, []);
+
+  const applySavedSqlFilterPreset = useCallback((id: string) => {
+    const preset = savedSqlFilterPresets.find((candidate) => candidate.id === id);
+    if (!preset) {
+      return;
+    }
+    setSqlFilterDraft(preset.where);
+    setSqlFilterApplied(preset.where);
+    setSqlFilterEnabled(true);
+    setRequestPage(0);
+    setErrorGroupPage(0);
+  }, [savedSqlFilterPresets]);
 
   const validateSqlFilterDraft = useCallback(async (): Promise<LogQueryValidationResponse | null> => {
     if (!hasApiKey) {
@@ -1525,6 +1673,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     (): DashboardDataContextValue => ({
       hasApiKey,
+      sessionEmail,
       authSessionResolved,
       windowMinutes,
       windowFromTimestamp:
@@ -1632,6 +1781,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterEnabled,
       sqlFilterValidation,
       sqlFilterValidating,
+      savedSqlFilterPresets,
+      saveSqlFilterPreset,
+      removeSqlFilterPreset,
+      applySavedSqlFilterPreset,
       WINDOW_OPTIONS,
       METHOD_OPTIONS,
       STATUS_CLASS_OPTIONS,
@@ -1644,6 +1797,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }),
     [
       hasApiKey,
+      sessionEmail,
       authSessionResolved,
       windowMinutes,
       toIsoWindow,
@@ -1737,6 +1891,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterEnabled,
       sqlFilterValidation,
       sqlFilterValidating,
+      savedSqlFilterPresets,
+      saveSqlFilterPreset,
+      removeSqlFilterPreset,
+      applySavedSqlFilterPreset,
     ],
   );
 

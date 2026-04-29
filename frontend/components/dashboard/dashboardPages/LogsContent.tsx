@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-import { buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
+import { buildCurrentScopedState, buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
 import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
@@ -12,28 +12,29 @@ import { TagSelector } from "../TagSelector";
 export function LogsContent() {
   const d = useDashboardData();
   const [rowsPerGroup, setRowsPerGroup] = useState(100);
-  const scopedState = useMemo((): DashboardScopedQueryState => {
-    return {
-      isAbsoluteWindow: d.isAbsoluteWindow,
-      windowMinutes: d.windowMinutes,
-      windowFromTimestamp: d.windowFromTimestamp,
-      windowToTimestamp: d.windowToTimestamp,
-      method: d.method,
-      statusClass: d.statusClass,
-      minLatencyMs: d.minLatencyMs,
-      maxLatencyMs: d.maxLatencyMs,
-      pathQuery: d.pathQuery,
-      serverEnvironmentQuery: d.serverEnvironmentQuery,
-      serverServiceQuery: d.serverServiceQuery,
-      requestLimit: d.requestLimit,
-      requestPage: d.requestPage,
-      errorGroupLimit: d.errorGroupLimit,
-      errorGroupPage: d.errorGroupPage,
-      errorGroupSort: d.errorGroupSort,
-      sqlFilterApplied: d.sqlFilterApplied,
-      sqlFilterEnabled: d.sqlFilterEnabled,
-    };
-  }, [
+  const scopedState = useMemo(
+    (): DashboardScopedQueryState =>
+      buildCurrentScopedState({
+        isAbsoluteWindow: d.isAbsoluteWindow,
+        windowMinutes: d.windowMinutes,
+        windowFromTimestamp: d.windowFromTimestamp,
+        windowToTimestamp: d.windowToTimestamp,
+        method: d.method,
+        statusClass: d.statusClass,
+        minLatencyMs: d.minLatencyMs,
+        maxLatencyMs: d.maxLatencyMs,
+        pathQuery: d.pathQuery,
+        serverEnvironmentQuery: d.serverEnvironmentQuery,
+        serverServiceQuery: d.serverServiceQuery,
+        requestLimit: d.requestLimit,
+        requestPage: d.requestPage,
+        errorGroupLimit: d.errorGroupLimit,
+        errorGroupPage: d.errorGroupPage,
+        errorGroupSort: d.errorGroupSort,
+        sqlFilterApplied: d.sqlFilterApplied,
+        sqlFilterEnabled: d.sqlFilterEnabled,
+      }),
+    [
     d.isAbsoluteWindow,
     d.windowMinutes,
     d.windowFromTimestamp,
@@ -52,7 +53,8 @@ export function LogsContent() {
     d.errorGroupSort,
     d.sqlFilterApplied,
     d.sqlFilterEnabled,
-  ]);
+    ],
+  );
   const requests = d.requests;
   if (!requests) {
     return null;
@@ -85,7 +87,7 @@ export function LogsContent() {
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Logs triage flow</h2>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Request evidence flow</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               1) Scope in the header, 2) refine here, 3) open rows for request evidence.
             </p>
@@ -151,7 +153,7 @@ export function LogsContent() {
               <select
                 value={d.groupBy}
                 onChange={(e) => d.setGroupBy(e.target.value as GroupBy)}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-orange-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                className="ap-select"
               >
                 {GROUP_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -434,7 +436,7 @@ export function LogsContent() {
               type="button"
               disabled={d.requestPage === 0}
               onClick={() => d.setRequestPage((p) => Math.max(0, p - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+              className="ap-btn"
             >
               Prev
             </button>
@@ -442,7 +444,7 @@ export function LogsContent() {
               type="button"
               disabled={(d.requestPage + 1) * d.requestLimit >= requests.total}
               onClick={() => d.setRequestPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+              className="ap-btn"
             >
               Next
             </button>

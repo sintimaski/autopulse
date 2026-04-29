@@ -13,6 +13,7 @@ type BreakdownBarChartProps = {
   valueLabel?: string;
   formatPrimaryValue?: (value: number) => string;
   className?: string;
+  onItemClick?: (item: BreakdownBarDatum) => void;
 };
 
 export function BreakdownBarChart({
@@ -21,6 +22,7 @@ export function BreakdownBarChart({
   valueLabel,
   formatPrimaryValue = (value) => `${Math.round(value)}`,
   className,
+  onItemClick,
 }: BreakdownBarChartProps) {
   if (!items.length) {
     return <p className="text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>;
@@ -32,7 +34,12 @@ export function BreakdownBarChart({
       {items.map((item) => {
         const widthPct = Math.max(4, Math.round((item.value / maxValue) * 100));
         return (
-          <li key={item.key}>
+          <li
+            key={item.key}
+            title={`${item.key}: ${formatPrimaryValue(item.value)}${valueLabel ? ` ${valueLabel}` : ""}`}
+            onClick={onItemClick ? () => onItemClick(item) : undefined}
+            className={onItemClick ? "cursor-pointer rounded-md px-1 py-1 hover:bg-slate-100/70 dark:hover:bg-neutral-800/60" : ""}
+          >
             <div className="mb-1 flex items-center justify-between gap-3">
               <p className="min-w-0 truncate font-mono text-xs text-slate-800 dark:text-neutral-100">{item.key}</p>
               <p className="shrink-0 tabular-nums text-xs font-medium text-slate-700 dark:text-neutral-200">

@@ -54,14 +54,14 @@ export function OnboardingContent() {
                 const ok = await d.issueApiKey();
                 setMessage(ok ? "New API key issued. Copy it now." : "Failed to issue API key.");
               }}
-              className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+              className="ap-btn-primary"
             >
               Issue key
             </button>
             <button
               type="button"
               onClick={() => void d.refreshApiKeys()}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              className="ap-btn"
             >
               Refresh keys
             </button>
@@ -91,7 +91,7 @@ export function OnboardingContent() {
             <button
               type="button"
               onClick={() => d.setRefreshToken((token) => token + 1)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              className="ap-btn"
             >
               Refresh status
             </button>

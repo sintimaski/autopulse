@@ -4,6 +4,7 @@ type PercentileLadderProps = {
   p50: number;
   p95: number;
   p99: number;
+  onRowClick?: (label: "p50" | "p95" | "p99", value: number) => void;
 };
 
 function widthPercent(value: number, maxValue: number): number {
@@ -13,7 +14,7 @@ function widthPercent(value: number, maxValue: number): number {
   return Math.max(3, Math.min(100, (value / maxValue) * 100));
 }
 
-export function PercentileLadder({ p50, p95, p99 }: PercentileLadderProps) {
+export function PercentileLadder({ p50, p95, p99, onRowClick }: PercentileLadderProps) {
   const maxLatency = Math.max(p50, p95, p99, 1);
   const rows: Array<{ label: string; value: number; tone: string }> = [
     { label: "p50", value: p50, tone: "bg-emerald-500/70 dark:bg-emerald-400/65" },
@@ -24,7 +25,12 @@ export function PercentileLadder({ p50, p95, p99 }: PercentileLadderProps) {
   return (
     <div className="space-y-2">
       {rows.map((row) => (
-        <div key={row.label} className="grid grid-cols-[42px_1fr_auto] items-center gap-2">
+        <div
+          key={row.label}
+          title={`${row.label}: ${row.value.toFixed(1)} ms`}
+          onClick={onRowClick ? () => onRowClick(row.label as "p50" | "p95" | "p99", row.value) : undefined}
+          className={`grid grid-cols-[42px_1fr_auto] items-center gap-2 ${onRowClick ? "cursor-pointer rounded px-1 py-0.5 hover:bg-slate-100/70 dark:hover:bg-neutral-800/60" : ""}`}
+        >
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
             {row.label}
           </span>

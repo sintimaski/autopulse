@@ -139,7 +139,7 @@ export function SettingsContent() {
                       archival_last_error: effectiveRetentionDraft.archival_last_error,
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                  className="ap-input mt-1"
                 />
               </label>
               <label className="text-sm text-slate-700 dark:text-neutral-200">
@@ -160,7 +160,7 @@ export function SettingsContent() {
                       archival_last_error: effectiveRetentionDraft.archival_last_error,
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                  className="ap-input mt-1"
                 />
               </label>
               <label className="text-sm text-slate-700 dark:text-neutral-200">
@@ -173,7 +173,7 @@ export function SettingsContent() {
                       retention_plan: event.target.value as "starter" | "standard" | "extended",
                     })
                   }
-                  className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                  className="ap-input mt-1"
                 >
                   <option value="starter">Starter</option>
                   <option value="standard">Standard</option>
@@ -212,7 +212,7 @@ export function SettingsContent() {
                 const ok = await d.saveRetentionSettings(effectiveRetentionDraft);
                 setRetentionMessage(ok ? "Retention settings saved." : "Failed to save retention settings.");
               }}
-              className="mt-3 rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+              className="ap-btn-primary mt-3"
             >
               Save retention policy
             </button>
@@ -242,7 +242,7 @@ export function SettingsContent() {
                   setSelectedOrganizationId(event.target.value);
                   void loadMembers(event.target.value);
                 }}
-                className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                className="ap-select mt-1"
               >
                 {organizations.map((organization) => (
                   <option key={organization.organization_id} value={organization.organization_id}>
@@ -296,7 +296,7 @@ export function SettingsContent() {
                                 setOrgMessage("Failed to update member role.");
                               }
                             }}
-                            className="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+                            className="ap-btn-primary px-2 py-1 text-xs"
                           >
                             Set {member.role === "owner" ? "member" : "owner"}
                           </button>
@@ -316,12 +316,12 @@ export function SettingsContent() {
                   value={inviteEmail}
                   placeholder="new-member@example.com"
                   onChange={(event) => setInviteEmail(event.target.value)}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                  className="ap-input"
                 />
                 <select
                   value={inviteRole}
                   onChange={(event) => setInviteRole(event.target.value as "owner" | "member")}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                  className="ap-select"
                 >
                   <option value="member">Member</option>
                   <option value="owner">Owner</option>
@@ -349,7 +349,7 @@ export function SettingsContent() {
                       setOrgMessage("Failed to invite member.");
                     }
                   }}
-                  className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+                  className="ap-btn-primary"
                 >
                   Invite member
                 </button>
@@ -372,7 +372,7 @@ export function SettingsContent() {
               const ok = await d.issueApiKey();
               setApiKeyMessage(ok ? "New API key issued." : "Failed to issue API key.");
             }}
-            className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100"
+            className="ap-btn-primary"
           >
             Issue new key
           </button>
@@ -382,7 +382,7 @@ export function SettingsContent() {
               await d.refreshApiKeys();
               setApiKeyMessage("API keys refreshed.");
             }}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            className="ap-btn"
           >
             Refresh
           </button>
@@ -424,7 +424,7 @@ export function SettingsContent() {
                             const ok = await d.rotateApiKey(item.key_id);
                             setApiKeyMessage(ok ? "API key rotated." : "Failed to rotate API key.");
                           }}
-                          className="rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-900 hover:bg-sky-100"
+                          className="ap-btn-primary px-2 py-1 text-xs"
                         >
                           Rotate
                         </button>
@@ -434,7 +434,7 @@ export function SettingsContent() {
                             const ok = await d.revokeApiKey(item.key_id);
                             setApiKeyMessage(ok ? "API key revoked." : "Failed to revoke API key.");
                           }}
-                          className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-900 hover:bg-rose-100"
+                          className="ap-btn-danger px-2 py-1 text-xs"
                         >
                           Revoke
                         </button>
@@ -549,13 +549,13 @@ export function SettingsContent() {
         </p>
         <Link
           href="/alerts"
-          className="mt-3 inline-flex rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40"
+          className="ap-btn-primary mt-3"
         >
           Open Alerts policy editor
         </Link>
         <Link
           href="/onboarding"
-          className="mt-3 ml-2 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+          className="ap-btn mt-3 ml-2"
         >
           Open onboarding checklist
         </Link>

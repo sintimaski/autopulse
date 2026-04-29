@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { useDashboardData } from "./DashboardDataContext";
-import { buildScopedQuery } from "./dashboardQueryState";
+import { buildCurrentScopedState, buildScopedQuery } from "./dashboardQueryState";
 import { buildGuidedTroubleshootingHints } from "../../utils/guidedTroubleshooting";
 
 type GuidanceItem = {
@@ -16,26 +16,28 @@ type GuidanceItem = {
 
 export function GuidedTroubleshootingPanel() {
   const d = useDashboardData();
-  const query = buildScopedQuery({
-    isAbsoluteWindow: d.isAbsoluteWindow,
-    windowMinutes: d.windowMinutes,
-    windowFromTimestamp: d.windowFromTimestamp,
-    windowToTimestamp: d.windowToTimestamp,
-    method: d.method,
-    statusClass: d.statusClass,
-    minLatencyMs: d.minLatencyMs,
-    maxLatencyMs: d.maxLatencyMs,
-    pathQuery: d.pathQuery,
-    serverEnvironmentQuery: d.serverEnvironmentQuery,
-    serverServiceQuery: d.serverServiceQuery,
-    requestLimit: d.requestLimit,
-    requestPage: 0,
-    errorGroupLimit: d.errorGroupLimit,
-    errorGroupPage: 0,
-    errorGroupSort: d.errorGroupSort,
-    sqlFilterApplied: d.sqlFilterApplied,
-    sqlFilterEnabled: d.sqlFilterEnabled,
-  }).toString();
+  const query = buildScopedQuery(
+    buildCurrentScopedState({
+      isAbsoluteWindow: d.isAbsoluteWindow,
+      windowMinutes: d.windowMinutes,
+      windowFromTimestamp: d.windowFromTimestamp,
+      windowToTimestamp: d.windowToTimestamp,
+      method: d.method,
+      statusClass: d.statusClass,
+      minLatencyMs: d.minLatencyMs,
+      maxLatencyMs: d.maxLatencyMs,
+      pathQuery: d.pathQuery,
+      serverEnvironmentQuery: d.serverEnvironmentQuery,
+      serverServiceQuery: d.serverServiceQuery,
+      requestLimit: d.requestLimit,
+      requestPage: 0,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: 0,
+      errorGroupSort: d.errorGroupSort,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
+    }),
+  ).toString();
 
   const failedDispatch = d.recentAlertDispatches.find((dispatch) => dispatch.status === "failed");
   const hintIds = buildGuidedTroubleshootingHints({
@@ -75,7 +77,7 @@ export function GuidedTroubleshootingPanel() {
         title: "High 5xx route concentration",
         reason: `Top failing route currently reports ${d.topFailingRoutes[0][1]} server errors.`,
         next_step: "Open logs scoped to that route and compare request-id level traces.",
-        href: `/logs?${query}`,
+        href: `/requests?${query}`,
       });
       continue;
     }

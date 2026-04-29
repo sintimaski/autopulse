@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 type MultiSeriesLineChartSeries = {
   id: string;
   label: string;
@@ -11,6 +13,7 @@ type MultiSeriesLineChartProps = {
   labels: string[];
   series: MultiSeriesLineChartSeries[];
   height?: number;
+  onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
 };
 
 function makePoints(values: number[], width: number, height: number, maxValue: number): string {
@@ -31,8 +34,10 @@ export function MultiSeriesLineChart({
   labels,
   series,
   height = 110,
+  onPointClick,
 }: MultiSeriesLineChartProps) {
   const width = 520;
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const hasData = series.some((entry) => entry.values.some((value) => value > 0));
   if (!hasData || !labels.length) {
     return <p className="text-sm text-slate-600 dark:text-neutral-300">No status-class data in this range.</p>;
@@ -42,9 +47,33 @@ export function MultiSeriesLineChart({
     ...series.flatMap((entry) => entry.values).map((value) => Number(value || 0)),
   );
 
+  const activeIndex = hoverIndex ?? labels.length - 1;
+  const activeLabel = labels[activeIndex] ?? "";
+  const activeValues = series.reduce<Record<string, number>>((acc, entry) => {
+    acc[entry.id] = entry.values[activeIndex] ?? 0;
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-2">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-28 w-full">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-28 w-full cursor-crosshair"
+        onMouseMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+          const idx = Math.round(ratio * Math.max(labels.length - 1, 0));
+          setHoverIndex(idx);
+        }}
+        onMouseLeave={() => setHoverIndex(null)}
+        onClick={() => {
+          if (!onPointClick) return;
+          onPointClick(activeIndex, activeLabel, activeValues);
+        }}
+      >
+        <title>
+          {`${activeLabel} · ${series.map((s) => `${s.label}: ${Math.round(activeValues[s.id] ?? 0)}`).join(" · ")}`}
+        </title>
         {series.map((entry) => (
           <polyline
             key={entry.id}
@@ -69,7 +98,11 @@ export function MultiSeriesLineChart({
         ))}
       </div>
       <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-        {labels[0]} {" -> "} {labels[labels.length - 1]}
+        {activeLabel
+          ? `${activeLabel} • ${series
+              .map((entry) => `${entry.label} ${Math.round(activeValues[entry.id] ?? 0)}`)
+              .join(" · ")}`
+          : `${labels[0]} -> ${labels[labels.length - 1]}`}
       </p>
     </div>
   );

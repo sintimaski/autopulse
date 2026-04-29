@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { MetricCard } from "../MetricCard";
 import { OverviewScopeFacetBoard } from "../OverviewScopeFacetBoard";
@@ -12,6 +13,9 @@ import { useDashboardData } from "../DashboardDataContext";
 import {
   BreakdownBarChart,
   ChartPanel,
+  DonutChart,
+  HeatmapGrid,
+  HistogramChart,
   MultiSeriesLineChart,
   PercentileLadder,
   type MultiSeriesLineChartSeries,
@@ -20,6 +24,7 @@ import { buildScopedQuery } from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
 
 export function DashboardHomeContent() {
+  const router = useRouter();
   const d = useDashboardData();
   const overview = d.overview;
   const requests = d.requests;
@@ -118,6 +123,82 @@ export function DashboardHomeContent() {
   const statusCoveragePct = displayRequestCount
     ? Math.min(100, (statusClassTotal / displayRequestCount) * 100)
     : 0;
+  const successRatePct = displayRequestCount ? (total2xx / displayRequestCount) * 100 : 0;
+  const clientErrorRatePct = displayRequestCount ? (total4xx / displayRequestCount) * 100 : 0;
+  const serverErrorRatePct = displayRequestCount ? (total5xx / displayRequestCount) * 100 : 0;
+  const methodCounts = d.rawItems.reduce<Record<string, number>>((acc, item) => {
+    acc[item.method] = (acc[item.method] ?? 0) + 1;
+    return acc;
+  }, {});
+  const methodDonutItems = Object.entries(methodCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([method, count], idx) => ({
+      id: method,
+      label: method,
+      value: count,
+      color: ["#38bdf8", "#818cf8", "#f59e0b", "#f43f5e", "#34d399", "#a78bfa"][idx % 6],
+    }));
+  const statusDonutItems = [
+    { id: "2xx", label: "2xx", value: total2xx, color: "#34d399" },
+    { id: "3xx", label: "3xx", value: total3xx, color: "#38bdf8" },
+    { id: "4xx", label: "4xx", value: total4xx, color: "#f59e0b" },
+    { id: "5xx", label: "5xx", value: total5xx, color: "#f43f5e" },
+  ];
+  const latencyHistogramBuckets = (() => {
+    const ranges = [
+      { label: "<50ms", min: 0, max: 50 },
+      { label: "50-100ms", min: 50, max: 100 },
+      { label: "100-250ms", min: 100, max: 250 },
+      { label: "250-500ms", min: 250, max: 500 },
+      { label: "500-1000ms", min: 500, max: 1000 },
+      { label: "1s+", min: 1000, max: Number.POSITIVE_INFINITY },
+    ];
+    return ranges.map((range) => ({
+      label: range.label,
+      count: d.rawItems.filter(
+        (item) => item.latency_ms >= range.min && item.latency_ms < range.max,
+      ).length,
+    }));
+  })();
+  const routeStatusHeatmap = (() => {
+    const topRoutes = routeBreakdownByVolume.slice(0, 6).map((route) => route.key);
+    const xLabels = ["2xx", "3xx", "4xx", "5xx"];
+    const cells: Array<{ x: string; y: string; value: number }> = [];
+    for (const route of topRoutes) {
+      const rows = d.rawItems.filter((item) => item.path === route);
+      const byClass = {
+        "2xx": rows.filter((item) => item.status_code >= 200 && item.status_code < 300).length,
+        "3xx": rows.filter((item) => item.status_code >= 300 && item.status_code < 400).length,
+        "4xx": rows.filter((item) => item.status_code >= 400 && item.status_code < 500).length,
+        "5xx": rows.filter((item) => item.status_code >= 500).length,
+      };
+      for (const x of xLabels) {
+        cells.push({ x, y: route, value: byClass[x as keyof typeof byClass] });
+      }
+    }
+    return { cells, xLabels, yLabels: topRoutes };
+  })();
+  const pushRequestsWithScope = (patch?: Record<string, string>) => {
+    const params = new URLSearchParams(diagnosisParams.toString());
+    params.set("request_page", "0");
+    if (patch) {
+      for (const [key, value] of Object.entries(patch)) {
+        params.set(key, value);
+      }
+    }
+    router.push(`/requests?${params.toString()}`);
+  };
+  const pushDiagnosisWithScope = (patch?: Record<string, string>, hash = "") => {
+    const params = new URLSearchParams(diagnosisParams.toString());
+    params.set("error_group_page", "0");
+    if (patch) {
+      for (const [key, value] of Object.entries(patch)) {
+        params.set(key, value);
+      }
+    }
+    router.push(`/diagnosis?${params.toString()}${hash}`);
+  };
   const fullMetricRows: Array<{ label: string; value: string; helper?: string }> = [
     { label: "Requests (total)", value: String(displayRequestCount), helper: "Overview scope" },
     { label: "Errors (total)", value: String(displayErrorCount), helper: "5xx + error events" },
@@ -136,6 +217,9 @@ export function DashboardHomeContent() {
     { label: "Status 3xx total", value: String(total3xx) },
     { label: "Status 4xx total", value: String(total4xx) },
     { label: "Status 5xx total", value: String(total5xx) },
+    { label: "Success rate (2xx)", value: `${successRatePct.toFixed(2)}%` },
+    { label: "Client error rate (4xx)", value: `${clientErrorRatePct.toFixed(2)}%` },
+    { label: "Server error rate (5xx)", value: `${serverErrorRatePct.toFixed(2)}%` },
     {
       label: "Status-class coverage",
       value: `${statusCoveragePct.toFixed(1)}%`,
@@ -234,6 +318,9 @@ export function DashboardHomeContent() {
           "Status 3xx total",
           "Status 4xx total",
           "Status 5xx total",
+          "Success rate (2xx)",
+          "Client error rate (4xx)",
+          "Server error rate (5xx)",
           "Status-class coverage",
           "Service breakdown rows",
           "Route breakdown rows",
@@ -243,6 +330,30 @@ export function DashboardHomeContent() {
     },
   ];
   const denseInsightLayout = d.recentErrorsPreview.length > 0 && d.topFailingRoutes.length > 0;
+  const incidentState =
+    overviewExtended.active_incident_count > 0 || displayErrorRate >= 0.08
+      ? "critical"
+      : overviewExtended.error_burst_count > 0 || displayErrorRate >= 0.03
+        ? "degraded"
+        : "healthy";
+  const incidentSummary =
+    incidentState === "critical"
+      ? "Critical: elevated error pressure detected."
+      : incidentState === "degraded"
+        ? "Service degraded: errors are above baseline."
+        : "Healthy: no active burst detected.";
+  const incidentToneClass =
+    incidentState === "critical"
+      ? "border-rose-300 bg-rose-50/90 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-100"
+      : incidentState === "degraded"
+        ? "border-amber-300 bg-amber-50/90 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-100"
+        : "border-emerald-300 bg-emerald-50/90 text-emerald-900 dark:border-emerald-900/70 dark:bg-emerald-950/35 dark:text-emerald-100";
+  const incidentBadgeClass =
+    incidentState === "critical"
+      ? "bg-rose-600 text-white"
+      : incidentState === "degraded"
+        ? "bg-amber-500 text-amber-950"
+        : "bg-emerald-600 text-white";
 
   return (
     <>
@@ -254,6 +365,20 @@ export function DashboardHomeContent() {
           Some dashboard sections may be stale: {d.errorMessage}
         </section>
       ) : null}
+      <section className={`rounded-xl border px-4 py-3 shadow-sm ${incidentToneClass}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={`rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${incidentBadgeClass}`}>
+              {incidentState}
+            </span>
+            <p className="text-sm font-semibold">{incidentSummary}</p>
+          </div>
+          <p className="text-xs opacity-85">
+            Window: last {d.windowMinutes}m · Error rate {(displayErrorRate * 100).toFixed(2)}% · p95{" "}
+            {overviewExtended.p95_latency_ms.toFixed(1)} ms
+          </p>
+        </div>
+      </section>
       <section className="grid auto-rows-fr gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {primarySignalCards.map((card) => (
           <div key={card.label}>
@@ -262,6 +387,20 @@ export function DashboardHomeContent() {
               value={card.value}
               helper={card.helper}
               tone={card.tone}
+              tooltip={`Click to drill down: ${card.label}`}
+              onClick={() => {
+                if (card.label === "Active incidents" || card.label === "Error rate") {
+                  pushDiagnosisWithScope({ error_group_sort: "count" }, "#grouped-errors");
+                  return;
+                }
+                if (card.label === "Latency p95") {
+                  pushRequestsWithScope({
+                    min_latency_ms: Math.max(1, Math.round(overviewExtended.p95_latency_ms)).toString(),
+                  });
+                  return;
+                }
+                pushRequestsWithScope();
+              }}
             />
           </div>
         ))}
@@ -272,6 +411,24 @@ export function DashboardHomeContent() {
               value={card.value}
               helper={card.helper}
               tone={card.tone}
+              tooltip={`Click to drill down: ${card.label}`}
+              onClick={() => {
+                if (card.label.includes("Errors")) {
+                  pushDiagnosisWithScope({ status_class: "5", error_group_sort: "count" }, "#grouped-errors");
+                  return;
+                }
+                if (card.label.includes("Latency")) {
+                  pushRequestsWithScope({
+                    min_latency_ms: Math.max(1, Math.round(displayAvgLatencyMs)).toString(),
+                  });
+                  return;
+                }
+                if (card.label.includes("Status coverage")) {
+                  pushRequestsWithScope({ status_class: "ALL" });
+                  return;
+                }
+                pushRequestsWithScope();
+              }}
             />
           </div>
         ))}
@@ -340,14 +497,122 @@ export function DashboardHomeContent() {
             p50={overviewExtended.p50_latency_ms}
             p95={overviewExtended.p95_latency_ms}
             p99={overviewExtended.p99_latency_ms}
+            onRowClick={(label, value) => {
+              const factor = label === "p99" ? 1 : label === "p95" ? 1 : 0.8;
+              pushRequestsWithScope({
+                min_latency_ms: Math.max(1, Math.round(value * factor)).toString(),
+              });
+            }}
           />
         </ChartPanel>
       </section>
 
+      <section className="grid gap-4 xl:grid-cols-3">
+        <ChartPanel
+          title="Response class split"
+          description="Donut share of 2xx/3xx/4xx/5xx across the active scope."
+        >
+          <DonutChart
+            title="Responses"
+            items={statusDonutItems}
+            centerLabel="Total"
+            centerValue={String(statusClassTotal)}
+            onSliceClick={(item) => {
+              const statusClass = item.id.replace("xx", "");
+              pushRequestsWithScope({ status_class: statusClass });
+            }}
+          />
+        </ChartPanel>
+        <ChartPanel
+          title="HTTP method mix"
+          description="How request volume is distributed by method."
+        >
+          <DonutChart
+            title="Methods"
+            items={methodDonutItems}
+            centerLabel="Requests"
+            centerValue={String(d.rawItems.length)}
+            onSliceClick={(item) => {
+              pushRequestsWithScope({ method: item.id });
+            }}
+          />
+        </ChartPanel>
+        <ChartPanel
+          title="Latency distribution"
+          description="Histogram of request latency buckets in current loaded sample."
+        >
+          <HistogramChart
+            buckets={latencyHistogramBuckets}
+            onBucketClick={(bucket) => {
+              const rangeMap: Record<string, { min?: string; max?: string }> = {
+                "<50ms": { max: "50" },
+                "50-100ms": { min: "50", max: "100" },
+                "100-250ms": { min: "100", max: "250" },
+                "250-500ms": { min: "250", max: "500" },
+                "500-1000ms": { min: "500", max: "1000" },
+                "1s+": { min: "1000" },
+              };
+              const range = rangeMap[bucket.label] ?? {};
+              pushRequestsWithScope({
+                ...(range.min ? { min_latency_ms: range.min } : {}),
+                ...(range.max ? { max_latency_ms: range.max } : {}),
+              });
+            }}
+          />
+        </ChartPanel>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ChartPanel
+          title="Route x status heatmap"
+          description="Top routes crossed with response classes to spot concentrated failures."
+          actionHref={diagnosisGroupedHref}
+          actionLabel="Open grouped errors"
+        >
+          <HeatmapGrid
+            cells={routeStatusHeatmap.cells}
+            xLabels={routeStatusHeatmap.xLabels}
+            yLabels={routeStatusHeatmap.yLabels}
+            onCellClick={(cell) => {
+              const statusClass = cell.x.replace("xx", "");
+              pushRequestsWithScope({
+                path_contains: cell.y,
+                status_class: statusClass,
+              });
+            }}
+          />
+        </ChartPanel>
+        <ChartPanel
+          title="Reliability scorecard"
+          description="Quick reliability split derived from status classes."
+        >
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-emerald-300">Success rate</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-emerald-100">
+                {successRatePct.toFixed(2)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-amber-300">4xx rate</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-amber-100">
+                {clientErrorRatePct.toFixed(2)}%
+              </p>
+            </div>
+            <div className="rounded-lg border border-rose-500/25 bg-rose-500/10 p-3">
+              <p className="text-[11px] uppercase tracking-wide text-rose-300">5xx rate</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums text-rose-100">
+                {serverErrorRatePct.toFixed(2)}%
+              </p>
+            </div>
+          </div>
+        </ChartPanel>
+      </section>
+
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">All available metrics</h2>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Metrics dictionary</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Metrics are grouped by purpose so operational signals stay readable under high data volume.
+          Expand for complete metrics and backend-derived values.
         </p>
         <div className="mt-4 space-y-3">
           {metricsByGroup.map((group, index) => (
@@ -405,9 +670,14 @@ export function DashboardHomeContent() {
             <ul className="space-y-2">
               {d.topFailingRoutes.map(([path, count]) => (
                 <li key={path} className="flex items-start justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate font-mono text-xs text-slate-800 dark:text-neutral-100">
+                  <button
+                    type="button"
+                    title={`Open requests for ${path}`}
+                    onClick={() => pushRequestsWithScope({ path_contains: path, status_class: "5" })}
+                    className="min-w-0 truncate font-mono text-left text-xs text-slate-800 underline-offset-2 hover:underline dark:text-neutral-100"
+                  >
                     {path}
-                  </span>
+                  </button>
                   <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
                     {count}
                   </span>
@@ -474,6 +744,9 @@ export function DashboardHomeContent() {
               }))}
               valueLabel="req"
               emptyMessage="No service-level data yet."
+            onItemClick={(item) => {
+              pushRequestsWithScope({ services: item.key });
+            }}
             />
           </ChartPanel>
         ) : null}
@@ -486,7 +759,29 @@ export function DashboardHomeContent() {
           actionHref={diagnosisBaseHref}
           actionLabel="Open diagnosis"
         >
-          <MultiSeriesLineChart labels={statusClassLabels} series={statusClassSeries} />
+          <MultiSeriesLineChart
+            labels={statusClassLabels}
+            series={statusClassSeries}
+            onPointClick={(index, _label, values) => {
+              const bucket = d.sparklineSeries[index];
+              const statusPairs: Array<[string, number]> = [
+                ["5", values["5xx"] ?? 0],
+                ["4", values["4xx"] ?? 0],
+                ["3", values["3xx"] ?? 0],
+                ["2", values["2xx"] ?? 0],
+              ];
+              statusPairs.sort((a, b) => b[1] - a[1]);
+              const topStatusClass = statusPairs[0]?.[0] ?? "ALL";
+              const params: Record<string, string> = { status_class: topStatusClass };
+              if (bucket?.minute) {
+                const from = new Date(bucket.minute);
+                const to = new Date(from.getTime() + 60_000);
+                params.from_timestamp = from.toISOString();
+                params.to_timestamp = to.toISOString();
+              }
+              pushRequestsWithScope(params);
+            }}
+          />
         </ChartPanel>
         <ChartPanel
           title="Top routes by request volume"
@@ -503,6 +798,9 @@ export function DashboardHomeContent() {
             }))}
             valueLabel="req"
             emptyMessage="No route breakdown available."
+            onItemClick={(item) => {
+              pushRequestsWithScope({ path_contains: item.key });
+            }}
           />
         </ChartPanel>
       </section>

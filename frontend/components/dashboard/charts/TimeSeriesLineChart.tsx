@@ -71,7 +71,7 @@ export function TimeSeriesLineChart({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-white/80 p-3 dark:border-neutral-700 dark:bg-neutral-900/70">
+    <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/60 p-3 dark:border-neutral-700 dark:bg-gradient-to-br dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-slate-700 dark:text-neutral-200">{title}</p>
         <div className="text-right">

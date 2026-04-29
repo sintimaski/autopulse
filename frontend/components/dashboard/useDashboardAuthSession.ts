@@ -7,9 +7,11 @@ import { buildApiUrl } from "./dashboardTypes";
 export function useDashboardAuthSession(refreshToken: number): {
   hasSession: boolean;
   authSessionResolved: boolean;
+  sessionEmail: string | null;
 } {
   const [hasSession, setHasSession] = useState(false);
   const [authSessionResolved, setAuthSessionResolved] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,13 +26,18 @@ export function useDashboardAuthSession(refreshToken: number): {
           }
           return;
         }
-        const payload = (await response.json()) as { authenticated?: boolean };
+        const payload = (await response.json()) as {
+          authenticated?: boolean;
+          email?: string | null;
+        };
         if (!cancelled) {
           setHasSession(Boolean(payload.authenticated));
+          setSessionEmail(payload.email ?? null);
         }
       } catch {
         if (!cancelled) {
           setHasSession(false);
+          setSessionEmail(null);
         }
       } finally {
         if (!cancelled) {
@@ -44,5 +51,5 @@ export function useDashboardAuthSession(refreshToken: number): {
     };
   }, [refreshToken]);
 
-  return { hasSession, authSessionResolved };
+  return { hasSession, authSessionResolved, sessionEmail };
 }

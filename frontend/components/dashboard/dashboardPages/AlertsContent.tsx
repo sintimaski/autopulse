@@ -180,7 +180,7 @@ export function AlertsContent() {
                         destination_email: event.target.value.trim() || null,
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                    className="ap-input mt-1"
                     placeholder="ops@example.com"
                   />
                 </label>
@@ -198,7 +198,7 @@ export function AlertsContent() {
                         error_spike_ratio_threshold: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                    className="ap-input mt-1"
                   />
                 </label>
                 <label className="text-sm text-slate-700 dark:text-neutral-200">
@@ -213,7 +213,7 @@ export function AlertsContent() {
                         error_spike_min_requests: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                    className="ap-input mt-1"
                   />
                 </label>
                 <label className="text-sm text-slate-700 dark:text-neutral-200">
@@ -228,7 +228,7 @@ export function AlertsContent() {
                         error_spike_window_minutes: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                    className="ap-input mt-1"
                   />
                 </label>
                 <label className="text-sm text-slate-700 dark:text-neutral-200">
@@ -243,7 +243,7 @@ export function AlertsContent() {
                         outage_min_requests: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                    className="ap-input mt-1"
                   />
                 </label>
                 <label className="text-sm text-slate-700 dark:text-neutral-200">
@@ -258,7 +258,7 @@ export function AlertsContent() {
                         outage_window_minutes: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-600 dark:bg-neutral-900 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+                    className="ap-input mt-1"
                   />
                 </label>
                 <label className="text-xs text-slate-700 dark:text-neutral-200">
@@ -273,7 +273,7 @@ export function AlertsContent() {
                         cooldown_minutes: Number(event.target.value),
                       })
                     }
-                    className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-900"
+                    className="ap-input mt-1 px-2 py-1 text-xs"
                   />
                 </label>
               </div>
@@ -405,14 +405,14 @@ export function AlertsContent() {
             <button
               type="button"
               onClick={() => d.copyRunbookCommand(d.RUNBOOK_ALERTS_CMD, "Alerts job command")}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 dark:focus-visible:ring-neutral-500/50"
+              className="ap-btn"
             >
               Copy alerts-once
             </button>
             <button
               type="button"
               onClick={() => d.copyRunbookCommand(d.RUNBOOK_RETENTION_CMD, "Retention job command")}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800 dark:focus-visible:ring-neutral-500/50"
+              className="ap-btn"
             >
               Copy retention-once
             </button>

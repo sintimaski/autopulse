@@ -16,17 +16,23 @@ import {
 } from "./dashboardPersistentScope";
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
 import {
+  buildCurrentScopedState,
   buildScopedQuery,
   parseScopedQuery,
   scopedQueryStringsEqual,
   type DashboardScopedQueryState,
 } from "./dashboardQueryState";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
+import { resetServerScope } from "./dashboardScopeReset";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
-    title: "Dashboard",
-    subtitle: "Traffic and headline rates in the selected window.",
+    title: "Overview",
+    subtitle: "What broke, when it changed, and where to drill down next.",
+  },
+  "/requests": {
+    title: "Requests",
+    subtitle: "Request-level evidence with shared investigation scope.",
   },
   "/diagnosis": {
     title: "Errors & Diagnosis",
@@ -73,11 +79,16 @@ type ScopedServerState = {
 };
 
 function isScopedUrlSyncRoute(pathname: string): boolean {
-  return pathname === "/dashboard" || pathname === "/diagnosis" || pathname === "/logs";
+  return (
+    pathname === "/dashboard" ||
+    pathname === "/diagnosis" ||
+    pathname === "/logs" ||
+    pathname === "/requests"
+  );
 }
 
 function isScopedPathRestoreRoute(pathname: string): boolean {
-  return pathname === "/diagnosis" || pathname === "/logs";
+  return pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
 }
 
 function buildDefaultScopedState(d: ReturnType<typeof useDashboardData>): ScopedServerState {
@@ -178,26 +189,27 @@ function ShellWithData({ children }: { children: ReactNode }) {
   } as const;
 
   const scopedServerStateForUrl = useMemo(
-    (): DashboardScopedQueryState => ({
-      isAbsoluteWindow: d.isAbsoluteWindow,
-      windowMinutes: d.windowMinutes,
-      windowFromTimestamp: d.windowFromTimestamp,
-      windowToTimestamp: d.windowToTimestamp,
-      method: d.method,
-      statusClass: d.statusClass,
-      minLatencyMs: d.minLatencyMs,
-      maxLatencyMs: d.maxLatencyMs,
-      pathQuery: d.pathQuery,
-      serverEnvironmentQuery: d.serverEnvironmentQuery,
-      serverServiceQuery: d.serverServiceQuery,
-      requestLimit: d.requestLimit,
-      requestPage: d.requestPage,
-      errorGroupLimit: d.errorGroupLimit,
-      errorGroupPage: d.errorGroupPage,
-      errorGroupSort: d.errorGroupSort,
-      sqlFilterApplied: d.sqlFilterApplied,
-      sqlFilterEnabled: d.sqlFilterEnabled,
-    }),
+    (): DashboardScopedQueryState =>
+      buildCurrentScopedState({
+        isAbsoluteWindow: d.isAbsoluteWindow,
+        windowMinutes: d.windowMinutes,
+        windowFromTimestamp: d.windowFromTimestamp,
+        windowToTimestamp: d.windowToTimestamp,
+        method: d.method,
+        statusClass: d.statusClass,
+        minLatencyMs: d.minLatencyMs,
+        maxLatencyMs: d.maxLatencyMs,
+        pathQuery: d.pathQuery,
+        serverEnvironmentQuery: d.serverEnvironmentQuery,
+        serverServiceQuery: d.serverServiceQuery,
+        requestLimit: d.requestLimit,
+        requestPage: d.requestPage,
+        errorGroupLimit: d.errorGroupLimit,
+        errorGroupPage: d.errorGroupPage,
+        errorGroupSort: d.errorGroupSort,
+        sqlFilterApplied: d.sqlFilterApplied,
+        sqlFilterEnabled: d.sqlFilterEnabled,
+      }),
     [
       d.errorGroupLimit,
       d.errorGroupPage,
@@ -307,7 +319,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
           const scoped =
             pathname === "/diagnosis"
               ? persisted?.diagnosisScoped
-              : pathname === "/logs"
+              : pathname === "/logs" || pathname === "/requests"
                 ? persisted?.logsScoped
                 : null;
           if (persisted && scoped) {
@@ -412,7 +424,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const isDark =
     d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
-  const showServerScope = pathname === "/diagnosis" || pathname === "/logs";
+  const showServerScope =
+    pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
   const hasIssuedApiKey = d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey);
   const hasFirstEvent = (d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0;
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
@@ -445,36 +458,48 @@ function ShellWithData({ children }: { children: ReactNode }) {
       </div>
     </div>
   );
-  const resetDiagnosisScope = () => {
-    d.onServerMethodChange("ALL");
-    d.onServerStatusClassChange("ALL");
-    d.setPathQuery("");
-    d.setMinLatencyMs("");
-    d.setMaxLatencyMs("");
-    d.setServerEnvironmentQuery("");
-    d.setServerServiceQuery("");
-    d.setRequestPage(0);
-    d.setErrorGroupPage(0);
-    d.setErrorGroupSort("last_seen");
-    d.setErrorGroupLimit(25);
-    d.setSqlFilterDraft("");
-    d.setSqlFilterApplied("");
-    d.setSqlFilterEnabled(false);
-  };
-  const resetLogsScope = () => {
-    d.onServerMethodChange("ALL");
-    d.onServerStatusClassChange("ALL");
-    d.setPathQuery("");
-    d.setMinLatencyMs("");
-    d.setMaxLatencyMs("");
-    d.setServerEnvironmentQuery("");
-    d.setServerServiceQuery("");
-    d.setRequestLimit(100);
-    d.setRequestPage(0);
-    d.setSqlFilterDraft("");
-    d.setSqlFilterApplied("");
-    d.setSqlFilterEnabled(false);
-  };
+  const resetDiagnosisScope = () =>
+    resetServerScope(
+      {
+        onServerMethodChange: d.onServerMethodChange,
+        onServerStatusClassChange: d.onServerStatusClassChange,
+        setPathQuery: d.setPathQuery,
+        setMinLatencyMs: d.setMinLatencyMs,
+        setMaxLatencyMs: d.setMaxLatencyMs,
+        setServerEnvironmentQuery: d.setServerEnvironmentQuery,
+        setServerServiceQuery: d.setServerServiceQuery,
+        setRequestLimit: d.setRequestLimit,
+        setRequestPage: d.setRequestPage,
+        setErrorGroupLimit: d.setErrorGroupLimit,
+        setErrorGroupPage: d.setErrorGroupPage,
+        setErrorGroupSort: d.setErrorGroupSort,
+        setSqlFilterDraft: d.setSqlFilterDraft,
+        setSqlFilterApplied: d.setSqlFilterApplied,
+        setSqlFilterEnabled: d.setSqlFilterEnabled,
+      },
+      "diagnosis",
+    );
+  const resetRequestLikeScope = (variant: "logs" | "requests") =>
+    resetServerScope(
+      {
+        onServerMethodChange: d.onServerMethodChange,
+        onServerStatusClassChange: d.onServerStatusClassChange,
+        setPathQuery: d.setPathQuery,
+        setMinLatencyMs: d.setMinLatencyMs,
+        setMaxLatencyMs: d.setMaxLatencyMs,
+        setServerEnvironmentQuery: d.setServerEnvironmentQuery,
+        setServerServiceQuery: d.setServerServiceQuery,
+        setRequestLimit: d.setRequestLimit,
+        setRequestPage: d.setRequestPage,
+        setErrorGroupLimit: d.setErrorGroupLimit,
+        setErrorGroupPage: d.setErrorGroupPage,
+        setErrorGroupSort: d.setErrorGroupSort,
+        setSqlFilterDraft: d.setSqlFilterDraft,
+        setSqlFilterApplied: d.setSqlFilterApplied,
+        setSqlFilterEnabled: d.setSqlFilterEnabled,
+      },
+      variant,
+    );
 
   return (
     <DashboardAppShell
@@ -486,17 +511,35 @@ function ShellWithData({ children }: { children: ReactNode }) {
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}
       filterToolbarAutoCollapse={showServerScope}
-      filterToolbarCompactLabel={pathname === "/diagnosis" ? "Diagnosis scope" : pathname === "/logs" ? "Logs scope" : "Server scope"}
+      filterToolbarCompactLabel={
+        pathname === "/diagnosis"
+          ? "Diagnosis scope"
+          : pathname === "/logs"
+            ? "Logs scope"
+            : pathname === "/requests"
+              ? "Requests scope"
+              : "Server scope"
+      }
       onResetServerFilters={
         showServerScope
           ? pathname === "/diagnosis"
             ? resetDiagnosisScope
-            : resetLogsScope
+            : pathname === "/requests"
+              ? () => resetRequestLikeScope("requests")
+              : () => resetRequestLikeScope("logs")
           : undefined
       }
       filterToolbar={
         showServerScope ? (
-          <ServerQueryToolbar variant={pathname === "/diagnosis" ? "diagnosis" : "logs"} />
+          <ServerQueryToolbar
+            variant={
+              pathname === "/diagnosis"
+                ? "diagnosis"
+                : pathname === "/requests"
+                  ? "requests"
+                  : "logs"
+            }
+          />
         ) : null
       }
     >

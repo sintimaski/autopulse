@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEventHandler } from 
 
 import { Ban, CalendarClock, Check, FilterX, History, ListChecks, SlidersHorizontal } from "../../lib/icons";
 import { useDashboardData } from "./DashboardDataContext";
+import { resetServerScope } from "./dashboardScopeReset";
 import { TagSelector } from "./TagSelector";
 
 function isoToLocalInputValue(iso: string): string {
@@ -54,11 +55,12 @@ function formatRelativeToUserTime(serverIso: string): string {
   return `${Math.abs(diffMinutes)}m behind your local time`;
 }
 
-export type ServerScopeToolbarVariant = "diagnosis" | "logs";
+export type ServerScopeToolbarVariant = "diagnosis" | "logs" | "requests";
 
 export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVariant }) {
   const d = useDashboardData();
-  const scopeTitle = variant === "diagnosis" ? "Diagnosis scope" : "Logs scope";
+  const scopeTitle =
+    variant === "diagnosis" ? "Diagnosis scope" : variant === "requests" ? "Requests scope" : "Logs scope";
   const selectedEnvironmentTags = useMemo(
     () => new Set(d.serverEnvironmentTags),
     [d.serverEnvironmentTags],
@@ -93,6 +95,9 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   const errorGroupSortRef = useRef<HTMLSelectElement>(null);
   const [windowError, setWindowError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [presetNameDraft, setPresetNameDraft] = useState("");
+  const [presetFeedback, setPresetFeedback] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState("");
 
   /** Rolling-window API timestamps change on every refresh; keys must not, or inputs remount and layout jumps while scrolled. */
   const dateTimeFieldResetKey = useMemo(
@@ -120,16 +125,26 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   }, [d.windowFromTimestamp, d.windowToTimestamp]);
 
   const resetServerFilters = () => {
-    d.onServerMethodChange("ALL");
-    d.onServerStatusClassChange("ALL");
-    d.setPathQuery("");
-    d.setMinLatencyMs("");
-    d.setMaxLatencyMs("");
-    d.setServerEnvironmentTags([]);
-    d.setServerServiceTags([]);
-    d.setSqlFilterDraft("");
-    d.setSqlFilterApplied("");
-    d.setSqlFilterEnabled(false);
+    resetServerScope(
+      {
+        onServerMethodChange: d.onServerMethodChange,
+        onServerStatusClassChange: d.onServerStatusClassChange,
+        setPathQuery: d.setPathQuery,
+        setMinLatencyMs: d.setMinLatencyMs,
+        setMaxLatencyMs: d.setMaxLatencyMs,
+        setServerEnvironmentTags: d.setServerEnvironmentTags,
+        setServerServiceTags: d.setServerServiceTags,
+        setRequestLimit: d.setRequestLimit,
+        setRequestPage: d.setRequestPage,
+        setErrorGroupLimit: d.setErrorGroupLimit,
+        setErrorGroupPage: d.setErrorGroupPage,
+        setErrorGroupSort: d.setErrorGroupSort,
+        setSqlFilterDraft: d.setSqlFilterDraft,
+        setSqlFilterApplied: d.setSqlFilterApplied,
+        setSqlFilterEnabled: d.setSqlFilterEnabled,
+      },
+      variant,
+    );
     if (methodRef.current) methodRef.current.value = "ALL";
     if (statusClassRef.current) statusClassRef.current.value = "ALL";
     if (minLatencyRef.current) minLatencyRef.current.value = "";
@@ -209,6 +224,8 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           <p className="text-[11px] leading-tight text-slate-500 dark:text-neutral-400">
             {variant === "diagnosis"
               ? "Applies to grouped errors, diagnosis timeline, and the loaded request slice."
+              : variant === "requests"
+                ? "Applies to the request evidence explorer and related drill-down panels."
               : "Applies to the request log table and server-backed log queries."}
           </p>
         </div>
@@ -218,7 +235,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             onClick={resetServerFilters}
             title="Reset filters"
             aria-label="Reset filters"
-            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+            className="ap-btn p-2"
           >
             <FilterX className="size-4" aria-hidden />
           </button>
@@ -227,7 +244,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             onClick={applyFilters}
             title="Apply filters"
             aria-label="Apply filters"
-            className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 p-2 text-sky-900 transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
+            className="ap-btn-primary p-2"
           >
             <Check className="size-4" aria-hidden />
           </button>
@@ -240,7 +257,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           <select
             value={d.windowMinutes}
             onChange={(e) => d.onServerWindowChange(Number(e.target.value))}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-select"
           >
             {d.WINDOW_OPTIONS.map((minutes) => (
               <option key={minutes} value={minutes}>
@@ -256,7 +273,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             ref={fromInputRef}
             type="datetime-local"
             defaultValue={isoToLocalInputValue(d.windowFromTimestamp)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-input"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
@@ -266,7 +283,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             ref={toInputRef}
             type="datetime-local"
             defaultValue={isoToLocalInputValue(d.windowToTimestamp)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-input"
           />
         </label>
         <div className="flex items-end gap-2 lg:col-span-1 xl:col-span-1">
@@ -275,7 +292,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             onClick={applyAbsoluteWindow}
             title="Apply custom time window"
             aria-label="Apply custom time window"
-            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+            className="ap-btn p-2"
           >
             <CalendarClock className="size-4" aria-hidden />
           </button>
@@ -285,7 +302,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               onClick={d.clearAbsoluteWindow}
               title="Use quick range preset"
               aria-label="Use quick range preset"
-              className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+              className="ap-btn p-2"
             >
               <History className="size-4" aria-hidden />
             </button>
@@ -297,7 +314,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             key={`method-${d.method}`}
             ref={methodRef}
             defaultValue={d.method}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-select"
           >
             {d.METHOD_OPTIONS.map((value) => (
               <option key={value} value={value}>
@@ -312,7 +329,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             key={`status-${d.statusClass}`}
             ref={statusClassRef}
             defaultValue={d.statusClass}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-select"
           >
             {d.STATUS_CLASS_OPTIONS.map((value) => (
               <option key={value} value={value}>
@@ -331,7 +348,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             step="1"
             defaultValue={d.minLatencyMs}
             placeholder="0"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-input"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
@@ -344,7 +361,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             step="1"
             defaultValue={d.maxLatencyMs}
             placeholder="5000"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-input"
           />
         </label>
       </div>
@@ -372,7 +389,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             type="search"
             defaultValue={d.pathQuery}
             placeholder="/orders, /health, ..."
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+            className="ap-input"
           />
         </label>
         {variant === "diagnosis" ? (
@@ -382,7 +399,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               key={`error-group-sort-${d.errorGroupSort}`}
               ref={errorGroupSortRef}
               defaultValue={d.errorGroupSort}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="ap-select"
             >
               <option value="last_seen">Last seen</option>
               <option value="count">Count</option>
@@ -397,7 +414,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 d.setRequestLimit(Number(e.target.value));
                 d.setRequestPage(0);
               }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="ap-select"
             >
               {d.REQUEST_LIMIT_OPTIONS.map((value) => (
                 <option key={value} value={value}>
@@ -472,7 +489,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           <button
             type="button"
             onClick={() => setShowAdvanced((prev) => !prev)}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              className="ap-btn px-2 py-1 text-xs"
           >
             {showAdvanced ? "Hide advanced" : "Show advanced"}
           </button>
@@ -484,8 +501,76 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               value={d.sqlFilterDraft}
               onChange={(event) => d.setSqlFilterDraft(event.target.value)}
               placeholder="e.g. status_code >= 500 AND method = 'GET'"
-              className="h-16 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="h-16 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
             />
+            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/60">
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={presetNameDraft}
+                  onChange={(event) => setPresetNameDraft(event.target.value)}
+                  placeholder="Preset name (e.g. Critical 5xx routes)"
+                  className="min-w-[190px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const saved = d.saveSqlFilterPreset(presetNameDraft, d.sqlFilterDraft);
+                    if (!saved.ok) {
+                      setPresetFeedback(saved.error ?? "Unable to save preset.");
+                      return;
+                    }
+                    setPresetNameDraft("");
+                    setPresetFeedback("Preset saved.");
+                  }}
+                  className="ap-btn px-2.5 py-1.5 text-xs"
+                >
+                  Save preset
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedPresetId}
+                  onChange={(event) => setSelectedPresetId(event.target.value)}
+                  className="min-w-[230px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                >
+                  <option value="">Saved presets ({d.savedSqlFilterPresets.length})</option>
+                  {d.savedSqlFilterPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!selectedPresetId}
+                  onClick={() => {
+                    d.applySavedSqlFilterPreset(selectedPresetId);
+                    setPresetFeedback("Preset applied.");
+                  }}
+                  className="ap-btn-primary px-2.5 py-1.5 text-xs"
+                >
+                  Apply preset
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedPresetId}
+                  onClick={() => {
+                    d.removeSqlFilterPreset(selectedPresetId);
+                    setSelectedPresetId("");
+                    setPresetFeedback("Preset removed.");
+                  }}
+                  className="ap-btn px-2.5 py-1.5 text-xs"
+                >
+                  Remove
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-500 dark:text-neutral-400">
+                Presets are stored per signed-in user ({d.sessionEmail ?? "anonymous"}).
+              </p>
+              {presetFeedback ? (
+                <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">{presetFeedback}</p>
+              ) : null}
+            </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -493,7 +578,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 onClick={() => void d.validateSqlFilterDraft()}
                 title="Validate SQL filter"
                 aria-label="Validate SQL filter"
-                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                className="ap-btn p-1.5"
               >
                 <ListChecks className="size-3.5" aria-hidden />
               </button>
@@ -503,7 +588,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 onClick={() => void d.applySqlFilter()}
                 title="Apply SQL filter to scope"
                 aria-label="Apply SQL filter to scope"
-                className="inline-flex items-center justify-center rounded-lg border border-sky-300 bg-sky-50 p-1.5 text-sky-800 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                className="ap-btn-primary p-1.5"
               >
                 <Check className="size-3.5" aria-hidden />
               </button>
@@ -513,7 +598,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 disabled={!d.sqlFilterEnabled}
                 title="Disable SQL filter"
                 aria-label="Disable SQL filter"
-                className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                className="ap-btn p-1.5"
               >
                 <Ban className="size-3.5" aria-hidden />
               </button>

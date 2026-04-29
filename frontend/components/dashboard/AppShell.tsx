@@ -10,9 +10,9 @@ import {
   PanelLeft,
   PanelLeftClose,
   RotateCw,
-  ScrollText,
   Settings,
   Stethoscope,
+  ScrollText,
 } from "../../lib/icons";
 import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
@@ -20,10 +20,10 @@ import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
 const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
 const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
-  { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
+  { href: "/requests", label: "Requests", Icon: ScrollText },
   { href: "/alerts", label: "Alerts", Icon: Bell },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
-  { href: "/logs", label: "Logs", Icon: ScrollText },
   { href: "/settings", label: "Settings", Icon: Settings },
 ] as const;
 
@@ -89,11 +89,11 @@ export function DashboardAppShell({
   return (
     <div suppressHydrationWarning className={isDark ? "dark" : ""}>
       <div
-        className="flex min-h-screen bg-slate-100 text-slate-900 dark:bg-neutral-950 dark:text-neutral-100"
+        className="flex min-h-screen bg-gradient-to-b from-slate-100 via-slate-100 to-slate-200/70 text-slate-900 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900 dark:text-neutral-100"
         style={{ ["--dashboard-sidebar-width" as string]: sidebarWidth }}
       >
         <aside
-          className="sticky top-0 flex h-screen w-[var(--dashboard-sidebar-width)] shrink-0 flex-col border-r border-neutral-800/90 bg-neutral-950 text-neutral-100 transition-[width] duration-200 ease-out dark:border-neutral-800 dark:bg-neutral-900"
+          className="sticky top-0 flex h-screen w-[var(--dashboard-sidebar-width)] shrink-0 flex-col border-r border-neutral-800/80 bg-neutral-950/95 text-neutral-100 shadow-xl shadow-neutral-950/20 backdrop-blur transition-[width] duration-200 ease-out dark:border-neutral-800 dark:bg-neutral-900/95"
           aria-label="Primary navigation"
         >
           <div className="border-b border-white/10 px-2 py-4 sm:px-3">
@@ -142,7 +142,7 @@ export function DashboardAppShell({
                   href={
                     item.href === "/diagnosis" && diagnosisNavQuery
                       ? `${item.href}?${diagnosisNavQuery}`
-                      : item.href === "/logs" && logsNavQuery
+                      : (item.href === "/logs" || item.href === "/requests") && logsNavQuery
                         ? `${item.href}?${logsNavQuery}`
                         : item.href
                   }
@@ -173,7 +173,7 @@ export function DashboardAppShell({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col transition-[margin] duration-200">
-          <header className="border-b border-slate-200/90 bg-white/95 dark:border-neutral-800 dark:bg-neutral-900/95">
+          <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/85">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div>
                 <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-neutral-100 sm:text-2xl">
@@ -188,7 +188,7 @@ export function DashboardAppShell({
                     onClick={onRefresh}
                     title="Refresh"
                     aria-label="Refresh"
-                    className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-800 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+                    className="ap-btn shrink-0 p-2"
                   >
                     <RotateCw className="size-4" aria-hidden />
                   </button>
@@ -209,7 +209,7 @@ export function DashboardAppShell({
 
           <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
 
-          <footer className="border-t border-slate-200/90 bg-white px-4 py-4 text-center text-sm text-slate-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400 sm:px-6">
+          <footer className="border-t border-slate-200/80 bg-white/85 px-4 py-4 text-center text-sm text-slate-500 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-6">
             <span className="text-slate-600 dark:text-neutral-300">AutoPulse</span>
             {" — "}
             Ingest at{" "}

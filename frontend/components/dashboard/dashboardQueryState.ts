@@ -38,6 +38,51 @@ const DEFAULTS = {
   errorGroupSort: "last_seen" as const,
 };
 
+type ScopedStateSource = Pick<
+  DashboardScopedQueryState,
+  | "isAbsoluteWindow"
+  | "windowMinutes"
+  | "windowFromTimestamp"
+  | "windowToTimestamp"
+  | "method"
+  | "statusClass"
+  | "minLatencyMs"
+  | "maxLatencyMs"
+  | "pathQuery"
+  | "serverEnvironmentQuery"
+  | "serverServiceQuery"
+  | "requestLimit"
+  | "requestPage"
+  | "errorGroupLimit"
+  | "errorGroupPage"
+  | "errorGroupSort"
+  | "sqlFilterApplied"
+  | "sqlFilterEnabled"
+>;
+
+export function buildCurrentScopedState(source: ScopedStateSource): DashboardScopedQueryState {
+  return {
+    isAbsoluteWindow: source.isAbsoluteWindow,
+    windowMinutes: source.windowMinutes,
+    windowFromTimestamp: source.windowFromTimestamp,
+    windowToTimestamp: source.windowToTimestamp,
+    method: source.method,
+    statusClass: source.statusClass,
+    minLatencyMs: source.minLatencyMs,
+    maxLatencyMs: source.maxLatencyMs,
+    pathQuery: source.pathQuery,
+    serverEnvironmentQuery: source.serverEnvironmentQuery,
+    serverServiceQuery: source.serverServiceQuery,
+    requestLimit: source.requestLimit,
+    requestPage: source.requestPage,
+    errorGroupLimit: source.errorGroupLimit,
+    errorGroupPage: source.errorGroupPage,
+    errorGroupSort: source.errorGroupSort,
+    sqlFilterApplied: source.sqlFilterApplied,
+    sqlFilterEnabled: source.sqlFilterEnabled,
+  };
+}
+
 export function normalizeCommaSeparated(value: string): string {
   return value
     .split(",")
@@ -168,6 +213,19 @@ export function buildLogsPageHref(
     errorGroupPage: patch?.errorGroupPage ?? state.errorGroupPage,
   };
   return `/logs?${buildScopedQuery(next).toString()}`;
+}
+
+export function buildRequestsPageHref(
+  state: DashboardScopedQueryState,
+  patch?: Partial<DashboardScopedQueryState>,
+): string {
+  const next: DashboardScopedQueryState = {
+    ...state,
+    ...patch,
+    requestPage: patch?.requestPage ?? 0,
+    errorGroupPage: patch?.errorGroupPage ?? state.errorGroupPage,
+  };
+  return `/requests?${buildScopedQuery(next).toString()}`;
 }
 
 /** Build `/diagnosis` href preserving the current scope (optionally narrowed); `hash` defaults to empty. */

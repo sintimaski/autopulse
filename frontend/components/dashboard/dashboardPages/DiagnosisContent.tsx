@@ -4,7 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLayoutEffect, useMemo } from "react";
 
-import { buildLogsPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
+import {
+  buildCurrentScopedState,
+  buildRequestsPageHref,
+  type DashboardScopedQueryState,
+} from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { ExpandableTableRow } from "../ExpandableTableRow";
@@ -14,28 +18,29 @@ import { MetricCard } from "../MetricCard";
 export function DiagnosisContent() {
   const d = useDashboardData();
   const pathname = usePathname();
-  const scopedState = useMemo((): DashboardScopedQueryState => {
-    return {
-      isAbsoluteWindow: d.isAbsoluteWindow,
-      windowMinutes: d.windowMinutes,
-      windowFromTimestamp: d.windowFromTimestamp,
-      windowToTimestamp: d.windowToTimestamp,
-      method: d.method,
-      statusClass: d.statusClass,
-      minLatencyMs: d.minLatencyMs,
-      maxLatencyMs: d.maxLatencyMs,
-      pathQuery: d.pathQuery,
-      serverEnvironmentQuery: d.serverEnvironmentQuery,
-      serverServiceQuery: d.serverServiceQuery,
-      requestLimit: d.requestLimit,
-      requestPage: d.requestPage,
-      errorGroupLimit: d.errorGroupLimit,
-      errorGroupPage: d.errorGroupPage,
-      errorGroupSort: d.errorGroupSort,
-      sqlFilterApplied: d.sqlFilterApplied,
-      sqlFilterEnabled: d.sqlFilterEnabled,
-    };
-  }, [
+  const scopedState = useMemo(
+    (): DashboardScopedQueryState =>
+      buildCurrentScopedState({
+        isAbsoluteWindow: d.isAbsoluteWindow,
+        windowMinutes: d.windowMinutes,
+        windowFromTimestamp: d.windowFromTimestamp,
+        windowToTimestamp: d.windowToTimestamp,
+        method: d.method,
+        statusClass: d.statusClass,
+        minLatencyMs: d.minLatencyMs,
+        maxLatencyMs: d.maxLatencyMs,
+        pathQuery: d.pathQuery,
+        serverEnvironmentQuery: d.serverEnvironmentQuery,
+        serverServiceQuery: d.serverServiceQuery,
+        requestLimit: d.requestLimit,
+        requestPage: d.requestPage,
+        errorGroupLimit: d.errorGroupLimit,
+        errorGroupPage: d.errorGroupPage,
+        errorGroupSort: d.errorGroupSort,
+        sqlFilterApplied: d.sqlFilterApplied,
+        sqlFilterEnabled: d.sqlFilterEnabled,
+      }),
+    [
     d.isAbsoluteWindow,
     d.windowMinutes,
     d.windowFromTimestamp,
@@ -54,7 +59,8 @@ export function DiagnosisContent() {
     d.errorGroupSort,
     d.sqlFilterApplied,
     d.sqlFilterEnabled,
-  ]);
+    ],
+  );
   const requests = d.requests;
   const errorGroups = d.errorGroups;
   const timeline = d.diagnosisTimeline;
@@ -102,10 +108,10 @@ export function DiagnosisContent() {
           Recent grouped errors and top failing routes from the loaded request sample ({requests.limit} rows).
           Full request rows live on{" "}
           <Link
-            href={buildLogsPageHref(scopedState)}
+            href={buildRequestsPageHref(scopedState)}
             className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
           >
-            Logs
+            Requests
           </Link>{" "}
           (same time window and filters).
         </p>
@@ -138,7 +144,7 @@ export function DiagnosisContent() {
                         </span>
                       </a>
                       <Link
-                        href={buildLogsPageHref(scopedState, {
+                        href={buildRequestsPageHref(scopedState, {
                           pathQuery: item.path,
                           statusClass: "ALL",
                         })}
@@ -164,7 +170,7 @@ export function DiagnosisContent() {
                     className="flex items-start justify-between gap-2 text-sm text-slate-800 dark:text-neutral-200"
                   >
                     <Link
-                      href={buildLogsPageHref(scopedState, { pathQuery: path, statusClass: "5" })}
+                      href={buildRequestsPageHref(scopedState, { pathQuery: path, statusClass: "5" })}
                       className="min-w-0 truncate font-mono text-xs text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                     >
                       {path}
@@ -195,7 +201,7 @@ export function DiagnosisContent() {
               <select
                 value={d.errorGroupSort}
                 onChange={(e) => d.setErrorGroupSort(e.target.value as "last_seen" | "count")}
-                className="min-w-[140px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-orange-500/25 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-orange-400/22 dark:focus:ring-orange-400/35"
+                className="ap-select min-w-[140px]"
               >
                 <option value="last_seen">Last seen</option>
                 <option value="count">Count</option>
@@ -291,7 +297,7 @@ export function DiagnosisContent() {
                             <dt className="font-semibold text-slate-500 dark:text-neutral-400">Request logs</dt>
                             <dd className="mt-1">
                               <Link
-                                href={buildLogsPageHref(scopedState, {
+                                href={buildRequestsPageHref(scopedState, {
                                   pathQuery: item.path,
                                   statusClass: "ALL",
                                 })}
@@ -353,7 +359,7 @@ export function DiagnosisContent() {
               type="button"
               disabled={d.errorGroupPage === 0}
               onClick={() => d.setErrorGroupPage((p) => Math.max(0, p - 1))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-orange-400/35"
+              className="ap-btn"
             >
               Prev
             </button>
@@ -361,7 +367,7 @@ export function DiagnosisContent() {
               type="button"
               disabled={(d.errorGroupPage + 1) * d.errorGroupLimit >= errorGroups.total}
               onClick={() => d.setErrorGroupPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:focus-visible:ring-orange-400/35"
+              className="ap-btn"
             >
               Next
             </button>
@@ -380,13 +386,13 @@ export function DiagnosisContent() {
                   {formatTimestamp(event.timestamp)} · {event.status_code} · {event.latency_ms.toFixed(1)} ms
                 </p>
                 <Link
-                  href={buildLogsPageHref(scopedState, {
+                  href={buildRequestsPageHref(scopedState, {
                     pathQuery: event.path,
                     statusClass: event.status_code >= 500 ? "5" : event.status_code >= 400 ? "4" : "ALL",
                   })}
                   className="mt-2 inline-block font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                 >
-                  View in request logs
+                  View in requests explorer
                 </Link>
               </li>
             ))}
