@@ -287,7 +287,6 @@ export type DashboardMembershipListResponse = {
 export type DashboardMagicLinkRequestResponse = {
   accepted: boolean;
   expires_in_seconds: number;
-  dev_magic_link_token: string | null;
 };
 
 export type DashboardApiKeyItem = {

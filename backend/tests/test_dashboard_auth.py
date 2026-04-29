@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -59,6 +60,24 @@ def _truncate_tables(database_url: str) -> None:
     asyncio.run(run())
 
 
+def _extract_magic_link_token_from_outbox(tmp_path) -> str:
+    outbox_files = sorted(tmp_path.glob("*.eml"))
+    assert outbox_files
+    outbox_content = outbox_files[-1].read_text()
+    match = re.search(r"token=([A-Za-z0-9_-]+)", outbox_content)
+    assert match is not None
+    return match.group(1)
+
+
+def _request_magic_link_token(client: TestClient, *, email: str, tmp_path) -> str:
+    request_response = client.post(
+        "/dashboard/auth/magic-link/request",
+        json={"email": email},
+    )
+    assert request_response.status_code == 200
+    return _extract_magic_link_token_from_outbox(tmp_path)
+
+
 def test_dashboard_magic_link_session_flow(
     backend_test_database_url: str,
     monkeypatch,
@@ -67,7 +86,6 @@ def test_dashboard_magic_link_session_flow(
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
     monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
@@ -78,14 +96,7 @@ def test_dashboard_magic_link_session_flow(
         assert pre_session.status_code == 200
         assert pre_session.json()["authenticated"] is False
 
-        request_response = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        )
-        assert request_response.status_code == 200
-        payload = request_response.json()
-        token = payload.get("dev_magic_link_token")
-        assert isinstance(token, str) and token
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
         outbox_files = list(tmp_path.glob("*.eml"))
         assert len(outbox_files) == 1
         outbox_content = outbox_files[0].read_text()
@@ -126,21 +137,18 @@ def test_dashboard_magic_link_session_flow(
 def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
-        request_response = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        )
-        assert request_response.status_code == 200
-        token = request_response.json().get("dev_magic_link_token")
-        assert isinstance(token, str) and token
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
 
         # Simulates copy-paste from raw quoted-printable email body:
         # `token=3D<token with soft-break '=' + inserted space>`
@@ -157,19 +165,18 @@ def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
 def test_dashboard_organization_governance_flow(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
-        token = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        ).json()["dev_magic_link_token"]
-        assert isinstance(token, str)
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
         verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
         assert verify_response.status_code == 200
 
@@ -205,20 +212,17 @@ def test_dashboard_organization_governance_flow(
 def test_dashboard_magic_link_bootstraps_default_project_when_empty(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
-        request_response = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        )
-        assert request_response.status_code == 200
-        token = request_response.json().get("dev_magic_link_token")
-        assert isinstance(token, str) and token
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
         verify_response = client.post(
             "/dashboard/auth/magic-link/verify",
             json={"token": token},
@@ -233,18 +237,18 @@ def test_dashboard_magic_link_bootstraps_default_project_when_empty(
 def test_dashboard_bootstrap_creates_org_project_and_api_key(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
-        token = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        ).json()["dev_magic_link_token"]
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
         client.post("/dashboard/auth/magic-link/verify", json={"token": token})
         bootstrap_response = client.post(
             "/dashboard/auth/bootstrap",
@@ -290,18 +294,18 @@ def test_dashboard_api_key_fallback_is_opt_in(
 def test_dashboard_api_key_lifecycle_owner_flow(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
-        token = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        ).json()["dev_magic_link_token"]
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
         verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
         assert verify_response.status_code == 200
 
@@ -334,18 +338,20 @@ def test_dashboard_api_key_lifecycle_owner_flow(
 def test_dashboard_member_cannot_manage_api_keys(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
-        owner_token = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        ).json()["dev_magic_link_token"]
+        owner_token = _request_magic_link_token(
+            client, email="owner@example.com", tmp_path=tmp_path
+        )
         verify_owner = client.post("/dashboard/auth/magic-link/verify", json={"token": owner_token})
         assert verify_owner.status_code == 200
         orgs = client.get("/dashboard/organizations").json()["organizations"]
@@ -361,10 +367,9 @@ def test_dashboard_member_cannot_manage_api_keys(
     monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
     app = create_app()
     with TestClient(app) as member_client:
-        member_token = member_client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "member@example.com"},
-        ).json()["dev_magic_link_token"]
+        member_token = _request_magic_link_token(
+            member_client, email="member@example.com", tmp_path=tmp_path
+        )
         member_client.post("/dashboard/auth/magic-link/verify", json={"token": member_token})
         member_issue = member_client.post("/dashboard/auth/api-keys/issue")
         assert member_issue.status_code == 403
@@ -373,21 +378,21 @@ def test_dashboard_member_cannot_manage_api_keys(
 def test_dashboard_onboarding_status_and_alert_capabilities(
     backend_test_database_url: str,
     monkeypatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
-    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
     app = create_app()
 
     with TestClient(app) as client:
         unauth = client.get("/dashboard/auth/onboarding-status")
         assert unauth.status_code == 401
 
-        token = client.post(
-            "/dashboard/auth/magic-link/request",
-            json={"email": "owner@example.com"},
-        ).json()["dev_magic_link_token"]
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
         verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
         assert verify_response.status_code == 200
 

@@ -552,6 +552,12 @@ export function SettingsContent() {
         >
           Open Alerts policy editor
         </a>
+        <a
+          href="/onboarding"
+          className="mt-3 ml-2 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+        >
+          Open onboarding checklist
+        </a>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">

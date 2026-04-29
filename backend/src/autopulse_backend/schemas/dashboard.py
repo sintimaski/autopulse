@@ -314,7 +314,6 @@ class DashboardMagicLinkRequest(BaseModel):
 class DashboardMagicLinkRequestResponse(BaseModel):
     accepted: bool
     expires_in_seconds: int
-    dev_magic_link_token: str | None = None
 
 
 class DashboardMagicLinkVerifyRequest(BaseModel):

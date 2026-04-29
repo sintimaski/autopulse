@@ -26,7 +26,6 @@ Backend defaults to `http://localhost:8000`.
 - `DATABASE_URL`
 - `CORS_ALLOW_ORIGINS`
 - `DASHBOARD_AUTH_ALLOWED_EMAIL`
-- `DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN` (dev-only convenience; default is disabled)
 - `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK` (disabled by default; enable only for controlled non-browser flows)
 - `INGEST_MAX_REQUEST_BYTES`
 - `INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW`

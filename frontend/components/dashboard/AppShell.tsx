@@ -21,7 +21,6 @@ const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
 const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Dashboard", Icon: LayoutDashboard },
-  { href: "/onboarding", label: "Onboarding", Icon: Activity },
   { href: "/alerts", label: "Alerts", Icon: Bell },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/logs", label: "Logs", Icon: ScrollText },

@@ -33,12 +33,31 @@ export function MagicLinkVerifyClient() {
         if (!response.ok) {
           throw new Error(`verify failed (${response.status})`);
         }
+        const payload = (await response.json()) as { membership_role?: "owner" | "member" | null };
+        let destination = "/dashboard";
+        if (payload.membership_role === "owner") {
+          try {
+            const onboardingResponse = await fetch(buildApiUrl("/dashboard/auth/onboarding-status"), {
+              credentials: "include",
+            });
+            if (onboardingResponse.ok) {
+              const onboardingPayload = (await onboardingResponse.json()) as {
+                current_step?: "completed" | string;
+              };
+              if (onboardingPayload.current_step && onboardingPayload.current_step !== "completed") {
+                destination = "/onboarding";
+              }
+            }
+          } catch {
+            // Keep fallback destination as dashboard.
+          }
+        }
         if (!cancelled) {
           setStatus("success");
           setMessage("Signed in. Redirecting…");
         }
         setTimeout(() => {
-          router.replace("/dashboard");
+          router.replace(destination);
           router.refresh();
         }, 150);
       } catch {

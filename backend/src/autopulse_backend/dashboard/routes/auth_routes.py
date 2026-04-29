@@ -60,7 +60,7 @@ async def request_dashboard_magic_link(
 ) -> DashboardMagicLinkRequestResponse:
     settings = get_settings()
     derived_magic_link_base_url = _derive_magic_link_base_url(request, settings)
-    token = await create_magic_link_token(
+    await create_magic_link_token(
         session=session,
         settings=settings,
         email=payload.email,
@@ -69,7 +69,6 @@ async def request_dashboard_magic_link(
     return DashboardMagicLinkRequestResponse(
         accepted=True,
         expires_in_seconds=max(60, settings.dashboard_auth_magic_link_ttl_minutes * 60),
-        dev_magic_link_token=token if settings.dashboard_auth_magic_link_dev_expose_token else None,
     )
 
 

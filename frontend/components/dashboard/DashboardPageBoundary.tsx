@@ -21,9 +21,6 @@ export function DashboardSessionRestoring() {
 
 export function ApiKeyMissing() {
   const [email, setEmail] = useState("");
-  const [token, setToken] = useState("");
-  const [magicLinkToken, setMagicLinkToken] = useState<string | null>(null);
-  const [magicLinkHref, setMagicLinkHref] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -40,40 +37,9 @@ export function ApiKeyMissing() {
       if (!response.ok) {
         throw new Error("Request failed");
       }
-      const payload = (await response.json()) as { dev_magic_link_token?: string | null };
-      const issuedToken = payload.dev_magic_link_token ?? null;
-      setMagicLinkToken(issuedToken);
-      if (issuedToken) {
-        setToken(issuedToken);
-        const origin = typeof window !== "undefined" ? window.location.origin : "";
-        setMagicLinkHref(`${origin}/auth/magic-link?token=${encodeURIComponent(issuedToken)}`);
-      } else {
-        setMagicLinkHref(null);
-      }
-      setMessage("If the email is allowed, a sign-in link was issued.");
+      setMessage("If the email is allowed, check your inbox for the sign-in link.");
     } catch {
       setMessage("Unable to send sign-in link. Check backend auth settings.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyMagicLink = async () => {
-    setLoading(true);
-    setMessage(null);
-    try {
-      const response = await fetch(buildApiUrl("/dashboard/auth/magic-link/verify"), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      });
-      if (!response.ok) {
-        throw new Error("Verification failed");
-      }
-      window.location.reload();
-    } catch {
-      setMessage("Invalid or expired magic-link token.");
     } finally {
       setLoading(false);
     }
@@ -102,37 +68,6 @@ export function ApiKeyMissing() {
             disabled={loading || !email.trim()}
           >
             Request magic link
-          </button>
-        </div>
-        {magicLinkToken ? (
-          <div className="mt-4 rounded-lg border border-sky-400/30 bg-sky-500/10 p-3 text-xs text-sky-100">
-            <p className="font-medium">Dev magic-link token</p>
-            <code className="mt-1 block break-all">{magicLinkToken}</code>
-            {magicLinkHref ? (
-              <a
-                className="mt-2 inline-block rounded-md bg-sky-400/20 px-2 py-1 text-[11px] font-semibold text-sky-50 hover:bg-sky-400/30"
-                href={magicLinkHref}
-              >
-                Open magic link
-              </a>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="mt-4 space-y-3">
-          <input
-            className="w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-400"
-            type="text"
-            value={token}
-            placeholder="Paste token or open emailed link"
-            onChange={(event) => setToken(event.target.value)}
-          />
-          <button
-            type="button"
-            className="w-full rounded-lg bg-emerald-400 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
-            onClick={() => void verifyMagicLink()}
-            disabled={loading || !token.trim()}
-          >
-            Verify and continue
           </button>
         </div>
         {message ? <p className="mt-4 text-xs text-slate-200">{message}</p> : null}
