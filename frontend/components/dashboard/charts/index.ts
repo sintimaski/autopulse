@@ -10,4 +10,8 @@ export type { HistogramBucket } from "./HistogramChart";
 export { MultiSeriesLineChart } from "./MultiSeriesLineChart";
 export type { MultiSeriesLineChartSeries } from "./MultiSeriesLineChart";
 export { PercentileLadder } from "./PercentileLadder";
+export { ScatterPlotChart } from "./ScatterPlotChart";
+export type { ScatterPlotPoint } from "./ScatterPlotChart";
+export { StackedAreaChart } from "./StackedAreaChart";
+export type { StackedAreaSeries } from "./StackedAreaChart";
 export { TimeSeriesLineChart } from "./TimeSeriesLineChart";

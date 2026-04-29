@@ -18,7 +18,11 @@ import {
   HistogramChart,
   MultiSeriesLineChart,
   PercentileLadder,
+  ScatterPlotChart,
+  StackedAreaChart,
   type MultiSeriesLineChartSeries,
+  type ScatterPlotPoint,
+  type StackedAreaSeries,
 } from "../charts";
 import { buildScopedQuery } from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
@@ -145,6 +149,39 @@ export function DashboardHomeContent() {
     { id: "4xx", label: "4xx", value: total4xx, color: "#f59e0b" },
     { id: "5xx", label: "5xx", value: total5xx, color: "#f43f5e" },
   ];
+  const outcomeStackedSeries: StackedAreaSeries[] = [
+    {
+      id: "success",
+      label: "Successful (2xx+3xx)",
+      color: "#34d399",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_2xx || 0) + Number(bucket.count_3xx || 0)),
+    },
+    {
+      id: "client",
+      label: "Client errors (4xx)",
+      color: "#f59e0b",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_4xx || 0)),
+    },
+    {
+      id: "server",
+      label: "Server errors (5xx)",
+      color: "#f43f5e",
+      values: d.sparklineSeries.map((bucket) => Number(bucket.count_5xx || 0)),
+    },
+  ];
+  const routeRiskScatter: ScatterPlotPoint[] = [...overviewExtended.route_breakdown]
+    .sort((a, b) => b.request_count - a.request_count)
+    .slice(0, 20)
+    .map((route) => {
+      const errorRatePct = route.error_rate * 100;
+      return {
+        id: route.key,
+        x: route.request_count,
+        y: errorRatePct,
+        label: `${route.key} · ${route.request_count} req · ${errorRatePct.toFixed(2)}% err`,
+        tone: errorRatePct >= 10 ? "danger" : errorRatePct >= 3 ? "warning" : "neutral",
+      };
+    });
   const latencyHistogramBuckets = (() => {
     const ranges = [
       { label: "<50ms", min: 0, max: 50 },
@@ -557,6 +594,51 @@ export function DashboardHomeContent() {
                 ...(range.min ? { min_latency_ms: range.min } : {}),
                 ...(range.max ? { max_latency_ms: range.max } : {}),
               });
+            }}
+          />
+        </ChartPanel>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <ChartPanel
+          title="Outcome stack over time"
+          description="How success, 4xx, and 5xx compose traffic minute-by-minute."
+        >
+          <StackedAreaChart
+            labels={statusClassLabels}
+            series={outcomeStackedSeries}
+            onPointClick={(index, _label, values) => {
+              const bucket = d.sparklineSeries[index];
+              const dominant =
+                values.server >= values.client && values.server > 0
+                  ? "5"
+                  : values.client > 0
+                    ? "4"
+                    : "ALL";
+              const params: Record<string, string> = {};
+              if (dominant !== "ALL") {
+                params.status_class = dominant;
+              }
+              if (bucket?.minute) {
+                const from = new Date(bucket.minute);
+                const to = new Date(from.getTime() + 60_000);
+                params.from_timestamp = from.toISOString();
+                params.to_timestamp = to.toISOString();
+              }
+              pushRequestsWithScope(params);
+            }}
+          />
+        </ChartPanel>
+        <ChartPanel
+          title="Route risk map"
+          description="Each dot is a route: x=request volume, y=error rate (%)."
+        >
+          <ScatterPlotChart
+            points={routeRiskScatter}
+            xLabel="Higher request volume"
+            yLabel="Higher error rate"
+            onPointClick={(point) => {
+              pushRequestsWithScope({ path_contains: point.id });
             }}
           />
         </ChartPanel>
