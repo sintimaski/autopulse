@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { buildApiUrl } from "./dashboardTypes";
 
-export function useDashboardAuthSession(refreshToken: number): {
+export function useDashboardAuthSession(): {
   hasSession: boolean;
   authSessionResolved: boolean;
   sessionEmail: string | null;
@@ -49,7 +49,7 @@ export function useDashboardAuthSession(refreshToken: number): {
     return () => {
       cancelled = true;
     };
-  }, [refreshToken]);
+  }, []);
 
   return { hasSession, authSessionResolved, sessionEmail };
 }

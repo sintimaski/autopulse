@@ -259,6 +259,8 @@ class ProjectUiSettings(Base):
     theme_preference: Mapped[str] = mapped_column(String(16), nullable=False, default="system")
     exclude_autopulse_traffic: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     retention_raw_events_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retention_max_db_size_mb: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    retention_max_log_rows: Mapped[int | None] = mapped_column(Integer, nullable=True)
     retention_plan: Mapped[str] = mapped_column(String(32), nullable=False, default="standard")
     archival_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     archival_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="db_archive")

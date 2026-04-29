@@ -19,6 +19,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    json_type = (
+        postgresql.JSONB(astext_type=sa.Text())
+        if op.get_bind().dialect.name == "postgresql"
+        else sa.JSON()
+    )
     op.create_table(
         "projects",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -65,7 +70,7 @@ def upgrade() -> None:
         sa.Column("path", sa.String(length=1024), nullable=False),
         sa.Column("status_code", sa.Integer(), nullable=False),
         sa.Column("latency_ms", sa.Float(), nullable=False),
-        sa.Column("payload", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("payload", json_type, nullable=False),
         sa.Column("request_id", sa.Text(), nullable=True),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),

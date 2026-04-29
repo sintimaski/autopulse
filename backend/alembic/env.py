@@ -16,10 +16,14 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    return getenv(
-        "DATABASE_URL",
-        config.get_main_option("sqlalchemy.url"),
-    ).replace("+asyncpg", "+psycopg")
+    return (
+        getenv(
+            "DATABASE_URL",
+            config.get_main_option("sqlalchemy.url"),
+        )
+        .replace("+asyncpg", "+psycopg")
+        .replace("+aiosqlite", "")
+    )
 
 
 def run_migrations_offline() -> None:

@@ -48,6 +48,16 @@ def serialize_retention_settings(
         logs_query_max_window_minutes=max(
             1, int(settings.logs_query_max_window_minutes or fallback_query_window_minutes)
         ),
+        retention_max_db_size_mb=(
+            max(1, int(settings.retention_max_db_size_mb))
+            if settings.retention_max_db_size_mb is not None
+            else None
+        ),
+        retention_max_log_rows=(
+            max(1, int(settings.retention_max_log_rows))
+            if settings.retention_max_log_rows is not None
+            else None
+        ),
         retention_plan=(
             settings.retention_plan
             if settings.retention_plan in {"starter", "standard", "extended"}

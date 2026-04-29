@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +64,112 @@ async def _archive_events_before_delete(
         )
         inserted += 1
     return inserted
+
+
+def _resolve_sqlite_db_path(database_url: str) -> Path | None:
+    normalized = database_url.strip()
+    if not normalized.startswith("sqlite"):
+        return None
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"sqlite", "sqlite+aiosqlite"}:
+        return None
+    raw_path = unquote(parsed.path or "")
+    if normalized.endswith(":memory:") or raw_path == ":memory:":
+        return None
+    if raw_path.startswith("/./") or raw_path.startswith("/../"):
+        return Path(raw_path[1:]).resolve()
+    if raw_path.startswith("/") and parsed.netloc:
+        return Path(raw_path)
+    if raw_path.startswith("/") and not parsed.netloc:
+        return Path(raw_path[1:]).resolve()
+    return Path(raw_path).resolve()
+
+
+def _vacuum_sqlite_db_file(db_path: Path) -> int:
+    if not db_path.exists():
+        return 0
+    with sqlite3.connect(str(db_path)) as connection:
+        connection.execute("VACUUM")
+    return db_path.stat().st_size
+
+
+async def _delete_oldest_project_events(
+    *,
+    session: AsyncSession,
+    project_id,
+    rows_to_delete: int,
+) -> int:
+    if rows_to_delete <= 0:
+        return 0
+    rows_result = await session.execute(
+        select(Event.id)
+        .where(Event.project_id == project_id)
+        .order_by(Event.received_at.asc(), Event.id.asc())
+        .limit(rows_to_delete)
+    )
+    event_ids = [int(row_id) for row_id in rows_result.scalars().all()]
+    if not event_ids:
+        return 0
+    await session.execute(delete(Event).where(Event.id.in_(event_ids)))
+    return len(event_ids)
+
+
+async def _apply_project_rotation_limits(
+    *,
+    session: AsyncSession,
+    settings: Settings,
+) -> int:
+    sqlite_db_path = _resolve_sqlite_db_path(settings.database_url)
+    if sqlite_db_path is None:
+        return 0
+
+    rotation_settings = (
+        await session.execute(
+            select(
+                ProjectUiSettings.project_id,
+                ProjectUiSettings.retention_max_db_size_mb,
+                ProjectUiSettings.retention_max_log_rows,
+            ).where(
+                ProjectUiSettings.retention_max_db_size_mb.is_not(None)
+                | ProjectUiSettings.retention_max_log_rows.is_not(None)
+            )
+        )
+    ).all()
+    if not rotation_settings:
+        return 0
+
+    deleted_total = 0
+    for project_id, max_db_size_mb, max_log_rows in rotation_settings:
+        if max_log_rows is not None:
+            count_result = await session.execute(
+                select(func.count(Event.id)).where(Event.project_id == project_id)
+            )
+            project_count = int(count_result.scalar_one())
+            overflow = max(0, project_count - int(max_log_rows))
+            deleted_total += await _delete_oldest_project_events(
+                session=session,
+                project_id=project_id,
+                rows_to_delete=overflow,
+            )
+
+        if max_db_size_mb is not None:
+            max_size_bytes = int(max_db_size_mb) * 1024 * 1024
+            for _ in range(8):
+                current_size = sqlite_db_path.stat().st_size if sqlite_db_path.exists() else 0
+                if current_size <= max_size_bytes:
+                    break
+                deleted_now = await _delete_oldest_project_events(
+                    session=session,
+                    project_id=project_id,
+                    rows_to_delete=1000,
+                )
+                if deleted_now <= 0:
+                    break
+                deleted_total += deleted_now
+                await session.commit()
+                _vacuum_sqlite_db_file(sqlite_db_path)
+
+    return deleted_total
 
 
 async def run_retention_cleanup_once(
@@ -143,5 +252,6 @@ async def run_retention_cleanup_once(
                 ),
             )
         )
+    stale_count += await _apply_project_rotation_limits(session=session, settings=settings)
     await session.commit()
     return RetentionCleanupResult(cutoff=default_cutoff, deleted_events=stale_count)

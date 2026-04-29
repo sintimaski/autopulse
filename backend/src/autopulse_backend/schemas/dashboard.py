@@ -238,6 +238,8 @@ class DashboardThemeSettingsUpdate(BaseModel):
 class DashboardRetentionSettings(BaseModel):
     raw_events_days: int
     logs_query_max_window_minutes: int
+    retention_max_db_size_mb: int | None = None
+    retention_max_log_rows: int | None = None
     retention_plan: Literal["starter", "standard", "extended"] = "standard"
     archival_enabled: bool = False
     archival_mode: Literal["db_archive"] = "db_archive"
@@ -249,6 +251,8 @@ class DashboardRetentionSettings(BaseModel):
 class DashboardRetentionSettingsUpdate(BaseModel):
     raw_events_days: int
     logs_query_max_window_minutes: int
+    retention_max_db_size_mb: int | None = None
+    retention_max_log_rows: int | None = None
     retention_plan: Literal["starter", "standard", "extended"] = "standard"
     archival_enabled: bool = False
     archival_mode: Literal["db_archive"] = "db_archive"
@@ -258,6 +262,15 @@ class DashboardRetentionSettingsUpdate(BaseModel):
     def validate_positive_values(cls, value: int) -> int:
         if value < 1:
             raise ValueError("must be at least 1")
+        return value
+
+    @field_validator("retention_max_db_size_mb", "retention_max_log_rows")
+    @classmethod
+    def validate_optional_positive_values(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value < 1:
+            raise ValueError("must be at least 1 when set")
         return value
 
 

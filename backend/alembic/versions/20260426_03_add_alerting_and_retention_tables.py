@@ -19,6 +19,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    json_type = (
+        postgresql.JSONB(astext_type=sa.Text())
+        if op.get_bind().dialect.name == "postgresql"
+        else sa.JSON()
+    )
     op.create_table(
         "project_alert_settings",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -90,7 +95,7 @@ def upgrade() -> None:
         sa.Column("triggered_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("window_start", sa.DateTime(timezone=True), nullable=False),
         sa.Column("window_end", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("detail", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column("detail", json_type, nullable=False),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )

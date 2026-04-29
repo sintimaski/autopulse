@@ -210,3 +210,60 @@ def test_retention_cleanup_archives_before_delete_when_enabled(
     deleted, archived = asyncio.run(run())
     assert deleted == 1
     assert archived == 1
+
+
+def test_retention_cleanup_enforces_project_log_row_cap_for_sqlite(
+    backend_test_database_url: str,
+) -> None:
+    now = datetime.now(tz=UTC)
+
+    async def run() -> tuple[int, int]:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="Row Cap Project")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    ProjectUiSettings(
+                        project_id=project.id,
+                        theme_preference="system",
+                        exclude_autopulse_traffic=True,
+                        retention_raw_events_days=90,
+                        retention_max_log_rows=2,
+                        logs_query_max_window_minutes=60,
+                    )
+                )
+                for index in range(4):
+                    event_time = now - timedelta(minutes=10 - index)
+                    session.add(
+                        Event(
+                            project_id=project.id,
+                            timestamp=event_time,
+                            received_at=event_time,
+                            sdk_version="0.1.0",
+                            type="request",
+                            service_name="api",
+                            environment="test",
+                            method="GET",
+                            path=f"/row-cap-{index}",
+                            status_code=200,
+                            latency_ms=10.0,
+                            payload={"path": f"/row-cap-{index}"},
+                            request_id=f"row-cap-{index}",
+                        )
+                    )
+                await session.commit()
+                settings = replace(get_settings(), retention_raw_events_days=90)
+                result = await run_retention_cleanup_once(session, settings, now=now)
+                remaining_result = await session.execute(text("SELECT COUNT(*) FROM events"))
+                remaining = int(remaining_result.scalar_one())
+                return result.deleted_events, remaining
+        finally:
+            await engine.dispose()
+
+    truncate_full_schema(backend_test_database_url)
+    deleted, remaining = asyncio.run(run())
+    assert deleted == 2
+    assert remaining == 2

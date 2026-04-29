@@ -74,6 +74,8 @@ async def update_dashboard_retention_settings(
     ui_settings = await get_or_create_project_ui_settings(session, context.project_id)
     ui_settings.retention_raw_events_days = payload.raw_events_days
     ui_settings.logs_query_max_window_minutes = payload.logs_query_max_window_minutes
+    ui_settings.retention_max_db_size_mb = payload.retention_max_db_size_mb
+    ui_settings.retention_max_log_rows = payload.retention_max_log_rows
     ui_settings.retention_plan = payload.retention_plan
     ui_settings.archival_enabled = payload.archival_enabled
     ui_settings.archival_mode = payload.archival_mode

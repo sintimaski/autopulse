@@ -18,6 +18,8 @@ export function SettingsContent() {
   const [retentionDraft, setRetentionDraft] = useState<{
     raw_events_days: number;
     logs_query_max_window_minutes: number;
+    retention_max_db_size_mb: number | null;
+    retention_max_log_rows: number | null;
     retention_plan: "starter" | "standard" | "extended";
     archival_enabled: boolean;
     archival_mode: "db_archive";
@@ -131,6 +133,8 @@ export function SettingsContent() {
                       raw_events_days: Number(event.target.value),
                       logs_query_max_window_minutes:
                         effectiveRetentionDraft.logs_query_max_window_minutes,
+                      retention_max_db_size_mb: effectiveRetentionDraft.retention_max_db_size_mb,
+                      retention_max_log_rows: effectiveRetentionDraft.retention_max_log_rows,
                       retention_plan: effectiveRetentionDraft.retention_plan,
                       archival_enabled: effectiveRetentionDraft.archival_enabled,
                       archival_mode: effectiveRetentionDraft.archival_mode,
@@ -152,12 +156,46 @@ export function SettingsContent() {
                     setRetentionDraft({
                       raw_events_days: effectiveRetentionDraft.raw_events_days,
                       logs_query_max_window_minutes: Number(event.target.value),
+                      retention_max_db_size_mb: effectiveRetentionDraft.retention_max_db_size_mb,
+                      retention_max_log_rows: effectiveRetentionDraft.retention_max_log_rows,
                       retention_plan: effectiveRetentionDraft.retention_plan,
                       archival_enabled: effectiveRetentionDraft.archival_enabled,
                       archival_mode: effectiveRetentionDraft.archival_mode,
                       archival_status: effectiveRetentionDraft.archival_status,
                       archival_last_success_at: effectiveRetentionDraft.archival_last_success_at,
                       archival_last_error: effectiveRetentionDraft.archival_last_error,
+                    })
+                  }
+                  className="ap-input mt-1"
+                />
+              </label>
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
+                Local SQLite max DB size (MB)
+                <input
+                  type="number"
+                  min={1}
+                  value={effectiveRetentionDraft.retention_max_db_size_mb ?? ""}
+                  onChange={(event) =>
+                    setRetentionDraft({
+                      ...effectiveRetentionDraft,
+                      retention_max_db_size_mb:
+                        event.target.value.trim() === "" ? null : Number(event.target.value),
+                    })
+                  }
+                  className="ap-input mt-1"
+                />
+              </label>
+              <label className="text-sm text-slate-700 dark:text-neutral-200">
+                Max logs retained (rows)
+                <input
+                  type="number"
+                  min={1}
+                  value={effectiveRetentionDraft.retention_max_log_rows ?? ""}
+                  onChange={(event) =>
+                    setRetentionDraft({
+                      ...effectiveRetentionDraft,
+                      retention_max_log_rows:
+                        event.target.value.trim() === "" ? null : Number(event.target.value),
                     })
                   }
                   className="ap-input mt-1"
@@ -195,6 +233,9 @@ export function SettingsContent() {
               </label>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
+              Optional rotation caps are only applied on local SQLite deployments.
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
               Archive status: {effectiveRetentionDraft.archival_status}
               {effectiveRetentionDraft.archival_last_success_at
                 ? ` · last success ${new Date(effectiveRetentionDraft.archival_last_success_at).toLocaleString()}`

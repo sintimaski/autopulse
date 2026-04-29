@@ -266,7 +266,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const { hasSession: hasApiKey, authSessionResolved, sessionEmail } =
-    useDashboardAuthSession(refreshToken);
+    useDashboardAuthSession();
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
@@ -283,6 +283,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   /** Ensures a refresh runs during steady ingest even if debounce keeps resetting. */
   const wsRefreshMaxWaitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsHeartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveFallbackRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLoadedDashboardData = useRef(false);
   const rawDashboardPathname = usePathname();
   const dashboardRoutePath = useMemo(
@@ -698,46 +699,64 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
         const fetchError = buildDashboardFetchError(results);
         if (fetchError) {
-          throw new Error(fetchError);
+          setErrorMessage(fetchError);
         }
 
         const byEndpoint = new Map<DashboardFetchResult["endpoint"], unknown>();
         await Promise.all(
           results.map(async ({ endpoint, response }) => {
+            if (!response.ok) {
+              return;
+            }
             byEndpoint.set(endpoint, await response.json());
           }),
         );
 
         const overviewData = byEndpoint.get("overview") as OverviewResponse;
         const requestsData = byEndpoint.get("requests") as RequestsResponse;
+        if (overviewData) {
+          setOverview(overviewData);
+        }
+        if (requestsData) {
+          setRequests(requestsData);
+        }
 
-        setOverview(overviewData);
-        setRequests(requestsData);
-
-        if (includeExtended) {
+        if (includeExtended && byEndpoint.has("overview-extended")) {
           setOverviewExtended(byEndpoint.get("overview-extended") as OverviewExtendedResponse);
         } else {
           setOverviewExtended(null);
         }
-        if (includeErrorGroups) {
+        if (includeErrorGroups && byEndpoint.has("error-groups")) {
           setErrorGroups(byEndpoint.get("error-groups") as ErrorGroupsResponse);
         } else {
           setErrorGroups(null);
         }
-        if (includeDiagnosis) {
+        if (
+          includeDiagnosis &&
+          byEndpoint.has("diagnosis-timeline") &&
+          byEndpoint.has("diagnosis-failures")
+        ) {
           setDiagnosisTimeline(byEndpoint.get("diagnosis-timeline") as DiagnosisTimelineResponse);
           setDiagnosisFailures(byEndpoint.get("diagnosis-failures") as DiagnosisFailureRoutesResponse);
         } else {
           setDiagnosisTimeline(null);
           setDiagnosisFailures(null);
         }
-        if (includeAlertDispatches) {
+        if (includeAlertDispatches && byEndpoint.has("alert-dispatches")) {
           setAlertDispatches(byEndpoint.get("alert-dispatches") as AlertDispatchesResponse);
         } else {
           setAlertDispatches(null);
         }
 
-        if (useSnapshot && includeExtended && includeErrorGroups) {
+        if (
+          useSnapshot &&
+          includeExtended &&
+          includeErrorGroups &&
+          overviewData &&
+          requestsData &&
+          byEndpoint.has("overview-extended") &&
+          byEndpoint.has("error-groups")
+        ) {
           writeDashboardSnapshot(scopeKey, {
             overview: overviewData,
             overviewExtended: byEndpoint.get("overview-extended") as OverviewExtendedResponse,
@@ -745,7 +764,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             errorGroups: byEndpoint.get("error-groups") as ErrorGroupsResponse,
           });
         }
-        hasLoadedDashboardData.current = true;
+        if (overviewData || requestsData) {
+          hasLoadedDashboardData.current = true;
+        }
       } catch (error) {
         if (!hasLoadedDashboardData.current) {
           setErrorMessage(buildDashboardNetworkError(error));
@@ -797,8 +818,34 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (wsHeartbeatTimer.current) {
         clearInterval(wsHeartbeatTimer.current);
       }
+      if (liveFallbackRefreshTimer.current) {
+        clearInterval(liveFallbackRefreshTimer.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasApiKey || dashboardRoutePath === "/settings") {
+      if (liveFallbackRefreshTimer.current) {
+        clearInterval(liveFallbackRefreshTimer.current);
+        liveFallbackRefreshTimer.current = null;
+      }
+      return;
+    }
+    if (liveFallbackRefreshTimer.current) {
+      clearInterval(liveFallbackRefreshTimer.current);
+    }
+    // Embedded/local dev traffic can bypass /ingest WS broadcasts; keep data fresh regardless.
+    liveFallbackRefreshTimer.current = setInterval(() => {
+      setRefreshToken((token) => token + 1);
+    }, 5000);
+    return () => {
+      if (liveFallbackRefreshTimer.current) {
+        clearInterval(liveFallbackRefreshTimer.current);
+        liveFallbackRefreshTimer.current = null;
+      }
+    };
+  }, [hasApiKey, dashboardRoutePath]);
 
   useEffect(() => {
     if (!hasApiKey) {
@@ -874,6 +921,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         } catch {
           return;
         }
+        // Trigger a visible refresh immediately for single-event traffic,
+        // then keep debounce/max-wait batching for bursts.
+        setRefreshToken((token) => token + 1);
         scheduleIngestRefresh();
       };
       ws.onclose = () => {
@@ -1197,6 +1247,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             raw_events_days: next.raw_events_days,
             logs_query_max_window_minutes: next.logs_query_max_window_minutes,
+            retention_max_db_size_mb: next.retention_max_db_size_mb,
+            retention_max_log_rows: next.retention_max_log_rows,
             retention_plan: next.retention_plan,
             archival_enabled: next.archival_enabled,
             archival_mode: next.archival_mode,

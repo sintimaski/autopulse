@@ -189,6 +189,8 @@ export type ThemeSettings = {
 export type RetentionSettings = {
   raw_events_days: number;
   logs_query_max_window_minutes: number;
+  retention_max_db_size_mb: number | null;
+  retention_max_log_rows: number | null;
   retention_plan: "starter" | "standard" | "extended";
   archival_enabled: boolean;
   archival_mode: "db_archive";

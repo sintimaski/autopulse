@@ -23,6 +23,7 @@ def _uuid_type() -> sa.UUID:
 
 
 def upgrade() -> None:
+    is_sqlite = op.get_bind().dialect.name == "sqlite"
     op.create_table(
         "organizations",
         sa.Column("id", _uuid_type(), nullable=False),
@@ -115,28 +116,30 @@ def upgrade() -> None:
     )
 
     op.add_column("projects", sa.Column("organization_id", _uuid_type(), nullable=True))
-    op.create_foreign_key(
-        "fk_projects_organization_id",
-        "projects",
-        "organizations",
-        ["organization_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    if not is_sqlite:
+        op.create_foreign_key(
+            "fk_projects_organization_id",
+            "projects",
+            "organizations",
+            ["organization_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
     op.create_index("ix_projects_organization_id", "projects", ["organization_id"], unique=False)
 
     op.add_column(
         "dashboard_sessions",
         sa.Column("organization_id", _uuid_type(), nullable=True),
     )
-    op.create_foreign_key(
-        "fk_dashboard_sessions_organization_id",
-        "dashboard_sessions",
-        "organizations",
-        ["organization_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    if not is_sqlite:
+        op.create_foreign_key(
+            "fk_dashboard_sessions_organization_id",
+            "dashboard_sessions",
+            "organizations",
+            ["organization_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )
 
     op.add_column(
         "project_ui_settings",
@@ -189,13 +192,15 @@ def downgrade() -> None:
     op.drop_column("project_ui_settings", "archival_enabled")
     op.drop_column("project_ui_settings", "retention_plan")
 
-    op.drop_constraint(
-        "fk_dashboard_sessions_organization_id", "dashboard_sessions", type_="foreignkey"
-    )
+    if op.get_bind().dialect.name != "sqlite":
+        op.drop_constraint(
+            "fk_dashboard_sessions_organization_id", "dashboard_sessions", type_="foreignkey"
+        )
     op.drop_column("dashboard_sessions", "organization_id")
 
     op.drop_index("ix_projects_organization_id", table_name="projects")
-    op.drop_constraint("fk_projects_organization_id", "projects", type_="foreignkey")
+    if op.get_bind().dialect.name != "sqlite":
+        op.drop_constraint("fk_projects_organization_id", "projects", type_="foreignkey")
     op.drop_column("projects", "organization_id")
 
     op.drop_index("ix_governance_audit_org_created_at", table_name="governance_audit_events")
