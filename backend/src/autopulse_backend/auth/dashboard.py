@@ -410,6 +410,12 @@ async def get_dashboard_auth_session(
             )
         )
         membership_role = membership.role if membership is not None else None
+    # Keep plain values before any write/rollback path; rollback can expire ORM attributes
+    # and later attribute access may trigger async IO from sync contexts (MissingGreenlet).
+    user_id = user.id
+    user_email = user.email
+    project_id = session_row.project_id
+    session_expires_at = session_row.expires_at
     # Defer mutable writes until all read queries complete so auth checks do not
     # trigger an autoflush UPDATE in the middle of SELECT statements.
     session_row.last_seen_at = now
@@ -420,12 +426,12 @@ async def get_dashboard_auth_session(
         # Keep auth read-path healthy even if the heartbeat write is skipped.
         await session.rollback()
     return DashboardAuthSession(
-        user_id=user.id,
-        project_id=session_row.project_id,
+        user_id=user_id,
+        project_id=project_id,
         organization_id=organization_id,
         membership_role=membership_role,
-        email=user.email,
-        expires_at=session_row.expires_at,
+        email=user_email,
+        expires_at=session_expires_at,
     )
 
 

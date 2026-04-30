@@ -139,6 +139,7 @@ export function DashboardAppShell({
               return (
                 <Link
                   key={item.href}
+                  prefetch={false}
                   href={
                     item.href === "/diagnosis" && diagnosisNavQuery
                       ? `${item.href}?${diagnosisNavQuery}`
