@@ -10,6 +10,7 @@ import { StatusPill } from "../StatusPill";
 import { VolumeChart } from "../VolumeChart";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { useDashboardData } from "../DashboardDataContext";
+import { useDashboardHomeSlice } from "../data/useDashboardSlices";
 import {
   BreakdownBarChart,
   ChartPanel,
@@ -31,9 +32,10 @@ import { formatTimestamp, type DashboardWidgetDefinition, type DashboardWidgetPo
 export function DashboardHomeContent() {
   const router = useRouter();
   const d = useDashboardData();
-  const overview = d.overview;
-  const requests = d.requests;
-  const overviewExtended = d.overviewExtended;
+  const homeSlice = useDashboardHomeSlice();
+  const overview = homeSlice.overview;
+  const requests = homeSlice.requests;
+  const overviewExtended = homeSlice.overviewExtended;
   if (!overview || !requests || !overviewExtended) {
     return null;
   }

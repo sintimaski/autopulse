@@ -11,12 +11,14 @@ import {
 } from "../dashboardQueryState";
 import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { useDashboardDiagnosisSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { MetricCard } from "../MetricCard";
 
 export function DiagnosisContent() {
   const d = useDashboardData();
+  const diagnosisSlice = useDashboardDiagnosisSlice();
   const pathname = usePathname();
   const scopedState = useMemo(
     (): DashboardScopedQueryState =>
@@ -62,10 +64,10 @@ export function DiagnosisContent() {
     ],
   );
   const requests = d.requests;
-  const errorGroups = d.errorGroups;
-  const timeline = d.diagnosisTimeline;
-  const failures = d.diagnosisFailures;
-  const groupEvents = d.diagnosisErrorGroupEvents;
+  const errorGroups = diagnosisSlice.errorGroups;
+  const timeline = diagnosisSlice.diagnosisTimeline;
+  const failures = diagnosisSlice.diagnosisFailures;
+  const groupEvents = diagnosisSlice.diagnosisErrorGroupEvents;
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") {

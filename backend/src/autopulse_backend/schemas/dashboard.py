@@ -179,6 +179,64 @@ class DashboardDiagnosisErrorGroupEventsResponse(BaseModel):
     items: list[DashboardDiagnosisErrorGroupEventItem]
 
 
+class DashboardDataQueryScope(BaseModel):
+    from_timestamp: datetime | None = None
+    to_timestamp: datetime | None = None
+    window_minutes: int = 60
+    method: str | None = None
+    status_class: int | None = None
+    path_contains: str | None = None
+    environments: str | None = None
+    services: str | None = None
+    min_latency_ms: float | None = None
+    max_latency_ms: float | None = None
+    event_sql_filter: str | None = None
+
+
+class DashboardDataQueryPagination(BaseModel):
+    limit: int = 100
+    offset: int = 0
+
+
+class DashboardDataQueryRequest(BaseModel):
+    scope: DashboardDataQueryScope
+    include_extended: bool = False
+    include_widgets: bool = False
+    include_error_groups: bool = False
+    include_diagnosis: bool = False
+    include_alert_dispatches: bool = False
+    requests: DashboardDataQueryPagination = DashboardDataQueryPagination()
+    error_groups: DashboardDataQueryPagination = DashboardDataQueryPagination(limit=25, offset=0)
+    alert_dispatches: DashboardDataQueryPagination = DashboardDataQueryPagination(
+        limit=25, offset=0
+    )
+    diagnosis_error_group_key: str | None = None
+    diagnosis_error_group_events: DashboardDataQueryPagination = DashboardDataQueryPagination(
+        limit=20, offset=0
+    )
+
+
+class DashboardDataQueryResponse(BaseModel):
+    overview: DashboardOverviewResponse
+    overview_extended: DashboardOverviewExtendedResponse | None = None
+    widgets: DashboardWidgetsResponse | None = None
+    requests: DashboardRequestsResponse
+    error_groups: DashboardErrorGroupsResponse | None = None
+    diagnosis_timeline: DashboardDiagnosisTimelineResponse | None = None
+    diagnosis_failures: DashboardDiagnosisFailureRoutesResponse | None = None
+    diagnosis_error_group_events: DashboardDiagnosisErrorGroupEventsResponse | None = None
+    alert_dispatches: DashboardAlertDispatchesResponse | None = None
+
+
+class DashboardBootstrapResponse(BaseModel):
+    retention_settings: DashboardRetentionSettings
+    alert_settings: DashboardAlertSettings
+    theme_settings: DashboardThemeSettings
+    api_keys: DashboardApiKeyListResponse
+    alert_capabilities: DashboardAlertCapabilitiesResponse
+    onboarding_status: DashboardOnboardingStatusResponse | None = None
+
+
 class DashboardAlertSettings(BaseModel):
     enabled: bool
     destination_email: str | None = None

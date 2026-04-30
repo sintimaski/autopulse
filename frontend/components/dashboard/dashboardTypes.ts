@@ -358,6 +358,55 @@ export type DashboardApiKeyRotateResponse = {
   rotated_at: string;
 };
 
+export type DashboardBootstrapResponse = {
+  retention_settings: RetentionSettings;
+  alert_settings: AlertSettings;
+  theme_settings: ThemeSettings;
+  api_keys: DashboardApiKeyListResponse;
+  alert_capabilities: AlertCapabilitiesResponse;
+  onboarding_status: DashboardOnboardingStatusResponse | null;
+};
+
+export type DashboardDataQueryScope = {
+  from_timestamp?: string;
+  to_timestamp?: string;
+  window_minutes: number;
+  method?: string;
+  status_class?: number;
+  path_contains?: string;
+  environments?: string;
+  services?: string;
+  min_latency_ms?: number;
+  max_latency_ms?: number;
+  event_sql_filter?: string;
+};
+
+export type DashboardDataQueryRequest = {
+  scope: DashboardDataQueryScope;
+  include_extended?: boolean;
+  include_widgets?: boolean;
+  include_error_groups?: boolean;
+  include_diagnosis?: boolean;
+  include_alert_dispatches?: boolean;
+  requests: { limit: number; offset: number };
+  error_groups: { limit: number; offset: number };
+  alert_dispatches?: { limit: number; offset: number };
+  diagnosis_error_group_key?: string;
+  diagnosis_error_group_events?: { limit: number; offset: number };
+};
+
+export type DashboardDataQueryResponse = {
+  overview: OverviewResponse;
+  overview_extended: OverviewExtendedResponse | null;
+  widgets: DashboardWidgetsResponse | null;
+  requests: RequestsResponse;
+  error_groups: ErrorGroupsResponse | null;
+  diagnosis_timeline: DiagnosisTimelineResponse | null;
+  diagnosis_failures: DiagnosisFailureRoutesResponse | null;
+  diagnosis_error_group_events: DiagnosisErrorGroupEventsResponse | null;
+  alert_dispatches: AlertDispatchesResponse | null;
+};
+
 export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
 
 export const apiBaseUrl =

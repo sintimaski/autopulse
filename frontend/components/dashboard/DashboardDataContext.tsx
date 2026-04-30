@@ -26,7 +26,6 @@ import {
 } from "../../utils/dashboardFetchErrors";
 import {
   buildApiUrl,
-  buildUpdatesWebsocketUrl,
   type AlertDispatchesResponse,
   type AlertCapabilitiesResponse,
   type AlertChannelCapability,
@@ -36,6 +35,9 @@ import {
   type DashboardApiKeyItem,
   type DashboardApiKeyListResponse,
   type DashboardApiKeyRotateResponse,
+  type DashboardBootstrapResponse,
+  type DashboardDataQueryRequest,
+  type DashboardDataQueryResponse,
   type DashboardOnboardingStatusResponse,
   type DashboardWidgetsResponse,
   ERROR_GROUP_LIMIT_OPTIONS,
@@ -223,6 +225,14 @@ const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
 const DASHBOARD_HEAVY_REFRESH_COOLDOWN_MS = 15_000;
 const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 const MAX_WIDGET_POINTS_TOTAL = 2400;
+const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
+  const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
+  const parsedSeconds = Number(raw);
+  if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
+    return Math.max(250, Math.floor(parsedSeconds * 1000));
+  }
+  return 1_000;
+})();
 
 function fetchWithTimeout(
   input: string,
@@ -349,11 +359,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [sqlFilterValidating, setSqlFilterValidating] = useState(false);
   const [savedSqlFilterPresets, setSavedSqlFilterPresets] = useState<SavedSqlFilterPreset[]>([]);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wsReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wsRefreshDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Ensures a refresh runs during steady ingest even if debounce keeps resetting. */
-  const wsRefreshMaxWaitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wsHeartbeatTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveFallbackRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
@@ -452,7 +457,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     serviceTags,
   ]);
 
-  // Settings endpoints rarely change; load once per API key (saves also update local state).
+  // Keep settings and capabilities in sync with the same refresh cadence as traffic data.
   useEffect(() => {
     if (!hasApiKey) {
       return;
@@ -461,89 +466,30 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     const run = async () => {
       try {
-        const [
-          retentionSettingsResponse,
-          alertSettingsResponse,
-          themeSettingsResponse,
-          apiKeysResponse,
-          alertCapabilitiesResponse,
-          onboardingStatusResponse,
-        ] = await Promise.all([
-          fetchWithTimeout(
-            buildApiUrl("/dashboard/retention-settings"),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-          fetchWithTimeout(
-            buildApiUrl("/dashboard/alert-settings"),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-          fetchWithTimeout(
-            buildApiUrl("/dashboard/theme-settings"),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-          fetchWithTimeout(
-            buildApiUrl("/dashboard/auth/api-keys"),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-          fetchWithTimeout(
-            buildApiUrl("/dashboard/alert-capabilities"),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-          fetchWithTimeout(
-            buildApiUrl("/dashboard/auth/onboarding-status"),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-        ]);
-        const results = [
-          { endpoint: "retention-settings", response: retentionSettingsResponse },
-          { endpoint: "alert-settings", response: alertSettingsResponse },
-          { endpoint: "theme-settings", response: themeSettingsResponse },
-        ] as DashboardFetchResult[];
+        const bootstrapResponse = await fetchWithTimeout(
+          buildApiUrl("/dashboard/bootstrap"),
+          { credentials: "include" },
+          DASHBOARD_FETCH_TIMEOUT_MS,
+          controller.signal,
+        );
+        const results = [{ endpoint: "overview", response: bootstrapResponse }] as DashboardFetchResult[];
 
         const fetchError = buildDashboardFetchError(results);
         if (fetchError) {
           throw new Error(fetchError);
         }
-
-        const [retentionSettingsData, alertSettingsData, themeSettingsData] = (await Promise.all(
-          results.map(async ({ response }) => response.json()),
-        )) as [RetentionSettings, AlertSettings, ThemeSettings];
+        const bootstrapData = (await bootstrapResponse.json()) as DashboardBootstrapResponse;
 
         if (cancelled) {
           return;
         }
-        setRetentionSettings(retentionSettingsData);
-        setAlertSettings(alertSettingsData);
-        setThemePreference(themeSettingsData.theme_preference);
-        setExcludeAutopulseTraffic(themeSettingsData.exclude_autopulse_traffic);
-        if (apiKeysResponse.ok) {
-          const apiKeyPayload = (await apiKeysResponse.json()) as DashboardApiKeyListResponse;
-          setApiKeys(apiKeyPayload.items ?? []);
-        }
-        if (alertCapabilitiesResponse.ok) {
-          const capabilitiesPayload = (await alertCapabilitiesResponse.json()) as AlertCapabilitiesResponse;
-          setAlertCapabilities(capabilitiesPayload.channels ?? []);
-        } else {
-          setAlertCapabilities([]);
-        }
-        if (onboardingStatusResponse.ok) {
-          const onboardingPayload = (await onboardingStatusResponse.json()) as DashboardOnboardingStatusResponse;
-          setOnboardingStatus(onboardingPayload);
-        } else {
-          setOnboardingStatus(null);
-        }
+        setRetentionSettings(bootstrapData.retention_settings);
+        setAlertSettings(bootstrapData.alert_settings);
+        setThemePreference(bootstrapData.theme_settings.theme_preference);
+        setExcludeAutopulseTraffic(bootstrapData.theme_settings.exclude_autopulse_traffic);
+        setApiKeys(bootstrapData.api_keys.items ?? []);
+        setAlertCapabilities(bootstrapData.alert_capabilities.channels ?? []);
+        setOnboardingStatus(bootstrapData.onboarding_status);
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
           return;
@@ -557,7 +503,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       controller.abort();
     };
-  }, [hasApiKey]);
+  }, [hasApiKey, refreshToken]);
 
   useEffect(() => {
     if (!hasApiKey) {
@@ -573,8 +519,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const isDocumentVisible =
+        typeof document === "undefined" || document.visibilityState === "visible";
+      const hasAdvancedScopeFilters =
+        method !== "ALL" ||
+        statusClass !== "ALL" ||
+        minLatencyMs.trim() !== "" ||
+        maxLatencyMs.trim() !== "" ||
+        pathQuery.trim() !== "" ||
+        normalizeCommaSeparated(serverEnvironmentQuery) !== "" ||
+        normalizeCommaSeparated(serverServiceQuery) !== "" ||
+        (sqlFilterEnabled && sqlFilterApplied.trim() !== "");
       let includeExtended = routePath === "/dashboard" || routePath === "/diagnosis";
-      let includeWidgets = routePath === "/dashboard";
+      let includeWidgets = routePath === "/dashboard" && !hasAdvancedScopeFilters;
+      if (!isDocumentVisible) {
+        includeExtended = routePath === "/diagnosis";
+        includeWidgets = false;
+      }
       const includeErrorGroups = routePath === "/dashboard" || routePath === "/diagnosis";
       const includeDiagnosis = routePath === "/diagnosis";
       const includeAlertDispatches = routePath === "/alerts";
@@ -591,128 +552,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       setErrorMessage(null);
       try {
-        const overviewParams = new URLSearchParams();
-        if (toIsoWindow) {
-          overviewParams.set("from_timestamp", toIsoWindow.from);
-          overviewParams.set("to_timestamp", toIsoWindow.to);
-        } else {
-          overviewParams.set("window_minutes", String(windowMinutes));
-        }
-
-        const requestsParams = new URLSearchParams({
-          limit: String(requestsLimitForRoute),
-          offset: String(requestsOffsetForRoute),
-        });
-        if (toIsoWindow) {
-          requestsParams.set("from_timestamp", toIsoWindow.from);
-          requestsParams.set("to_timestamp", toIsoWindow.to);
-        } else {
-          requestsParams.set("window_minutes", String(windowMinutes));
-        }
-        if (method !== "ALL") {
-          requestsParams.set("method", method);
-        }
-        if (statusClass !== "ALL") {
-          requestsParams.set("status_class", statusClass);
-        }
         const minLatency = Number(minLatencyMs);
-        if (minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0) {
-          requestsParams.set("min_latency_ms", String(minLatency));
-        }
         const maxLatency = Number(maxLatencyMs);
-        if (maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0) {
-          requestsParams.set("max_latency_ms", String(maxLatency));
-        }
         const serverPath = pathQuery.trim();
-        if (serverPath) {
-          requestsParams.set("path_contains", serverPath);
-        }
         const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
-        if (envCsv) {
-          requestsParams.set("environments", envCsv);
-        }
         const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
-        if (serviceCsv) {
-          requestsParams.set("services", serviceCsv);
-        }
-        if (sqlFilterEnabled && sqlFilterApplied.trim()) {
-          overviewParams.set("event_sql_filter", sqlFilterApplied.trim());
-          requestsParams.set("event_sql_filter", sqlFilterApplied.trim());
-        }
-
-        const errorGroupsParams = new URLSearchParams({
-          limit: String(errorGroupsLimitForRoute),
-          offset: String(errorGroupsOffsetForRoute),
-        });
-        if (toIsoWindow) {
-          errorGroupsParams.set("from_timestamp", toIsoWindow.from);
-          errorGroupsParams.set("to_timestamp", toIsoWindow.to);
-        } else {
-          errorGroupsParams.set("window_minutes", String(windowMinutes));
-        }
-        if (method !== "ALL") {
-          errorGroupsParams.set("method", method);
-        }
-        if (statusClass !== "ALL") {
-          errorGroupsParams.set("status_class", statusClass);
-        }
-        if (minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0) {
-          errorGroupsParams.set("min_latency_ms", String(minLatency));
-        }
-        if (maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0) {
-          errorGroupsParams.set("max_latency_ms", String(maxLatency));
-        }
-        if (serverPath) {
-          errorGroupsParams.set("path_contains", serverPath);
-        }
-        if (envCsv) {
-          errorGroupsParams.set("environments", envCsv);
-        }
-        if (serviceCsv) {
-          errorGroupsParams.set("services", serviceCsv);
-        }
-        if (sqlFilterEnabled && sqlFilterApplied.trim()) {
-          errorGroupsParams.set("event_sql_filter", sqlFilterApplied.trim());
-        }
-        const alertDispatchesParams = new URLSearchParams({
-          from_timestamp: new Date(
-            new Date(toIsoWindow?.to ?? new Date().toISOString()).getTime() - 7 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-          to_timestamp: toIsoWindow?.to ?? new Date().toISOString(),
-          limit: "25",
-          offset: "0",
-        });
-        const diagnosisSharedParams = new URLSearchParams();
-        if (toIsoWindow) {
-          diagnosisSharedParams.set("from_timestamp", toIsoWindow.from);
-          diagnosisSharedParams.set("to_timestamp", toIsoWindow.to);
-        } else {
-          diagnosisSharedParams.set("window_minutes", String(windowMinutes));
-        }
-        if (method !== "ALL") {
-          diagnosisSharedParams.set("method", method);
-        }
-        if (statusClass !== "ALL") {
-          diagnosisSharedParams.set("status_class", statusClass);
-        }
-        if (envCsv) {
-          diagnosisSharedParams.set("environments", envCsv);
-        }
-        if (serviceCsv) {
-          diagnosisSharedParams.set("services", serviceCsv);
-        }
-        if (serverPath) {
-          diagnosisSharedParams.set("path_contains", serverPath);
-        }
-        if (minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0) {
-          diagnosisSharedParams.set("min_latency_ms", String(minLatency));
-        }
-        if (maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0) {
-          diagnosisSharedParams.set("max_latency_ms", String(maxLatency));
-        }
-        if (sqlFilterEnabled && sqlFilterApplied.trim()) {
-          diagnosisSharedParams.set("event_sql_filter", sqlFilterApplied.trim());
-        }
         if (routePath === "/dashboard") {
           const heavyScopeKey = [
             toIsoWindow?.from ?? "",
@@ -774,100 +618,48 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setAlertDispatches(cached.alertDispatches ?? null);
         }
 
-        const fetchTasks: Array<{
-          endpoint: DashboardFetchResult["endpoint"];
-          promise: Promise<Response>;
-        }> = [
-          {
-            endpoint: "overview",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/overview?${overviewParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
+        const scopeRequest: DashboardDataQueryRequest = {
+          scope: {
+            from_timestamp: toIsoWindow?.from,
+            to_timestamp: toIsoWindow?.to,
+            window_minutes: windowMinutes,
+            method: method !== "ALL" ? method : undefined,
+            status_class: statusClass !== "ALL" ? Number(statusClass) : undefined,
+            path_contains: serverPath || undefined,
+            environments: envCsv || undefined,
+            services: serviceCsv || undefined,
+            min_latency_ms:
+              minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0
+                ? minLatency
+                : undefined,
+            max_latency_ms:
+              maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0
+                ? maxLatency
+                : undefined,
+            event_sql_filter:
+              sqlFilterEnabled && sqlFilterApplied.trim() ? sqlFilterApplied.trim() : undefined,
           },
-        ];
-        if (includeExtended) {
-          fetchTasks.push({
-            endpoint: "overview-extended",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/overview/extended?${overviewParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
-          });
-        }
-        if (includeWidgets) {
-          fetchTasks.push({
-            endpoint: "widgets",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/widgets?${overviewParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
-          });
-        }
-        fetchTasks.push({
-          endpoint: "requests",
-          promise: fetchWithTimeout(
-            buildApiUrl(`/dashboard/requests?${requestsParams.toString()}`),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-            controller.signal,
-          ),
-        });
-        if (includeErrorGroups) {
-          fetchTasks.push({
-            endpoint: "error-groups",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/error-groups?${errorGroupsParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
-          });
-        }
-        if (includeDiagnosis) {
-          fetchTasks.push({
-            endpoint: "diagnosis-timeline",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/diagnosis/timeline?${diagnosisSharedParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
-          });
-          fetchTasks.push({
-            endpoint: "diagnosis-failures",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/diagnosis/failures-by-route?${diagnosisSharedParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
-          });
-        }
-        if (includeAlertDispatches) {
-          fetchTasks.push({
-            endpoint: "alert-dispatches",
-            promise: fetchWithTimeout(
-              buildApiUrl(`/dashboard/alert-dispatches?${alertDispatchesParams.toString()}`),
-              { credentials: "include" },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-              controller.signal,
-            ),
-          });
-        }
-
-        const results: DashboardFetchResult[] = await Promise.all(
-          fetchTasks.map(async ({ endpoint, promise }) => ({
-            endpoint,
-            response: await promise,
-          })),
+          include_extended: includeExtended,
+          include_widgets: includeWidgets,
+          include_error_groups: includeErrorGroups,
+          include_diagnosis: includeDiagnosis,
+          include_alert_dispatches: includeAlertDispatches,
+          requests: { limit: requestsLimitForRoute, offset: requestsOffsetForRoute },
+          error_groups: { limit: errorGroupsLimitForRoute, offset: errorGroupsOffsetForRoute },
+          alert_dispatches: { limit: 25, offset: 0 },
+        };
+        const batchResponse = await fetchWithTimeout(
+          buildApiUrl("/dashboard/query"),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(scopeRequest),
+          },
+          DASHBOARD_FETCH_TIMEOUT_MS,
+          controller.signal,
         );
+        const results: DashboardFetchResult[] = [{ endpoint: "overview", response: batchResponse }];
         if (isCancelled()) {
           return;
         }
@@ -877,21 +669,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setErrorMessage(fetchError);
         }
 
-        const byEndpoint = new Map<DashboardFetchResult["endpoint"], unknown>();
-        await Promise.all(
-          results.map(async ({ endpoint, response }) => {
-            if (!response.ok) {
-              return;
-            }
-            byEndpoint.set(endpoint, await response.json());
-          }),
-        );
-        if (isCancelled()) {
+        const data = batchResponse.ok
+          ? ((await batchResponse.json()) as DashboardDataQueryResponse)
+          : null;
+        if (isCancelled() || !data) {
           return;
         }
-
-        const overviewData = byEndpoint.get("overview") as OverviewResponse;
-        const requestsData = byEndpoint.get("requests") as RequestsResponse;
+        const overviewData = data.overview;
+        const requestsData = data.requests;
         if (overviewData) {
           setOverview(overviewData);
         }
@@ -899,39 +684,34 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setRequests(requestsData);
         }
 
-        if (includeExtended && byEndpoint.has("overview-extended")) {
-          setOverviewExtended(byEndpoint.get("overview-extended") as OverviewExtendedResponse);
+        if (includeExtended && data.overview_extended) {
+          setOverviewExtended(data.overview_extended);
         } else if (routePath !== "/dashboard") {
           setOverviewExtended(null);
         }
-        if (includeWidgets && byEndpoint.has("widgets")) {
-          setDashboardWidgets(
-            trimDashboardWidgetPayload(byEndpoint.get("widgets") as DashboardWidgetsResponse),
-          );
+        if (includeWidgets && data.widgets) {
+          setDashboardWidgets(trimDashboardWidgetPayload(data.widgets));
         } else if (routePath !== "/dashboard") {
           setDashboardWidgets(null);
         }
-        if (includeErrorGroups && byEndpoint.has("error-groups")) {
-          setErrorGroups(byEndpoint.get("error-groups") as ErrorGroupsResponse);
+        if (includeErrorGroups && data.error_groups) {
+          setErrorGroups(data.error_groups);
         } else {
           setErrorGroups(null);
         }
-        if (
-          includeDiagnosis &&
-          byEndpoint.has("diagnosis-timeline") &&
-          byEndpoint.has("diagnosis-failures")
-        ) {
-          setDiagnosisTimeline(byEndpoint.get("diagnosis-timeline") as DiagnosisTimelineResponse);
-          setDiagnosisFailures(byEndpoint.get("diagnosis-failures") as DiagnosisFailureRoutesResponse);
+        if (includeDiagnosis && data.diagnosis_timeline && data.diagnosis_failures) {
+          setDiagnosisTimeline(data.diagnosis_timeline);
+          setDiagnosisFailures(data.diagnosis_failures);
         } else {
           setDiagnosisTimeline(null);
           setDiagnosisFailures(null);
         }
-        if (includeAlertDispatches && byEndpoint.has("alert-dispatches")) {
-          setAlertDispatches(byEndpoint.get("alert-dispatches") as AlertDispatchesResponse);
+        if (includeAlertDispatches && data.alert_dispatches) {
+          setAlertDispatches(data.alert_dispatches);
         } else {
           setAlertDispatches(null);
         }
+        setDiagnosisErrorGroupEvents(data.diagnosis_error_group_events ?? null);
 
         if (
           useSnapshot &&
@@ -939,14 +719,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           includeErrorGroups &&
           overviewData &&
           requestsData &&
-          byEndpoint.has("overview-extended") &&
-          byEndpoint.has("error-groups")
+          data.overview_extended &&
+          data.error_groups
         ) {
           writeDashboardSnapshot(scopeKey, {
             overview: overviewData,
-            overviewExtended: byEndpoint.get("overview-extended") as OverviewExtendedResponse,
+            overviewExtended: data.overview_extended,
             requests: requestsData,
-            errorGroups: byEndpoint.get("error-groups") as ErrorGroupsResponse,
+            errorGroups: data.error_groups,
           });
         }
         if (overviewData || requestsData) {
@@ -997,18 +777,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (runbookTimer.current) {
         clearTimeout(runbookTimer.current);
       }
-      if (wsReconnectTimer.current) {
-        clearTimeout(wsReconnectTimer.current);
-      }
-      if (wsRefreshDebounceTimer.current) {
-        clearTimeout(wsRefreshDebounceTimer.current);
-      }
-      if (wsRefreshMaxWaitTimer.current) {
-        clearTimeout(wsRefreshMaxWaitTimer.current);
-      }
-      if (wsHeartbeatTimer.current) {
-        clearInterval(wsHeartbeatTimer.current);
-      }
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);
       }
@@ -1016,7 +784,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hasApiKey || dashboardRoutePath === "/settings") {
+    if (!hasApiKey) {
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);
         liveFallbackRefreshTimer.current = null;
@@ -1026,128 +794,18 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (liveFallbackRefreshTimer.current) {
       clearInterval(liveFallbackRefreshTimer.current);
     }
-    // Embedded/local dev traffic can bypass /ingest WS broadcasts; keep data fresh without
-    // hammering the API (each refresh runs several dashboard queries).
+    // Pull dashboard data at a fixed interval (env-configured) while tab is visible.
     liveFallbackRefreshTimer.current = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
       setRefreshToken((token) => token + 1);
-    }, 30_000);
+    }, DASHBOARD_REFRESH_INTERVAL_MS);
     return () => {
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);
         liveFallbackRefreshTimer.current = null;
       }
-    };
-  }, [hasApiKey, dashboardRoutePath]);
-
-  useEffect(() => {
-    if (!hasApiKey) {
-      return;
-    }
-    const wsUrl = buildUpdatesWebsocketUrl();
-    const INGEST_REFRESH_DEBOUNCE_MS = 800;
-    const INGEST_REFRESH_MAX_WAIT_MS = 3200;
-
-    const clearIngestRefreshTimers = () => {
-      if (wsRefreshDebounceTimer.current) {
-        clearTimeout(wsRefreshDebounceTimer.current);
-        wsRefreshDebounceTimer.current = null;
-      }
-      if (wsRefreshMaxWaitTimer.current) {
-        clearTimeout(wsRefreshMaxWaitTimer.current);
-        wsRefreshMaxWaitTimer.current = null;
-      }
-    };
-
-    const scheduleIngestRefresh = () => {
-      if (wsRefreshDebounceTimer.current) {
-        clearTimeout(wsRefreshDebounceTimer.current);
-      }
-      wsRefreshDebounceTimer.current = setTimeout(() => {
-        wsRefreshDebounceTimer.current = null;
-        if (wsRefreshMaxWaitTimer.current) {
-          clearTimeout(wsRefreshMaxWaitTimer.current);
-          wsRefreshMaxWaitTimer.current = null;
-        }
-        setRefreshToken((token) => token + 1);
-      }, INGEST_REFRESH_DEBOUNCE_MS);
-
-      if (!wsRefreshMaxWaitTimer.current) {
-        wsRefreshMaxWaitTimer.current = setTimeout(() => {
-          wsRefreshMaxWaitTimer.current = null;
-          if (wsRefreshDebounceTimer.current) {
-            clearTimeout(wsRefreshDebounceTimer.current);
-            wsRefreshDebounceTimer.current = null;
-          }
-          setRefreshToken((token) => token + 1);
-        }, INGEST_REFRESH_MAX_WAIT_MS);
-      }
-    };
-
-    let ws: WebSocket | null = null;
-    let cancelled = false;
-    let reconnectAttempt = 0;
-
-    const connect = () => {
-      if (cancelled) {
-        return;
-      }
-      ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        reconnectAttempt = 0;
-        if (wsHeartbeatTimer.current) {
-          clearInterval(wsHeartbeatTimer.current);
-        }
-        wsHeartbeatTimer.current = setInterval(() => {
-          if (!ws || ws.readyState !== WebSocket.OPEN) {
-            return;
-          }
-          ws.send("ping");
-        }, 20000);
-      };
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data) as { type?: string };
-          if (payload.type !== "ingest") {
-            return;
-          }
-        } catch {
-          return;
-        }
-        // Batch refreshes to avoid flooding the dashboard with heavy parallel HTTP calls.
-        scheduleIngestRefresh();
-      };
-      ws.onclose = () => {
-        clearIngestRefreshTimers();
-        if (wsHeartbeatTimer.current) {
-          clearInterval(wsHeartbeatTimer.current);
-          wsHeartbeatTimer.current = null;
-        }
-        if (cancelled) {
-          return;
-        }
-        reconnectAttempt += 1;
-        const delayMs = Math.min(30_000, 1000 * 2 ** Math.min(reconnectAttempt, 5));
-        wsReconnectTimer.current = setTimeout(connect, delayMs);
-      };
-      ws.onerror = () => {
-        ws?.close();
-      };
-    };
-
-    connect();
-    return () => {
-      cancelled = true;
-      if (wsReconnectTimer.current) {
-        clearTimeout(wsReconnectTimer.current);
-      }
-      clearIngestRefreshTimers();
-      if (wsHeartbeatTimer.current) {
-        clearInterval(wsHeartbeatTimer.current);
-      }
-      ws?.close();
     };
   }, [hasApiKey]);
 
@@ -1844,33 +1502,49 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
-    const params = new URLSearchParams({
-      group_key: groupKey,
-      limit: "20",
-      offset: "0",
-    });
-    if (toIsoWindow) {
-      params.set("from_timestamp", toIsoWindow.from);
-      params.set("to_timestamp", toIsoWindow.to);
-    } else {
-      params.set("window_minutes", String(windowMinutes));
-    }
-    if (sqlFilterEnabled && sqlFilterApplied.trim()) {
-      params.set("event_sql_filter", sqlFilterApplied.trim());
-    }
+    const minLatency = Number(minLatencyMs);
+    const maxLatency = Number(maxLatencyMs);
     const controller = new AbortController();
     void fetchWithTimeout(
-      buildApiUrl(`/dashboard/diagnosis/error-group-events?${params.toString()}`),
+      buildApiUrl("/dashboard/query"),
       {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({
+          scope: {
+            from_timestamp: toIsoWindow?.from,
+            to_timestamp: toIsoWindow?.to,
+            window_minutes: windowMinutes,
+            method: method !== "ALL" ? method : undefined,
+            status_class: statusClass !== "ALL" ? Number(statusClass) : undefined,
+            path_contains: pathQuery.trim() || undefined,
+            environments: normalizeCommaSeparated(serverEnvironmentQuery) || undefined,
+            services: normalizeCommaSeparated(serverServiceQuery) || undefined,
+            min_latency_ms:
+              minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0
+                ? minLatency
+                : undefined,
+            max_latency_ms:
+              maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0
+                ? maxLatency
+                : undefined,
+            event_sql_filter:
+              sqlFilterEnabled && sqlFilterApplied.trim() ? sqlFilterApplied.trim() : undefined,
+          },
+          requests: { limit: 1, offset: 0 },
+          error_groups: { limit: 1, offset: 0 },
+          diagnosis_error_group_key: groupKey,
+          diagnosis_error_group_events: { limit: 20, offset: 0 },
+        } satisfies DashboardDataQueryRequest),
       },
       DASHBOARD_FETCH_TIMEOUT_MS,
       controller.signal,
     )
-      .then((response) => (response.ok ? response.json() : null))
+      .then((response) => (response.ok ? (response.json() as Promise<DashboardDataQueryResponse>) : null))
       .then((payload) => {
-        if (payload) {
-          setDiagnosisErrorGroupEvents(payload as DiagnosisErrorGroupEventsResponse);
+        if (payload?.diagnosis_error_group_events) {
+          setDiagnosisErrorGroupEvents(payload.diagnosis_error_group_events);
         }
       })
       .catch(() => {
@@ -1885,6 +1559,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     recentErrorsPreview,
     toIsoWindow,
     windowMinutes,
+    method,
+    statusClass,
+    minLatencyMs,
+    maxLatencyMs,
+    pathQuery,
+    serverEnvironmentQuery,
+    serverServiceQuery,
     sqlFilterEnabled,
     sqlFilterApplied,
   ]);

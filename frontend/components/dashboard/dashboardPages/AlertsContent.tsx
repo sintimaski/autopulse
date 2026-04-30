@@ -1,28 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import type { AlertSettings } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildScopedQuery } from "../dashboardQueryState";
+import { useDashboardAlertsSlice } from "../data/useDashboardSlices";
 
 export function AlertsContent() {
   const d = useDashboardData();
+  const alertsSlice = useDashboardAlertsSlice();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const [showFailedOnly, setShowFailedOnly] = useState(false);
-  const form = d.alertSettings;
+  const form = alertsSlice.alertSettings;
 
   const overview = d.overview;
-  const requestCount = d.sparklineSeries.reduce(
-    (sum, bucket) => sum + Number(bucket.request_count || 0),
-    0,
-  );
-  const errorCount = d.sparklineSeries.reduce(
-    (sum, bucket) => sum + Number(bucket.error_count || 0),
-    0,
+  const { requestCount, errorCount } = useMemo(
+    () => ({
+      requestCount: d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.request_count || 0), 0),
+      errorCount: d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0),
+    }),
+    [d.sparklineSeries],
   );
   const displayRequestCount = requestCount || overview?.request_count || 0;
   const displayErrorCount = requestCount ? errorCount : overview?.error_count || 0;
@@ -30,7 +31,7 @@ export function AlertsContent() {
   const successfulRequests = d.operationalSignals.successfulRequests;
   const errorSpikeCandidate = d.operationalSignals.errorSpikeCandidate;
   const outageCandidate = d.operationalSignals.outageCandidate;
-  const recentDispatches = d.recentAlertDispatches;
+  const recentDispatches = alertsSlice.alertDispatches?.items ?? [];
   const visibleDispatches = showFailedOnly
     ? recentDispatches.filter((dispatch) => dispatch.status === "failed")
     : recentDispatches;

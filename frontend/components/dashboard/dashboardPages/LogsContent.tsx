@@ -6,11 +6,13 @@ import { useMemo, useState } from "react";
 import { buildCurrentScopedState, buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
 import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { useDashboardLogsSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { TagSelector } from "../TagSelector";
 
 export function LogsContent() {
   const d = useDashboardData();
+  const logsSlice = useDashboardLogsSlice();
   const [rowsPerGroup, setRowsPerGroup] = useState(100);
   const scopedState = useMemo(
     (): DashboardScopedQueryState =>
@@ -55,23 +57,27 @@ export function LogsContent() {
     d.sqlFilterEnabled,
     ],
   );
-  const requests = d.requests;
+  const { filteredCount, errorRows, slowRows, p95LatencyMs } = useMemo(() => {
+    const filteredCountInner = logsSlice.filteredSorted.length;
+    const errorRowsInner = logsSlice.filteredSorted.filter((item) => item.status_code >= 500).length;
+    const slowRowsInner = logsSlice.filteredSorted.filter((item) => item.latency_ms >= 300).length;
+    if (filteredCountInner === 0) {
+      return { filteredCount: 0, errorRows: 0, slowRows: 0, p95LatencyMs: 0 };
+    }
+    const sorted = [...logsSlice.filteredSorted].sort((a, b) => a.latency_ms - b.latency_ms);
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
+    return {
+      filteredCount: filteredCountInner,
+      errorRows: errorRowsInner,
+      slowRows: slowRowsInner,
+      p95LatencyMs: sorted[idx]?.latency_ms ?? 0,
+    };
+  }, [logsSlice.filteredSorted]);
+  const requests = logsSlice.requests;
   if (!requests) {
     return null;
   }
-
-  const filteredCount = d.filteredSorted.length;
   const serverWindowTotal = requests.total;
-  const errorRows = d.filteredSorted.filter((item) => item.status_code >= 500).length;
-  const slowRows = d.filteredSorted.filter((item) => item.latency_ms >= 300).length;
-  const p95LatencyMs = (() => {
-    if (d.filteredSorted.length === 0) {
-      return 0;
-    }
-    const sorted = [...d.filteredSorted].sort((a, b) => a.latency_ms - b.latency_ms);
-    const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * 0.95) - 1));
-    return sorted[idx]?.latency_ms ?? 0;
-  })();
   const activeClientControls = d.envTags.size + d.serviceTags.size + (d.groupBy !== "none" ? 1 : 0);
 
   return (

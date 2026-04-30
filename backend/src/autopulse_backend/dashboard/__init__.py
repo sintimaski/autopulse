@@ -10,6 +10,7 @@ from autopulse_backend.dashboard.routes import (
     log_query_routes,
     organization_routes,
     overview,
+    query_bundle,
     requests_routes,
     ui_settings,
     websockets,
@@ -28,5 +29,6 @@ router.include_router(ui_settings.router)
 router.include_router(log_query_routes.router)
 router.include_router(organization_routes.router)
 router.include_router(widgets.router)
+router.include_router(query_bundle.router)
 
 __all__ = ["router"]

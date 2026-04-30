@@ -8,11 +8,15 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.ext.asyncio import (
+    async_sessionmaker as async_sessionmaker_type,
+)
 from sqlalchemy.pool import NullPool
 
 from autopulse_backend.core.config import get_settings
 
 _engines: dict[str, AsyncEngine] = {}
+_session_makers: dict[str, async_sessionmaker_type[AsyncSession]] = {}
 
 
 def get_engine(database_url: str | None = None) -> AsyncEngine:
@@ -30,13 +34,26 @@ def get_engine(database_url: str | None = None) -> AsyncEngine:
 
 async def dispose_engine_for_url(database_url: str) -> None:
     """Close all pooled connections so a separate process (or sqlite3) can VACUUM the file."""
-    engine = _engines.pop(database_url.strip(), None)
+    normalized = database_url.strip()
+    engine = _engines.pop(normalized, None)
+    _session_makers.pop(normalized, None)
     if engine is not None:
         await engine.dispose()
 
 
+def get_session_maker(
+    database_url: str | None = None,
+) -> async_sessionmaker_type[AsyncSession]:
+    resolved_database_url = database_url or get_settings().database_url
+    session_maker = _session_makers.get(resolved_database_url)
+    if session_maker is None:
+        engine = get_engine(resolved_database_url)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        _session_makers[resolved_database_url] = session_maker
+    return session_maker
+
+
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    engine = get_engine()
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    session_maker = get_session_maker()
     async with session_maker() as session:
         yield session
