@@ -576,11 +576,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         normalizeCommaSeparated(serverEnvironmentQuery) !== "" ||
         normalizeCommaSeparated(serverServiceQuery) !== "" ||
         (sqlFilterEnabled && sqlFilterApplied.trim() !== "");
-      let includeExtended = routePath === "/dashboard" || routePath === "/diagnosis";
+      let includeExtended =
+        routePath === "/dashboard" || routePath === "/diagnosis" || routePath === "/widgets-showcase";
       let includeWidgets =
-        routePath === "/dashboard" &&
-        !hasAdvancedScopeFilters &&
-        !DASHBOARD_REWRITE_PHASED_ENABLED;
+        (routePath === "/dashboard" && !hasAdvancedScopeFilters) || routePath === "/widgets-showcase";
       if (!isDocumentVisible) {
         includeExtended = routePath === "/diagnosis";
         includeWidgets = false;
@@ -591,7 +590,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       const includeDiagnosis = routePath === "/diagnosis";
       const includeAlertDispatches = routePath === "/alerts";
       const useSnapshot = routePath === "/dashboard";
-      const requestsLimitForRoute = routePath === "/dashboard" ? Math.min(requestLimit, 25) : requestLimit;
+      const requestsLimitForRoute =
+        routePath === "/dashboard"
+          ? Math.min(requestLimit, 25)
+          : routePath === "/widgets-showcase"
+            ? Math.min(requestLimit, 100)
+            : requestLimit;
       const requestsOffsetForRoute = routePath === "/dashboard" ? 0 : requestPage * requestLimit;
       const errorGroupsLimitForRoute =
         routePath === "/dashboard" ? Math.min(errorGroupLimit, 10) : errorGroupLimit;

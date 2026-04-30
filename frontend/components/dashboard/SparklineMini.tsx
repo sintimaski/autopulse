@@ -7,15 +7,19 @@ export function SparklineMini({
   colorClass,
   labels,
   onPointClick,
+  svgClassName,
 }: {
   values: number[];
   colorClass?: string;
   labels?: string[];
   onPointClick?: (index: number, value: number) => void;
+  /** Tailwind height/width for the SVG (default h-8). Use e.g. h-3 for a compact strip. */
+  svgClassName?: string;
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const heightClass = (svgClassName ?? "h-8").split(/\s+/).find((c) => c.startsWith("h-")) ?? "h-8";
   if (values.length === 0) {
-    return <div className="h-8 w-full rounded bg-slate-100 dark:bg-neutral-800" />;
+    return <div className={`${heightClass} w-full rounded bg-slate-100 dark:bg-neutral-800`} />;
   }
   let max = 1;
   for (const value of values) {
@@ -32,7 +36,7 @@ export function SparklineMini({
       <svg
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        className="h-8 w-full cursor-crosshair"
+        className={`${svgClassName ?? "h-8 w-full"} cursor-crosshair`}
         onMouseMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));

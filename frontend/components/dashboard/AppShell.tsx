@@ -13,6 +13,7 @@ import {
   Settings,
   Stethoscope,
   ScrollText,
+  LayoutGrid,
 } from "../../lib/icons";
 import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
@@ -21,6 +22,7 @@ const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
 const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
+  { href: "/widgets-showcase", label: "Widget gallery", Icon: LayoutGrid },
   { href: "/requests", label: "Requests", Icon: ScrollText },
   { href: "/alerts", label: "Alerts", Icon: Bell },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },

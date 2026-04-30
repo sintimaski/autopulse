@@ -30,6 +30,10 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Overview",
     subtitle: "What broke, when it changed, and where to drill down next.",
   },
+  "/widgets-showcase": {
+    title: "Widget gallery",
+    subtitle: "SDK dashboard widgets and every chart type in one place.",
+  },
   "/requests": {
     title: "Requests",
     subtitle: "Request-level evidence with shared investigation scope.",
