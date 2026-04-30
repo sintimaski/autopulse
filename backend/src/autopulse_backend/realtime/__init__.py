@@ -26,6 +26,27 @@ class IngestBroadcastMessage:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class DashboardUpdateMessage:
+    project_id: UUID
+    version: int
+    reason: str
+    updated_slices: tuple[str, ...]
+    updated_at: datetime
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "type": "dashboard_update",
+                "project_id": str(self.project_id),
+                "version": int(self.version),
+                "reason": self.reason,
+                "updated_slices": list(self.updated_slices),
+                "updated_at": self.updated_at.astimezone(UTC).isoformat(),
+            }
+        )
+
+
 class ProjectWebSocketHub:
     def __init__(self) -> None:
         self._project_connections: dict[UUID, set[WebSocket]] = defaultdict(set)
@@ -42,6 +63,20 @@ class ProjectWebSocketHub:
             self._project_connections.pop(project_id, None)
 
     async def publish_ingest(self, *, message: IngestBroadcastMessage) -> None:
+        project_connections = self._project_connections.get(message.project_id)
+        if not project_connections:
+            return
+        payload = message.to_json()
+        disconnected: list[WebSocket] = []
+        for websocket in project_connections:
+            try:
+                await websocket.send_text(payload)
+            except Exception:
+                disconnected.append(websocket)
+        for websocket in disconnected:
+            self.remove_connection(project_id=message.project_id, websocket=websocket)
+
+    async def publish_dashboard_update(self, *, message: DashboardUpdateMessage) -> None:
         project_connections = self._project_connections.get(message.project_id)
         if not project_connections:
             return

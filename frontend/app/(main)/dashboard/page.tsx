@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function DashboardPage() {
   return (
-    <DashboardPageBoundary>
+    <DashboardPageBoundary dataReady="traffic-requests">
       <DashboardHomeContent />
     </DashboardPageBoundary>
   );

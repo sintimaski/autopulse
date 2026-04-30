@@ -4,6 +4,7 @@ import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from os import getenv
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -45,12 +46,48 @@ class DuckDbEventStore:
     def __init__(self, db_path: str) -> None:
         self._path = Path(db_path).expanduser().resolve()
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = duckdb.connect(str(self._path))
-        self._lock = Lock()
+        self._write_conn = duckdb.connect(str(self._path))
+        self._write_lock = Lock()
+        self._read_index = 0
+        self._read_index_lock = Lock()
         self._ensure_schema()
+        pool_size = self._resolve_read_pool_size()
+        # DuckDB rejects opening the same file with different connection
+        # configurations in one process. Keep pooled read connections in the
+        # same mode as the primary writable connection.
+        self._read_connections = [duckdb.connect(str(self._path)) for _ in range(pool_size)]
+        self._read_locks = [Lock() for _ in range(pool_size)]
+
+    def _resolve_read_pool_size(self) -> int:
+        raw = getenv("AUTOPULSE_DUCKDB_READ_POOL_SIZE")
+        if raw is None:
+            return 4
+        try:
+            parsed = int(raw)
+        except ValueError:
+            return 4
+        return max(1, min(parsed, 12))
+
+    def _next_read_slot(self) -> int:
+        with self._read_index_lock:
+            idx = self._read_index
+            self._read_index = (self._read_index + 1) % len(self._read_connections)
+            return idx
+
+    def _fetchall_read(self, sql: str, params: list[Any] | None = None) -> list[tuple[Any, ...]]:
+        idx = self._next_read_slot()
+        params_list = params or []
+        with self._read_locks[idx]:
+            return self._read_connections[idx].execute(sql, params_list).fetchall()
+
+    def _fetchone_read(self, sql: str, params: list[Any] | None = None) -> tuple[Any, ...] | None:
+        idx = self._next_read_slot()
+        params_list = params or []
+        with self._read_locks[idx]:
+            return self._read_connections[idx].execute(sql, params_list).fetchone()
 
     def _ensure_schema(self) -> None:
-        self._conn.execute(
+        self._write_conn.execute(
             """
             CREATE TABLE IF NOT EXISTS events (
                 id BIGINT PRIMARY KEY,
@@ -70,7 +107,7 @@ class DuckDbEventStore:
             )
             """
         )
-        self._conn.execute(
+        self._write_conn.execute(
             """
             CREATE TABLE IF NOT EXISTS dashboard_widget_points (
                 id BIGINT PRIMARY KEY,
@@ -82,11 +119,11 @@ class DuckDbEventStore:
             )
             """
         )
-        self._conn.execute(
+        self._write_conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_events_project_timestamp "
             "ON events(project_id, timestamp)"
         )
-        self._conn.execute(
+        self._write_conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_widget_points_project_timestamp "
             "ON dashboard_widget_points(project_id, timestamp)"
         )
@@ -113,8 +150,8 @@ class DuckDbEventStore:
             )
             for idx, row in enumerate(rows, start=self._next_id())
         ]
-        with self._lock:
-            self._conn.executemany(
+        with self._write_lock:
+            self._write_conn.executemany(
                 """
                 INSERT INTO events (
                     id, project_id, timestamp, received_at, sdk_version, type,
@@ -126,13 +163,13 @@ class DuckDbEventStore:
             )
 
     def _next_id(self) -> int:
-        with self._lock:
-            row = self._conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM events").fetchone()
+        with self._write_lock:
+            row = self._write_conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM events").fetchone()
         return int(row[0] if row else 1)
 
     def _next_widget_point_id(self) -> int:
-        with self._lock:
-            row = self._conn.execute(
+        with self._write_lock:
+            row = self._write_conn.execute(
                 "SELECT COALESCE(MAX(id), 0) + 1 FROM dashboard_widget_points"
             ).fetchone()
         return int(row[0] if row else 1)
@@ -166,8 +203,8 @@ class DuckDbEventStore:
             )
         if not values:
             return
-        with self._lock:
-            self._conn.executemany(
+        with self._write_lock:
+            self._write_conn.executemany(
                 """
                 INSERT INTO dashboard_widget_points (
                     id, project_id, widget_id, timestamp, label, value
@@ -179,22 +216,21 @@ class DuckDbEventStore:
     def list_widget_points(
         self, *, project_id: UUID, from_timestamp: datetime, to_timestamp: datetime
     ) -> list[tuple[str, datetime, str | None, float]]:
-        with self._lock:
-            return self._conn.execute(
-                """
-                SELECT widget_id, timestamp, label, value
-                FROM dashboard_widget_points
-                WHERE project_id = ?
-                  AND timestamp >= CAST(? AS TIMESTAMP)
-                  AND timestamp <= CAST(? AS TIMESTAMP)
-                ORDER BY timestamp ASC, id ASC
-                """,
-                [
-                    str(project_id),
-                    _as_duckdb_timestamp(from_timestamp),
-                    _as_duckdb_timestamp(to_timestamp),
-                ],
-            ).fetchall()
+        return self._fetchall_read(
+            """
+            SELECT widget_id, timestamp, label, value
+            FROM dashboard_widget_points
+            WHERE project_id = ?
+              AND timestamp >= CAST(? AS TIMESTAMP)
+              AND timestamp <= CAST(? AS TIMESTAMP)
+            ORDER BY timestamp ASC, id ASC
+            """,
+            [
+                str(project_id),
+                _as_duckdb_timestamp(from_timestamp),
+                _as_duckdb_timestamp(to_timestamp),
+            ],
+        )
 
     def _compile_filters(self, filters: EventStoreFilters) -> tuple[str, list[Any]]:
         clauses = [
@@ -292,16 +328,53 @@ class DuckDbEventStore:
         if offset:
             sql += " OFFSET ?"
             params.append(offset)
-        with self._lock:
-            return self._conn.execute(sql, params).fetchall()
+        return self._fetchall_read(sql, params)
+
+    def query_events_sql(
+        self,
+        filters: EventStoreFilters,
+        *,
+        select_sql: str,
+        suffix_sql: str = "",
+        extra_params: list[Any] | None = None,
+    ) -> list[tuple[Any, ...]]:
+        where_sql, params = self._compile_filters(filters)
+        sql = f"SELECT {select_sql} FROM events WHERE {where_sql} {suffix_sql}"  # nosec B608
+        if extra_params:
+            params.extend(extra_params)
+        return self._fetchall_read(sql, params)
+
+    def fetch_events_with_total(
+        self,
+        filters: EventStoreFilters,
+        *,
+        columns: str = (
+            "id, timestamp, method, path, status_code, latency_ms, "
+            "service_name, environment, request_id, type, payload"
+        ),
+        order_by: str = "timestamp DESC, id DESC",
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[int, list[tuple[Any, ...]]]:
+        where_sql, params = self._compile_filters(filters)
+        inner_sql = f"SELECT {columns} FROM events WHERE {where_sql}"  # nosec B608
+        sql = (
+            f"SELECT *, COUNT(*) OVER() AS __total FROM ({inner_sql}) AS filtered "
+            f"ORDER BY {order_by} LIMIT ? OFFSET ?"  # nosec B608
+        )
+        rows = self._fetchall_read(sql, [*params, limit, offset])
+        if not rows:
+            return 0, []
+        total = int(rows[0][-1])
+        trimmed = [tuple(row[:-1]) for row in rows]
+        return total, trimmed
 
     def count_events(self, filters: EventStoreFilters) -> int:
         where_sql, params = self._compile_filters(filters)
-        with self._lock:
-            result = self._conn.execute(
-                f"SELECT COUNT(*) FROM events WHERE {where_sql}",  # nosec B608
-                params,
-            ).fetchone()
+        result = self._fetchone_read(
+            f"SELECT COUNT(*) FROM events WHERE {where_sql}",  # nosec B608
+            params,
+        )
         return int(result[0] if result else 0)
 
     def delete_events_before(self, *, cutoff: datetime, project_id: UUID | None = None) -> int:
@@ -310,18 +383,17 @@ class DuckDbEventStore:
         if project_id is not None:
             sql += " AND project_id = ?"
             params.append(str(project_id))
-        with self._lock:
+        with self._write_lock:
             count_predicate = sql.removeprefix("DELETE FROM events WHERE ")
-            deleted = self._conn.execute(
+            deleted = self._write_conn.execute(
                 f"SELECT COUNT(*) FROM events WHERE {count_predicate}",  # nosec B608
                 params,
             ).fetchone()
-            self._conn.execute(sql, params)
+            self._write_conn.execute(sql, params)
         return int(deleted[0] if deleted else 0)
 
     def max_timestamp(self) -> datetime | None:
-        with self._lock:
-            row = self._conn.execute("SELECT MAX(timestamp) FROM events").fetchone()
+        row = self._fetchone_read("SELECT MAX(timestamp) FROM events")
         value = row[0] if row else None
         if value is None:
             return None
@@ -337,26 +409,21 @@ class DuckDbEventStore:
         return total
 
     def checkpoint(self) -> None:
-        with self._lock:
-            self._conn.execute("CHECKPOINT")
+        with self._write_lock:
+            self._write_conn.execute("CHECKPOINT")
 
     def list_project_ids(self) -> list[str]:
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT DISTINCT project_id FROM events ORDER BY project_id ASC"
-            ).fetchall()
+        rows = self._fetchall_read("SELECT DISTINCT project_id FROM events ORDER BY project_id ASC")
         return [str(row[0]) for row in rows if row and row[0] is not None]
 
     def count_events_for_project(self, project_id: UUID | None = None) -> int:
         if project_id is None:
-            with self._lock:
-                row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
+            row = self._fetchone_read("SELECT COUNT(*) FROM events")
             return int(row[0] if row else 0)
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT COUNT(*) FROM events WHERE project_id = ?",
-                [str(project_id)],
-            ).fetchone()
+        row = self._fetchone_read(
+            "SELECT COUNT(*) FROM events WHERE project_id = ?",
+            [str(project_id)],
+        )
         return int(row[0] if row else 0)
 
     def delete_oldest_events(self, *, rows_to_delete: int, project_id: UUID | None = None) -> int:
@@ -388,11 +455,11 @@ class DuckDbEventStore:
                 ")"
             )
             params = [str(project_id), rows_to_delete]
-        with self._lock:
-            deleted_row = self._conn.execute(count_sql, params).fetchone()
+        with self._write_lock:
+            deleted_row = self._write_conn.execute(count_sql, params).fetchone()
             deleted = int(deleted_row[0] if deleted_row else 0)
             if deleted > 0:
-                self._conn.execute(delete_sql, params)
+                self._write_conn.execute(delete_sql, params)
         return deleted
 
 

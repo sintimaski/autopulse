@@ -2,10 +2,10 @@
 
 import { useMemo } from "react";
 
-import { useDashboardData } from "../DashboardDataContext";
+import { useDashboardData, useDashboardHomeDataSlice } from "../DashboardDataContext";
 
 export function useDashboardHomeSlice() {
-  const d = useDashboardData();
+  const d = useDashboardHomeDataSlice();
   return useMemo(
     () => ({
       overview: d.overview,
@@ -15,6 +15,24 @@ export function useDashboardHomeSlice() {
       errorGroups: d.errorGroups,
       sparklineSeries: d.sparklineSeries,
       operationalSignals: d.operationalSignals,
+      rawItems: d.rawItems,
+      windowMinutes: d.windowMinutes,
+      isAbsoluteWindow: d.isAbsoluteWindow,
+      windowFromTimestamp: d.windowFromTimestamp,
+      windowToTimestamp: d.windowToTimestamp,
+      method: d.method,
+      statusClass: d.statusClass,
+      requestLimit: d.requestLimit,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupSort: d.errorGroupSort,
+      minLatencyMs: d.minLatencyMs,
+      maxLatencyMs: d.maxLatencyMs,
+      pathQuery: d.pathQuery,
+      serverEnvironmentQuery: d.serverEnvironmentQuery,
+      serverServiceQuery: d.serverServiceQuery,
+      sqlFilterApplied: d.sqlFilterApplied,
+      sqlFilterEnabled: d.sqlFilterEnabled,
+      errorMessage: d.errorMessage,
     }),
     [
       d.overview,
@@ -24,6 +42,24 @@ export function useDashboardHomeSlice() {
       d.errorGroups,
       d.sparklineSeries,
       d.operationalSignals,
+      d.rawItems,
+      d.windowMinutes,
+      d.isAbsoluteWindow,
+      d.windowFromTimestamp,
+      d.windowToTimestamp,
+      d.method,
+      d.statusClass,
+      d.requestLimit,
+      d.errorGroupLimit,
+      d.errorGroupSort,
+      d.minLatencyMs,
+      d.maxLatencyMs,
+      d.pathQuery,
+      d.serverEnvironmentQuery,
+      d.serverServiceQuery,
+      d.sqlFilterApplied,
+      d.sqlFilterEnabled,
+      d.errorMessage,
     ],
   );
 }

@@ -5,7 +5,8 @@ import json
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from time import monotonic
-from typing import Annotated
+from typing import Annotated, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,10 +51,118 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
-BUNDLE_CACHE_TTL_SECONDS = 10.0
+BUNDLE_LIGHT_CACHE_TTL_SECONDS = 4.0
+BUNDLE_HEAVY_CACHE_TTL_SECONDS = 1.5
 BUNDLE_CACHE_MAX_ITEMS = 128
 _bundle_cache: OrderedDict[str, tuple[float, DashboardDataQueryResponse]] = OrderedDict()
 _bundle_cache_lock = asyncio.Lock()
+_bundle_inflight: dict[str, asyncio.Task[DashboardDataQueryResponse]] = {}
+_bundle_inflight_lock = asyncio.Lock()
+_bundle_light_concurrency = asyncio.Semaphore(8)
+_bundle_heavy_concurrency = asyncio.Semaphore(2)
+_bundle_version_lock = asyncio.Lock()
+_bundle_project_versions: dict[str, int] = {}
+
+
+def _project_version_key(project_id: UUID) -> str:
+    return str(project_id)
+
+
+async def mark_project_dashboard_dirty(project_id: UUID) -> int:
+    """Increment the cache version used for bundle cache keys.
+
+    Ingest/retention paths call this after durable writes so subsequent reads
+    skip stale cached responses without needing to sweep every cache key.
+    """
+
+    key = _project_version_key(project_id)
+    async with _bundle_version_lock:
+        current = _bundle_project_versions.get(key, 0) + 1
+        _bundle_project_versions[key] = current
+        return current
+
+
+async def get_project_dashboard_version(project_id: UUID) -> int:
+    key = _project_version_key(project_id)
+    async with _bundle_version_lock:
+        return _bundle_project_versions.get(key, 0)
+
+
+def _select_bundle_tier(payload: DashboardDataQueryRequest) -> Literal["light", "heavy"]:
+    if (
+        payload.include_extended
+        or payload.include_widgets
+        or payload.include_error_groups
+        or payload.include_diagnosis
+        or payload.include_alert_dispatches
+        or bool(payload.diagnosis_error_group_key)
+    ):
+        return "heavy"
+    return "light"
+
+
+def _bundle_ttl_seconds(payload: DashboardDataQueryRequest) -> float:
+    return (
+        BUNDLE_HEAVY_CACHE_TTL_SECONDS
+        if _select_bundle_tier(payload) == "heavy"
+        else BUNDLE_LIGHT_CACHE_TTL_SECONDS
+    )
+
+
+def _bundle_semaphore(payload: DashboardDataQueryRequest) -> asyncio.Semaphore:
+    if _select_bundle_tier(payload) == "heavy":
+        return _bundle_heavy_concurrency
+    return _bundle_light_concurrency
+
+
+async def _read_cached_bundle_response(cache_key: str) -> DashboardDataQueryResponse | None:
+    now = monotonic()
+    async with _bundle_cache_lock:
+        cached = _bundle_cache.get(cache_key)
+        if cached is not None and cached[0] > now:
+            _bundle_cache.move_to_end(cache_key)
+            return cached[1]
+        if cached is not None:
+            _bundle_cache.pop(cache_key, None)
+    return None
+
+
+async def _cache_bundle_response(
+    *, cache_key: str, payload: DashboardDataQueryRequest, response: DashboardDataQueryResponse
+) -> None:
+    expires_at = monotonic() + _bundle_ttl_seconds(payload)
+    async with _bundle_cache_lock:
+        _bundle_cache[cache_key] = (expires_at, response)
+        _bundle_cache.move_to_end(cache_key)
+        while len(_bundle_cache) > BUNDLE_CACHE_MAX_ITEMS:
+            _bundle_cache.popitem(last=False)
+        now = monotonic()
+        stale_keys = [key for key, (exp, _) in _bundle_cache.items() if exp <= now]
+        for key in stale_keys:
+            _bundle_cache.pop(key, None)
+
+
+async def _compute_bundle_with_inflight_dedupe(
+    *,
+    cache_key: str,
+    payload: DashboardDataQueryRequest,
+    context: ProjectContext,
+) -> DashboardDataQueryResponse:
+    async with _bundle_inflight_lock:
+        existing = _bundle_inflight.get(cache_key)
+        if existing is not None:
+            return await asyncio.shield(existing)
+        task = asyncio.create_task(_run_bundle_query(payload=payload, context=context))
+        _bundle_inflight[cache_key] = task
+    try:
+        response = await asyncio.shield(task)
+        await _cache_bundle_response(cache_key=cache_key, payload=payload, response=response)
+        return response
+    finally:
+        async with _bundle_inflight_lock:
+            current = _bundle_inflight.get(cache_key)
+            if current is task:
+                _bundle_inflight.pop(cache_key, None)
 
 
 @router.get("/bootstrap", response_model=DashboardBootstrapResponse)
@@ -87,20 +196,30 @@ async def post_dashboard_query(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardDataQueryResponse:
     _ = session
-    scope = payload.scope
+    version = await get_project_dashboard_version(context.project_id)
     payload_cache_json = json.dumps(
         payload.model_dump(mode="json", exclude_none=True), sort_keys=True, separators=(",", ":")
     )
-    cache_key = f"{context.project_id}:{payload_cache_json}"
-    now = monotonic()
-    async with _bundle_cache_lock:
-        cached = _bundle_cache.get(cache_key)
-        if cached is not None and cached[0] > now:
-            _bundle_cache.move_to_end(cache_key)
-            return cached[1]
+    cache_key = f"{context.project_id}:{version}:{payload_cache_json}"
+    cached = await _read_cached_bundle_response(cache_key)
+    if cached is not None:
+        return cached
+    semaphore = _bundle_semaphore(payload)
+    async with semaphore:
+        cached = await _read_cached_bundle_response(cache_key)
         if cached is not None:
-            _bundle_cache.pop(cache_key, None)
+            return cached
+        return await _compute_bundle_with_inflight_dedupe(
+            cache_key=cache_key,
+            payload=payload,
+            context=context,
+        )
 
+
+async def _run_bundle_query(
+    *, payload: DashboardDataQueryRequest, context: ProjectContext
+) -> DashboardDataQueryResponse:
+    scope = payload.scope
     session_maker = get_session_maker()
 
     async def run_with_session(handler):
@@ -272,8 +391,7 @@ async def post_dashboard_query(
         next(optional_iter) if diagnosis_error_group_events_task is not None else None
     )
     alert_dispatches = next(optional_iter) if alert_dispatches_task is not None else None
-
-    response = DashboardDataQueryResponse(
+    return DashboardDataQueryResponse(
         overview=overview,
         overview_extended=overview_extended,
         widgets=widgets,
@@ -284,13 +402,3 @@ async def post_dashboard_query(
         diagnosis_error_group_events=diagnosis_error_group_events,
         alert_dispatches=alert_dispatches,
     )
-    expires_at = monotonic() + BUNDLE_CACHE_TTL_SECONDS
-    async with _bundle_cache_lock:
-        _bundle_cache[cache_key] = (expires_at, response)
-        _bundle_cache.move_to_end(cache_key)
-        while len(_bundle_cache) > BUNDLE_CACHE_MAX_ITEMS:
-            _bundle_cache.popitem(last=False)
-        stale_keys = [key for key, (exp, _) in _bundle_cache.items() if exp <= monotonic()]
-        for key in stale_keys:
-            _bundle_cache.pop(key, None)
-    return response

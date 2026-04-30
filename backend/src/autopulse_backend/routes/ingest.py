@@ -9,10 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_project
 from autopulse_backend.config import get_settings
+from autopulse_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
 from autopulse_backend.database import get_db_session
 from autopulse_backend.ingestion.limits import ingest_rate_limiter
 from autopulse_backend.metrics import service_metrics
-from autopulse_backend.realtime import IngestBroadcastMessage, project_websocket_hub
+from autopulse_backend.realtime import (
+    DashboardUpdateMessage,
+    IngestBroadcastMessage,
+    project_websocket_hub,
+)
 from autopulse_backend.repositories.aggregates import (
     upsert_error_group_aggregates,
     upsert_metric_buckets,
@@ -154,6 +159,16 @@ async def ingest_events(
             project_id=context.project_id,
             accepted=accepted,
             received_at=received_at,
+        )
+    )
+    dashboard_version = await mark_project_dashboard_dirty(context.project_id)
+    await project_websocket_hub.publish_dashboard_update(
+        message=DashboardUpdateMessage(
+            project_id=context.project_id,
+            version=dashboard_version,
+            reason="ingest",
+            updated_slices=("overview", "requests", "errors", "widgets"),
+            updated_at=received_at,
         )
     )
     service_metrics.increment("ingest.accepted.batches")

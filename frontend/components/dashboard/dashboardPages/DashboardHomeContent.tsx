@@ -27,7 +27,12 @@ import {
   type StackedAreaSeries,
 } from "../charts";
 import { buildScopedQuery } from "../dashboardQueryState";
-import { formatTimestamp, type DashboardWidgetDefinition, type DashboardWidgetPoint } from "../dashboardTypes";
+import {
+  formatTimestamp,
+  type DashboardWidgetDefinition,
+  type DashboardWidgetPoint,
+  type OverviewExtendedResponse,
+} from "../dashboardTypes";
 
 export function DashboardHomeContent() {
   const router = useRouter();
@@ -35,10 +40,208 @@ export function DashboardHomeContent() {
   const homeSlice = useDashboardHomeSlice();
   const overview = homeSlice.overview;
   const requests = homeSlice.requests;
-  const overviewExtended = homeSlice.overviewExtended;
-  if (!overview || !requests || !overviewExtended) {
-    return null;
+  if (!overview || !requests) {
+    return (
+      <section className="space-y-4">
+        <OverviewScopeFacetBoard />
+        <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4 text-sm text-slate-300">
+          {d.errorMessage ?? "Loading dashboard metrics..."}
+        </div>
+      </section>
+    );
   }
+  const overviewExtended: OverviewExtendedResponse = homeSlice.overviewExtended ?? {
+    server_now: overview.server_now,
+    from_timestamp: overview.from_timestamp,
+    to_timestamp: overview.to_timestamp,
+    p50_latency_ms: overview.avg_latency_ms,
+    p95_latency_ms: overview.avg_latency_ms,
+    p99_latency_ms: overview.avg_latency_ms,
+    apdex_score: 1,
+    active_sessions_estimate: 0,
+    error_burst_count: 0,
+    active_incident_count: 0,
+    error_type_breakdown: [],
+    alerts_timeline: [],
+    service_breakdown: [],
+    route_breakdown: [],
+  };
+  const phasedLiteDashboard = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
+  if (phasedLiteDashboard) {
+    const totalRequests = homeSlice.sparklineSeries.reduce(
+      (sum, bucket) => sum + Number(bucket.request_count || 0),
+      0,
+    );
+    const totalErrors = homeSlice.sparklineSeries.reduce(
+      (sum, bucket) => sum + Number(bucket.error_count || 0),
+      0,
+    );
+    const weightedLatency = homeSlice.sparklineSeries.reduce(
+      (sum, bucket) => sum + Number(bucket.avg_latency_ms || 0) * Number(bucket.request_count || 0),
+      0,
+    );
+    const requestCount = totalRequests || overview.request_count;
+    const errorCount = totalRequests ? totalErrors : overview.error_count;
+    const errorRate = requestCount > 0 ? errorCount / requestCount : 0;
+    const avgLatency = requestCount > 0 ? weightedLatency / requestCount : overview.avg_latency_ms;
+    const requestsPerMinute = requestCount / Math.max(homeSlice.windowMinutes, 1);
+    const sparklineErrors = homeSlice.sparklineSeries.map((bucket) => Number(bucket.error_count || 0));
+    const sparklineLatency = homeSlice.sparklineSeries.map((bucket) => Number(bucket.avg_latency_ms || 0));
+    const routeBreakdownTop = [...overviewExtended.route_breakdown]
+      .sort((a, b) => b.error_count - a.error_count)
+      .slice(0, 6);
+    const serviceBreakdownTop = [...overviewExtended.service_breakdown]
+      .sort((a, b) => b.request_count - a.request_count)
+      .slice(0, 6);
+    const primaryCards = [
+      {
+        label: "Active incidents",
+        value: String(overviewExtended.active_incident_count),
+        helper: `Error bursts (5m): ${overviewExtended.error_burst_count}`,
+        tone:
+          overviewExtended.active_incident_count > 0 ? ("danger" as const) : ("neutral" as const),
+      },
+      {
+        label: "Error rate",
+        value: `${(errorRate * 100).toFixed(2)}%`,
+        helper: "5xx + error events",
+        tone: errorRate >= 0.1 ? ("danger" as const) : errorRate >= 0.03 ? ("warning" as const) : ("neutral" as const),
+      },
+      {
+        label: "Latency p95",
+        value: `${overviewExtended.p95_latency_ms.toFixed(1)} ms`,
+        helper: `p50 ${overviewExtended.p50_latency_ms.toFixed(1)} · p99 ${overviewExtended.p99_latency_ms.toFixed(1)}`,
+        tone:
+          overviewExtended.p95_latency_ms >= 300
+            ? ("danger" as const)
+            : overviewExtended.p95_latency_ms >= 120
+              ? ("warning" as const)
+              : ("neutral" as const),
+      },
+      {
+        label: "Requests / min",
+        value: requestsPerMinute.toFixed(2),
+        helper: `Total requests: ${requestCount}`,
+        tone: "neutral" as const,
+      },
+    ];
+    const secondaryCards = [
+      { label: "Errors", value: String(errorCount), helper: "Scope total", tone: "warning" as const },
+      { label: "Latency avg", value: `${avgLatency.toFixed(1)} ms`, helper: "Mean", tone: "neutral" as const },
+      { label: "Latency p99", value: `${overviewExtended.p99_latency_ms.toFixed(1)} ms`, helper: "Tail", tone: "warning" as const },
+      { label: "Apdex", value: overviewExtended.apdex_score.toFixed(3), helper: "<300ms target", tone: "neutral" as const },
+      {
+        label: "Active sessions",
+        value: String(overviewExtended.active_sessions_estimate),
+        helper: "Estimated",
+        tone: "neutral" as const,
+      },
+    ];
+    return (
+      <section className="space-y-6">
+        <OverviewScopeFacetBoard />
+        {homeSlice.errorMessage ? (
+          <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+            {homeSlice.errorMessage}
+          </div>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {primaryCards.map((card) => (
+            <MetricCard
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              helper={card.helper}
+              tone={card.tone}
+            />
+          ))}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {secondaryCards.map((card) => (
+            <MetricCard
+              key={card.label}
+              label={card.label}
+              value={card.value}
+              helper={card.helper}
+              tone={card.tone}
+            />
+          ))}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-100">Traffic volume</h3>
+              <SparklineMini values={homeSlice.sparklineSeries.map((bucket) => bucket.request_count)} />
+            </div>
+            <VolumeChart
+              series={homeSlice.sparklineSeries}
+              fromTimestamp={homeSlice.windowFromTimestamp}
+              toTimestamp={homeSlice.windowToTimestamp}
+              globalWindowMinutes={homeSlice.windowMinutes}
+            />
+          </div>
+          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4">
+            <h3 className="mb-2 text-sm font-semibold text-slate-100">Errors and latency trend</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <div className="mb-1 text-xs text-slate-400">Error count trend</div>
+                <SparklineMini values={sparklineErrors} />
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-slate-400">Latency trend</div>
+                <SparklineMini values={sparklineLatency} />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-100">Top failing routes</h3>
+            <div className="space-y-2">
+              {routeBreakdownTop.length ? (
+                routeBreakdownTop.map((route) => (
+                  <div key={route.key} className="flex items-center justify-between text-sm">
+                    <span className="truncate pr-3 text-slate-200">{route.key}</span>
+                    <span className="text-rose-300">{route.error_count} errors</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-400">No failing routes in this window.</p>
+              )}
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-100">Top services by traffic</h3>
+            <div className="space-y-2">
+              {serviceBreakdownTop.length ? (
+                serviceBreakdownTop.map((service) => (
+                  <div key={service.key} className="flex items-center justify-between text-sm">
+                    <span className="truncate pr-3 text-slate-200">{service.key}</span>
+                    <span className="text-sky-300">{service.request_count} req</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-400">No service traffic in this window.</p>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/30 p-4">
+          <div className="text-sm text-slate-300">
+            Need deeper diagnosis? Open grouped errors and route-level breakdown.
+          </div>
+          <Link
+            href="/diagnosis"
+            className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:border-slate-500"
+          >
+            Open diagnosis
+          </Link>
+        </div>
+        <GuidedTroubleshootingPanel />
+      </section>
+    );
+  }
+  // Legacy full dashboard fallback when phased rewrite flag is disabled.
   const derivedRequestCount = d.sparklineSeries.reduce(
     (sum, bucket) => sum + Number(bucket.request_count || 0),
     0,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -9,7 +8,6 @@ from autopulse_backend.dashboard.error_grouping import (
     derived_error_group_key,
     error_group_labels,
 )
-from autopulse_backend.dashboard.log_query import percentile
 from autopulse_backend.dashboard.messages import dashboard_request_log_message
 from autopulse_backend.dashboard.parsing import split_csv_values
 from autopulse_backend.dashboard.time_window import (
@@ -31,6 +29,7 @@ EVENT_SELECT_COLUMNS = (
     "id, timestamp, method, path, status_code, latency_ms, "
     "service_name, environment, request_id, type, payload"
 )
+MAX_ERROR_GROUP_SCAN_ROWS = 20_000
 
 
 def build_filters(
@@ -68,8 +67,7 @@ def request_items(
     filters: EventStoreFilters, *, limit: int, offset: int
 ) -> tuple[int, list[DashboardRequestItem]]:
     store = get_duckdb_event_store()
-    total = store.count_events(filters)
-    rows = store.fetch_events(filters, limit=limit, offset=offset)
+    total, rows = store.fetch_events_with_total(filters, limit=limit, offset=offset)
     return total, [
         DashboardRequestItem(
             timestamp=as_utc_datetime(timestamp),
@@ -101,33 +99,41 @@ def request_items(
 def overview_series(
     filters: EventStoreFilters, *, from_timestamp: datetime, to_timestamp: datetime
 ) -> tuple[int, int, float, list[DashboardOverviewBucket]]:
-    rows = get_duckdb_event_store().fetch_events(
+    rows = get_duckdb_event_store().query_events_sql(
         filters,
-        columns=EVENT_SELECT_COLUMNS,
+        select_sql="""
+            date_trunc('minute', timestamp) AS minute,
+            COUNT(*) AS request_count,
+            SUM(CASE WHEN type = 'error' OR status_code >= 500 THEN 1 ELSE 0 END) AS error_count,
+            AVG(latency_ms) AS avg_latency_ms,
+            SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) AS count_2xx,
+            SUM(CASE WHEN status_code >= 300 AND status_code < 400 THEN 1 ELSE 0 END) AS count_3xx,
+            SUM(CASE WHEN status_code >= 400 AND status_code < 500 THEN 1 ELSE 0 END) AS count_4xx,
+            SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS count_5xx
+        """,
+        suffix_sql="GROUP BY 1 ORDER BY 1 ASC",
     )
     buckets: dict[datetime, dict[str, float | int]] = {}
     request_count = 0
     error_count = 0
     latency_total = 0.0
     for (
-        _id,
-        timestamp,
-        *_unused,
-        status_code,
-        latency_ms,
-        _svc,
-        _env,
-        _req,
-        event_type,
-        _payload,
+        minute,
+        minute_request_count,
+        minute_error_count,
+        minute_avg_latency_ms,
+        count_2xx,
+        count_3xx,
+        count_4xx,
+        count_5xx,
     ) in rows:
-        request_count += 1
-        latency_total += float(latency_ms)
-        if event_type == "error" or int(status_code) >= 500:
-            error_count += 1
-        minute = minute_bucket(timestamp)
+        minute_requests = int(minute_request_count or 0)
+        minute_errors = int(minute_error_count or 0)
+        request_count += minute_requests
+        error_count += minute_errors
+        latency_total += float(minute_avg_latency_ms or 0.0) * minute_requests
         bucket = buckets.setdefault(
-            minute,
+            minute_bucket(minute),
             {
                 "request_count": 0,
                 "error_count": 0,
@@ -138,19 +144,13 @@ def overview_series(
                 "count_5xx": 0,
             },
         )
-        bucket["request_count"] += 1
-        bucket["latency_sum"] += float(latency_ms)
-        if event_type == "error" or int(status_code) >= 500:
-            bucket["error_count"] += 1
-        status_class = int(status_code or 0) // 100
-        if status_class == 2:
-            bucket["count_2xx"] += 1
-        elif status_class == 3:
-            bucket["count_3xx"] += 1
-        elif status_class == 4:
-            bucket["count_4xx"] += 1
-        elif status_class == 5:
-            bucket["count_5xx"] += 1
+        bucket["request_count"] += minute_requests
+        bucket["latency_sum"] += float(minute_avg_latency_ms or 0.0) * minute_requests
+        bucket["error_count"] += minute_errors
+        bucket["count_2xx"] += int(count_2xx or 0)
+        bucket["count_3xx"] += int(count_3xx or 0)
+        bucket["count_4xx"] += int(count_4xx or 0)
+        bucket["count_5xx"] += int(count_5xx or 0)
     sparse = {
         dt: DashboardOverviewBucket(
             minute=dt,
@@ -189,16 +189,21 @@ def overview_series(
 def diagnosis_timeline(
     filters: EventStoreFilters, *, from_timestamp: datetime, to_timestamp: datetime
 ) -> list[DashboardDiagnosisTimelineBucket]:
-    rows = get_duckdb_event_store().fetch_events(
-        filters, columns="id, timestamp, status_code, type", order_by="timestamp ASC, id ASC"
+    rows = get_duckdb_event_store().query_events_sql(
+        filters,
+        select_sql=(
+            "date_trunc('minute', timestamp) AS minute, "
+            "COUNT(*) AS request_count, "
+            "SUM(CASE WHEN type = 'error' OR status_code >= 500 THEN 1 ELSE 0 END) AS error_count"
+        ),
+        suffix_sql="GROUP BY 1 ORDER BY 1 ASC",
     )
     by_minute: dict[datetime, dict[str, int]] = {}
-    for _, timestamp, status_code, event_type in rows:
-        minute = minute_bucket(timestamp)
-        bucket = by_minute.setdefault(minute, {"request_count": 0, "error_count": 0})
-        bucket["request_count"] += 1
-        if event_type == "error" or int(status_code) >= 500:
-            bucket["error_count"] += 1
+    for minute, request_count, error_count in rows:
+        by_minute[minute_bucket(minute)] = {
+            "request_count": int(request_count or 0),
+            "error_count": int(error_count or 0),
+        }
     mapped = {
         minute: DashboardDiagnosisTimelineBucket(
             minute=minute,
@@ -216,35 +221,42 @@ def diagnosis_timeline(
 
 
 def failures_by_route(filters: EventStoreFilters) -> list[DashboardDiagnosisFailureRouteItem]:
-    rows = get_duckdb_event_store().fetch_events(
-        filters, columns="id, path, status_code, latency_ms, type"
+    rows = get_duckdb_event_store().query_events_sql(
+        filters,
+        select_sql="""
+            COALESCE(path, 'unknown') AS path,
+            SUM(CASE WHEN type = 'error' OR status_code >= 500 THEN 1 ELSE 0 END) AS failure_count,
+            COUNT(*) AS request_count,
+            AVG(latency_ms) AS avg_latency_ms
+        """,
+        suffix_sql=(
+            "GROUP BY 1 "
+            "HAVING SUM(CASE WHEN type = 'error' OR status_code >= 500 THEN 1 ELSE 0 END) > 0 "
+            "ORDER BY 2 DESC LIMIT 20"
+        ),
     )
-    by_route: dict[str, dict[str, float | int]] = {}
-    for _, path, status_code, latency_ms, event_type in rows:
-        key = str(path or "unknown")
-        item = by_route.setdefault(key, {"reqs": 0, "fails": 0, "lat": 0.0})
-        item["reqs"] += 1
-        item["lat"] += float(latency_ms)
-        if event_type == "error" or int(status_code) >= 500:
-            item["fails"] += 1
     items = [
         DashboardDiagnosisFailureRouteItem(
-            path=path,
-            failure_count=int(data["fails"]),
-            error_rate=(int(data["fails"]) / int(data["reqs"])) if int(data["reqs"]) else 0.0,
-            avg_latency_ms=(float(data["lat"]) / int(data["reqs"])) if int(data["reqs"]) else 0.0,
+            path=str(path),
+            failure_count=int(failure_count),
+            error_rate=(int(failure_count) / int(request_count)) if int(request_count) else 0.0,
+            avg_latency_ms=float(avg_latency_ms or 0.0),
         )
-        for path, data in by_route.items()
-        if int(data["fails"]) > 0
+        for path, failure_count, request_count, avg_latency_ms in rows
     ]
-    items.sort(key=lambda i: i.failure_count, reverse=True)
-    return items[:20]
+    items.sort(key=lambda item: item.failure_count, reverse=True)
+    return items
 
 
 def error_group_events(
     filters: EventStoreFilters, *, group_key: str, limit: int, offset: int
 ) -> tuple[int, list[DashboardDiagnosisErrorGroupEventItem]]:
-    rows = get_duckdb_event_store().fetch_events(filters)
+    scan_limit = min(MAX_ERROR_GROUP_SCAN_ROWS, max(offset + limit, max(limit * 4, 200)))
+    rows = get_duckdb_event_store().fetch_events(
+        filters,
+        columns=EVENT_SELECT_COLUMNS,
+        limit=scan_limit,
+    )
     matched: list[DashboardDiagnosisErrorGroupEventItem] = []
     for (
         event_id,
@@ -291,7 +303,12 @@ def error_group_events(
 def error_groups(
     filters: EventStoreFilters, *, limit: int, offset: int
 ) -> tuple[int, list[DashboardErrorGroupItem]]:
-    rows = get_duckdb_event_store().fetch_events(filters)
+    scan_limit = min(MAX_ERROR_GROUP_SCAN_ROWS, max(offset + limit, max(limit * 4, 200)))
+    rows = get_duckdb_event_store().fetch_events(
+        filters,
+        columns=EVENT_SELECT_COLUMNS,
+        limit=scan_limit,
+    )
     grouped: dict[str, dict[str, Any]] = {}
     for (
         event_id,
@@ -363,115 +380,133 @@ def error_groups(
 def overview_extended(
     filters: EventStoreFilters, *, from_timestamp: datetime, to_timestamp: datetime
 ) -> dict[str, Any]:
-    rows = get_duckdb_event_store().fetch_events(filters)
-    latencies: list[float] = []
-    service_stats: dict[str, dict[str, float | int]] = {}
-    route_stats: dict[str, dict[str, float | int]] = {}
-    error_type_counts: Counter[str] = Counter()
-    active_session_keys: set[str] = set()
+    store = get_duckdb_event_store()
     error_window_start = to_timestamp - timedelta(minutes=5)
-    error_burst_count = 0
-    for (
-        _id,
-        timestamp,
-        _method,
-        path,
-        status_code,
-        latency_ms,
-        service_name,
-        _env,
-        request_id,
-        event_type,
-        payload,
-    ) in rows:
-        payload_dict = payload if isinstance(payload, dict) else {}
-        lat = float(latency_ms)
-        latencies.append(lat)
-        if int(status_code) >= 500 and as_utc_datetime(timestamp) >= error_window_start:
-            error_burst_count += 1
-        service_key = str(service_name or "unknown")
-        route_key = str(path or "unknown")
-        for key, bucket in ((service_key, service_stats), (route_key, route_stats)):
-            row = bucket.setdefault(key, {"requests": 0, "errors": 0, "latency_sum": 0.0})
-            row["requests"] += 1
-            row["errors"] += 1 if int(status_code) >= 500 else 0
-            row["latency_sum"] += lat
-        if event_type == "error" or int(status_code) >= 500:
-            exc = str(payload_dict.get("exception_type") or "")
-            msg = str(payload_dict.get("exception_message") or "")
-            raw = f"{exc} {msg}".lower()
-            if "timeout" in raw or "timed out" in raw:
-                error_type_counts["timeout"] += 1
-            elif any(
-                token in raw for token in ("sql", "database", "db", "postgres", "mysql", "sqlite")
-            ):
-                error_type_counts["database"] += 1
-            elif any(token in raw for token in ("validation", "pydantic", "invalid")):
-                error_type_counts["validation"] += 1
-            elif any(
-                token in raw
-                for token in ("network", "connection", "dns", "socket", "refused", "unreachable")
-            ):
-                error_type_counts["network"] += 1
-            elif any(token in raw for token in ("auth", "unauthorized", "forbidden", "token")):
-                error_type_counts["auth"] += 1
-            else:
-                error_type_counts["server"] += 1
-        for raw in (
-            payload_dict.get("session_id"),
-            payload_dict.get("sessionId"),
-            payload_dict.get("user_id"),
-            payload_dict.get("userId"),
-            payload_dict.get("distinct_id"),
-        ):
-            if isinstance(raw, str) and raw.strip():
-                active_session_keys.add(raw.strip())
-                break
-            if isinstance(raw, int | float) and not isinstance(raw, bool):
-                active_session_keys.add(str(int(raw)))
-                break
-        else:
-            if isinstance(request_id, str) and request_id.strip():
-                active_session_keys.add(request_id.strip())
+    summary_rows = store.query_events_sql(
+        filters,
+        select_sql="""
+            quantile_cont(latency_ms, 0.50) AS p50_latency_ms,
+            quantile_cont(latency_ms, 0.95) AS p95_latency_ms,
+            quantile_cont(latency_ms, 0.99) AS p99_latency_ms,
+            AVG(
+                CASE
+                    WHEN latency_ms <= 300 THEN 1.0
+                    WHEN latency_ms <= 1200 THEN 0.5
+                    ELSE 0.0
+                END
+            ) AS apdex_score,
+            COUNT(
+                DISTINCT COALESCE(
+                    json_extract_string(payload, '$.session_id'),
+                    json_extract_string(payload, '$.sessionId'),
+                    json_extract_string(payload, '$.user_id'),
+                    json_extract_string(payload, '$.userId'),
+                    json_extract_string(payload, '$.distinct_id'),
+                    request_id
+                )
+            ) AS active_sessions_estimate,
+            SUM(
+                CASE
+                    WHEN status_code >= 500 AND timestamp >= CAST(? AS TIMESTAMP)
+                        THEN 1
+                    ELSE 0
+                END
+            ) AS error_burst_count
+        """,
+        extra_params=[error_window_start.strftime("%Y-%m-%d %H:%M:%S.%f")],
+    )
+    summary_row = summary_rows[0] if summary_rows else None
+    p50_latency_ms = float(summary_row[0] or 0.0) if summary_row else 0.0
+    p95_latency_ms = float(summary_row[1] or 0.0) if summary_row else 0.0
+    p99_latency_ms = float(summary_row[2] or 0.0) if summary_row else 0.0
+    apdex_score = float(summary_row[3] or 1.0) if summary_row else 1.0
+    active_sessions_estimate = int(summary_row[4] or 0) if summary_row else 0
+    error_burst_count = int(summary_row[5] or 0) if summary_row else 0
 
-    def to_breakdown(source: dict[str, dict[str, float | int]]) -> list[dict[str, Any]]:
-        items = []
-        for key, data in source.items():
-            req = int(data["requests"])
-            err = int(data["errors"])
-            items.append(
-                {
-                    "key": key,
-                    "request_count": req,
-                    "error_count": err,
-                    "error_rate": (err / req) if req else 0.0,
-                    "avg_latency_ms": (float(data["latency_sum"]) / req) if req else 0.0,
-                }
-            )
-        items.sort(key=lambda row: (row["error_count"], row["request_count"]), reverse=True)
-        return items[:8]
+    error_type_rows = store.query_events_sql(
+        filters,
+        select_sql="""
+            CASE
+                WHEN lower(
+                    COALESCE(json_extract_string(payload, '$.exception_type'), '')
+                    || ' ' ||
+                    COALESCE(json_extract_string(payload, '$.exception_message'), '')
+                ) LIKE '%timeout%'
+                OR lower(
+                    COALESCE(json_extract_string(payload, '$.exception_type'), '')
+                    || ' ' ||
+                    COALESCE(json_extract_string(payload, '$.exception_message'), '')
+                ) LIKE '%timed out%'
+                    THEN 'timeout'
+                WHEN lower(
+                    COALESCE(json_extract_string(payload, '$.exception_type'), '')
+                    || ' ' ||
+                    COALESCE(json_extract_string(payload, '$.exception_message'), '')
+                ) SIMILAR TO '%(sql|database|db|postgres|mysql|sqlite)%'
+                    THEN 'database'
+                WHEN lower(
+                    COALESCE(json_extract_string(payload, '$.exception_type'), '')
+                    || ' ' ||
+                    COALESCE(json_extract_string(payload, '$.exception_message'), '')
+                ) SIMILAR TO '%(validation|pydantic|invalid)%'
+                    THEN 'validation'
+                WHEN lower(
+                    COALESCE(json_extract_string(payload, '$.exception_type'), '')
+                    || ' ' ||
+                    COALESCE(json_extract_string(payload, '$.exception_message'), '')
+                ) SIMILAR TO '%(network|connection|dns|socket|refused|unreachable)%'
+                    THEN 'network'
+                WHEN lower(
+                    COALESCE(json_extract_string(payload, '$.exception_type'), '')
+                    || ' ' ||
+                    COALESCE(json_extract_string(payload, '$.exception_message'), '')
+                ) SIMILAR TO '%(auth|unauthorized|forbidden|token)%'
+                    THEN 'auth'
+                ELSE 'server'
+            END AS error_type,
+            COUNT(*) AS count
+        """,
+        suffix_sql=(
+            "AND (type = 'error' OR status_code >= 500) " "GROUP BY 1 ORDER BY 2 DESC LIMIT 8"
+        ),
+    )
+
+    def fetch_breakdown(key_column: str) -> list[dict[str, Any]]:
+        rows = store.query_events_sql(
+            filters,
+            select_sql=(
+                f"COALESCE({key_column}, 'unknown') AS group_key, "
+                "COUNT(*) AS request_count, "
+                "SUM(CASE WHEN status_code >= 500 THEN 1 ELSE 0 END) AS error_count, "
+                "AVG(latency_ms) AS avg_latency_ms"
+            ),
+            suffix_sql="GROUP BY 1 ORDER BY 3 DESC, 2 DESC LIMIT 8",
+        )
+        return [
+            {
+                "key": str(group_key),
+                "request_count": int(request_count or 0),
+                "error_count": int(error_count or 0),
+                "error_rate": (int(error_count or 0) / int(request_count or 0))
+                if int(request_count or 0)
+                else 0.0,
+                "avg_latency_ms": float(avg_latency_ms or 0.0),
+            }
+            for group_key, request_count, error_count, avg_latency_ms in rows
+        ]
 
     return {
-        "p50_latency_ms": percentile(latencies, 0.50),
-        "p95_latency_ms": percentile(latencies, 0.95),
-        "p99_latency_ms": percentile(latencies, 0.99),
-        "apdex_score": _compute_apdex(latencies),
-        "active_sessions_estimate": len(active_session_keys),
+        "p50_latency_ms": p50_latency_ms,
+        "p95_latency_ms": p95_latency_ms,
+        "p99_latency_ms": p99_latency_ms,
+        "apdex_score": apdex_score,
+        "active_sessions_estimate": active_sessions_estimate,
         "error_burst_count": error_burst_count,
         "active_incident_count": 1 if error_burst_count > 0 else 0,
         "error_type_breakdown": [
-            {"error_type": error_type, "count": count}
-            for error_type, count in error_type_counts.most_common(8)
+            {"error_type": str(error_type), "count": int(count)}
+            for error_type, count in error_type_rows
         ],
-        "service_breakdown": to_breakdown(service_stats),
-        "route_breakdown": to_breakdown(route_stats),
+        "service_breakdown": fetch_breakdown("service_name"),
+        "route_breakdown": fetch_breakdown("path"),
     }
-
-
-def _compute_apdex(latencies: list[float]) -> float:
-    total = len(latencies)
-    if total == 0:
-        return 1.0
-    satisfied = sum(1 for latency in latencies if latency <= 300.0)
-    tolerated = sum(1 for latency in latencies if 300.0 < latency <= 1200.0)
-    return (satisfied + (tolerated / 2.0)) / float(total)

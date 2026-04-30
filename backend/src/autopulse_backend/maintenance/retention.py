@@ -13,6 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.core.config import Settings, normalize_database_url
+from autopulse_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
 from autopulse_backend.models import (
     AlertDispatch,
     ArchivedEvent,
@@ -512,6 +513,7 @@ async def _apply_duckdb_retention(
     if "store" not in locals():
         return 0
     deleted_total = 0
+    touched_project_ids: set[UUID] = set()
 
     overrides = {
         project_id: int(days)
@@ -533,11 +535,14 @@ async def _apply_duckdb_retention(
             if not size_only and project_id in overrides:
                 cutoff = resolved_now - timedelta(days=max(1, overrides[project_id]))
             if not size_only:
-                deleted_total += await asyncio.to_thread(
+                deleted_for_project = await asyncio.to_thread(
                     store.delete_events_before,
                     cutoff=cutoff,
                     project_id=project_id,
                 )
+                deleted_total += deleted_for_project
+                if deleted_for_project > 0:
+                    touched_project_ids.add(project_id)
 
     rotation_settings = (
         await session.execute(
@@ -556,11 +561,14 @@ async def _apply_duckdb_retention(
             project_count = await asyncio.to_thread(store.count_events_for_project, project_id)
             overflow = max(0, int(project_count) - int(max_log_rows))
             if overflow > 0:
-                deleted_total += await asyncio.to_thread(
+                deleted_for_project = await asyncio.to_thread(
                     store.delete_oldest_events,
                     rows_to_delete=overflow,
                     project_id=project_id,
                 )
+                deleted_total += deleted_for_project
+                if deleted_for_project > 0:
+                    touched_project_ids.add(project_id)
         if max_db_size_mb is not None:
             deleted_total += await _duckdb_shrink_under_size_cap(
                 max_bytes=int(max_db_size_mb) * 1024 * 1024,
@@ -579,10 +587,17 @@ async def _apply_duckdb_retention(
     if min_ui_mb is not None:
         duckdb_file_cap_candidates.append(int(min_ui_mb))
     if duckdb_file_cap_candidates:
-        deleted_total += await _duckdb_shrink_under_size_cap(
+        deleted_global = await _duckdb_shrink_under_size_cap(
             max_bytes=min(duckdb_file_cap_candidates) * 1024 * 1024,
             project_id=None,
         )
+        deleted_total += deleted_global
+        if deleted_global > 0:
+            for raw_project_id in await asyncio.to_thread(store.list_project_ids):
+                with suppress(ValueError):
+                    touched_project_ids.add(UUID(str(raw_project_id)))
+    for project_id in touched_project_ids:
+        await mark_project_dashboard_dirty(project_id)
     return deleted_total
 
 

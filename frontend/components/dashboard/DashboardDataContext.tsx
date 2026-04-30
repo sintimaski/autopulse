@@ -26,6 +26,7 @@ import {
 } from "../../utils/dashboardFetchErrors";
 import {
   buildApiUrl,
+  buildUpdatesWebsocketUrl,
   type AlertDispatchesResponse,
   type AlertCapabilitiesResponse,
   type AlertChannelCapability,
@@ -220,18 +221,51 @@ export type DashboardDataContextValue = {
   M5_ALERT_DEFAULTS: typeof M5_ALERT_DEFAULTS;
 };
 
+export type DashboardHomeSliceValue = {
+  overview: OverviewResponse | null;
+  overviewExtended: OverviewExtendedResponse | null;
+  dashboardWidgets: DashboardWidgetsResponse | null;
+  requests: RequestsResponse | null;
+  errorGroups: ErrorGroupsResponse | null;
+  sparklineSeries: OverviewBucket[];
+  operationalSignals: ReturnType<typeof computeOperationalSignals>;
+  rawItems: RequestItem[];
+  windowMinutes: number;
+  isAbsoluteWindow: boolean;
+  windowFromTimestamp: string;
+  windowToTimestamp: string;
+  method: string;
+  statusClass: string;
+  requestLimit: number;
+  errorGroupLimit: number;
+  errorGroupSort: "last_seen" | "count";
+  minLatencyMs: string;
+  maxLatencyMs: string;
+  pathQuery: string;
+  serverEnvironmentQuery: string;
+  serverServiceQuery: string;
+  sqlFilterApplied: string;
+  sqlFilterEnabled: boolean;
+  errorMessage: string | null;
+};
+
 const DashboardDataContext = createContext<DashboardDataContextValue | null>(null);
+const DashboardHomeSliceContext = createContext<DashboardHomeSliceValue | null>(null);
 const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
 const DASHBOARD_HEAVY_REFRESH_COOLDOWN_MS = 15_000;
 const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 const MAX_WIDGET_POINTS_TOTAL = 2400;
+const DASHBOARD_REWRITE_PHASED_ENABLED =
+  process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
+const LIVE_REFRESH_THROTTLE_MS = 750;
+const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
 const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
   const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
   const parsedSeconds = Number(raw);
   if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
     return Math.max(250, Math.floor(parsedSeconds * 1000));
   }
-  return 1_000;
+  return 5_000;
 })();
 
 function fetchWithTimeout(
@@ -306,6 +340,14 @@ export function useDashboardData(): DashboardDataContextValue {
   return ctx;
 }
 
+export function useDashboardHomeDataSlice(): DashboardHomeSliceValue {
+  const ctx = useContext(DashboardHomeSliceContext);
+  if (!ctx) {
+    throw new Error("useDashboardHomeDataSlice must be used within DashboardDataProvider");
+  }
+  return ctx;
+}
+
 export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
@@ -360,9 +402,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [savedSqlFilterPresets, setSavedSqlFilterPresets] = useState<SavedSqlFilterPreset[]>([]);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveFallbackRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const liveReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveSocketRef = useRef<WebSocket | null>(null);
+  const liveLastRefreshAtRef = useRef(0);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
   const dashboardHeavyFetchRef = useRef<{ key: string; atMs: number } | null>(null);
+  const [liveUpdatesConnected, setLiveUpdatesConnected] = useState(false);
   const rawDashboardPathname = usePathname();
   const dashboardRoutePath = useMemo(
     () => toDashboardRoutePath(rawDashboardPathname),
@@ -503,7 +549,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       controller.abort();
     };
-  }, [hasApiKey, refreshToken]);
+  }, [hasApiKey]);
 
   useEffect(() => {
     if (!hasApiKey) {
@@ -531,12 +577,17 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         normalizeCommaSeparated(serverServiceQuery) !== "" ||
         (sqlFilterEnabled && sqlFilterApplied.trim() !== "");
       let includeExtended = routePath === "/dashboard" || routePath === "/diagnosis";
-      let includeWidgets = routePath === "/dashboard" && !hasAdvancedScopeFilters;
+      let includeWidgets =
+        routePath === "/dashboard" &&
+        !hasAdvancedScopeFilters &&
+        !DASHBOARD_REWRITE_PHASED_ENABLED;
       if (!isDocumentVisible) {
         includeExtended = routePath === "/diagnosis";
         includeWidgets = false;
       }
-      const includeErrorGroups = routePath === "/dashboard" || routePath === "/diagnosis";
+      const includeErrorGroups =
+        routePath === "/diagnosis" ||
+        (routePath === "/dashboard" && !DASHBOARD_REWRITE_PHASED_ENABLED);
       const includeDiagnosis = routePath === "/diagnosis";
       const includeAlertDispatches = routePath === "/alerts";
       const useSnapshot = routePath === "/dashboard";
@@ -576,7 +627,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             previousHeavyFetch !== null &&
             previousHeavyFetch.key === heavyScopeKey &&
             Date.now() - previousHeavyFetch.atMs < DASHBOARD_HEAVY_REFRESH_COOLDOWN_MS;
-          if (refreshToken > 0 && canReuseHeavyData) {
+          if (refreshToken > 0 && canReuseHeavyData && overviewExtended !== null) {
             includeExtended = false;
             includeWidgets = false;
           } else {
@@ -610,9 +661,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const cached = useSnapshot ? readDashboardSnapshot(scopeKey) : null;
         if (cached) {
           setOverview(cached.overview);
-          setOverviewExtended(cached.overviewExtended);
+          setOverviewExtended(cached.overviewExtended ?? null);
           setRequests(cached.requests);
-          setErrorGroups(cached.errorGroups);
+          setErrorGroups(cached.errorGroups ?? null);
           setDiagnosisTimeline(cached.diagnosisTimeline ?? null);
           setDiagnosisFailures(cached.diagnosisFailures ?? null);
           setAlertDispatches(cached.alertDispatches ?? null);
@@ -716,17 +767,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (
           useSnapshot &&
           includeExtended &&
-          includeErrorGroups &&
           overviewData &&
           requestsData &&
-          data.overview_extended &&
-          data.error_groups
+          data.overview_extended
         ) {
           writeDashboardSnapshot(scopeKey, {
             overview: overviewData,
             overviewExtended: data.overview_extended,
             requests: requestsData,
-            errorGroups: data.error_groups,
+            errorGroups: data.error_groups ?? undefined,
           });
         }
         if (overviewData || requestsData) {
@@ -777,6 +826,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (runbookTimer.current) {
         clearTimeout(runbookTimer.current);
       }
+      if (liveReconnectTimer.current) {
+        clearTimeout(liveReconnectTimer.current);
+      }
+      if (liveSocketRef.current) {
+        liveSocketRef.current.close();
+        liveSocketRef.current = null;
+      }
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);
       }
@@ -785,6 +841,91 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hasApiKey) {
+      setLiveUpdatesConnected(false);
+      if (liveReconnectTimer.current) {
+        clearTimeout(liveReconnectTimer.current);
+        liveReconnectTimer.current = null;
+      }
+      if (liveSocketRef.current) {
+        liveSocketRef.current.close();
+        liveSocketRef.current = null;
+      }
+      return;
+    }
+    let cancelled = false;
+    const connect = () => {
+      if (cancelled) {
+        return;
+      }
+      try {
+        const socket = new WebSocket(buildUpdatesWebsocketUrl());
+        liveSocketRef.current = socket;
+        socket.onopen = () => {
+          if (cancelled) {
+            socket.close();
+            return;
+          }
+          setLiveUpdatesConnected(true);
+        };
+        socket.onmessage = (event) => {
+          if (cancelled) {
+            return;
+          }
+          let parsed: { type?: string } | null = null;
+          try {
+            parsed = JSON.parse(event.data) as { type?: string };
+          } catch {
+            parsed = null;
+          }
+          if (!parsed?.type) {
+            return;
+          }
+          if (parsed.type !== "dashboard_update" && parsed.type !== "ingest") {
+            return;
+          }
+          const now = Date.now();
+          if (now - liveLastRefreshAtRef.current < LIVE_REFRESH_THROTTLE_MS) {
+            return;
+          }
+          liveLastRefreshAtRef.current = now;
+          setRefreshToken((token) => token + 1);
+        };
+        socket.onclose = () => {
+          if (cancelled) {
+            return;
+          }
+          setLiveUpdatesConnected(false);
+          if (liveReconnectTimer.current) {
+            clearTimeout(liveReconnectTimer.current);
+          }
+          liveReconnectTimer.current = setTimeout(() => {
+            connect();
+          }, DASHBOARD_WS_RECONNECT_DELAY_MS);
+        };
+        socket.onerror = () => {
+          // onclose handles reconnect/fallback.
+        };
+      } catch {
+        setLiveUpdatesConnected(false);
+      }
+    };
+    connect();
+    return () => {
+      cancelled = true;
+      setLiveUpdatesConnected(false);
+      if (liveReconnectTimer.current) {
+        clearTimeout(liveReconnectTimer.current);
+        liveReconnectTimer.current = null;
+      }
+      if (liveSocketRef.current) {
+        liveSocketRef.current.close();
+        liveSocketRef.current = null;
+      }
+    };
+  }, [hasApiKey]);
+
+  useEffect(() => {
+    if (!hasApiKey || liveUpdatesConnected) {
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);
         liveFallbackRefreshTimer.current = null;
@@ -794,7 +935,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (liveFallbackRefreshTimer.current) {
       clearInterval(liveFallbackRefreshTimer.current);
     }
-    // Pull dashboard data at a fixed interval (env-configured) while tab is visible.
+    // Fallback poll only when websocket is disconnected.
     liveFallbackRefreshTimer.current = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
@@ -807,7 +948,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         liveFallbackRefreshTimer.current = null;
       }
     };
-  }, [hasApiKey]);
+  }, [hasApiKey, liveUpdatesConnected]);
 
   const rawItems = useMemo(
     () =>
@@ -1634,6 +1775,62 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [overview],
   );
 
+  const homeSliceValue = useMemo(
+    (): DashboardHomeSliceValue => ({
+      overview,
+      overviewExtended,
+      dashboardWidgets,
+      requests,
+      errorGroups,
+      sparklineSeries,
+      operationalSignals,
+      rawItems,
+      windowMinutes,
+      isAbsoluteWindow: absoluteWindow !== null,
+      windowFromTimestamp: toIsoWindow?.from ?? overview?.from_timestamp ?? requests?.from_timestamp ?? "",
+      windowToTimestamp: toIsoWindow?.to ?? overview?.to_timestamp ?? requests?.to_timestamp ?? "",
+      method,
+      statusClass,
+      requestLimit,
+      errorGroupLimit,
+      errorGroupSort,
+      minLatencyMs,
+      maxLatencyMs,
+      pathQuery,
+      serverEnvironmentQuery,
+      serverServiceQuery,
+      sqlFilterApplied,
+      sqlFilterEnabled,
+      errorMessage,
+    }),
+    [
+      overview,
+      overviewExtended,
+      dashboardWidgets,
+      requests,
+      errorGroups,
+      sparklineSeries,
+      operationalSignals,
+      rawItems,
+      windowMinutes,
+      absoluteWindow,
+      toIsoWindow,
+      method,
+      statusClass,
+      requestLimit,
+      errorGroupLimit,
+      errorGroupSort,
+      minLatencyMs,
+      maxLatencyMs,
+      pathQuery,
+      serverEnvironmentQuery,
+      serverServiceQuery,
+      sqlFilterApplied,
+      sqlFilterEnabled,
+      errorMessage,
+    ],
+  );
+
   const value = useMemo(
     (): DashboardDataContextValue => ({
       hasApiKey,
@@ -1864,5 +2061,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <DashboardDataContext.Provider value={value}>{children}</DashboardDataContext.Provider>;
+  return (
+    <DashboardDataContext.Provider value={value}>
+      <DashboardHomeSliceContext.Provider value={homeSliceValue}>
+        {children}
+      </DashboardHomeSliceContext.Provider>
+    </DashboardDataContext.Provider>
+  );
 }
