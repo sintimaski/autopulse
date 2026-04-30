@@ -170,7 +170,7 @@ export function SettingsContent() {
                 />
               </label>
               <label className="text-sm text-slate-700 dark:text-neutral-200">
-                Local SQLite max DB size (MB)
+                Embedded logs max DB size (MB)
                 <input
                   type="number"
                   min={1}
@@ -233,7 +233,7 @@ export function SettingsContent() {
               </label>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Optional rotation caps apply on local SQLite only. Embedded installs also honor{" "}
+              Optional rotation caps apply to the active embedded log store (DuckDB or SQLite). Embedded installs also honor{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
                 AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB
               </code>{" "}

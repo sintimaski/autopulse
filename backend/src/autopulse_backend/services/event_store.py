@@ -327,6 +327,74 @@ class DuckDbEventStore:
             return None
         return _as_utc(value)
 
+    def file_size_bytes(self) -> int:
+        total = 0
+        for path in (self._path, Path(f"{self._path}.wal")):
+            try:
+                total += int(path.stat().st_size)
+            except OSError:
+                continue
+        return total
+
+    def checkpoint(self) -> None:
+        with self._lock:
+            self._conn.execute("CHECKPOINT")
+
+    def list_project_ids(self) -> list[str]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT DISTINCT project_id FROM events ORDER BY project_id ASC"
+            ).fetchall()
+        return [str(row[0]) for row in rows if row and row[0] is not None]
+
+    def count_events_for_project(self, project_id: UUID | None = None) -> int:
+        if project_id is None:
+            with self._lock:
+                row = self._conn.execute("SELECT COUNT(*) FROM events").fetchone()
+            return int(row[0] if row else 0)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM events WHERE project_id = ?",
+                [str(project_id)],
+            ).fetchone()
+        return int(row[0] if row else 0)
+
+    def delete_oldest_events(self, *, rows_to_delete: int, project_id: UUID | None = None) -> int:
+        if rows_to_delete <= 0:
+            return 0
+        if project_id is None:
+            count_sql = (
+                "SELECT COUNT(*) FROM ("
+                "SELECT id FROM events ORDER BY received_at ASC, id ASC LIMIT ?"
+                ")"
+            )
+            delete_sql = (
+                "DELETE FROM events WHERE id IN ("
+                "SELECT id FROM events ORDER BY received_at ASC, id ASC LIMIT ?"
+                ")"
+            )
+            params = [rows_to_delete]
+        else:
+            count_sql = (
+                "SELECT COUNT(*) FROM ("
+                "SELECT id FROM events WHERE project_id = ? "
+                "ORDER BY received_at ASC, id ASC LIMIT ?"
+                ")"
+            )
+            delete_sql = (
+                "DELETE FROM events WHERE id IN ("
+                "SELECT id FROM events WHERE project_id = ? "
+                "ORDER BY received_at ASC, id ASC LIMIT ?"
+                ")"
+            )
+            params = [str(project_id), rows_to_delete]
+        with self._lock:
+            deleted_row = self._conn.execute(count_sql, params).fetchone()
+            deleted = int(deleted_row[0] if deleted_row else 0)
+            if deleted > 0:
+                self._conn.execute(delete_sql, params)
+        return deleted
+
 
 _duckdb_store: DuckDbEventStore | None = None
 _duckdb_store_lock = Lock()

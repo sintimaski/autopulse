@@ -41,7 +41,7 @@ Backend defaults to `http://localhost:8000`.
 - `JOBS_RETENTION_INTERVAL_SECONDS` (minimum **5**; periodic `run_retention_cleanup_once` when scheduler or retention-only loop runs)
 - `JOBS_SCHEDULER_LEASE_ENABLED` (prevents duplicate periodic job execution across instances)
 - `JOBS_SCHEDULER_LEASE_TTL_SECONDS`
-- `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB` (max SQLite **disk** footprint in MB for main + `-wal` + `-shm`; unset on default `autopulse.db` / `autopulse_embedded.db` defaults to **512**; retention deletes oldest data then VACUUM)
+- `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB` (max embedded log-store file size in MB; applies to DuckDB or SQLite embedded mode. For SQLite it includes main + `-wal` + `-shm`; default **512** in embedded defaults)
 - `AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS` / `AUTOPULSE_RETENTION_PRESSURE_MIN_INTERVAL_SECONDS` (SQLite pressure poll; see `core/config.py`)
 
 See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.

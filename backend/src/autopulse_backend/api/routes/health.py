@@ -7,6 +7,10 @@ from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_engine
 from autopulse_backend.jobs import RetentionPressurePollHandle, SchedulerHandle
 from autopulse_backend.metrics import service_metrics
+from autopulse_backend.services.event_store import (
+    event_store_enabled,
+    try_get_duckdb_event_store,
+)
 
 router = APIRouter(tags=["system"])
 
@@ -36,6 +40,23 @@ async def internal_metrics(request: Request) -> dict[str, object]:
     scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
     pressure = getattr(request.app.state, "_autopulse_retention_pressure_poll", None)
     settings = get_settings()
+    duckdb_metrics: dict[str, object] = {}
+    if event_store_enabled(settings):
+        store = try_get_duckdb_event_store()
+        if store is not None:
+            size_bytes = int(store.file_size_bytes())
+            cap_mb = settings.embedded_sqlite_max_db_file_mb
+            duckdb_metrics = {
+                "path": settings.event_store_duckdb_path,
+                "file_size_bytes": size_bytes,
+                "file_size_mb": round(size_bytes / (1024 * 1024), 3),
+                "max_size_mb": int(cap_mb) if cap_mb is not None else None,
+                "usage_ratio": (
+                    float(size_bytes) / float(int(cap_mb) * 1024 * 1024)
+                    if cap_mb is not None and int(cap_mb) > 0
+                    else None
+                ),
+            }
     return {
         "service": "autopulse-backend",
         "scheduler_running": isinstance(scheduler, SchedulerHandle),
@@ -44,6 +65,8 @@ async def internal_metrics(request: Request) -> dict[str, object]:
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
         "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
         "jobs_retention_interval_seconds": settings.jobs_retention_interval_seconds,
+        "event_store": settings.event_store,
+        "duckdb": duckdb_metrics if duckdb_metrics else None,
         "counters": service_metrics.snapshot(),
         "jobs": service_metrics.job_snapshot(),
     }

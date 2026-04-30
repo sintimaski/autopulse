@@ -34,6 +34,8 @@ class RetentionCleanupResult:
 
 _SQLITE_SHRINK_BATCH = 5000
 _SQLITE_SHRINK_MAX_ITERATIONS = 50_000
+_DUCKDB_SHRINK_BATCH = 5000
+_DUCKDB_SHRINK_MAX_ITERATIONS = 50_000
 
 
 async def _archive_events_before_delete(
@@ -463,6 +465,127 @@ async def _apply_embedded_sqlite_global_file_cap(
     )
 
 
+async def _duckdb_shrink_under_size_cap(
+    *,
+    max_bytes: int,
+    project_id: UUID | None,
+) -> int:
+    store = get_duckdb_event_store()
+    deleted_total = 0
+    stall_rounds = 0
+    max_batch = _DUCKDB_SHRINK_BATCH
+    for _ in range(_DUCKDB_SHRINK_MAX_ITERATIONS):
+        with suppress(Exception):
+            await asyncio.to_thread(store.checkpoint)
+        current_size = await asyncio.to_thread(store.file_size_bytes)
+        if current_size <= max_bytes:
+            break
+        over_ratio = max(0.0, float(current_size - max_bytes) / float(max(current_size, 1)))
+        batch = max(200, min(max_batch, int(max_batch * max(over_ratio, 0.05))))
+        deleted_now = await asyncio.to_thread(
+            store.delete_oldest_events,
+            rows_to_delete=batch,
+            project_id=project_id,
+        )
+        if deleted_now <= 0:
+            stall_rounds += 1
+            if stall_rounds >= 3:
+                break
+            continue
+        deleted_total += deleted_now
+        with suppress(Exception):
+            await asyncio.to_thread(store.checkpoint)
+        stall_rounds = 0
+    return deleted_total
+
+
+async def _apply_duckdb_retention(
+    *,
+    session: AsyncSession,
+    settings: Settings,
+    resolved_now: datetime,
+    default_cutoff: datetime,
+    size_only: bool,
+) -> int:
+    with suppress(Exception):
+        store = get_duckdb_event_store()
+    if "store" not in locals():
+        return 0
+    deleted_total = 0
+
+    overrides = {
+        project_id: int(days)
+        for project_id, days in (
+            await session.execute(
+                select(
+                    ProjectUiSettings.project_id,
+                    ProjectUiSettings.retention_raw_events_days,
+                ).where(ProjectUiSettings.retention_raw_events_days.is_not(None))
+            )
+        ).all()
+        if days is not None
+    }
+    project_ids_raw = await asyncio.to_thread(store.list_project_ids)
+    for raw_project_id in project_ids_raw:
+        with suppress(ValueError):
+            project_id = UUID(str(raw_project_id))
+            cutoff = default_cutoff
+            if not size_only and project_id in overrides:
+                cutoff = resolved_now - timedelta(days=max(1, overrides[project_id]))
+            if not size_only:
+                deleted_total += await asyncio.to_thread(
+                    store.delete_events_before,
+                    cutoff=cutoff,
+                    project_id=project_id,
+                )
+
+    rotation_settings = (
+        await session.execute(
+            select(
+                ProjectUiSettings.project_id,
+                ProjectUiSettings.retention_max_db_size_mb,
+                ProjectUiSettings.retention_max_log_rows,
+            ).where(
+                ProjectUiSettings.retention_max_db_size_mb.is_not(None)
+                | ProjectUiSettings.retention_max_log_rows.is_not(None)
+            )
+        )
+    ).all()
+    for project_id, max_db_size_mb, max_log_rows in rotation_settings:
+        if max_log_rows is not None:
+            project_count = await asyncio.to_thread(store.count_events_for_project, project_id)
+            overflow = max(0, int(project_count) - int(max_log_rows))
+            if overflow > 0:
+                deleted_total += await asyncio.to_thread(
+                    store.delete_oldest_events,
+                    rows_to_delete=overflow,
+                    project_id=project_id,
+                )
+        if max_db_size_mb is not None:
+            deleted_total += await _duckdb_shrink_under_size_cap(
+                max_bytes=int(max_db_size_mb) * 1024 * 1024,
+                project_id=project_id,
+            )
+
+    duckdb_file_cap_candidates: list[int] = []
+    if settings.embedded_sqlite_max_db_file_mb is not None:
+        duckdb_file_cap_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
+    min_ui_mb_result = await session.execute(
+        select(func.min(ProjectUiSettings.retention_max_db_size_mb)).where(
+            ProjectUiSettings.retention_max_db_size_mb.is_not(None)
+        )
+    )
+    min_ui_mb = min_ui_mb_result.scalar_one_or_none()
+    if min_ui_mb is not None:
+        duckdb_file_cap_candidates.append(int(min_ui_mb))
+    if duckdb_file_cap_candidates:
+        deleted_total += await _duckdb_shrink_under_size_cap(
+            max_bytes=min(duckdb_file_cap_candidates) * 1024 * 1024,
+            project_id=None,
+        )
+    return deleted_total
+
+
 async def run_retention_cleanup_once(
     session: AsyncSession,
     settings: Settings,
@@ -550,12 +673,13 @@ async def run_retention_cleanup_once(
                 )
             )
     if event_store_enabled(settings):
-        with suppress(Exception):
-            stale_count += await asyncio.to_thread(
-                get_duckdb_event_store().delete_events_before,
-                cutoff=default_cutoff,
-                project_id=None,
-            )
+        stale_count += await _apply_duckdb_retention(
+            session=session,
+            settings=settings,
+            resolved_now=resolved_now,
+            default_cutoff=default_cutoff,
+            size_only=size_only,
+        )
     stale_count += await _apply_project_rotation_limits(session=session, settings=settings)
 
     sqlite_file_cap_candidates: list[int] = []
@@ -620,3 +744,42 @@ async def sqlite_retention_pressure_pending(
         .group_by(ProjectUiSettings.project_id, ProjectUiSettings.retention_max_log_rows)
     )
     return any(int(event_count) > int(max_log_rows) for max_log_rows, event_count in overflow.all())
+
+
+async def retention_pressure_pending(
+    session: AsyncSession,
+    settings: Settings,
+) -> bool:
+    if event_store_enabled(settings):
+        with suppress(Exception):
+            store = get_duckdb_event_store()
+            with suppress(Exception):
+                await asyncio.to_thread(store.checkpoint)
+            file_cap_mb_candidates: list[int] = []
+            if settings.embedded_sqlite_max_db_file_mb is not None:
+                file_cap_mb_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
+            all_ui_mb = await session.execute(
+                select(ProjectUiSettings.retention_max_db_size_mb).where(
+                    ProjectUiSettings.retention_max_db_size_mb.is_not(None)
+                )
+            )
+            file_cap_mb_candidates.extend(int(row[0]) for row in all_ui_mb.all())
+            if file_cap_mb_candidates:
+                min_cap_mb = min(file_cap_mb_candidates)
+                size_bytes = await asyncio.to_thread(store.file_size_bytes)
+                if size_bytes > min_cap_mb * 1024 * 1024:
+                    return True
+            all_ui_rows = await session.execute(
+                select(
+                    ProjectUiSettings.project_id,
+                    ProjectUiSettings.retention_max_log_rows,
+                ).where(ProjectUiSettings.retention_max_log_rows.is_not(None))
+            )
+            for project_id, max_rows in all_ui_rows.all():
+                if max_rows is None:
+                    continue
+                count = await asyncio.to_thread(store.count_events_for_project, project_id)
+                if int(count) > int(max_rows):
+                    return True
+        return False
+    return await sqlite_retention_pressure_pending(session, settings)

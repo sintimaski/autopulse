@@ -20,8 +20,8 @@ from autopulse_backend.maintenance.retention import (
     _resolve_sqlite_db_path,
     _sqlite_db_disk_footprint_bytes,
     _vacuum_sqlite_db_file,
+    retention_pressure_pending,
     run_retention_cleanup_once,
-    sqlite_retention_pressure_pending,
 )
 from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
 from autopulse_backend.models import Base
@@ -391,7 +391,7 @@ async def _retention_pressure_poll_loop(settings: Settings, stop_event: asyncio.
         pending = False
         try:
             async with session_maker() as session:
-                pending = await sqlite_retention_pressure_pending(session, settings)
+                pending = await retention_pressure_pending(session, settings)
         except Exception:
             logger.exception("Retention pressure probe failed")
             pending = False
