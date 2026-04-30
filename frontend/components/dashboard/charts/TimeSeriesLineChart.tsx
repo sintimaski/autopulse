@@ -1,26 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo } from "react";
+import type { ChartOptions } from "chart.js";
 
-function makeTrendPoints(values: number[], width: number, height: number): string {
-  if (values.length === 0) {
-    return "";
-  }
-  let max = 1;
-  for (const value of values) {
-    if (value > max) {
-      max = value;
-    }
-  }
-  const stepX = values.length > 1 ? width / (values.length - 1) : width / 2;
-  return values
-    .map((value, idx) => {
-      const x = values.length > 1 ? idx * stepX : width / 2;
-      const y = height - (value / max) * height;
-      return `${x},${Number.isFinite(y) ? y : height}`;
-    })
-    .join(" ");
-}
+import { CanvasLine } from "./chartCanvas";
 
 type TimeSeriesLineChartProps = {
   title: string;
@@ -33,6 +16,19 @@ type TimeSeriesLineChartProps = {
   emptyMessage?: string;
 };
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "").trim();
+  if (h.length === 6) {
+    const r = Number.parseInt(h.slice(0, 2), 16);
+    const g = Number.parseInt(h.slice(2, 4), 16);
+    const b = Number.parseInt(h.slice(4, 6), 16);
+    if ([r, g, b].every((n) => Number.isFinite(n))) {
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+  }
+  return `rgba(59, 130, 246, ${alpha})`;
+}
+
 export function TimeSeriesLineChart({
   title,
   values,
@@ -43,42 +39,84 @@ export function TimeSeriesLineChart({
   summaryLabel = "Latest",
   emptyMessage = "No data for this graph range.",
 }: TimeSeriesLineChartProps) {
-  const width = 260;
-  const height = 56;
-  const points = makeTrendPoints(values, width, height);
-  const svgRef = useRef<SVGSVGElement>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const latest = values.length ? values[values.length - 1] : 0;
   const displayValue = summaryValue ?? latest;
-  let maxValue = 1;
-  for (const value of values) {
-    if (value > maxValue) {
-      maxValue = value;
-    }
-  }
-  const activeIndex = hoverIndex ?? (values.length ? values.length - 1 : null);
-  const activeValue = activeIndex === null ? 0 : values[activeIndex] ?? 0;
-  const activeLabel = activeIndex === null ? "" : labels[activeIndex] ?? "";
-  const activeX =
-    activeIndex === null
-      ? 0
-      : values.length > 1
-        ? (activeIndex / (values.length - 1)) * width
-        : width / 2;
-  const activeY = height - (activeValue / maxValue) * height;
+  const maxY = useMemo(() => Math.max(1, ...values.map((v) => Number(v) || 0)), [values]);
 
-  const onSvgMove = (event: React.MouseEvent<SVGSVGElement>) => {
-    if (!values.length || !svgRef.current) {
-      return;
-    }
-    const rect = svgRef.current.getBoundingClientRect();
-    if (rect.width <= 0) {
-      return;
-    }
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const idx = Math.round(ratio * Math.max(values.length - 1, 0));
-    setHoverIndex(idx);
-  };
+  const chartData = useMemo(
+    () => ({
+      labels,
+      datasets: [
+        {
+          label: title,
+          data: values,
+          borderColor: color,
+          backgroundColor: hexToRgba(color, 0.14),
+          borderWidth: 2,
+          tension: 0.28,
+          fill: true,
+          pointRadius: 0,
+          pointHoverRadius: 5,
+          pointHoverBackgroundColor: color,
+          pointHoverBorderColor: "rgba(255,255,255,0.95)",
+          pointHoverBorderWidth: 1.5,
+        },
+      ],
+    }),
+    [labels, values, title, color],
+  );
+
+  const options = useMemo<ChartOptions<"line">>(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: values.length > 120 ? 0 : 400 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            title: (items) => {
+              const i = items[0]?.dataIndex ?? 0;
+              return labels[i] ?? "";
+            },
+            label: (ctx) => {
+              const v = ctx.parsed.y;
+              const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
+              return `${title}: ${formatValue(n)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6,
+            color: "rgba(100, 116, 139, 0.9)",
+            font: { size: 10 },
+          },
+          border: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          suggestedMax: maxY * 1.06,
+          grid: { color: "rgba(100, 116, 139, 0.12)" },
+          ticks: {
+            maxTicksLimit: 5,
+            color: "rgba(100, 116, 139, 0.9)",
+            font: { size: 10 },
+            callback: (tickValue) => formatValue(Number(tickValue)),
+          },
+          border: { display: false },
+        },
+      },
+    }),
+    [formatValue, labels, maxY, title, values.length],
+  );
 
   return (
     <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/60 p-3 dark:border-neutral-700 dark:bg-gradient-to-br dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
@@ -93,36 +131,10 @@ export function TimeSeriesLineChart({
       </div>
       {values.length ? (
         <>
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${width} ${height}`}
-            className="h-14 w-full cursor-crosshair"
-            onMouseMove={onSvgMove}
-            onMouseLeave={() => setHoverIndex(null)}
-          >
-            <polyline
-              points={points}
-              fill="none"
-              stroke={color}
-              strokeWidth={2.25}
-              strokeLinejoin="round"
-              strokeLinecap="round"
-            />
-            {activeIndex !== null ? (
-              <circle
-                cx={activeX}
-                cy={Number.isFinite(activeY) ? activeY : height}
-                r={3}
-                fill={color}
-                stroke="white"
-                strokeWidth={1.2}
-              />
-            ) : null}
-          </svg>
+          <div className="relative h-[5.25rem] w-full" aria-label={`${title} time series chart`}>
+            <CanvasLine data={chartData} options={options} />
+          </div>
           <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400">
-            {activeLabel ? `${activeLabel} • ${formatValue(activeValue)}` : null}
-          </p>
-          <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
             {labels[0]} {" -> "} {labels[labels.length - 1]}
           </p>
         </>

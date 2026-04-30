@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { ChartData, ChartOptions } from "chart.js";
 
 import type { OverviewBucket } from "../../utils/dashboardData";
 import {
@@ -9,6 +10,7 @@ import {
   maxBucketRequestCount,
   trimSeriesToLastMinutes,
 } from "../../utils/dashboardData";
+import { CanvasBar } from "./charts/chartCanvas";
 import { TimeSeriesLineChart } from "./charts/TimeSeriesLineChart";
 
 const CHART_SPAN_OPTIONS: { value: number; label: string }[] = [
@@ -42,6 +44,18 @@ function parseIsoTimestamp(value: string): Date {
   return new Date(hasZone ? value : `${value}Z`);
 }
 
+function barColorForBucket(bucket: OverviewBucket): string {
+  const requestCount = Number(bucket.request_count || 0);
+  const errorCount = Number(bucket.error_count || 0);
+  const errRatio = requestCount ? errorCount / requestCount : 0;
+  if (errRatio > 0.25) {
+    return "#e11d48";
+  }
+  if (errRatio > 0) {
+    return "#d97706";
+  }
+  return "#737373";
+}
 
 export function VolumeChart({
   series,
@@ -57,19 +71,8 @@ export function VolumeChart({
   diagnosisBaseQuery?: Record<string, string>;
 }) {
   const router = useRouter();
-  const wrapRef = useRef<HTMLDivElement>(null);
   const [chartSpanMinutes, setChartSpanMinutes] = useState(0);
   const [stepMinutes, setStepMinutes] = useState<(typeof STEP_OPTIONS)[number]>(1);
-  const [chartContainerWidth, setChartContainerWidth] = useState(0);
-  const [tip, setTip] = useState<{
-    bucket: OverviewBucket;
-    left: number;
-    top: number;
-    errRatio: number;
-    containerWidth: number;
-  } | null>(null);
-  const [hoveredColumnIndex, setHoveredColumnIndex] = useState<number | null>(null);
-  const chartContainerRef = useRef<HTMLDivElement>(null);
 
   const displayed = useMemo(() => {
     const trimmed =
@@ -80,76 +83,15 @@ export function VolumeChart({
   }, [series, chartSpanMinutes, stepMinutes]);
 
   const max = maxBucketRequestCount(displayed);
-
-  const onBarMove = useCallback((e: React.MouseEvent<SVGRectElement>, bucket: OverviewBucket) => {
-      const el = wrapRef.current;
-      if (!el) {
-        return;
-      }
-      const rect = el.getBoundingClientRect();
-      const rc = Number(bucket.request_count || 0);
-      const ec = Number(bucket.error_count || 0);
-      const errRatio = rc ? ec / rc : 0;
-      setTip({
-        bucket,
-        left: e.clientX - rect.left,
-        top: e.clientY - rect.top,
-        errRatio,
-        containerWidth: rect.width,
-      });
-  }, []);
-
-  const liveTip = useMemo(() => {
-    if (!tip) {
-      return null;
-    }
-    const updatedBucket = displayed.find((bucket) => bucket.minute === tip.bucket.minute);
-    if (!updatedBucket) {
-      return null;
-    }
-    const requestCount = Number(updatedBucket.request_count || 0);
-    const errorCount = Number(updatedBucket.error_count || 0);
-    return {
-      ...tip,
-      bucket: updatedBucket,
-      errRatio: requestCount > 0 ? errorCount / requestCount : 0,
-    };
-  }, [displayed, tip]);
-
-  const activeHoveredColumnIndex =
-    hoveredColumnIndex !== null && hoveredColumnIndex < displayed.length ? hoveredColumnIndex : null;
-
+  const displayedRef = useRef(displayed);
   useEffect(() => {
-    const el = chartContainerRef.current;
-    if (!el) {
-      return;
-    }
-    const updateWidth = () => {
-      setChartContainerWidth(Math.max(0, el.clientWidth));
-    };
-    updateWidth();
-    const observer = new ResizeObserver(() => updateWidth());
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
+    displayedRef.current = displayed;
+  }, [displayed]);
 
-  const barGap = 3.5;
-  const outerHorizontalPadding = 16;
-  const availablePlotWidth = Math.max(0, chartContainerWidth - outerHorizontalPadding);
-  const fitBarWidth =
-    displayed.length > 0
-      ? Math.max(
-          2,
-          Math.min(32, (availablePlotWidth - barGap * Math.max(0, displayed.length - 1)) / displayed.length),
-        )
-      : 2;
-  const barWidth = Number.isFinite(fitBarWidth) ? fitBarWidth : 2;
-  const chartHeight = 52 * 1.5;
-  const computedPlotWidth = displayed.length * barWidth + Math.max(0, displayed.length - 1) * barGap;
-  const plotWidth = Math.max(160, computedPlotWidth);
   const totalRequests = displayed.reduce((sum, bucket) => sum + Number(bucket.request_count || 0), 0);
   const totalErrors = displayed.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0);
   const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
+
   const onBucketClick = useCallback(
     (bucket: OverviewBucket) => {
       const bucketStart = parseIsoTimestamp(bucket.minute).toISOString();
@@ -163,6 +105,88 @@ export function VolumeChart({
     },
     [diagnosisBaseQuery, router, stepMinutes],
   );
+
+  const volumeBarData = useMemo((): ChartData<"bar"> => {
+    return {
+      labels: displayed.map((b) => formatMinuteLabel(b.minute)),
+      datasets: [
+        {
+          label: "Requests",
+          data: displayed.map((b) => Number(b.request_count || 0)),
+          backgroundColor: displayed.map((b) => barColorForBucket(b)),
+          borderRadius: 3,
+          borderSkipped: false,
+        },
+      ],
+    };
+  }, [displayed]);
+
+  const volumeBarOptions = useMemo<ChartOptions<"bar">>(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: displayed.length > 80 ? 0 : 380 },
+      onClick: (_event, elements) => {
+        if (!elements.length) {
+          return;
+        }
+        const i = elements[0].index;
+        const bucket = displayedRef.current[i];
+        if (bucket) {
+          onBucketClick(bucket);
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const b = displayedRef.current[items[0]?.dataIndex ?? 0];
+              return b ? formatMinuteLabel(b.minute) : "";
+            },
+            afterBody: (items) => {
+              const b = displayedRef.current[items[0]?.dataIndex ?? 0];
+              if (!b) {
+                return [];
+              }
+              const rc = Number(b.request_count || 0);
+              const ec = Number(b.error_count || 0);
+              const errPct = rc > 0 ? ((ec / rc) * 100).toFixed(1) : "0.0";
+              return [
+                `${rc} requests`,
+                `${ec} errors (${errPct}%)`,
+                `Avg latency ${Number(b.avg_latency_ms || 0).toFixed(1)} ms`,
+                "Click bar → Diagnosis for this bucket",
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxRotation: 45,
+            autoSkip: true,
+            maxTicksLimit: 14,
+            color: "rgba(100, 116, 139, 0.9)",
+            font: { size: 9 },
+          },
+          border: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          suggestedMax: max > 0 ? max * 1.05 : 1,
+          grid: { color: "rgba(100, 116, 139, 0.12)" },
+          ticks: { color: "rgba(100, 116, 139, 0.9)", font: { size: 10 } },
+          border: { display: false },
+        },
+      },
+    }),
+    [displayed, max, onBucketClick],
+  );
+
+  const barChartHeight = 120;
 
   return (
     <div>
@@ -203,7 +227,7 @@ export function VolumeChart({
         </div>
       </div>
 
-      <div ref={wrapRef} className="relative mt-3">
+      <div className="relative mt-3">
         {!displayed.length ? (
           <div className="flex h-16 items-center rounded-xl border border-slate-200/80 bg-white/60 px-3 text-sm text-slate-500 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-neutral-300">
             No buckets in this chart range.
@@ -215,107 +239,14 @@ export function VolumeChart({
         ) : (
           <>
             <div
-              ref={chartContainerRef}
               className="overflow-x-auto rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-3 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
               role="img"
               aria-label="Request volume by time bucket"
             >
-              <svg
-                width={plotWidth}
-                height={chartHeight}
-                className="block"
-                onMouseLeave={() => {
-                  setTip(null);
-                  setHoveredColumnIndex(null);
-                }}
-              >
-                {displayed.map((bucket, index) => {
-                  const requestCount = Number(bucket.request_count || 0);
-                  const errorCount = Number(bucket.error_count || 0);
-                  const errRatio = requestCount ? errorCount / requestCount : 0;
-                  const barColor =
-                    errRatio > 0.25 ? "#e11d48" : errRatio > 0 ? "#d97706" : "#737373";
-                  const barHeight = Math.max(Math.round((requestCount / max) * chartHeight), 2);
-                  const x = index * (barWidth + barGap);
-                  const y = chartHeight - barHeight;
-                  return (
-                    <g key={`${bucket.minute}-${index}`}>
-                      {activeHoveredColumnIndex === index ? (
-                        <rect
-                          x={x - 1}
-                          y={0}
-                          width={barWidth + 2}
-                          height={chartHeight}
-                          rx={2}
-                          fill="rgba(56, 189, 248, 0.14)"
-                          pointerEvents="none"
-                        />
-                      ) : null}
-                      <rect
-                        x={x}
-                        y={y}
-                        width={barWidth}
-                        height={barHeight}
-                        rx={1}
-                        fill={barColor}
-                        pointerEvents="none"
-                      />
-                      <rect
-                        x={x}
-                        y={0}
-                        width={barWidth}
-                        height={chartHeight}
-                        fill="transparent"
-                        className="cursor-pointer"
-                        onMouseEnter={(e) => {
-                          setHoveredColumnIndex(index);
-                          onBarMove(e, bucket);
-                        }}
-                        onMouseMove={(e) => {
-                          setHoveredColumnIndex(index);
-                          onBarMove(e, bucket);
-                        }}
-                        onClick={() => onBucketClick(bucket)}
-                      />
-                    </g>
-                  );
-                })}
-              </svg>
-            </div>
-            {liveTip && (
-              <div
-                className="pointer-events-none absolute z-10 min-w-[200px] max-w-[min(280px,calc(100%-8px))] -translate-x-1/2 -translate-y-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
-                style={{
-                  left: Math.max(80, Math.min(liveTip.left, liveTip.containerWidth - 80)),
-                  top: Math.max(4, liveTip.top - 8),
-                }}
-              >
-                <p className="font-semibold text-slate-900 dark:text-neutral-100">
-                  {formatMinuteLabel(liveTip.bucket.minute)}
-                </p>
-                <p className="mt-1 tabular-nums text-slate-700 dark:text-neutral-300">
-                  <span className="font-medium text-slate-900 dark:text-neutral-100">
-                    {Number(liveTip.bucket.request_count || 0)}
-                  </span>{" "}
-                  requests
-                </p>
-                <p className="tabular-nums text-slate-700 dark:text-neutral-300">
-                  <span className="font-medium text-rose-700 dark:text-rose-400">
-                    {Number(liveTip.bucket.error_count || 0)}
-                  </span>{" "}
-                  errors ({(liveTip.errRatio * 100).toFixed(1)}%)
-                </p>
-                <p className="mt-0.5 tabular-nums text-slate-600 dark:text-neutral-400">
-                  Avg latency{" "}
-                  <span className="font-medium text-slate-900 dark:text-neutral-100">
-                    {Number(liveTip.bucket.avg_latency_ms || 0).toFixed(1)} ms
-                  </span>
-                </p>
-                <p className="mt-1 text-xs leading-snug text-slate-500 dark:text-neutral-400">
-                  Bucket start (your local time). Click a bar to open Diagnosis for this bucket.
-                </p>
+              <div style={{ minWidth: Math.max(320, displayed.length * 8), height: barChartHeight }}>
+                <CanvasBar data={volumeBarData} options={volumeBarOptions} />
               </div>
-            )}
+            </div>
             <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
               <TimeSeriesLineChart
                 title="Request Volume Trend"

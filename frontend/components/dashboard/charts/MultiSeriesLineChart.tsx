@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo } from "react";
+import type { ChartData, ChartDataset, ChartOptions } from "chart.js";
 
-type MultiSeriesLineChartSeries = {
+import { CanvasLine } from "./chartCanvas";
+
+export type MultiSeriesLineChartSeries = {
   id: string;
   label: string;
   color: string;
@@ -16,76 +19,128 @@ type MultiSeriesLineChartProps = {
   onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
 };
 
-function makePoints(values: number[], width: number, height: number, maxValue: number): string {
-  if (!values.length) {
-    return "";
-  }
-  const stepX = values.length > 1 ? width / (values.length - 1) : width / 2;
-  return values
-    .map((value, idx) => {
-      const x = values.length > 1 ? idx * stepX : width / 2;
-      const y = height - (Math.max(0, value) / Math.max(1, maxValue)) * height;
-      return `${x},${Number.isFinite(y) ? y : height}`;
-    })
-    .join(" ");
-}
-
 export function MultiSeriesLineChart({
   labels,
   series,
   height = 110,
   onPointClick,
 }: MultiSeriesLineChartProps) {
-  const width = 520;
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const hasData = series.some((entry) => entry.values.some((value) => value > 0));
-  if (!hasData || !labels.length) {
-    return <p className="text-sm text-slate-600 dark:text-neutral-300">No status-class data in this range.</p>;
-  }
-  const maxValue = Math.max(
-    1,
-    ...series.flatMap((entry) => entry.values).map((value) => Number(value || 0)),
+  const hasData = useMemo(
+    () => Boolean(labels.length && series.some((entry) => entry.values.some((value) => value > 0))),
+    [labels.length, series],
   );
 
-  const activeIndex = hoverIndex ?? labels.length - 1;
-  const activeLabel = labels[activeIndex] ?? "";
-  const activeValues = series.reduce<Record<string, number>>((acc, entry) => {
-    acc[entry.id] = entry.values[activeIndex] ?? 0;
-    return acc;
-  }, {});
+  const maxValue = useMemo(
+    () =>
+      hasData
+        ? Math.max(1, ...series.flatMap((entry) => entry.values).map((value) => Number(value || 0)))
+        : 1,
+    [hasData, series],
+  );
+
+  const chartData = useMemo((): ChartData<"line"> => {
+    if (!hasData) {
+      return { labels: [], datasets: [] as ChartDataset<"line">[] };
+    }
+    return {
+      labels,
+      datasets: series.map((entry) => ({
+        label: entry.label,
+        data: entry.values,
+        borderColor: entry.color,
+        backgroundColor: "transparent",
+        borderWidth: 2,
+        tension: 0.22,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointHoverBorderWidth: 1,
+      })) as ChartDataset<"line">[],
+    };
+  }, [hasData, labels, series]);
+
+  const options = useMemo<ChartOptions<"line">>(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: !hasData || labels.length > 120 ? 0 : 400 },
+      interaction: { mode: "index", intersect: false },
+      onClick: (_event, elements) => {
+        if (!hasData || !onPointClick || !elements.length) {
+          return;
+        }
+        const idx = elements[0].index;
+        const label = labels[idx] ?? "";
+        const valuesAt: Record<string, number> = {};
+        for (const entry of series) {
+          valuesAt[entry.id] = Number(entry.values[idx] ?? 0);
+        }
+        onPointClick(idx, label, valuesAt);
+      },
+      plugins: {
+        legend: {
+          display: hasData,
+          position: "bottom",
+          labels: {
+            boxWidth: 10,
+            font: { size: 11 },
+            color: "rgba(100, 116, 139, 0.95)",
+          },
+        },
+        tooltip: {
+          enabled: hasData,
+          mode: "index",
+          intersect: false,
+          callbacks: {
+            title: (items) => labels[items[0]?.dataIndex ?? 0] ?? "",
+            label: (ctx) => {
+              const v = ctx.parsed.y;
+              const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
+              return `${ctx.dataset.label ?? ""}: ${Math.round(n)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          display: hasData,
+          grid: { display: false },
+          ticks: {
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 8,
+            color: "rgba(100, 116, 139, 0.9)",
+            font: { size: 10 },
+          },
+          border: { display: false },
+        },
+        y: {
+          display: hasData,
+          beginAtZero: true,
+          suggestedMax: maxValue * 1.05,
+          grid: { color: "rgba(100, 116, 139, 0.12)" },
+          ticks: {
+            maxTicksLimit: 5,
+            color: "rgba(100, 116, 139, 0.9)",
+            font: { size: 10 },
+          },
+          border: { display: false },
+        },
+      },
+    }),
+    [hasData, labels, maxValue, onPointClick, series],
+  );
+
+  if (!hasData) {
+    return <p className="text-sm text-slate-600 dark:text-neutral-300">No status-class data in this range.</p>;
+  }
+
+  const pxHeight = Math.max(80, height);
 
   return (
     <div className="space-y-2">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-28 w-full cursor-crosshair"
-        onMouseMove={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
-          const idx = Math.round(ratio * Math.max(labels.length - 1, 0));
-          setHoverIndex(idx);
-        }}
-        onMouseLeave={() => setHoverIndex(null)}
-        onClick={() => {
-          if (!onPointClick) return;
-          onPointClick(activeIndex, activeLabel, activeValues);
-        }}
-      >
-        <title>
-          {`${activeLabel} · ${series.map((s) => `${s.label}: ${Math.round(activeValues[s.id] ?? 0)}`).join(" · ")}`}
-        </title>
-        {series.map((entry) => (
-          <polyline
-            key={entry.id}
-            points={makePoints(entry.values, width, height, maxValue)}
-            fill="none"
-            stroke={entry.color}
-            strokeWidth={2.1}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ))}
-      </svg>
+      <div className="relative w-full" style={{ height: pxHeight }}>
+        <CanvasLine data={chartData} options={options} />
+      </div>
       <div className="flex flex-wrap gap-3">
         {series.map((entry) => (
           <p key={entry.id} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-300">
@@ -98,14 +153,8 @@ export function MultiSeriesLineChart({
         ))}
       </div>
       <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-        {activeLabel
-          ? `${activeLabel} • ${series
-              .map((entry) => `${entry.label} ${Math.round(activeValues[entry.id] ?? 0)}`)
-              .join(" · ")}`
-          : `${labels[0]} -> ${labels[labels.length - 1]}`}
+        {labels[0]} {" -> "} {labels[labels.length - 1]}
       </p>
     </div>
   );
 }
-
-export type { MultiSeriesLineChartSeries };

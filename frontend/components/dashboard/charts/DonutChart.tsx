@@ -1,6 +1,11 @@
 "use client";
 
-type DonutDatum = {
+import { useMemo } from "react";
+import type { ChartData, ChartDataset, ChartOptions } from "chart.js";
+
+import { CanvasDoughnut } from "./chartCanvas";
+
+export type DonutDatum = {
   id: string;
   label: string;
   value: number;
@@ -20,62 +25,69 @@ export function DonutChart({
   centerValue?: string;
   onSliceClick?: (item: DonutDatum) => void;
 }) {
-  const total = items.reduce((sum, item) => sum + Math.max(0, item.value), 0);
-  if (total <= 0) {
+  const total = useMemo(() => items.reduce((sum, item) => sum + Math.max(0, item.value), 0), [items]);
+  const hasData = total > 0;
+
+  const chartData = useMemo((): ChartData<"doughnut"> => {
+    if (!hasData) {
+      return { labels: [], datasets: [] as ChartDataset<"doughnut">[] };
+    }
+    return {
+      labels: items.map((i) => i.label),
+      datasets: [
+        {
+          data: items.map((i) => Math.max(0, i.value)),
+          backgroundColor: items.map((i) => i.color),
+          borderColor: items.map(() => "rgba(255,255,255,0.06)"),
+          borderWidth: 1,
+          hoverOffset: 6,
+        },
+      ],
+    };
+  }, [hasData, items]);
+
+  const options = useMemo<ChartOptions<"doughnut">>(
+    () => ({
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "62%",
+      animation: { duration: hasData ? 450 : 0 },
+      onClick: (_event, elements) => {
+        if (!hasData || !onSliceClick || !elements.length) {
+          return;
+        }
+        const i = elements[0].index;
+        const item = items[i];
+        if (item) {
+          onSliceClick(item);
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: hasData,
+          callbacks: {
+            label: (ctx) => {
+              const v = ctx.parsed;
+              const n = typeof v === "number" ? v : 0;
+              const pct = total > 0 ? (n / total) * 100 : 0;
+              return `${ctx.label}: ${n.toFixed(0)} (${pct.toFixed(1)}%)`;
+            },
+          },
+        },
+      },
+    }),
+    [hasData, items, onSliceClick, total],
+  );
+
+  if (!hasData) {
     return <p className="text-sm text-slate-500 dark:text-neutral-400">No data available.</p>;
   }
-
-  const size = 190;
-  const radius = 74;
-  const stroke = 24;
-  const circumference = 2 * Math.PI * radius;
-  const segments = items.reduce<
-    Array<{ id: string; color: string; dash: number; offset: number; item: DonutDatum }>
-  >((acc, item) => {
-    const consumed = acc.reduce((sum, segment) => sum + segment.dash, 0);
-    const ratio = Math.max(0, item.value) / total;
-    const dash = ratio * circumference;
-    acc.push({
-      id: item.id,
-      color: item.color,
-      dash,
-      offset: -consumed,
-      item,
-    });
-    return acc;
-  }, []);
 
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="relative mx-auto h-[190px] w-[190px] shrink-0">
-        <svg viewBox={`0 0 ${size} ${size}`} className="h-[190px] w-[190px] -rotate-90">
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke="rgba(148,163,184,0.22)"
-            strokeWidth={stroke}
-          />
-          {segments.map((segment) => (
-              <circle
-                key={segment.id}
-                cx={size / 2}
-                cy={size / 2}
-                r={radius}
-                fill="none"
-                stroke={segment.color}
-                strokeWidth={stroke}
-                strokeDasharray={`${segment.dash} ${circumference - segment.dash}`}
-                strokeDashoffset={segment.offset}
-                strokeLinecap="butt"
-                onClick={onSliceClick ? () => onSliceClick(segment.item) : undefined}
-                className={onSliceClick ? "cursor-pointer" : undefined}
-              >
-                <title>{`${segment.item.label}: ${segment.item.value}`}</title>
-              </circle>
-          ))}
-        </svg>
+        <CanvasDoughnut data={chartData} options={options} />
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
           <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-neutral-400">
             {centerLabel ?? title}
@@ -109,5 +121,3 @@ export function DonutChart({
     </div>
   );
 }
-
-export type { DonutDatum };

@@ -1,6 +1,11 @@
 "use client";
 
-type BreakdownBarDatum = {
+import { useMemo } from "react";
+import type { ChartData, ChartDataset, ChartOptions } from "chart.js";
+
+import { CanvasBar } from "./chartCanvas";
+
+export type BreakdownBarDatum = {
   key: string;
   value: number;
   secondaryValue?: number;
@@ -24,48 +29,103 @@ export function BreakdownBarChart({
   className,
   onItemClick,
 }: BreakdownBarChartProps) {
-  if (!items.length) {
+  const hasData = items.length > 0;
+  const maxValue = useMemo(
+    () => (hasData ? Math.max(1, ...items.map((i) => i.value)) : 1),
+    [hasData, items],
+  );
+
+  const chartData = useMemo((): ChartData<"bar"> => {
+    if (!hasData) {
+      return { labels: [], datasets: [] as ChartDataset<"bar">[] };
+    }
+    return {
+      labels: items.map((i) => i.key),
+      datasets: [
+        {
+          label: valueLabel ?? "value",
+          data: items.map((i) => i.value),
+          backgroundColor: "rgba(56, 189, 248, 0.72)",
+          borderRadius: 4,
+          borderSkipped: false,
+        },
+      ],
+    };
+  }, [hasData, items, valueLabel]);
+
+  const options = useMemo<ChartOptions<"bar">>(
+    () => ({
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: hasData ? 350 : 0 },
+      onClick: (_event, elements) => {
+        if (!hasData || !onItemClick || !elements.length) {
+          return;
+        }
+        const i = elements[0].index;
+        const item = items[i];
+        if (item) {
+          onItemClick(item);
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          enabled: hasData,
+          callbacks: {
+            title: (ctx) => ctx[0]?.label ?? "",
+            label: (ctx) => {
+              const item = items[ctx.dataIndex];
+              if (!item) {
+                return "";
+              }
+              const primary = formatPrimaryValue(item.value) + (valueLabel ? ` ${valueLabel}` : "");
+              if (item.secondaryLabel !== undefined && item.secondaryValue !== undefined) {
+                return `${primary} · ${item.secondaryLabel} ${item.secondaryValue.toFixed(1)}%`;
+              }
+              return primary;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          display: hasData,
+          beginAtZero: true,
+          suggestedMax: maxValue * 1.02,
+          grid: { color: "rgba(100, 116, 139, 0.12)" },
+          ticks: {
+            color: "rgba(100, 116, 139, 0.9)",
+            font: { size: 10 },
+            callback: (v) => formatPrimaryValue(Number(v)),
+          },
+          border: { display: false },
+        },
+        y: {
+          display: hasData,
+          grid: { display: false },
+          ticks: {
+            color: "rgba(51, 65, 85, 0.95)",
+            font: { size: 10, family: "ui-monospace, monospace" },
+            autoSkip: false,
+          },
+          border: { display: false },
+        },
+      },
+    }),
+    [formatPrimaryValue, hasData, items, maxValue, onItemClick, valueLabel],
+  );
+
+  if (!hasData) {
     return <p className="text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>;
   }
-  let maxValue = 1;
-  for (const item of items) {
-    if (item.value > maxValue) {
-      maxValue = item.value;
-    }
-  }
+
+  const chartHeight = Math.max(120, items.length * 36);
 
   return (
-    <ul className={`space-y-2 ${className ?? ""}`}>
-      {items.map((item) => {
-        const widthPct = Math.max(4, Math.round((item.value / maxValue) * 100));
-        return (
-          <li
-            key={item.key}
-            title={`${item.key}: ${formatPrimaryValue(item.value)}${valueLabel ? ` ${valueLabel}` : ""}`}
-            onClick={onItemClick ? () => onItemClick(item) : undefined}
-            className={onItemClick ? "cursor-pointer rounded-md px-1 py-1 hover:bg-slate-100/70 dark:hover:bg-neutral-800/60" : ""}
-          >
-            <div className="mb-1 flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate font-mono text-xs text-slate-800 dark:text-neutral-100">{item.key}</p>
-              <p className="shrink-0 tabular-nums text-xs font-medium text-slate-700 dark:text-neutral-200">
-                {formatPrimaryValue(item.value)}
-                {valueLabel ? ` ${valueLabel}` : ""}
-                {item.secondaryLabel && item.secondaryValue !== undefined
-                  ? ` · ${item.secondaryLabel} ${item.secondaryValue.toFixed(1)}%`
-                  : ""}
-              </p>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100 dark:bg-neutral-800">
-              <div
-                className="h-2 rounded-full bg-sky-500/75 dark:bg-sky-400/70"
-                style={{ width: `${widthPct}%` }}
-              />
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+    <div className={`relative w-full ${className ?? ""}`} style={{ height: chartHeight }}>
+      <CanvasBar data={chartData} options={options} />
+    </div>
   );
 }
-
-export type { BreakdownBarDatum };
