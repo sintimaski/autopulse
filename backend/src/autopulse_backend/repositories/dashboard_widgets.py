@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from uuid import UUID
 
@@ -9,6 +10,10 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.models import DashboardWidgetDefinition, DashboardWidgetPoint
+from autopulse_backend.services.event_store import (
+    event_store_enabled,
+    try_get_duckdb_event_store,
+)
 
 
 async def upsert_widget_definitions(
@@ -73,6 +78,11 @@ async def upsert_widget_definitions(
 async def insert_widget_points(session: AsyncSession, points: list[dict[str, object]]) -> None:
     if not points:
         return
+    if event_store_enabled():
+        store = try_get_duckdb_event_store()
+        if store is not None:
+            await asyncio.to_thread(store.insert_widget_points, points)
+            return
     normalized_points: list[dict[str, object]] = []
     for point in points:
         widget_id = point.get("widget_id")
@@ -114,6 +124,25 @@ async def list_widget_definitions(
 async def list_widget_points(
     session: AsyncSession, *, project_id: UUID, from_timestamp: datetime, to_timestamp: datetime
 ) -> list[DashboardWidgetPoint]:
+    if event_store_enabled():
+        store = try_get_duckdb_event_store()
+        if store is not None:
+            rows = await asyncio.to_thread(
+                store.list_widget_points,
+                project_id=project_id,
+                from_timestamp=from_timestamp,
+                to_timestamp=to_timestamp,
+            )
+            return [
+                DashboardWidgetPoint(
+                    project_id=project_id,
+                    widget_id=widget_id,
+                    timestamp=timestamp,
+                    label=label,
+                    value=value,
+                )
+                for widget_id, timestamp, label, value in rows
+            ]
     rows = await session.execute(
         select(DashboardWidgetPoint)
         .where(

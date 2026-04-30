@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from contextlib import suppress
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from autopulse_backend.models import (
     MetricBucket,
     ProjectUiSettings,
 )
+from autopulse_backend.services.event_store import event_store_enabled, get_duckdb_event_store
 
 
 @dataclass(frozen=True, slots=True)
@@ -546,6 +548,13 @@ async def run_retention_cleanup_once(
                         )
                     ),
                 )
+            )
+    if event_store_enabled(settings):
+        with suppress(Exception):
+            stale_count += await asyncio.to_thread(
+                get_duckdb_event_store().delete_events_before,
+                cutoff=default_cutoff,
+                project_id=None,
             )
     stale_count += await _apply_project_rotation_limits(session=session, settings=settings)
 

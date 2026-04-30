@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -8,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
+from autopulse_backend.dashboard.duckdb_queries import build_filters, request_items
 from autopulse_backend.dashboard.log_query import append_event_sql_filters
 from autopulse_backend.dashboard.messages import dashboard_request_log_message
 from autopulse_backend.dashboard.params import (
@@ -34,6 +36,7 @@ from autopulse_backend.ingestion.exclude_autopulse import (
 )
 from autopulse_backend.models import Event
 from autopulse_backend.schemas import DashboardRequestItem, DashboardRequestsResponse
+from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 
@@ -87,6 +90,33 @@ async def get_dashboard_requests(
     if max_latency_ms is not None:
         filters.append(Event.latency_ms <= max_latency_ms)
     append_event_sql_filters(filters, event_sql_filter)
+    if event_store_enabled():
+        duckdb_filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            method=method,
+            status_class=status_class,
+            path_contains=path_contains,
+            environments=environments,
+            services=services,
+            min_latency_ms=min_latency_ms,
+            max_latency_ms=max_latency_ms,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+            event_sql_filter=event_sql_filter,
+        )
+        total, items = await asyncio.to_thread(
+            request_items, duckdb_filters, limit=limit, offset=offset
+        )
+        return DashboardRequestsResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            total=total,
+            limit=limit,
+            offset=offset,
+            items=items,
+        )
 
     total_query = select(func.count(Event.id)).where(*filters)
     total_result = await session.execute(total_query)

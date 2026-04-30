@@ -25,6 +25,8 @@ Backend defaults to `http://localhost:8000`.
 ## Key environment variables
 
 - `DATABASE_URL`
+- `AUTOPULSE_EVENT_STORE` (`duckdb` default; set `sqlite` to force legacy SQL event reads)
+- `AUTOPULSE_DUCKDB_PATH` (embedded event store file path; default `./.autopulse/events.duckdb`)
 - `CORS_ALLOW_ORIGINS`
 - `DASHBOARD_AUTH_ALLOWED_EMAIL`
 - `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK` (disabled by default; enable only for controlled non-browser flows)
@@ -55,6 +57,15 @@ The portable unit of work is **one retention pass** (SQLite caps, time windows, 
 | **In-process (FastAPI)** | Lifespan starts the scheduler or retention-only loop; optional SQLite pressure poll |
 
 For **Linux production** or **Django** (no FastAPI event loop), prefer **cron** or **systemd timers** calling the CLI or `run_retention_sync()` on the interval you want, and set `JOBS_ENABLE_SCHEDULER=false` on the API so you do not double-run retention in-process and from cron.
+
+## Event store migration helpers
+
+- Backfill SQL `events` rows into the embedded DuckDB store:
+
+```bash
+cd backend
+uv run python scripts/backfill_events_to_duckdb.py --batch-size 1000
+```
 
 Example cron every five minutes:
 

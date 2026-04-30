@@ -136,6 +136,13 @@ Next.js dashboard
 
 ## Recommended Tech Stack
 
+### Storage note (embedded-first MVP)
+
+- Keep relational metadata (projects, keys, UI settings, alerts) in SQL (`DATABASE_URL`).
+- Store high-volume raw events in embedded DuckDB by default (`AUTOPULSE_EVENT_STORE=duckdb`).
+- Preserve dashboard API contracts while event reads migrate behind an event-store abstraction.
+- Keep a `sqlite` event-store fallback mode for rollout safety.
+
 SDK:
 
 - Python.

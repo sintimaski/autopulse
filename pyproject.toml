@@ -8,6 +8,7 @@ dependencies = [
     "autopulse",
     "autopulse-backend",
     "dotenv>=0.9.9",
+    "pytz>=2026.1.post1",
 ]
 
 [tool.uv.sources]

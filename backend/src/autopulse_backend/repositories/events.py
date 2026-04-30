@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autopulse_backend.config import get_settings
 from autopulse_backend.ingestion.exclude_autopulse import (
     append_exclude_autopulse_event_filters,
     resolve_exclude_autopulse_traffic,
 )
 from autopulse_backend.models import Event
+from autopulse_backend.services.event_store import (
+    EventStoreFilters,
+    event_store_enabled,
+    try_get_duckdb_event_store,
+)
 
 
 async def insert_ingest_events(session: AsyncSession, rows: list[Event]) -> int:
@@ -25,6 +32,30 @@ async def request_window_counts(
     window_start: datetime,
     window_end: datetime,
 ) -> tuple[int, int, int]:
+    if event_store_enabled(get_settings()):
+        exclude_autopulse_traffic = await resolve_exclude_autopulse_traffic(session, project_id)
+        filters = EventStoreFilters(
+            project_id=project_id,
+            from_timestamp=window_start,
+            to_timestamp=window_end,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+        )
+        store = try_get_duckdb_event_store()
+        if store is not None:
+            rows = await asyncio.to_thread(
+                store.fetch_events,
+                filters,
+                columns="id, status_code, type",
+            )
+            request_count = len(rows)
+            error_count = sum(
+                1
+                for _event_id, status_code, event_type in rows
+                if event_type == "error" or int(status_code) >= 500
+            )
+            success_count = max(0, request_count - error_count)
+            return request_count, error_count, success_count
+
     # Include both request and error event rows in the evaluation window.
     # Ingest paths may emit 5xx failures as `type=error`, and excluding them
     # would undercount errors and prevent expected alert dispatches.

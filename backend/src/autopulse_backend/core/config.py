@@ -58,6 +58,8 @@ def _env_float(name: str, default: float, *, minimum: float | None = None) -> fl
 @dataclass(frozen=True, slots=True)
 class Settings:
     database_url: str
+    event_store: str
+    event_store_duckdb_path: str
     cors_allow_origins: tuple[str, ...]
     ingest_max_request_bytes: int = 1_048_576
     ingest_rate_limit_requests_per_window: int = 1200
@@ -228,8 +230,17 @@ def get_settings() -> Settings:
         15.0,
         minimum=5.0,
     )
+    event_store = getenv("AUTOPULSE_EVENT_STORE", "duckdb").strip().lower() or "duckdb"
+    if event_store not in {"duckdb", "sqlite"}:
+        event_store = "duckdb"
+    event_store_duckdb_path = (
+        getenv("AUTOPULSE_DUCKDB_PATH", "./.autopulse/events.duckdb").strip()
+        or "./.autopulse/events.duckdb"
+    )
     return Settings(
         database_url=database_url,
+        event_store=event_store,
+        event_store_duckdb_path=event_store_duckdb_path,
         cors_allow_origins=cors_allow_origins,
         ingest_max_request_bytes=_env_int("INGEST_MAX_REQUEST_BYTES", 1_048_576, minimum=1),
         ingest_rate_limit_requests_per_window=_env_int(

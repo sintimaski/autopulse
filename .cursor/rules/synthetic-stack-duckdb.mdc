@@ -1,0 +1,19 @@
+---
+description: Keep synthetic stack script DuckDB-first for raw logs
+globs: scripts/run_synthetic_stack.sh
+alwaysApply: false
+---
+
+# Synthetic Stack Storage Rule
+
+- Treat `scripts/run_synthetic_stack.sh` as a DuckDB-first launch path.
+- Keep `AUTOPULSE_EVENT_STORE` explicitly set to `duckdb` in this script.
+- Do not route raw events or widget points to SQLite when this script is used.
+- Keep `AUTOPULSE_DUCKDB_PATH` configured (default under `./.autopulse/`).
+
+Example:
+
+```bash
+export AUTOPULSE_EVENT_STORE="duckdb"
+export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-./.autopulse/events.duckdb}"
+```

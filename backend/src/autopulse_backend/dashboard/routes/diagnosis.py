@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -8,6 +9,12 @@ from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
+from autopulse_backend.dashboard.duckdb_queries import (
+    build_filters,
+    diagnosis_timeline,
+    error_group_events,
+    failures_by_route,
+)
 from autopulse_backend.dashboard.error_grouping import (
     derived_error_group_key,
     error_like_events_predicate,
@@ -41,6 +48,7 @@ from autopulse_backend.schemas import (
     DashboardDiagnosisTimelineBucket,
     DashboardDiagnosisTimelineResponse,
 )
+from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 
@@ -84,6 +92,26 @@ async def get_dashboard_diagnosis_timeline(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+    if event_store_enabled():
+        duckdb_filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+            event_sql_filter=event_sql_filter,
+        )
+        timeline = await asyncio.to_thread(
+            diagnosis_timeline,
+            duckdb_filters,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+        )
+        return DashboardDiagnosisTimelineResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            buckets=timeline,
+        )
     rows = await session.execute(select(Event.timestamp, Event.status_code).where(*filters))
     buckets: dict[datetime, dict[str, int]] = {}
     for timestamp, status_code in rows:
@@ -136,6 +164,21 @@ async def get_dashboard_diagnosis_failures_by_route(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+    if event_store_enabled():
+        duckdb_filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+            event_sql_filter=event_sql_filter,
+        )
+        items = await asyncio.to_thread(failures_by_route, duckdb_filters)
+        return DashboardDiagnosisFailureRoutesResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            items=items,
+        )
     route_key = func.coalesce(Event.path, literal("unknown"))
     rows = await session.execute(
         select(
@@ -198,6 +241,22 @@ async def get_dashboard_diagnosis_error_group_events(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+    if event_store_enabled():
+        duckdb_filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+            event_sql_filter=event_sql_filter,
+        )
+        total, items = await asyncio.to_thread(
+            error_group_events,
+            duckdb_filters,
+            group_key=group_key,
+            limit=limit,
+            offset=offset,
+        )
+        return DashboardDiagnosisErrorGroupEventsResponse(total=total, items=items)
     rows = await session.execute(
         select(
             Event.id,

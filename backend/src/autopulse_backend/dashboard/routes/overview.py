@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -9,6 +10,11 @@ from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
+from autopulse_backend.dashboard.duckdb_queries import (
+    build_filters,
+    overview_extended,
+    overview_series,
+)
 from autopulse_backend.dashboard.log_query import append_event_sql_filters, percentile
 from autopulse_backend.dashboard.params import (
     EVENT_SQL_FILTER_QUERY,
@@ -36,6 +42,7 @@ from autopulse_backend.schemas import (
     DashboardOverviewExtendedResponse,
     DashboardOverviewResponse,
 )
+from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 APDEX_SATISFIED_THRESHOLD_MS = 300.0
@@ -129,6 +136,32 @@ async def get_dashboard_overview(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+    if event_store_enabled():
+        duckdb_filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+            event_sql_filter=event_sql_filter,
+        )
+        request_total, error_total, avg_latency_ms, series = await asyncio.to_thread(
+            overview_series,
+            duckdb_filters,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+        )
+        window_minutes_val = max((resolved_to - resolved_from).total_seconds() / 60.0, 1.0)
+        return DashboardOverviewResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            request_count=request_total,
+            error_count=error_total,
+            error_rate=(error_total / request_total) if request_total else 0.0,
+            avg_latency_ms=avg_latency_ms,
+            requests_per_minute=request_total / window_minutes_val,
+            series=series,
+        )
 
     if not exclude_autopulse_traffic and not event_sql_filter:
         bucket_rows = await session.execute(
@@ -351,6 +384,41 @@ async def get_dashboard_overview_extended(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+    if event_store_enabled():
+        duckdb_filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            exclude_autopulse_traffic=exclude_autopulse_traffic,
+            event_sql_filter=event_sql_filter,
+        )
+        data = await asyncio.to_thread(
+            overview_extended,
+            duckdb_filters,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+        )
+        return DashboardOverviewExtendedResponse(
+            server_now=server_now,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            p50_latency_ms=data["p50_latency_ms"],
+            p95_latency_ms=data["p95_latency_ms"],
+            p99_latency_ms=data["p99_latency_ms"],
+            apdex_score=data["apdex_score"],
+            active_sessions_estimate=data["active_sessions_estimate"],
+            error_burst_count=data["error_burst_count"],
+            active_incident_count=data["active_incident_count"],
+            error_type_breakdown=[
+                DashboardErrorTypeBreakdownItem(error_type=item["error_type"], count=item["count"])
+                for item in data["error_type_breakdown"]
+            ],
+            alerts_timeline=[],
+            service_breakdown=[
+                DashboardBreakdownItem(**item) for item in data["service_breakdown"]
+            ],
+            route_breakdown=[DashboardBreakdownItem(**item) for item in data["route_breakdown"]],
+        )
 
     # Avoid loading full JSON payloads for every row in the window (can be GB+ of I/O); use
     # SQL aggregates and small targeted reads for error classification and session hints.

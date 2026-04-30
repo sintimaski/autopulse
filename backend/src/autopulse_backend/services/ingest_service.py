@@ -23,6 +23,7 @@ from autopulse_backend.repositories.aggregates import (
     upsert_metric_buckets,
 )
 from autopulse_backend.schemas import IngestBatchRequest, event_payload
+from autopulse_backend.services.event_store import event_store_enabled, insert_events_duckdb
 from autopulse_backend.services.infrastructure_metrics import (
     InfrastructureMetricsSampler,
 )
@@ -74,7 +75,29 @@ async def persist_ingest_batch(
         )
         for event in incoming_events
     ]
-    accepted = await events_repo.insert_ingest_events(session, rows)
+    duckdb_rows = [
+        {
+            "project_id": project_id,
+            "timestamp": event.timestamp,
+            "received_at": received_at,
+            "sdk_version": sdk_version,
+            "type": event.type,
+            "service_name": event.service_name,
+            "environment": event.environment,
+            "method": event.method,
+            "path": event.path,
+            "status_code": event.status_code,
+            "latency_ms": event.latency_ms,
+            "payload": event_payload(event),
+            "request_id": event.request_id,
+        }
+        for event in incoming_events
+    ]
+    if event_store_enabled():
+        await insert_events_duckdb(duckdb_rows)
+        accepted = len(duckdb_rows)
+    else:
+        accepted = await events_repo.insert_ingest_events(session, rows)
     metric_bucket_deltas, error_group_deltas = _build_aggregate_deltas(
         project_id=project_id,
         rows=rows,
