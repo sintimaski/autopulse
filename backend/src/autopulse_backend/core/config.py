@@ -27,6 +27,20 @@ def _env_int(name: str, default: int, *, minimum: int | None = None) -> int:
     return value
 
 
+def _env_optional_positive_int(name: str) -> int | None:
+    """Parse a positive int from the environment, or None if unset / invalid / <= 0."""
+    raw = getenv(name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    return value
+
+
 def _env_float(name: str, default: float, *, minimum: float | None = None) -> float:
     raw = getenv(name)
     if raw is None:
@@ -53,6 +67,7 @@ class Settings:
     ingest_async_aggregate_queue_max_size: int = 2000
     ingest_require_https: bool = False
     ingest_trust_forwarded_proto: bool = True
+    ingest_drop_autopulse_traffic_from_db: bool = True
     default_sdk_version: str = "unknown"
     alerts_enabled: bool = True
     alert_default_destination_email: str | None = None
@@ -63,12 +78,21 @@ class Settings:
     alert_outage_window_minutes: int = 5
     alert_cooldown_minutes: int = 15
     retention_raw_events_days: int = 14
+    # Global SQLite on-disk ceiling in MB
+    # (``AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB``); counts main + WAL + SHM.
+    embedded_sqlite_max_db_file_mb: int | None = None
+    # If true with SQLite + file cap, keep newest data by size
+    # (oldest-first trim) and skip age pruning.
+    sqlite_size_retention_only: bool = False
     logs_query_max_window_minutes: int = 1440
     jobs_enable_scheduler: bool = False
     jobs_scheduler_lease_enabled: bool = False
     jobs_scheduler_lease_ttl_seconds: int = 120
     jobs_alert_interval_seconds: float = 60.0
     jobs_retention_interval_seconds: float = 3600.0
+    # SQLite: poll file size / row caps; when over limit, run retention (see jobs pressure loop).
+    retention_pressure_poll_seconds: float = 0.0
+    retention_pressure_min_interval_seconds: float = 15.0
     alert_sender_mode: str = "stub"
     alert_webhook_url: str | None = None
     alert_email_provider: str = "resend"
@@ -121,6 +145,38 @@ def normalize_database_url(database_url: str) -> str:
     return f"{parsed.scheme}:///{normalized_path}"
 
 
+def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
+    """Filesystem path for a file-backed SQLite URL already normalized, or None."""
+    if not normalized_sqlite_url.startswith("sqlite"):
+        return None
+    parsed = urlparse(normalized_sqlite_url)
+    raw_path = unquote(parsed.path or "")
+    if normalized_sqlite_url.endswith(":memory:") or raw_path == ":memory:" or not raw_path:
+        return None
+    project_root = Path(__file__).resolve().parents[4]
+    # Keep rules aligned with ``maintenance.retention._resolve_sqlite_db_path``.
+    if raw_path.startswith("//"):
+        return Path(raw_path[1:]).resolve()
+    if raw_path.startswith("/./") or raw_path.startswith("/../"):
+        return (project_root / raw_path[1:]).resolve()
+    if raw_path.startswith("/") and parsed.netloc:
+        return Path(raw_path).resolve()
+    if raw_path.startswith("/") and not parsed.netloc:
+        return Path(raw_path).resolve()
+    return (project_root / raw_path).resolve()
+
+
+def _is_autopulse_embedded_default_sqlite_file(normalized_database_url: str) -> bool:
+    """True for known workspace-local SQLite files that ship as dev/embedded defaults.
+
+    When ``JOBS_ENABLE_SCHEDULER`` is unset, ``get_settings()`` enables the full scheduler
+    for these files. If it is set to ``false``, the API uses a retention-only loop instead
+    (see ``lifespan``) so time-based cleanup still runs without the alert ticker.
+    """
+    path = _sqlite_resolved_file_path(normalized_database_url)
+    return path is not None and path.name in {"autopulse.db", "autopulse_embedded.db"}
+
+
 def get_settings() -> Settings:
     raw_cors_origins = getenv(
         "CORS_ALLOW_ORIGINS",
@@ -129,10 +185,51 @@ def get_settings() -> Settings:
     cors_allow_origins = tuple(
         origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()
     )
+    database_url = normalize_database_url(
+        getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+    )
+    embedded_cap_raw = getenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
+    embedded_sqlite_max_db_file_mb = _env_optional_positive_int("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
+    if (
+        embedded_sqlite_max_db_file_mb is None
+        and _is_autopulse_embedded_default_sqlite_file(database_url)
+        and (embedded_cap_raw is None or embedded_cap_raw.strip() == "")
+    ):
+        embedded_sqlite_max_db_file_mb = 512
+    jobs_scheduler_raw = getenv("JOBS_ENABLE_SCHEDULER")
+    jobs_enable_scheduler = _env_bool("JOBS_ENABLE_SCHEDULER", False)
+    if (
+        jobs_scheduler_raw is None or jobs_scheduler_raw.strip() == ""
+    ) and _is_autopulse_embedded_default_sqlite_file(database_url):
+        jobs_enable_scheduler = True
+    jobs_retention_interval_seconds = _env_float(
+        "JOBS_RETENTION_INTERVAL_SECONDS",
+        3600.0,
+        minimum=5.0,
+    )
+    env_retention = getenv("JOBS_RETENTION_INTERVAL_SECONDS")
+    if _is_autopulse_embedded_default_sqlite_file(database_url) and (
+        env_retention is None or env_retention.strip() == ""
+    ):
+        jobs_retention_interval_seconds = min(float(jobs_retention_interval_seconds), 300.0)
+    poll_raw = getenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS")
+    if poll_raw is None or poll_raw.strip() == "":
+        retention_pressure_poll_seconds = (
+            1.0 if _is_autopulse_embedded_default_sqlite_file(database_url) else 0.0
+        )
+    else:
+        retention_pressure_poll_seconds = _env_float(
+            "AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS",
+            0.0,
+            minimum=0.0,
+        )
+    retention_pressure_min_interval_seconds = _env_float(
+        "AUTOPULSE_RETENTION_PRESSURE_MIN_INTERVAL_SECONDS",
+        15.0,
+        minimum=5.0,
+    )
     return Settings(
-        database_url=normalize_database_url(
-            getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
-        ),
+        database_url=database_url,
         cors_allow_origins=cors_allow_origins,
         ingest_max_request_bytes=_env_int("INGEST_MAX_REQUEST_BYTES", 1_048_576, minimum=1),
         ingest_rate_limit_requests_per_window=_env_int(
@@ -160,6 +257,10 @@ def get_settings() -> Settings:
         ),
         ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", False),
         ingest_trust_forwarded_proto=_env_bool("INGEST_TRUST_FORWARDED_PROTO", True),
+        ingest_drop_autopulse_traffic_from_db=_env_bool(
+            "INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB",
+            True,
+        ),
         alerts_enabled=_env_bool("ALERTS_ENABLED", True),
         alert_default_destination_email=getenv("ALERT_DEFAULT_DESTINATION_EMAIL"),
         alert_error_spike_ratio_threshold=_env_float(
@@ -189,8 +290,13 @@ def get_settings() -> Settings:
         ),
         alert_cooldown_minutes=_env_int("ALERT_COOLDOWN_MINUTES", 15, minimum=1),
         retention_raw_events_days=_env_int("RETENTION_RAW_EVENTS_DAYS", 14, minimum=1),
+        embedded_sqlite_max_db_file_mb=embedded_sqlite_max_db_file_mb,
+        sqlite_size_retention_only=_env_bool(
+            "AUTOPULSE_SQLITE_SIZE_RETENTION_ONLY",
+            bool(database_url.startswith("sqlite") and embedded_sqlite_max_db_file_mb is not None),
+        ),
         logs_query_max_window_minutes=_env_int("LOGS_QUERY_MAX_WINDOW_MINUTES", 1440, minimum=1),
-        jobs_enable_scheduler=_env_bool("JOBS_ENABLE_SCHEDULER", False),
+        jobs_enable_scheduler=jobs_enable_scheduler,
         jobs_scheduler_lease_enabled=_env_bool("JOBS_SCHEDULER_LEASE_ENABLED", False),
         jobs_scheduler_lease_ttl_seconds=_env_int(
             "JOBS_SCHEDULER_LEASE_TTL_SECONDS",
@@ -202,11 +308,9 @@ def get_settings() -> Settings:
             60.0,
             minimum=1.0,
         ),
-        jobs_retention_interval_seconds=_env_float(
-            "JOBS_RETENTION_INTERVAL_SECONDS",
-            3600.0,
-            minimum=30.0,
-        ),
+        jobs_retention_interval_seconds=jobs_retention_interval_seconds,
+        retention_pressure_poll_seconds=retention_pressure_poll_seconds,
+        retention_pressure_min_interval_seconds=retention_pressure_min_interval_seconds,
         alert_sender_mode=getenv("ALERT_SENDER_MODE", "stub").strip().lower() or "stub",
         alert_webhook_url=getenv("ALERT_WEBHOOK_URL"),
         alert_email_provider=getenv("ALERT_EMAIL_PROVIDER", "resend").strip().lower() or "resend",

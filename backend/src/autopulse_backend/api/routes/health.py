@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_engine
-from autopulse_backend.jobs import SchedulerHandle
+from autopulse_backend.jobs import RetentionPressurePollHandle, SchedulerHandle
 from autopulse_backend.metrics import service_metrics
 
 router = APIRouter(tags=["system"])
@@ -34,9 +34,16 @@ async def ready() -> dict[str, str]:
 @router.get("/internal/metrics")
 async def internal_metrics(request: Request) -> dict[str, object]:
     scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
+    pressure = getattr(request.app.state, "_autopulse_retention_pressure_poll", None)
+    settings = get_settings()
     return {
         "service": "autopulse-backend",
         "scheduler_running": isinstance(scheduler, SchedulerHandle),
+        "retention_pressure_poll_running": isinstance(pressure, RetentionPressurePollHandle)
+        and not pressure.task.done(),
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
+        "jobs_retention_interval_seconds": settings.jobs_retention_interval_seconds,
         "counters": service_metrics.snapshot(),
         "jobs": service_metrics.job_snapshot(),
     }

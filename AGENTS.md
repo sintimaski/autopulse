@@ -11,7 +11,7 @@ Guidance for AI coding agents and humans pairing with them in this repository.
 
 - **[docs/cursor/CURSOR_DEVELOPMENT.md](./docs/cursor/CURSOR_DEVELOPMENT.md)** — Rules layout, repo map, suggested chat patterns.
 - **[docs/cursor/WORKFLOWS.md](./docs/cursor/WORKFLOWS.md)** — Quick links to all agent workflows.
-- **`.cursor/rules/`** — Persistent constraints (`autopulse-product`, `autopulse-engineering`, plus path-scoped rules for `sdk/`, `backend/`, `frontend/`).
+- **`.cursor/rules/`** — Persistent constraints (`autopulse-product`, `autopulse-engineering`, `autopulse-debugging`, plus path-scoped rules for `sdk/`, `backend/`, `frontend/`).
 
 ## When to use which workflow
 

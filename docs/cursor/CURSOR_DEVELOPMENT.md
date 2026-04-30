@@ -20,6 +20,8 @@ Rules use `.mdc` files with YAML frontmatter:
 
 Keep rules **short and enforceable**. Product nuance belongs in `DEVELOPMENT.md`, not duplicated at length in rules.
 
+For **bug hunts and “it doesn’t work”** reports, the always-on rule **`.cursor/rules/autopulse-debugging.mdc`** expects local SQLite + running BE/FE when relevant, browser reproduction or explicit user steps, logging over guesses, and temporary scripts removed before merge.
+
 ## Automatic context
 
 Always-on rules summarize **non-negotiables** (SDK must not break host apps, conservative capture, etc.) and point to `DEVELOPMENT.md` for detail.

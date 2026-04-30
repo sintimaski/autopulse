@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import shlex
 import subprocess  # nosec B404
@@ -15,9 +16,21 @@ from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 
 DEFAULT_EMBEDDED_API_KEY = "ap_live_embeddedlocal_localdevsecret"
-DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./autopulse_embedded.db"
+DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./autopulse.db"
 DEFAULT_MOUNT_PREFIX = "/autopulse"
 DEFAULT_PROJECT_NAME = "AutoPulse Embedded Project"
+
+
+def _embedded_max_db_size_mb_for_settings() -> int | None:
+    """SQLite file cap in MB from env, or None when disabled (env <= 0)."""
+    raw = os.environ.get("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return None if value <= 0 else value
 
 
 def _normalize_prefix(raw_prefix: str) -> str:
@@ -32,8 +45,11 @@ def _normalize_prefix(raw_prefix: str) -> str:
 def _apply_backend_environment(*, database_url: str) -> None:
     os.environ["DATABASE_URL"] = database_url
     # Embedded mode must run retention housekeeping; otherwise local DB caps are never enforced.
-    os.environ.setdefault("JOBS_ENABLE_SCHEDULER", "1")
+    # Do not use setdefault: a repo `.env` often sets JOBS_ENABLE_SCHEDULER=false, which would win.
+    os.environ["JOBS_ENABLE_SCHEDULER"] = "1"
     os.environ.setdefault("JOBS_RETENTION_INTERVAL_SECONDS", "300")
+    # Global SQLite file ceiling (oldest events across all projects). Set to 0 to disable.
+    os.environ.setdefault("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "512")
 
 
 def _add_event_handler(app: Any, event: str, handler: Any) -> bool:
@@ -68,7 +84,26 @@ async def _ensure_embedded_project_and_key(
         existing_key = await session.scalar(
             select(ApiKey).where(ApiKey.key_id == key_id, ApiKey.revoked_at.is_(None))
         )
+        cap_mb = _embedded_max_db_size_mb_for_settings()
+
         if existing_key is not None:
+            project = await session.scalar(select(Project).where(Project.name == project_name))
+            if project is not None:
+                ui_settings = await session.scalar(
+                    select(ProjectUiSettings).where(ProjectUiSettings.project_id == project.id)
+                )
+                if ui_settings is None:
+                    session.add(
+                        ProjectUiSettings(
+                            project_id=project.id,
+                            theme_preference="system",
+                            retention_max_db_size_mb=cap_mb,
+                        )
+                    )
+                    await session.commit()
+                elif cap_mb is not None and ui_settings.retention_max_db_size_mb is None:
+                    ui_settings.retention_max_db_size_mb = cap_mb
+                    await session.commit()
             return
         project = await session.scalar(select(Project).where(Project.name == project_name))
         if project is None:
@@ -79,12 +114,11 @@ async def _ensure_embedded_project_and_key(
             select(ProjectUiSettings).where(ProjectUiSettings.project_id == project.id)
         )
         if ui_settings is None:
-            # Keep embedded SQLite storage bounded by default.
             session.add(
                 ProjectUiSettings(
                     project_id=project.id,
                     theme_preference="system",
-                    retention_max_db_size_mb=100,
+                    retention_max_db_size_mb=cap_mb,
                 )
             )
         session.add(
@@ -96,6 +130,55 @@ async def _ensure_embedded_project_and_key(
             )
         )
         await session.commit()
+
+
+def _start_embedded_background_jobs(app: Any) -> None:
+    """Start backend scheduler/poller explicitly for embedded hosts.
+
+    Mounted backend lifespans are not guaranteed to run in all host setups, so start
+    retention/alerts loops from the host app startup path as well.
+    """
+    from autopulse_backend.core.config import (
+        _is_autopulse_embedded_default_sqlite_file,
+        get_settings,
+    )
+    from autopulse_backend.jobs import (
+        retention_pressure_poll_should_run,
+        start_retention_only_scheduler,
+        start_retention_pressure_poll,
+        start_scheduler,
+    )
+
+    settings = get_settings()
+    if getattr(app.state, "_autopulse_scheduler", None) is None:
+        if settings.jobs_enable_scheduler:
+            app.state._autopulse_scheduler = start_scheduler(settings=settings)
+        elif _is_autopulse_embedded_default_sqlite_file(settings.database_url):
+            app.state._autopulse_scheduler = start_retention_only_scheduler(settings=settings)
+        else:
+            app.state._autopulse_scheduler = None
+
+    if getattr(app.state, "_autopulse_retention_pressure_poll", None) is None:
+        if retention_pressure_poll_should_run(settings):
+            app.state._autopulse_retention_pressure_poll = start_retention_pressure_poll(
+                settings=settings
+            )
+        else:
+            app.state._autopulse_retention_pressure_poll = None
+
+
+async def _stop_embedded_background_jobs(app: Any) -> None:
+    from autopulse_backend.jobs import RetentionPressurePollHandle, SchedulerHandle
+
+    scheduler = getattr(app.state, "_autopulse_scheduler", None)
+    if isinstance(scheduler, SchedulerHandle):
+        await scheduler.stop()
+    app.state._autopulse_scheduler = None
+
+    pressure = getattr(app.state, "_autopulse_retention_pressure_poll", None)
+    if isinstance(pressure, RetentionPressurePollHandle):
+        await pressure.stop()
+    app.state._autopulse_retention_pressure_poll = None
 
 
 def _mount_embedded_ui(backend_app: Any, *, static_dir: str | None = None) -> None:
@@ -192,11 +275,31 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
                 project_name=project_name,
                 api_key=api_key,
             )
-            # Enforce limits at startup so oversized DBs are corrected immediately.
-            with suppress(Exception):
-                await run_retention_once(settings=get_settings())
+
+            # Never block application startup on retention; large local DB cleanup can be slow.
+            async def _run_retention_background() -> None:
+                with suppress(Exception):
+                    await run_retention_once(settings=get_settings())
+
+            task = asyncio.create_task(_run_retention_background())
+            app.state._autopulse_startup_retention_task = task
+            # Ensure periodic loops run in embedded hosts even if mounted
+            # subapp lifespan is skipped.
+            _start_embedded_background_jobs(app)
+
+        async def stop_startup_retention_task() -> None:
+            task = getattr(app.state, "_autopulse_startup_retention_task", None)
+            if task is None:
+                return
+            if not task.done():
+                task.cancel()
+                with suppress(Exception):
+                    await task
+            app.state._autopulse_startup_retention_task = None
+            await _stop_embedded_background_jobs(app)
 
         _add_event_handler(app, "startup", ensure_project_key)
+        _add_event_handler(app, "shutdown", stop_startup_retention_task)
         if frontend_mode == "static":
             _mount_embedded_ui(backend_app, static_dir=kwargs.get("frontend_static_dir"))
         if frontend_mode == "sidecar":

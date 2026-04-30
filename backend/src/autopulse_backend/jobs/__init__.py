@@ -2,20 +2,32 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import secrets
+import time
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
 from autopulse_backend.core.config import Settings, get_settings
-from autopulse_backend.database import get_engine
-from autopulse_backend.maintenance.retention import run_retention_cleanup_once
+from autopulse_backend.database import dispose_engine_for_url, get_engine
+from autopulse_backend.maintenance.retention import (
+    _resolve_sqlite_db_path,
+    _sqlite_db_disk_footprint_bytes,
+    _vacuum_sqlite_db_file,
+    run_retention_cleanup_once,
+    sqlite_retention_pressure_pending,
+)
 from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
+from autopulse_backend.models import Base
 from autopulse_backend.repositories.runtime_controls import acquire_scheduler_lease
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -30,6 +42,32 @@ class SchedulerHandle:
             self.tasks.clear()
 
 
+@dataclass(slots=True)
+class RetentionPressurePollHandle:
+    stop_event: asyncio.Event
+    task: asyncio.Task[None]
+
+    async def stop(self) -> None:
+        self.stop_event.set()
+        if self.task.done():
+            return
+        self.task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self.task
+
+
+_retention_run_lock = asyncio.Lock()
+
+
+async def _ensure_sqlite_schema_from_models(database_url: str) -> None:
+    """Match FastAPI lifespan: file-backed SQLite may be opened before the API has run."""
+    if not database_url.startswith("sqlite"):
+        return
+    engine = get_engine(database_url)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+
 async def run_alerts_once(
     *,
     settings: Settings | None = None,
@@ -37,19 +75,115 @@ async def run_alerts_once(
 ) -> int:
     resolved_settings = settings or get_settings()
     resolved_sender = sender or build_alert_sender(resolved_settings)
+    await _ensure_sqlite_schema_from_models(resolved_settings.database_url)
     engine = get_engine(resolved_settings.database_url)
     session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     async with session_maker() as session:
         return await evaluate_alerts_once(session, resolved_settings, sender=resolved_sender)
 
 
-async def run_retention_once(*, settings: Settings | None = None) -> int:
+async def run_retention_once(
+    *,
+    settings: Settings | None = None,
+    dispose_engine_after: bool = False,
+) -> int:
+    """Run retention cleanup; serialized with the scheduled retention job and pressure poller.
+
+    SQL work runs under ``_retention_run_lock``; ``VACUUM`` runs **after** the lock is
+    released so long vacuums do not stall the next scheduled tick.
+
+    When ``dispose_engine_after`` is true (``retention-once`` CLI), pooled connections are
+    dropped before ``VACUUM`` so SQLite can reclaim space reliably.
+    """
     resolved_settings = settings or get_settings()
-    engine = get_engine(resolved_settings.database_url)
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
-    async with session_maker() as session:
-        result = await run_retention_cleanup_once(session, resolved_settings)
-    return result.deleted_events
+    url = resolved_settings.database_url
+    deleted = 0
+    post_vacuum_path: Path | None = None
+    size_before = 0
+    size_after_cleanup = 0
+    size_after_vacuum = 0
+    cap_bytes = (
+        int(resolved_settings.embedded_sqlite_max_db_file_mb) * 1024 * 1024
+        if resolved_settings.embedded_sqlite_max_db_file_mb is not None
+        else None
+    )
+    logger.info("Retention run start: database_url=%s", url)
+    async with _retention_run_lock:
+        logger.info("Retention lock acquired")
+        await _ensure_sqlite_schema_from_models(url)
+        engine = get_engine(url)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        async with session_maker() as session:
+            result = await run_retention_cleanup_once(session, resolved_settings)
+        deleted = result.deleted_events
+        logger.info("Retention cleanup complete: deleted=%d", deleted)
+
+        if url.startswith("sqlite"):
+            db_path = _resolve_sqlite_db_path(url)
+            cap_mb = resolved_settings.embedded_sqlite_max_db_file_mb
+            if db_path is not None:
+                try:
+                    size_before = _sqlite_db_disk_footprint_bytes(db_path)
+                except OSError:
+                    size_before = 0
+            needs_vacuum = deleted > 0
+            if db_path is not None and cap_mb is not None:
+                with suppress(OSError):
+                    needs_vacuum = needs_vacuum or (
+                        _sqlite_db_disk_footprint_bytes(db_path) > int(cap_mb) * 1024 * 1024
+                    )
+            if needs_vacuum and db_path is not None:
+                post_vacuum_path = db_path
+            if db_path is not None:
+                try:
+                    size_after_cleanup = _sqlite_db_disk_footprint_bytes(db_path)
+                except OSError:
+                    size_after_cleanup = 0
+
+    if post_vacuum_path is not None:
+        if dispose_engine_after:
+            await dispose_engine_for_url(url)
+        try:
+            before_bytes = _sqlite_db_disk_footprint_bytes(post_vacuum_path)
+            started = time.monotonic()
+            after_main = _vacuum_sqlite_db_file(post_vacuum_path)
+            elapsed_ms = int((time.monotonic() - started) * 1000)
+            after_bytes = _sqlite_db_disk_footprint_bytes(post_vacuum_path)
+            logger.info(
+                "Retention VACUUM done: path=%s before=%d after=%d main_after=%d elapsed_ms=%d",
+                post_vacuum_path,
+                before_bytes,
+                after_bytes,
+                after_main,
+                elapsed_ms,
+            )
+            size_after_vacuum = after_bytes
+        except Exception:
+            logger.exception("SQLite VACUUM after retention failed")
+    if url.startswith("sqlite"):
+        final_size = size_after_vacuum or size_after_cleanup or size_before
+        logger.info(
+            "Retention cap check: path=%s before=%d after_cleanup=%d "
+            "after_vacuum=%d cap=%s over_cap=%s",
+            _resolve_sqlite_db_path(url),
+            size_before,
+            size_after_cleanup,
+            size_after_vacuum,
+            str(cap_bytes) if cap_bytes is not None else "none",
+            bool(cap_bytes is not None and final_size > cap_bytes),
+        )
+    logger.info("Retention run finished: deleted=%d", deleted)
+    return deleted
+
+
+def run_retention_sync(*, dispose_engine_after: bool = True) -> int:
+    """Blocking retention for cron, systemd, Django management commands, or any sync host.
+
+    Uses ``asyncio.run`` around :func:`run_retention_once`. Set ``DATABASE_URL`` (and other
+    env vars) before calling. Default ``dispose_engine_after=True`` matches the CLI and is
+    safest for one-off processes with no concurrent async engine.
+    """
+    return asyncio.run(run_retention_once(dispose_engine_after=dispose_engine_after))
 
 
 async def _record_job_execution(
@@ -59,6 +193,7 @@ async def _record_job_execution(
 ) -> int:
     started_at = datetime.now(tz=UTC)
     service_metrics.increment(f"jobs.{job_name}.started")
+    logger.info("Job run start: name=%s", job_name)
     try:
         processed = await operation()
     except Exception as exc:
@@ -92,6 +227,12 @@ async def _record_job_execution(
             failure_reason=None,
         )
     )
+    logger.info(
+        "Job run succeeded: name=%s processed=%d duration_ms=%d",
+        job_name,
+        max(0, int(processed)),
+        duration_ms,
+    )
     return processed
 
 
@@ -106,7 +247,14 @@ async def _run_periodic(
 ) -> None:
     engine = get_engine(settings.database_url)
     session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    logger.info(
+        "Periodic loop started: job=%s interval_seconds=%.2f lease_enabled=%s",
+        job_name,
+        float(interval_seconds),
+        settings.jobs_scheduler_lease_enabled,
+    )
     while not stop_event.is_set():
+        logger.info("Periodic tick: job=%s", job_name)
         if settings.jobs_scheduler_lease_enabled:
             async with session_maker() as session:
                 lease_acquired = await acquire_scheduler_lease(
@@ -121,8 +269,10 @@ async def _run_periodic(
                 except TimeoutError:
                     continue
                 continue
-        with suppress(Exception):
+        try:
             await operation()
+        except Exception:
+            logger.exception("Periodic job %r failed", job_name)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
         except TimeoutError:
@@ -147,7 +297,10 @@ def start_scheduler(
     async def retention_tick() -> None:
         await _record_job_execution(
             job_name="retention",
-            operation=lambda: run_retention_once(settings=resolved_settings),
+            operation=lambda: run_retention_once(
+                settings=resolved_settings,
+                dispose_engine_after=True,
+            ),
         )
 
     tasks = [
@@ -175,6 +328,97 @@ def start_scheduler(
     return SchedulerHandle(stop_event=stop_event, tasks=tasks)
 
 
+def start_retention_only_scheduler(
+    *,
+    settings: Settings | None = None,
+) -> SchedulerHandle:
+    """Run only retention on an interval.
+
+    Used when alerts scheduler is off (e.g. ``JOBS_ENABLE_SCHEDULER=false``).
+    """
+    resolved_settings = settings or get_settings()
+    scheduler_owner_token = secrets.token_hex(16)
+    stop_event = asyncio.Event()
+
+    async def retention_tick() -> None:
+        await _record_job_execution(
+            job_name="retention",
+            operation=lambda: run_retention_once(
+                settings=resolved_settings,
+                dispose_engine_after=True,
+            ),
+        )
+
+    tasks = [
+        asyncio.create_task(
+            _run_periodic(
+                job_name="retention",
+                settings=resolved_settings,
+                scheduler_owner_token=scheduler_owner_token,
+                interval_seconds=resolved_settings.jobs_retention_interval_seconds,
+                stop_event=stop_event,
+                operation=retention_tick,
+            )
+        ),
+    ]
+    return SchedulerHandle(stop_event=stop_event, tasks=tasks)
+
+
+async def _retention_pressure_poll_loop(settings: Settings, stop_event: asyncio.Event) -> None:
+    """Poll pressure and run retention when SQLite exceeds size/row caps."""
+    poll = float(settings.retention_pressure_poll_seconds)
+    min_interval = float(settings.retention_pressure_min_interval_seconds)
+    if poll <= 0:
+        return
+    engine = get_engine(settings.database_url)
+    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    last_run_mono: float | None = None
+    while not stop_event.is_set():
+        pending = False
+        try:
+            async with session_maker() as session:
+                pending = await sqlite_retention_pressure_pending(session, settings)
+        except Exception:
+            logger.exception("Retention pressure probe failed")
+            pending = False
+        if pending:
+            now = time.monotonic()
+            if last_run_mono is None or (now - last_run_mono) >= min_interval:
+                try:
+                    await _record_job_execution(
+                        job_name="retention",
+                        operation=lambda: run_retention_once(
+                            settings=settings,
+                            dispose_engine_after=True,
+                        ),
+                    )
+                except Exception:
+                    logger.exception("Pressure-triggered retention failed")
+                last_run_mono = time.monotonic()
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=poll)
+        except TimeoutError:
+            continue
+
+
+def start_retention_pressure_poll(
+    *, settings: Settings | None = None
+) -> RetentionPressurePollHandle:
+    resolved_settings = settings or get_settings()
+    stop_event = asyncio.Event()
+    task = asyncio.create_task(_retention_pressure_poll_loop(resolved_settings, stop_event))
+    return RetentionPressurePollHandle(stop_event=stop_event, task=task)
+
+
+def retention_pressure_poll_should_run(settings: Settings) -> bool:
+    """Whether the in-process SQLite pressure poll loop should start (lifespan)."""
+    if settings.retention_pressure_poll_seconds <= 0:
+        return False
+    if not settings.database_url.startswith("sqlite"):
+        return False
+    return _resolve_sqlite_db_path(settings.database_url) is not None
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run AutoPulse background jobs.")
     parser.add_argument(
@@ -189,7 +433,10 @@ async def _run_command(command: str) -> int:
     if command == "alerts-once":
         return await _record_job_execution(job_name="alerts", operation=run_alerts_once)
     if command == "retention-once":
-        return await _record_job_execution(job_name="retention", operation=run_retention_once)
+        return await _record_job_execution(
+            job_name="retention",
+            operation=lambda: run_retention_once(dispose_engine_after=True),
+        )
     raise ValueError(f"Unsupported command: {command}")
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from db_reset import truncate_full_schema
@@ -63,3 +64,33 @@ def test_jobs_cli_records_last_run_telemetry(
     assert "retention" in snapshot
     assert snapshot["retention"]["status"] == "succeeded"
     assert isinstance(snapshot["retention"]["duration_ms"], int)
+
+
+def test_run_retention_sync_runs_on_fresh_sqlite(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "sync_retention.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
+
+    from autopulse_backend.jobs import run_retention_sync
+
+    n = run_retention_sync()
+    assert isinstance(n, int)
+    assert db_path.exists()
+
+
+def test_retention_once_creates_sqlite_schema_on_fresh_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI must not assume tables exist (cron may run before first API start)."""
+    db_path = tmp_path / "fresh_cli.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
+
+    exit_code = jobs.main(["retention-once"])
+
+    assert exit_code == 0
+    assert capsys.readouterr().out.strip().isdigit()
+    assert db_path.exists()

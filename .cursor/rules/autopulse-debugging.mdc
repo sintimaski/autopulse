@@ -1,0 +1,35 @@
+---
+description: When investigating bugs or unexpected behavior, reproduce locally and gather evidence before guessing.
+alwaysApply: true
+---
+
+# AutoPulse — evidence-based debugging
+
+When a report is vague (“doesn’t work”, “retention never runs”, UI wrong), **do not guess**. Prefer a short, reproducible path and observable signals.
+
+## Reproduction stack
+
+- **Database:** Use **file-backed SQLite** (`DATABASE_URL` in `backend/.env`) unless the defect is clearly Postgres-only. Keeps setup fast and matches most solo-dev flows.
+- **Backend:** Run from `backend/` (e.g. `uv run uvicorn autopulse_backend.main:app --log-level info`). Confirm startup logs and `/health`, `/ready`, `/internal/metrics` when jobs, DB, or retention are involved.
+- **Frontend:** Run the Next.js app from `frontend/` when the issue involves dashboard, auth, ingest UI, or API calls from the browser.
+
+## Browser and UX
+
+- Ask the **user** to reproduce in the **browser** when layout, redirects, cookies, or network timing matter; request **browser / MCP access** when the environment supports it and the user agrees.
+- Give **exact URLs**, clicks, and expected vs actual (status codes, JSON fields, visible text).
+
+## Logs and ad-hoc probes
+
+- Prefer **`logging`** on the `autopulse_backend` tree (see `lifespan` handler pattern) over permanent `print`.
+- **`print` or scratch code** is acceptable **only while investigating**; remove or revert before merge.
+- **Temporary helpers:** one-off `uv run python …` snippets, or files under `backend/scripts/` (or a clearly named scratch file); must not contain **secrets**; delete or exclude from commits when done.
+
+## What to check first (common)
+
+- Env: `DATABASE_URL`, `JOBS_ENABLE_SCHEDULER`, `AUTOPULSE_*` retention vars, `CORS_*`.
+- SQLite: schema exists, path on disk, `/internal/metrics` (`scheduler_running`, `jobs`, pressure poll flags).
+- Exceptions swallowed earlier—search for `suppress`, broad `except`, and add **targeted logging** instead of leaving failures silent.
+
+## Product and security
+
+- Do not log API keys, magic link tokens, or full PII; follow `DEVELOPMENT.md` and `agents/security-privacy.md` for sensitive areas.
