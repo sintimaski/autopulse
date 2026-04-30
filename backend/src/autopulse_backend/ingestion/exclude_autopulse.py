@@ -7,6 +7,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.models import Event, ProjectUiSettings
 
+_AUTOPULSE_INTERNAL_PATH_PREFIXES: tuple[str, ...] = (
+    "/autopulse",
+    "/dashboard",
+)
+_AUTOPULSE_INTERNAL_PATH_EXACT: tuple[str, ...] = ("/ingest",)
+
+
+def is_autopulse_internal_path(path: str | None) -> bool:
+    if not isinstance(path, str):
+        return False
+    candidate = path.strip()
+    if not candidate:
+        return False
+    if candidate in _AUTOPULSE_INTERNAL_PATH_EXACT:
+        return True
+    return any(
+        candidate == prefix or candidate.startswith(f"{prefix}/")
+        for prefix in _AUTOPULSE_INTERNAL_PATH_PREFIXES
+    )
+
 
 async def resolve_exclude_autopulse_traffic(session: AsyncSession, project_id) -> bool:
     setting = await session.scalar(

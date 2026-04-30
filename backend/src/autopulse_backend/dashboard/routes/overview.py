@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
@@ -77,16 +77,6 @@ def _classify_error_type(
     if any(token in raw for token in ("auth", "unauthorized", "forbidden", "token")):
         return "auth"
     return "server"
-
-
-def _extract_session_key(payload: dict[str, object]) -> str | None:
-    for candidate in ("session_id", "sessionId", "user_id", "userId", "distinct_id"):
-        raw = payload.get(candidate)
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip()
-        if isinstance(raw, int):
-            return str(raw)
-    return None
 
 
 def _empty_overview_bucket(minute: datetime) -> DashboardOverviewBucket:
@@ -361,50 +351,70 @@ async def get_dashboard_overview_extended(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
-    rows = await session.execute(
-        select(
-            Event.path,
-            Event.service_name,
-            Event.type,
-            Event.status_code,
-            Event.latency_ms,
-            Event.timestamp,
-            Event.payload,
-            Event.request_id,
-        ).where(*filters)
-    )
-    items = list(rows)
-    latencies = [float(latency) for _, _, _, _, latency, _, _, _ in items]
 
-    service_stats: dict[str, dict[str, float | int]] = {}
-    route_stats: dict[str, dict[str, float | int]] = {}
-    error_type_counts: Counter[str] = Counter()
-    active_session_keys: set[str] = set()
-    error_burst_count = 0
+    # Avoid loading full JSON payloads for every row in the window (can be GB+ of I/O); use
+    # SQL aggregates and small targeted reads for error classification and session hints.
+    latencies = [
+        float(v) for v in (await session.scalars(select(Event.latency_ms).where(*filters))).all()
+    ]
+
     error_window_start = resolved_to - timedelta(minutes=5)
-    for (
-        path,
-        service_name,
-        event_type,
-        status_code,
-        latency_ms,
-        timestamp,
-        payload,
-        request_id,
-    ) in items:
+    error_burst_result = await session.execute(
+        select(func.count(Event.id)).where(
+            *filters,
+            Event.status_code >= 500,
+            Event.timestamp >= error_window_start,
+        )
+    )
+    error_burst_count = int(error_burst_result.scalar_one() or 0)
+
+    service_key = func.coalesce(Event.service_name, literal("unknown"))
+    service_agg = await session.execute(
+        select(
+            service_key.label("key"),
+            func.count(Event.id),
+            func.sum(case((Event.status_code >= 500, 1), else_=0)),
+            func.sum(Event.latency_ms),
+        )
+        .where(*filters)
+        .group_by(service_key)
+    )
+    service_stats = {
+        str(key or "unknown"): {
+            "requests": int(reqs or 0),
+            "errors": int(errs or 0),
+            "latency_sum": float(lat_sum or 0.0),
+        }
+        for key, reqs, errs, lat_sum in service_agg
+    }
+
+    route_key = func.coalesce(Event.path, literal("unknown"))
+    route_agg = await session.execute(
+        select(
+            route_key.label("key"),
+            func.count(Event.id),
+            func.sum(case((Event.status_code >= 500, 1), else_=0)),
+            func.sum(Event.latency_ms),
+        )
+        .where(*filters)
+        .group_by(route_key)
+    )
+    route_stats = {
+        str(key or "unknown"): {
+            "requests": int(reqs or 0),
+            "errors": int(errs or 0),
+            "latency_sum": float(lat_sum or 0.0),
+        }
+        for key, reqs, errs, lat_sum in route_agg
+    }
+
+    error_type_counts: Counter[str] = Counter()
+    error_like = or_(Event.type == "error", Event.status_code >= 500)
+    error_rows = await session.execute(
+        select(Event.type, Event.status_code, Event.payload).where(*filters, error_like)
+    )
+    for event_type, status_code, payload in error_rows:
         payload_dict = payload if isinstance(payload, dict) else {}
-        is_error = int(status_code) >= 500
-        key_service = service_name or "unknown"
-        key_route = path or "unknown"
-        for stats, key in ((service_stats, key_service), (route_stats, key_route)):
-            current = stats.setdefault(
-                key,
-                {"requests": 0, "errors": 0, "latency_sum": 0.0},
-            )
-            current["requests"] += 1
-            current["latency_sum"] += float(latency_ms)
-            if is_error:
-                current["errors"] += 1
         classified = _classify_error_type(
             event_type=str(event_type or ""),
             status_code=int(status_code or 0),
@@ -412,14 +422,31 @@ async def get_dashboard_overview_extended(
         )
         if classified is not None:
             error_type_counts[classified] += 1
-        session_key = _extract_session_key(payload_dict)
-        if session_key:
-            active_session_keys.add(session_key)
+
+    active_session_keys: set[str] = set()
+    identity_rows = await session.execute(
+        select(
+            Event.request_id,
+            Event.payload["session_id"].as_string(),
+            Event.payload["sessionId"].as_string(),
+            Event.payload["user_id"].as_string(),
+            Event.payload["userId"].as_string(),
+            Event.payload["distinct_id"].as_string(),
+        ).where(*filters)
+    )
+    for request_id, sid, sid_alt, uid, uid_alt, did in identity_rows:
+        chosen: str | None = None
+        for raw in (sid, sid_alt, uid, uid_alt, did):
+            if isinstance(raw, str) and raw.strip():
+                chosen = raw.strip()
+                break
+            if isinstance(raw, int | float) and not isinstance(raw, bool):
+                chosen = str(int(raw))
+                break
+        if chosen:
+            active_session_keys.add(chosen)
         elif isinstance(request_id, str) and request_id.strip():
-            # Fallback approximation when SDK does not send session/user ids.
             active_session_keys.add(request_id.strip())
-        if is_error and as_utc_datetime(timestamp) >= error_window_start:
-            error_burst_count += 1
 
     def to_breakdown(source: dict[str, dict[str, float | int]]) -> list[DashboardBreakdownItem]:
         rows_result: list[DashboardBreakdownItem] = []

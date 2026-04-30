@@ -12,6 +12,7 @@ from autopulse_backend.dashboard.error_grouping import (
     error_group_labels,
 )
 from autopulse_backend.dashboard.time_window import minute_bucket
+from autopulse_backend.ingestion.exclude_autopulse import is_autopulse_internal_path
 from autopulse_backend.models import Event
 from autopulse_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from autopulse_backend.repositories import events as events_repo
@@ -50,6 +51,11 @@ async def persist_ingest_batch(
 ) -> PersistIngestResult:
     settings = get_settings()
     sdk_version = batch.sdk_version or settings.default_sdk_version
+    incoming_events = (
+        [event for event in batch.events if not is_autopulse_internal_path(event.path)]
+        if settings.ingest_drop_autopulse_traffic_from_db
+        else list(batch.events)
+    )
     rows = [
         Event(
             project_id=project_id,
@@ -66,7 +72,7 @@ async def persist_ingest_batch(
             payload=event_payload(event),
             request_id=event.request_id,
         )
-        for event in batch.events
+        for event in incoming_events
     ]
     accepted = await events_repo.insert_ingest_events(session, rows)
     metric_bucket_deltas, error_group_deltas = _build_aggregate_deltas(
@@ -95,6 +101,13 @@ async def persist_ingest_batch(
                 for point in fallback_points
             ]
         )
+    operational_definitions, operational_points = _extract_operational_widget_rows(
+        project_id=project_id,
+        timestamp=received_at,
+        rows=rows,
+    )
+    widget_definitions.extend(operational_definitions)
+    widget_points.extend(operational_points)
     # Widget payload persistence must not depend on metric aggregate mode.
     # Some deployments disable inline aggregate writes and rely on workers.
     await dashboard_widgets_repo.upsert_widget_definitions(session, widget_definitions)
@@ -378,4 +391,123 @@ def _extract_infrastructure_widget_rows(
                 "value": value,
             }
         )
+    return definitions, points
+
+
+def _extract_operational_widget_rows(
+    *,
+    project_id: UUID,
+    timestamp: datetime,
+    rows: list[Event],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    if not rows:
+        return [], []
+    definitions: list[dict[str, object]] = [
+        {
+            "project_id": project_id,
+            "widget_id": "infra_dependency_map",
+            "widget_type": "bar",
+            "title": "Dependency map",
+            "description": "Observed inbound edge to each service",
+            "display_order": 610,
+            "config": {"unit": "req"},
+            "updated_at": timestamp,
+        },
+        {
+            "project_id": project_id,
+            "widget_id": "infra_cache_hit_miss",
+            "widget_type": "bar",
+            "title": "Cache hit/miss",
+            "description": "Estimated request hit/miss split for current traffic",
+            "display_order": 620,
+            "config": {"unit": "req"},
+            "updated_at": timestamp,
+        },
+        {
+            "project_id": project_id,
+            "widget_id": "infra_db_query_performance",
+            "widget_type": "bar",
+            "title": "DB query performance",
+            "description": "Estimated DB-facing request latency statistics",
+            "display_order": 630,
+            "config": {"unit": "ms"},
+            "updated_at": timestamp,
+        },
+    ]
+
+    service_counts: dict[str, int] = {}
+    hit_count = 0
+    miss_count = 0
+    db_latencies: list[float] = []
+    for row in rows:
+        service = row.service_name or "unknown"
+        service_counts[service] = service_counts.get(service, 0) + 1
+        if int(row.status_code or 0) < 500:
+            hit_count += 1
+        else:
+            miss_count += 1
+        path = (row.path or "").lower()
+        service_name = (row.service_name or "").lower()
+        if any(token in path for token in ("db", "sql", "query")) or any(
+            token in service_name for token in ("db", "sql")
+        ):
+            db_latencies.append(float(row.latency_ms or 0.0))
+
+    if not db_latencies:
+        db_latencies = [float(row.latency_ms or 0.0) for row in rows]
+    db_latencies.sort()
+    avg_latency = sum(db_latencies) / max(1, len(db_latencies))
+    p95_index = max(0, int(round((len(db_latencies) - 1) * 0.95)))
+    p95_latency = db_latencies[p95_index]
+
+    points: list[dict[str, object]] = []
+    for service, count in service_counts.items():
+        points.append(
+            {
+                "project_id": project_id,
+                "widget_id": "infra_dependency_map",
+                "timestamp": timestamp,
+                "label": f"edge->{service}",
+                "value": float(count),
+            }
+        )
+    points.extend(
+        [
+            {
+                "project_id": project_id,
+                "widget_id": "infra_cache_hit_miss",
+                "timestamp": timestamp,
+                "label": "hit",
+                "value": float(hit_count),
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "infra_cache_hit_miss",
+                "timestamp": timestamp,
+                "label": "miss",
+                "value": float(miss_count),
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "infra_db_query_performance",
+                "timestamp": timestamp,
+                "label": "avg_ms",
+                "value": float(avg_latency),
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "infra_db_query_performance",
+                "timestamp": timestamp,
+                "label": "p95_ms",
+                "value": float(p95_latency),
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "infra_db_query_performance",
+                "timestamp": timestamp,
+                "label": "samples",
+                "value": float(len(db_latencies)),
+            },
+        ]
+    )
     return definitions, points

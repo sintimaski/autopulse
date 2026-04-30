@@ -3,15 +3,20 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import normalize_database_url
+from autopulse_backend.maintenance import retention as retention_mod
 from autopulse_backend.maintenance import run_retention_cleanup_once
-from autopulse_backend.models import Event, Project, ProjectUiSettings
+from autopulse_backend.models import Base, Event, Project, ProjectUiSettings
 
 
 def _seed_old_and_fresh_events(database_url: str, now: datetime) -> None:
@@ -267,3 +272,187 @@ def test_retention_cleanup_enforces_project_log_row_cap_for_sqlite(
     deleted, remaining = asyncio.run(run())
     assert deleted == 2
     assert remaining == 2
+
+
+def test_embedded_sqlite_global_file_cap_deletes_oldest_when_file_over_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "global_cap.db"
+    database_url = normalize_database_url(f"sqlite+aiosqlite:///{db_path}")
+    resolved = retention_mod._resolve_sqlite_db_path(database_url)
+    assert resolved is not None
+
+    async def seed() -> None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="Cap Project")
+                session.add(project)
+                await session.flush()
+                now = datetime.now(tz=UTC)
+                for i in range(3):
+                    session.add(
+                        Event(
+                            project_id=project.id,
+                            timestamp=now - timedelta(seconds=i),
+                            received_at=now - timedelta(seconds=i),
+                            sdk_version="0.1.0",
+                            type="request",
+                            service_name="api",
+                            environment="test",
+                            method="GET",
+                            path=f"/p-{i}",
+                            status_code=200,
+                            latency_ms=1.0,
+                            payload={"i": i},
+                            request_id=f"r-{i}",
+                        )
+                    )
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(seed())
+
+    orig_stat = Path.stat
+    real_st = orig_stat(resolved)
+    marker = (real_st.st_dev, real_st.st_ino)
+
+    def fake_stat(self: Path, *, follow_symlinks: bool = True):
+        st = orig_stat(self, follow_symlinks=follow_symlinks)
+        key = (st.st_dev, st.st_ino)
+        # Retention and drivers may stat the DB file before the cap runs; keep the file
+        # "virtually" over the cap until SQLite deletes drain the batch loop.
+        if key == marker:
+            return SimpleNamespace(st_size=99_000_000)
+        return st
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    async def run_retention() -> tuple[int, int]:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                settings = replace(
+                    get_settings(),
+                    database_url=database_url,
+                    retention_raw_events_days=10_000,
+                    embedded_sqlite_max_db_file_mb=50,
+                )
+                result = await run_retention_cleanup_once(
+                    session, settings, now=datetime.now(tz=UTC)
+                )
+                deleted_events = result.deleted_events
+            async with session_maker() as session2:
+                remaining = int(
+                    (await session2.execute(text("SELECT COUNT(*) FROM events"))).scalar_one()
+                )
+                return deleted_events, remaining
+        finally:
+            await engine.dispose()
+
+    deleted, remaining = asyncio.run(run_retention())
+    assert remaining == 0
+    assert deleted >= 3
+
+
+def test_embedded_sqlite_global_file_cap_uses_min_ui_when_embedded_cap_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "ui_only_cap.db"
+    database_url = normalize_database_url(f"sqlite+aiosqlite:///{db_path}")
+    resolved = retention_mod._resolve_sqlite_db_path(database_url)
+    assert resolved is not None
+
+    async def seed() -> None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="UI Cap Project")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    ProjectUiSettings(
+                        project_id=project.id,
+                        theme_preference="system",
+                        exclude_autopulse_traffic=True,
+                        retention_raw_events_days=90,
+                        retention_max_db_size_mb=50,
+                        logs_query_max_window_minutes=60,
+                    )
+                )
+                now = datetime.now(tz=UTC)
+                for i in range(2):
+                    session.add(
+                        Event(
+                            project_id=project.id,
+                            timestamp=now - timedelta(seconds=i),
+                            received_at=now - timedelta(seconds=i),
+                            sdk_version="0.1.0",
+                            type="request",
+                            service_name="api",
+                            environment="test",
+                            method="GET",
+                            path=f"/p-{i}",
+                            status_code=200,
+                            latency_ms=1.0,
+                            payload={"i": i},
+                            request_id=f"r-{i}",
+                        )
+                    )
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(seed())
+
+    orig_stat = Path.stat
+    real_st = orig_stat(resolved)
+    marker = (real_st.st_dev, real_st.st_ino)
+
+    def fake_stat(self: Path, *, follow_symlinks: bool = True):
+        st = orig_stat(self, follow_symlinks=follow_symlinks)
+        key = (st.st_dev, st.st_ino)
+        if key == marker:
+            return SimpleNamespace(st_size=99_000_000)
+        return st
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+
+    async def run_retention() -> tuple[int, int]:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                settings = replace(
+                    get_settings(),
+                    database_url=database_url,
+                    retention_raw_events_days=10_000,
+                    embedded_sqlite_max_db_file_mb=None,
+                )
+                result = await run_retention_cleanup_once(
+                    session, settings, now=datetime.now(tz=UTC)
+                )
+                deleted_events = result.deleted_events
+            async with session_maker() as session2:
+                remaining = int(
+                    (await session2.execute(text("SELECT COUNT(*) FROM events"))).scalar_one()
+                )
+                return deleted_events, remaining
+        finally:
+            await engine.dispose()
+
+    deleted, remaining = asyncio.run(run_retention())
+    assert remaining == 0
+    assert deleted >= 2

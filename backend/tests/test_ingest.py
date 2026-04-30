@@ -471,3 +471,65 @@ def test_ingest_accepts_optional_unknown_event_fields(
         response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
     assert response.status_code == 200
     assert response.json()["accepted"] == 1
+
+
+def test_ingest_can_drop_autopulse_internal_traffic_before_db_write(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    now = datetime.now(tz=UTC).isoformat()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/autopulse/dashboard/overview",
+                "status_code": 200,
+                "latency_ms": 10.0,
+                "request_id": "internal-1",
+            },
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/dashboard/overview",
+                "status_code": 200,
+                "latency_ms": 10.0,
+                "request_id": "internal-2",
+            },
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "POST",
+                "path": "/ingest",
+                "status_code": 200,
+                "latency_ms": 10.0,
+                "request_id": "internal-3",
+            },
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/orders",
+                "status_code": 200,
+                "latency_ms": 11.0,
+                "request_id": "app-1",
+            },
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    assert _count_events(backend_test_database_url) == 1

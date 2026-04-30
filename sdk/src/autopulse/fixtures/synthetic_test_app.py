@@ -320,7 +320,7 @@ def create_app(*, enable_monitor: bool = True) -> FastAPI:
             "mount_prefix": os.getenv("AUTOPULSE_MOUNT_PREFIX", "/autopulse"),
             "database_url": os.getenv(
                 "AUTOPULSE_DATABASE_URL",
-                "sqlite+aiosqlite:///./autopulse_embedded.db",
+                "sqlite+aiosqlite:///./autopulse.db",
             ),
             "frontend_mode": os.getenv("AUTOPULSE_FRONTEND_MODE", "static"),
             "dashboard_widgets": _build_demo_dashboard_widgets(),

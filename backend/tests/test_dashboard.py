@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -258,9 +259,17 @@ def test_dashboard_widgets_include_infrastructure_fallback_when_sdk_payload_miss
     by_id = {item["widget_id"]: item for item in payload["definitions"]}
     assert by_id["infra_host_cpu_percent"]["type"] == "line"
     assert by_id["infra_process_memory_percent"]["type"] == "line"
+    assert by_id["infra_disk_io_read_mb"]["type"] == "line"
+    assert by_id["infra_dependency_map"]["type"] == "bar"
+    assert by_id["infra_cache_hit_miss"]["type"] == "bar"
+    assert by_id["infra_db_query_performance"]["type"] == "bar"
     point_widget_ids = {str(point["widget_id"]) for point in payload["points"]}
     assert "infra_host_cpu_percent" in point_widget_ids
     assert "infra_process_memory_percent" in point_widget_ids
+    assert "infra_disk_io_read_mb" in point_widget_ids
+    assert "infra_dependency_map" in point_widget_ids
+    assert "infra_cache_hit_miss" in point_widget_ids
+    assert "infra_db_query_performance" in point_widget_ids
 
 
 def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_url: str) -> None:
@@ -938,11 +947,12 @@ def test_dashboard_alert_dispatches_include_delivery_status_fields(
 
 
 def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
-    backend_test_database_url: str,
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project UI Settings")
     base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    monkeypatch.setenv("INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB", "false")
     app = create_app()
     headers = {"Authorization": f"Bearer {key}"}
     with TestClient(app) as client:

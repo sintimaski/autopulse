@@ -26,6 +26,7 @@ class InfrastructureSampler:
         process = psutil.Process()
         vm = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
+        disk_io = psutil.disk_io_counters()
         net = psutil.net_io_counters()
         payload: dict[str, Any] = {
             "host_cpu_percent": float(psutil.cpu_percent(interval=None)),
@@ -38,6 +39,8 @@ class InfrastructureSampler:
             "disk_used_percent": float(disk.percent),
             "disk_total_bytes": float(disk.total),
             "disk_used_bytes": float(disk.used),
+            "disk_io_read_bytes": float(disk_io.read_bytes if disk_io is not None else 0.0),
+            "disk_io_write_bytes": float(disk_io.write_bytes if disk_io is not None else 0.0),
             "network_bytes_sent": float(net.bytes_sent),
             "network_bytes_recv": float(net.bytes_recv),
         }

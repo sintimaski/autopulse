@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
@@ -136,30 +136,28 @@ async def get_dashboard_diagnosis_failures_by_route(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
     )
     append_event_sql_filters(filters, event_sql_filter)
+    route_key = func.coalesce(Event.path, literal("unknown"))
     rows = await session.execute(
-        select(Event.path, Event.status_code, Event.latency_ms).where(*filters)
+        select(
+            route_key.label("path"),
+            func.count(Event.id),
+            func.sum(case((Event.status_code >= 500, 1), else_=0)),
+            func.sum(Event.latency_ms),
+        )
+        .where(*filters)
+        .group_by(route_key)
+        .having(func.sum(case((Event.status_code >= 500, 1), else_=0)) > 0)
     )
-    grouped: dict[str, dict[str, float | int]] = {}
-    for path, status_code, latency_ms in rows:
-        key = path or "unknown"
-        item = grouped.setdefault(key, {"requests": 0, "failures": 0, "latency_sum": 0.0})
-        item["requests"] += 1
-        item["latency_sum"] += float(latency_ms)
-        if int(status_code) >= 500:
-            item["failures"] += 1
     items = [
         DashboardDiagnosisFailureRouteItem(
-            path=path,
-            failure_count=int(data["failures"]),
-            error_rate=(int(data["failures"]) / int(data["requests"]))
-            if int(data["requests"])
-            else 0.0,
-            avg_latency_ms=(float(data["latency_sum"]) / int(data["requests"]))
-            if int(data["requests"])
-            else 0.0,
+            path=str(path or "unknown"),
+            failure_count=int(failures or 0),
+            error_rate=(int(failures or 0) / int(req_count or 0)) if int(req_count or 0) else 0.0,
+            avg_latency_ms=(
+                (float(lat_sum or 0.0) / int(req_count or 0)) if int(req_count or 0) else 0.0
+            ),
         )
-        for path, data in grouped.items()
-        if int(data["failures"]) > 0
+        for path, req_count, failures, lat_sum in rows
     ]
     items.sort(key=lambda item: item.failure_count, reverse=True)
     return DashboardDiagnosisFailureRoutesResponse(

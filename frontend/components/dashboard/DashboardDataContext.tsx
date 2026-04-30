@@ -852,10 +852,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (liveFallbackRefreshTimer.current) {
       clearInterval(liveFallbackRefreshTimer.current);
     }
-    // Embedded/local dev traffic can bypass /ingest WS broadcasts; keep data fresh regardless.
+    // Embedded/local dev traffic can bypass /ingest WS broadcasts; keep data fresh without
+    // hammering the API (each refresh runs several dashboard queries).
     liveFallbackRefreshTimer.current = setInterval(() => {
       setRefreshToken((token) => token + 1);
-    }, 5000);
+    }, 30_000);
     return () => {
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);

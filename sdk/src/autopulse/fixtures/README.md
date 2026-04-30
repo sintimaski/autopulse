@@ -32,7 +32,8 @@ uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8
 
 - `AUTOPULSE_MODE`: `embedded` (default) or `remote`.
 - `AUTOPULSE_MOUNT_PREFIX`: embedded mount prefix (default `/autopulse`).
-- `AUTOPULSE_DATABASE_URL`: embedded SQLite URL (default `sqlite+aiosqlite:///./autopulse_embedded.db`).
+- `AUTOPULSE_DATABASE_URL`: embedded SQLite URL (default `sqlite+aiosqlite:///./autopulse.db`).
+- `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`: max on-disk SQLite file size in MB (default `512` in embedded mode). Retention deletes oldest events across all projects until the file is under this cap. Set to `0` to turn off this global ceiling (dashboard per-project caps may still apply).
 - `AUTOPULSE_FRONTEND_MODE`: embedded frontend mode (`static` default, `sidecar` optional).
 - `AUTOPULSE_MODE=embedded` requires backend dependencies (`pip install "autopulse[embedded]"` outside this monorepo).
 - `AUTOPULSE_API_KEY`: project API key (`ap_live_...`) for remote ingest mode.

@@ -121,21 +121,17 @@ def _sqlite_db_disk_footprint_bytes(db_path: Path) -> int:
 def _vacuum_sqlite_db_file(db_path: Path) -> int:
     if not db_path.exists():
         return 0
-    last_exc: sqlite3.OperationalError | None = None
-    for _ in range(5):
-        try:
-            with sqlite3.connect(str(db_path), timeout=120.0) as connection:
-                connection.execute("PRAGMA busy_timeout=120000")
-                with suppress(sqlite3.OperationalError):
-                    connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                connection.execute("VACUUM")
-            return db_path.stat().st_size
-        except sqlite3.OperationalError as exc:
-            last_exc = exc
-            continue
-    if last_exc is not None:
-        raise last_exc
-    return 0
+    # Keep VACUUM fail-fast under contention; never block runtime/shutdown for minutes.
+    try:
+        with sqlite3.connect(str(db_path), timeout=2.0) as connection:
+            connection.execute("PRAGMA busy_timeout=2000")
+            with suppress(sqlite3.OperationalError):
+                connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            connection.execute("VACUUM")
+        return db_path.stat().st_size
+    except sqlite3.OperationalError:
+        # If DB is busy, skip this pass and retry on the next scheduled tick.
+        return db_path.stat().st_size if db_path.exists() else 0
 
 
 async def _delete_oldest_dashboard_widget_points_batch(
@@ -320,7 +316,7 @@ async def _sqlite_shrink_under_size_cap(
     """Delete oldest rows (per-project or globally) plus auxiliary tables until file fits cap."""
     deleted_total = 0
     stall_rounds = 0
-    batch = _SQLITE_SHRINK_BATCH
+    max_batch = _SQLITE_SHRINK_BATCH
     for _ in range(_SQLITE_SHRINK_MAX_ITERATIONS):
         try:
             current_size = _sqlite_db_disk_footprint_bytes(sqlite_db_path)
@@ -328,6 +324,9 @@ async def _sqlite_shrink_under_size_cap(
             break
         if current_size <= max_bytes:
             break
+        over_ratio = max(0.0, float(current_size - max_bytes) / float(max(current_size, 1)))
+        # Keep newest data close to the cap: use smaller batches when only slightly over cap.
+        batch = max(200, min(max_batch, int(max_batch * max(over_ratio, 0.05))))
 
         if project_id is not None:
             deleted_now = await _delete_oldest_project_events(
@@ -343,6 +342,13 @@ async def _sqlite_shrink_under_size_cap(
         if deleted_now > 0:
             deleted_total += deleted_now
             await session.commit()
+            _vacuum_sqlite_db_file(sqlite_db_path)
+            try:
+                current_after_delete = _sqlite_db_disk_footprint_bytes(sqlite_db_path)
+            except OSError:
+                break
+            if current_after_delete <= max_bytes:
+                break
             stall_rounds = 0
             continue
 
@@ -353,6 +359,13 @@ async def _sqlite_shrink_under_size_cap(
         if aux_deleted > 0:
             deleted_total += aux_deleted
             await session.commit()
+            _vacuum_sqlite_db_file(sqlite_db_path)
+            try:
+                current_after_aux = _sqlite_db_disk_footprint_bytes(sqlite_db_path)
+            except OSError:
+                break
+            if current_after_aux <= max_bytes:
+                break
             stall_rounds = 0
             continue
 

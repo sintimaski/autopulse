@@ -233,7 +233,11 @@ export function SettingsContent() {
               </label>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Optional rotation caps are only applied on local SQLite deployments.
+              Optional rotation caps apply on local SQLite only. Embedded installs also honor{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
+                AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB
+              </code>{" "}
+              as a whole-file ceiling (default 512 unless overridden).
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
               Archive status: {effectiveRetentionDraft.archival_status}

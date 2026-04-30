@@ -195,6 +195,8 @@ def _build_infrastructure_widget_payload(metrics: Mapping[str, Any]) -> dict[str
         ("process_memory_percent", "infra_process_memory_percent", "App memory share", "%", 530),
         ("process_memory_rss_bytes", "infra_process_memory_rss_mb", "App RSS memory", "MB", 540),
         ("disk_used_percent", "infra_disk_used_percent", "Host disk used", "%", 550),
+        ("disk_io_read_bytes", "infra_disk_io_read_mb", "Disk I/O read", "MB", 552),
+        ("disk_io_write_bytes", "infra_disk_io_write_mb", "Disk I/O write", "MB", 553),
         ("network_bytes_recv", "infra_network_received_mb", "Network received", "MB", 560),
         ("network_bytes_sent", "infra_network_sent_mb", "Network sent", "MB", 570),
     )

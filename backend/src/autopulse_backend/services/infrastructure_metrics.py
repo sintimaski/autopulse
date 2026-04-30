@@ -25,6 +25,7 @@ class InfrastructureMetricsSampler:
         process = psutil.Process()
         vm = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
+        disk_io = psutil.disk_io_counters()
         net = psutil.net_io_counters()
         sample: dict[str, float] = {
             "host_cpu_percent": float(psutil.cpu_percent(interval=None)),
@@ -37,6 +38,8 @@ class InfrastructureMetricsSampler:
             "disk_used_percent": float(disk.percent),
             "disk_total_bytes": float(disk.total),
             "disk_used_bytes": float(disk.used),
+            "disk_io_read_bytes": float(disk_io.read_bytes if disk_io is not None else 0.0),
+            "disk_io_write_bytes": float(disk_io.write_bytes if disk_io is not None else 0.0),
             "network_bytes_sent": float(net.bytes_sent),
             "network_bytes_recv": float(net.bytes_recv),
         }
@@ -53,6 +56,8 @@ def to_widget_payload(metrics: dict[str, Any]) -> tuple[list[dict[str, Any]], li
         ("process_memory_percent", "infra_process_memory_percent", "App memory share", "%", 530),
         ("process_memory_rss_bytes", "infra_process_memory_rss_mb", "App RSS memory", "MB", 540),
         ("disk_used_percent", "infra_disk_used_percent", "Host disk used", "%", 550),
+        ("disk_io_read_bytes", "infra_disk_io_read_mb", "Disk I/O read", "MB", 552),
+        ("disk_io_write_bytes", "infra_disk_io_write_mb", "Disk I/O write", "MB", 553),
         ("network_bytes_recv", "infra_network_received_mb", "Network received", "MB", 560),
         ("network_bytes_sent", "infra_network_sent_mb", "Network sent", "MB", 570),
     )
