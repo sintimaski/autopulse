@@ -38,7 +38,17 @@ class SchedulerHandle:
     async def stop(self) -> None:
         self.stop_event.set()
         if self.tasks:
-            await asyncio.gather(*self.tasks, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self.tasks, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except TimeoutError:
+                logger.warning("Scheduler stop timed out; cancelling remaining tasks")
+                for task in self.tasks:
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(*self.tasks, return_exceptions=True)
             self.tasks.clear()
 
 
@@ -52,8 +62,10 @@ class RetentionPressurePollHandle:
         if self.task.done():
             return
         self.task.cancel()
-        with suppress(asyncio.CancelledError):
-            await self.task
+        try:
+            await asyncio.wait_for(self.task, timeout=5.0)
+        except (asyncio.CancelledError, TimeoutError):
+            logger.warning("Retention pressure poll stop timed out")
 
 
 _retention_run_lock = asyncio.Lock()
@@ -146,7 +158,9 @@ async def run_retention_once(
         try:
             before_bytes = _sqlite_db_disk_footprint_bytes(post_vacuum_path)
             started = time.monotonic()
-            after_main = _vacuum_sqlite_db_file(post_vacuum_path)
+            # Run VACUUM in a worker thread so the event loop remains responsive
+            # (Ctrl-C/shutdown can proceed while retention cleanup is in progress).
+            after_main = await asyncio.to_thread(_vacuum_sqlite_db_file, post_vacuum_path)
             elapsed_ms = int((time.monotonic() - started) * 1000)
             after_bytes = _sqlite_db_disk_footprint_bytes(post_vacuum_path)
             logger.info(
