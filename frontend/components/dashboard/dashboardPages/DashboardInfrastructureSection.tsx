@@ -228,24 +228,6 @@ export function DashboardInfrastructureSection({ sparklineSeries, overviewExtend
     to: item.key,
     weight: Number(item.request_count || 0),
   }));
-  const widgetSearchCorpus = widgetDefinitions
-    .map((widget) => `${widget.widget_id} ${widget.title} ${widget.description ?? ""}`.toLowerCase())
-    .join(" ");
-  const infraMetricCoverage = [
-    { label: "CPU usage", keywords: ["cpu", "load", "utilization"] },
-    { label: "Memory usage", keywords: ["memory", "ram", "heap"] },
-    { label: "Disk I/O", keywords: ["disk i/o", "disk io", "disk throughput", "disk read", "disk write"] },
-    {
-      label: "Network traffic",
-      keywords: ["network", "bandwidth", "bytes in", "bytes out", "ingress", "egress", "rx", "tx"],
-    },
-    { label: "DB query performance", keywords: ["db", "database", "query", "sql"] },
-    { label: "Cache hit/miss", keywords: ["cache hit", "cache miss", "cache ratio", "cache", "redis"] },
-    { label: "Dependency map", keywords: ["dependency", "service map", "upstream", "downstream"] },
-  ].map((item) => ({
-    ...item,
-    ready: item.keywords.some((keyword) => containsKeyword(widgetSearchCorpus, keyword)),
-  }));
 
   const infrastructureConcreteCards = [
     toInfrastructureCard({
@@ -300,35 +282,6 @@ export function DashboardInfrastructureSection({ sparklineSeries, overviewExtend
 
   return (
     <>
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
-          Infrastructure metric coverage
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          These metrics are sourced from SDK dashboard widgets. Add matching widgets to your app to light up missing
-          rows.
-        </p>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {infraMetricCoverage.map((item) => (
-            <div
-              key={item.label}
-              className="flex items-center justify-between rounded-lg border border-slate-200/80 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/70"
-            >
-              <p className="text-sm text-slate-800 dark:text-neutral-100">{item.label}</p>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                  item.ready
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-                }`}
-              >
-                {item.ready ? "Ready" : "Missing"}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section className="grid w-full gap-4 xl:grid-cols-2">
         <ChartPanel title="CPU usage" description="Per-instance/container CPU utilization trend.">
           {cpuSeries.values.length || cpuFallbackValues.length ? (
