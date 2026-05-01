@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class DashboardOverviewBucket(BaseModel):
@@ -214,6 +214,37 @@ class DashboardDataQueryRequest(BaseModel):
     diagnosis_error_group_events: DashboardDataQueryPagination = DashboardDataQueryPagination(
         limit=20, offset=0
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def clamp_query_pagination(cls, data: Any) -> Any:
+        """Prevent oversized bundle responses from abusive client limits."""
+        if not isinstance(data, dict):
+            return data
+        out = dict(data)
+
+        def _clamp_section(key: str, *, max_limit: int) -> None:
+            section = out.get(key)
+            if not isinstance(section, dict):
+                return
+            s = dict(section)
+            try:
+                lim = int(s.get("limit", max_limit))
+            except (TypeError, ValueError):
+                lim = max_limit
+            try:
+                off = int(s.get("offset", 0))
+            except (TypeError, ValueError):
+                off = 0
+            s["limit"] = min(max(lim, 1), max_limit)
+            s["offset"] = max(off, 0)
+            out[key] = s
+
+        _clamp_section("requests", max_limit=250)
+        _clamp_section("error_groups", max_limit=100)
+        _clamp_section("alert_dispatches", max_limit=100)
+        _clamp_section("diagnosis_error_group_events", max_limit=100)
+        return out
 
 
 class DashboardDataQueryResponse(BaseModel):

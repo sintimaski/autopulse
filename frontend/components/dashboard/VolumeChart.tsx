@@ -116,6 +116,9 @@ export function VolumeChart({
           backgroundColor: displayed.map((b) => barColorForBucket(b)),
           borderRadius: 3,
           borderSkipped: false,
+          categoryPercentage: 1,
+          barPercentage: 1,
+          maxBarThickness: 56,
         },
       ],
     };
@@ -126,6 +129,23 @@ export function VolumeChart({
       responsive: true,
       maintainAspectRatio: false,
       animation: { duration: displayed.length > 80 ? 0 : 380 },
+      // Hover the full time column (not only the painted bar) so sparse buckets stay easy to inspect.
+      interaction: {
+        mode: "index",
+        intersect: false,
+        axis: "x",
+      },
+      onHover: (event, elements, chart) => {
+        const canvas = chart?.canvas;
+        if (!canvas) {
+          return;
+        }
+        if (elements.length > 0) {
+          canvas.style.cursor = "pointer";
+        } else {
+          canvas.style.cursor = "default";
+        }
+      },
       onClick: (_event, elements) => {
         if (!elements.length) {
           return;

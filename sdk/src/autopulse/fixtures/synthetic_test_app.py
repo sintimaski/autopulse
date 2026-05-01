@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from autopulse import (
@@ -57,6 +58,27 @@ class CreateOrderRequest(BaseModel):
     item: str = Field(min_length=2, max_length=160)
 
 
+class PaymentIntentRequest(BaseModel):
+    amount_cents: int = Field(ge=1, le=999_999_999)
+    currency: str = Field(default="usd", min_length=3, max_length=3)
+
+
+class DispatchEventRequest(BaseModel):
+    event_type: str = Field(min_length=1, max_length=120)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class FeedbackRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+_INVENTORY: dict[str, dict[str, object]] = {
+    "SKU-100": {"sku": "SKU-100", "units": 420, "warehouse": "east-1"},
+    "SKU-200": {"sku": "SKU-200", "units": 18, "warehouse": "west-2"},
+    "SKU-RETIRED": {"sku": "SKU-RETIRED", "units": 0, "warehouse": "legacy"},
+}
+
 _USERS: dict[int, dict[str, object]] = {
     1: {
         "id": 1,
@@ -85,6 +107,10 @@ _ORDERS: dict[int, dict[str, object]] = {
     1002: {"id": 1002, "user_id": 3, "amount_cents": 2499, "item": "wireless-mouse"},
 }
 _ALLOWED_ROLES: tuple[Role, ...] = ("viewer", "editor", "admin")
+
+
+def _user_has_orders(uid: int) -> bool:
+    return any(int(o.get("user_id", 0)) == uid for o in _ORDERS.values())
 
 
 def _utc_now() -> str:
@@ -504,6 +530,210 @@ def create_app(*, enable_monitor: bool = True) -> FastAPI:
             "date": effective_date.isoformat(),
             "totals": {"requests": 1842, "errors": 63, "p95_latency_ms": 241.7},
         }
+
+    @app.get("/inventory/{sku}")
+    async def get_inventory(
+        sku: str,
+        request: Request,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        if _should_happen(probability=0.11, salt=f"inv-wms:{sku}:{request_id}"):
+            logger.error("inventory_wms_unavailable sku=%s request_id=%s", sku, request_id)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="WMS circuit open — inventory temporarily unavailable",
+            )
+        row = _INVENTORY.get(sku)
+        if row is None or _should_happen(probability=0.14, salt=f"inv-miss:{sku}:{request_id}"):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown SKU")
+        if _should_happen(probability=0.08, salt=f"inv-slow:{sku}:{request_id}"):
+            await asyncio.sleep(0.55)
+        else:
+            await asyncio.sleep(0.02)
+        return {"actor": auth.user_id, "record": row}
+
+    @app.post("/payments/intents", status_code=status.HTTP_201_CREATED)
+    async def create_payment_intent(
+        body: PaymentIntentRequest,
+        request: Request,
+        auth: AuthContext = EDITOR_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        if body.amount_cents < 50:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="amount_cents must be at least 50",
+            )
+        if _should_happen(probability=0.12, salt=f"pay-declined:{body.amount_cents}:{request_id}"):
+            logger.warning(
+                "payment_intent_declined actor=%s amount_cents=%s",
+                auth.user_id,
+                body.amount_cents,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="card_declined — try another instrument",
+            )
+        intent_id = f"pi_{uuid.uuid4().hex[:24]}"
+        return {
+            "id": intent_id,
+            "amount_cents": body.amount_cents,
+            "currency": body.currency.lower(),
+            "status": "requires_confirmation",
+        }
+
+    @app.post("/integrations/dispatch", status_code=status.HTTP_202_ACCEPTED)
+    async def dispatch_integration(
+        body: DispatchEventRequest,
+        request: Request,
+        x_integration_secret: str | None = Header(default=None),
+        auth: AuthContext = EDITOR_AUTH,
+    ) -> dict[str, object]:
+        if (x_integration_secret or "").strip() != "synthetic-secret":
+            logger.warning("integration_dispatch_unauthorized actor=%s", auth.user_id)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid or missing x-integration-secret",
+            )
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        dispatch_salt = f"dispatch-queue-full:{body.event_type}:{request_id}"
+        if _should_happen(probability=0.1, salt=dispatch_salt):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="partner webhook queue saturated",
+            )
+        return {"accepted": True, "event_type": body.event_type, "delivery_id": request_id}
+
+    @app.get("/analytics/summary")
+    async def analytics_summary(
+        request: Request,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        lag = 0.06 + 0.22 * _stable_roll(f"analytics-lag:{request_id}")
+        await asyncio.sleep(lag)
+        if _should_happen(probability=0.09, salt=f"analytics-shard:{request_id}"):
+            logger.error("analytics_shard_failure request_id=%s", request_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="aggregation shard failed — retry later",
+            )
+        return {
+            "actor": auth.user_id,
+            "sessions_24h": 12840,
+            "bounce_rate": 0.31,
+            "top_path": "/checkout/preview",
+        }
+
+    @app.get("/upstream/quote")
+    async def upstream_quote(
+        request: Request,
+        symbol: str = Query(default="SYNTH", min_length=1, max_length=16),
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        if _should_happen(probability=0.16, salt=f"quote-stale:{symbol}:{request_id}"):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="price feed stale — upstream did not ack",
+            )
+        await asyncio.sleep(0.03)
+        bid = round(100.0 + 40.0 * _stable_roll(f"quote-bid:{symbol}"), 4)
+        return {"symbol": symbol.upper(), "bid": bid, "ask": round(bid + 0.02, 4)}
+
+    @app.get("/quota/status", response_model=None)
+    async def quota_status(
+        request: Request,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> JSONResponse | dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        if _should_happen(probability=0.13, salt=f"quota-429:{auth.user_id}:{request_id}"):
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={"Retry-After": "4", "X-RateLimit-Remaining": "0"},
+                content={"detail": "rate_limited"},
+            )
+        return {
+            "actor": auth.user_id,
+            "remaining": 892,
+            "reset_epoch_s": 3600,
+        }
+
+    @app.get("/checkout/preview")
+    async def checkout_preview(
+        request: Request,
+        items: int = Query(default=2, ge=1, le=50),
+        force_timeout: bool = FLAG_QUERY,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        await asyncio.sleep(min(0.15 + 0.02 * items, 0.85))
+        if force_timeout or _should_happen(
+            probability=0.1,
+            salt=f"checkout-preview-timeout:{items}:{request_id}",
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                detail="pricing engine did not respond in time",
+            )
+        return {"actor": auth.user_id, "items": items, "subtotal_cents": items * 1299}
+
+    @app.post("/feedback", status_code=status.HTTP_201_CREATED)
+    async def submit_feedback(
+        body: FeedbackRequest,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        return {"received": True, "rating": body.rating, "actor": auth.user_id}
+
+    @app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def delete_user(
+        user_id: int,
+        auth: AuthContext = ADMIN_AUTH,
+    ) -> Response:
+        user = _USERS.get(user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if _user_has_orders(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="user has active orders — cannot delete",
+            )
+        del _USERS[user_id]
+        logger.info("user_deleted actor=%s user_id=%s", auth.user_id, user_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/errors/key-missing")
+    async def error_key_missing(
+        request: Request,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        logger.error("synthetic_keyerror route=/errors/key-missing request_id=%s", request_id)
+        raise KeyError("reservation_id")
+
+    @app.get("/errors/type-mismatch")
+    async def error_type_mismatch(
+        request: Request,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        logger.error("synthetic_typeerror route=/errors/type-mismatch request_id=%s", request_id)
+        raise TypeError("expected int for line_total, got str")
+
+    @app.get("/errors/deadline")
+    async def error_deadline(
+        request: Request,
+        auth: AuthContext = VIEWER_AUTH,
+    ) -> dict[str, object]:
+        request_id = str(getattr(request.state, "request_id", "no-request-id"))
+        logger.error("synthetic_timeout route=/errors/deadline request_id=%s", request_id)
+        try:
+            async with asyncio.timeout(0.02):
+                await asyncio.sleep(1.0)
+        except TimeoutError as exc:
+            raise TimeoutError("downstream reservation hold exceeded budget") from exc
+        return {"ok": True, "request_id": request_id}
 
     @app.get("/boom")
     async def boom(

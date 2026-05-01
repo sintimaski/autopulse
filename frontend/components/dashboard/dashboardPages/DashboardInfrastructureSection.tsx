@@ -3,7 +3,8 @@
 import {
   BreakdownBarChart,
   ChartPanel,
-  TimeSeriesLineChart,
+  StackedAreaChart,
+  type StackedAreaSeries,
 } from "../charts";
 import { MetricCard } from "../MetricCard";
 import type {
@@ -72,20 +73,88 @@ export function DashboardInfrastructureSection({ sparklineSeries, overviewExtend
       return keywords.some((keyword) => containsKeyword(corpus, keyword));
     });
 
-  const lineWidgetToSeries = (widget: DashboardWidgetDefinition | undefined) => {
+  const formatAxisTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  /** Pivot widget points into stacked layers (one layer per distinct `label`, or a single default series). */
+  const widgetPointsToStackedSeries = (
+    widget: DashboardWidgetDefinition | undefined,
+    defaultSeriesLabel: string,
+    colors: string[],
+  ): { labels: string[]; series: StackedAreaSeries[] } => {
     if (!widget) {
-      return { labels: [] as string[], values: [] as number[] };
+      return { labels: [], series: [] };
     }
     const points = [...(widgetPointsById.get(widget.widget_id) ?? [])].sort((a, b) =>
       a.timestamp.localeCompare(b.timestamp),
     );
-    return {
-      labels: points.map((point) =>
-        new Date(point.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      ),
-      values: points.map((point) => Number(point.value)),
-    };
+    if (!points.length) {
+      return { labels: [], series: [] };
+    }
+    const byTime = new Map<string, Map<string, number>>();
+    const timeOrder: string[] = [];
+    for (const p of points) {
+      const t = p.timestamp;
+      if (!byTime.has(t)) {
+        byTime.set(t, new Map());
+        timeOrder.push(t);
+      }
+      const layer = String(p.label ?? defaultSeriesLabel).trim() || defaultSeriesLabel;
+      const prev = byTime.get(t)!.get(layer) ?? 0;
+      byTime.get(t)!.set(layer, prev + Number(p.value));
+    }
+    const labelSet = new Set<string>();
+    for (const m of byTime.values()) {
+      for (const k of m.keys()) {
+        labelSet.add(k);
+      }
+    }
+    const layerKeys = [...labelSet].sort();
+    const labels = timeOrder.map((t) => formatAxisTime(t));
+    const series: StackedAreaSeries[] = layerKeys.map((label, i) => ({
+      id: label,
+      label,
+      color: colors[i % colors.length],
+      values: timeOrder.map((t) => Math.max(0, byTime.get(t)?.get(label) ?? 0)),
+    }));
+    return { labels, series };
   };
+
+  /** When infrastructure widgets are absent, show request mix by status class (honest traffic proxy). */
+  const sparklineToStatusStack = (buckets: OverviewBucket[]): { labels: string[]; series: StackedAreaSeries[] } => ({
+    labels: buckets.map((b) => formatAxisTime(b.minute)),
+    series: [
+      {
+        id: "2xx",
+        label: "2xx",
+        color: "#10b981",
+        values: buckets.map((b) => Number(b.count_2xx || 0)),
+      },
+      {
+        id: "3xx",
+        label: "3xx",
+        color: "#0ea5e9",
+        values: buckets.map((b) => Number(b.count_3xx || 0)),
+      },
+      {
+        id: "4xx",
+        label: "4xx",
+        color: "#f59e0b",
+        values: buckets.map((b) => Number(b.count_4xx || 0)),
+      },
+      {
+        id: "5xx",
+        label: "5xx",
+        color: "#f43f5e",
+        values: buckets.map((b) => Number(b.count_5xx || 0)),
+      },
+    ],
+  });
+
+  const INFRA_STACK_PALETTE_CPU = ["#0ea5e9", "#38bdf8", "#7dd3fc", "#bae6fd"];
+  const INFRA_STACK_PALETTE_MEM = ["#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe"];
+  const INFRA_STACK_PALETTE_DISK = ["#f59e0b", "#fbbf24", "#fcd34d", "#fde68a"];
+  const INFRA_STACK_PALETTE_NET = ["#14b8a6", "#2dd4bf", "#5eead4", "#99f6e4"];
 
   const formatMetricValue = (value: number, unit: string | null | undefined) => {
     const normalized = (unit ?? "").toLowerCase();
@@ -202,19 +271,15 @@ export function DashboardInfrastructureSection({ sparklineSeries, overviewExtend
   const networkWidget = findWidgetByKeywords(["network", "bandwidth", "bytes in", "bytes out"]);
   const dbWidget = findWidgetByKeywords(["db", "database", "query", "sql"]);
   const cacheWidget = findWidgetByKeywords(["cache", "hit", "miss", "redis"]);
-  const cpuSeries = lineWidgetToSeries(cpuWidget);
-  const memorySeries = lineWidgetToSeries(memoryWidget);
-  const diskSeries = lineWidgetToSeries(diskWidget);
-  const networkSeries = lineWidgetToSeries(networkWidget);
+
+  const statusClassFallbackStack = sparklineToStatusStack(sparklineSeries);
+  const cpuStack = widgetPointsToStackedSeries(cpuWidget, "CPU", INFRA_STACK_PALETTE_CPU);
+  const memoryStack = widgetPointsToStackedSeries(memoryWidget, "Memory", INFRA_STACK_PALETTE_MEM);
+  const diskStack = widgetPointsToStackedSeries(diskWidget, "Disk", INFRA_STACK_PALETTE_DISK);
+  const networkStack = widgetPointsToStackedSeries(networkWidget, "Network", INFRA_STACK_PALETTE_NET);
+
   const dbBars = latestLabeledBars(dbWidget);
   const cacheBars = latestLabeledBars(cacheWidget);
-  const fallbackMinuteLabels = sparklineSeries.map((bucket) =>
-    new Date(bucket.minute).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-  );
-  const cpuFallbackValues = sparklineSeries.map((bucket) => Number(bucket.request_count || 0));
-  const memoryFallbackValues = sparklineSeries.map((bucket) => Number(bucket.avg_latency_ms || 0));
-  const diskFallbackValues = sparklineSeries.map((bucket) => Number(bucket.error_count || 0));
-  const networkFallbackValues = sparklineSeries.map((bucket) => Number(bucket.request_count || 0));
   const dbFallbackBars = routeBreakdownByVolume.map((item) => ({
     key: item.key,
     value: Number(item.avg_latency_ms || 0),
@@ -283,75 +348,87 @@ export function DashboardInfrastructureSection({ sparklineSeries, overviewExtend
   return (
     <>
       <section className="grid w-full gap-4 xl:grid-cols-2">
-        <ChartPanel title="CPU usage" description="Per-instance/container CPU utilization trend.">
-          {cpuSeries.values.length || cpuFallbackValues.length ? (
-            <TimeSeriesLineChart
-              title="CPU"
-              labels={cpuSeries.values.length ? cpuSeries.labels : fallbackMinuteLabels}
-              values={cpuSeries.values.length ? cpuSeries.values : cpuFallbackValues}
-              color="#0ea5e9"
-              formatValue={(value) => `${value.toFixed(2)}`}
+        <ChartPanel
+          title="CPU usage"
+          description="Stacked trend: multiple CPU dimensions from widget labels, or HTTP status mix as a stand-in."
+        >
+          {cpuStack.series.length || statusClassFallbackStack.series.length ? (
+            <StackedAreaChart
+              height={132}
+              labels={cpuStack.series.length ? cpuStack.labels : statusClassFallbackStack.labels}
+              series={cpuStack.series.length ? cpuStack.series : statusClassFallbackStack.series}
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">No CPU widget data yet.</p>
           )}
-          {!cpuSeries.values.length ? (
+          {!cpuStack.series.length && statusClassFallbackStack.series.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using traffic volume proxy until CPU widget data is available.
+              Showing request volume by HTTP status class until CPU widget samples arrive.
             </p>
           ) : null}
         </ChartPanel>
-        <ChartPanel title="Memory usage" description="RAM trend over time.">
-          {memorySeries.values.length || memoryFallbackValues.length ? (
-            <TimeSeriesLineChart
-              title="Memory"
-              labels={memorySeries.values.length ? memorySeries.labels : fallbackMinuteLabels}
-              values={memorySeries.values.length ? memorySeries.values : memoryFallbackValues}
-              color="#8b5cf6"
-              formatValue={(value) => `${value.toFixed(2)}`}
+        <ChartPanel
+          title="Memory usage"
+          description="Stacked RAM signals when labels differentiate pools; otherwise status-class traffic proxy."
+        >
+          {memoryStack.series.length || statusClassFallbackStack.series.length ? (
+            <StackedAreaChart
+              height={132}
+              labels={
+                memoryStack.series.length ? memoryStack.labels : statusClassFallbackStack.labels
+              }
+              series={
+                memoryStack.series.length ? memoryStack.series : statusClassFallbackStack.series
+              }
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">No memory widget data yet.</p>
           )}
-          {!memorySeries.values.length ? (
+          {!memoryStack.series.length && statusClassFallbackStack.series.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using latency proxy until memory widget data is available.
+              Showing request volume by HTTP status class until memory widget samples arrive.
             </p>
           ) : null}
         </ChartPanel>
-        <ChartPanel title="Disk I/O" description="Read/write operations or throughput over time.">
-          {diskSeries.values.length || diskFallbackValues.length ? (
-            <TimeSeriesLineChart
-              title="Disk I/O"
-              labels={diskSeries.values.length ? diskSeries.labels : fallbackMinuteLabels}
-              values={diskSeries.values.length ? diskSeries.values : diskFallbackValues}
-              color="#f59e0b"
-              formatValue={(value) => `${value.toFixed(2)}`}
+        <ChartPanel
+          title="Disk usage / I/O"
+          description="Stacked disk or I/O series from widgets; fallback is status-class request mix."
+        >
+          {diskStack.series.length || statusClassFallbackStack.series.length ? (
+            <StackedAreaChart
+              height={132}
+              labels={diskStack.series.length ? diskStack.labels : statusClassFallbackStack.labels}
+              series={diskStack.series.length ? diskStack.series : statusClassFallbackStack.series}
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">No disk I/O widget data yet.</p>
           )}
-          {!diskSeries.values.length ? (
+          {!diskStack.series.length && statusClassFallbackStack.series.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using error-pressure proxy until disk I/O widget data is available.
+              Showing request volume by HTTP status class until disk widget samples arrive.
             </p>
           ) : null}
         </ChartPanel>
-        <ChartPanel title="Network traffic" description="Inbound/outbound traffic trend.">
-          {networkSeries.values.length || networkFallbackValues.length ? (
-            <TimeSeriesLineChart
-              title="Network"
-              labels={networkSeries.values.length ? networkSeries.labels : fallbackMinuteLabels}
-              values={networkSeries.values.length ? networkSeries.values : networkFallbackValues}
-              color="#14b8a6"
-              formatValue={(value) => `${value.toFixed(2)}`}
+        <ChartPanel
+          title="Network traffic"
+          description="Ideal when widget exposes inbound vs outbound labels; stacked proxy uses status bands."
+        >
+          {networkStack.series.length || statusClassFallbackStack.series.length ? (
+            <StackedAreaChart
+              height={132}
+              labels={
+                networkStack.series.length ? networkStack.labels : statusClassFallbackStack.labels
+              }
+              series={
+                networkStack.series.length ? networkStack.series : statusClassFallbackStack.series
+              }
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">No network widget data yet.</p>
           )}
-          {!networkSeries.values.length ? (
+          {!networkStack.series.length && statusClassFallbackStack.series.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using request-volume proxy until network widget data is available.
+              Showing request volume by HTTP status class until network widget samples arrive.
             </p>
           ) : null}
         </ChartPanel>

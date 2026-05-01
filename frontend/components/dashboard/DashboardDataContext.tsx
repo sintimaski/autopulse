@@ -252,7 +252,6 @@ export type DashboardHomeSliceValue = {
 const DashboardDataContext = createContext<DashboardDataContextValue | null>(null);
 const DashboardHomeSliceContext = createContext<DashboardHomeSliceValue | null>(null);
 const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
-const DASHBOARD_HEAVY_REFRESH_COOLDOWN_MS = 15_000;
 const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 const MAX_WIDGET_POINTS_TOTAL = 2400;
 const DASHBOARD_REWRITE_PHASED_ENABLED =
@@ -407,7 +406,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const liveLastRefreshAtRef = useRef(0);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
-  const dashboardHeavyFetchRef = useRef<{ key: string; atMs: number } | null>(null);
   const [liveUpdatesConnected, setLiveUpdatesConnected] = useState(false);
   const rawDashboardPathname = usePathname();
   const dashboardRoutePath = useMemo(
@@ -584,9 +582,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         includeExtended = routePath === "/diagnosis";
         includeWidgets = false;
       }
-      const includeErrorGroups =
-        routePath === "/diagnosis" ||
-        (routePath === "/dashboard" && !DASHBOARD_REWRITE_PHASED_ENABLED);
+      const includeErrorGroups = routePath === "/diagnosis" || routePath === "/dashboard";
       const includeDiagnosis = routePath === "/diagnosis";
       const includeAlertDispatches = routePath === "/alerts";
       const useSnapshot = routePath === "/dashboard";
@@ -612,36 +608,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const serverPath = pathQuery.trim();
         const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
         const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
-        if (routePath === "/dashboard") {
-          const heavyScopeKey = [
-            toIsoWindow?.from ?? "",
-            toIsoWindow?.to ?? "",
-            String(windowMinutes),
-            method,
-            statusClass,
-            minLatencyMs.trim(),
-            maxLatencyMs.trim(),
-            serverPath,
-            envCsv,
-            serviceCsv,
-            sqlFilterEnabled ? sqlFilterApplied.trim() : "",
-          ].join("|");
-          const previousHeavyFetch = dashboardHeavyFetchRef.current;
-          const canReuseHeavyData =
-            previousHeavyFetch !== null &&
-            previousHeavyFetch.key === heavyScopeKey &&
-            Date.now() - previousHeavyFetch.atMs < DASHBOARD_HEAVY_REFRESH_COOLDOWN_MS;
-          if (refreshToken > 0 && canReuseHeavyData && overviewExtended !== null) {
-            includeExtended = false;
-            includeWidgets = false;
-          } else {
-            dashboardHeavyFetchRef.current = {
-              key: heavyScopeKey,
-              atMs: Date.now(),
-            };
-          }
-        }
-
         const scopeKey = buildDashboardDataCacheScopeKey({
           windowFrom: toIsoWindow?.from ?? "",
           windowTo: toIsoWindow?.to ?? "",

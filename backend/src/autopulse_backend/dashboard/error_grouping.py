@@ -7,6 +7,10 @@ from datetime import datetime
 from sqlalchemy import and_, exists, literal, or_, select
 from sqlalchemy.orm import aliased
 
+from autopulse_backend.dashboard.payload_limits import (
+    MAX_ERROR_GROUP_MESSAGE_CHARS,
+    MAX_ERROR_GROUP_STACK_CHARS,
+)
 from autopulse_backend.models import Event
 
 DASHBOARD_GROUP_HASH_PATH_SEP = "\x1e"
@@ -103,6 +107,10 @@ def error_group_labels(
             if status_code
             else "No exception metadata was sent with this error event."
         )
+    if len(msg) > MAX_ERROR_GROUP_MESSAGE_CHARS:
+        msg = f"{msg[: MAX_ERROR_GROUP_MESSAGE_CHARS - 1]}…"
+    if stack is not None and len(stack) > MAX_ERROR_GROUP_STACK_CHARS:
+        stack = f"{stack[: MAX_ERROR_GROUP_STACK_CHARS - 1]}…"
     return exc, msg, stack
 
 

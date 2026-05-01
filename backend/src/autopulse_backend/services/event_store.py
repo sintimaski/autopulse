@@ -14,6 +14,7 @@ import duckdb
 
 from autopulse_backend.config import Settings, get_settings
 from autopulse_backend.dashboard.log_query import parse_log_query
+from autopulse_backend.dashboard.payload_limits import MAX_DASHBOARD_WIDGET_POINTS_RETURNED
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,21 +215,34 @@ class DuckDbEventStore:
             )
 
     def list_widget_points(
-        self, *, project_id: UUID, from_timestamp: datetime, to_timestamp: datetime
+        self,
+        *,
+        project_id: UUID,
+        from_timestamp: datetime,
+        to_timestamp: datetime,
+        max_rows: int | None = None,
     ) -> list[tuple[str, datetime, str | None, float]]:
+        cap = int(max_rows) if max_rows is not None else MAX_DASHBOARD_WIDGET_POINTS_RETURNED
+        cap = max(100, min(cap, 50_000))
         return self._fetchall_read(
             """
             SELECT widget_id, timestamp, label, value
-            FROM dashboard_widget_points
-            WHERE project_id = ?
-              AND timestamp >= CAST(? AS TIMESTAMP)
-              AND timestamp <= CAST(? AS TIMESTAMP)
-            ORDER BY timestamp ASC, id ASC
+            FROM (
+                SELECT widget_id, timestamp, label, value
+                FROM dashboard_widget_points
+                WHERE project_id = ?
+                  AND timestamp >= CAST(? AS TIMESTAMP)
+                  AND timestamp <= CAST(? AS TIMESTAMP)
+                ORDER BY timestamp DESC, id DESC
+                LIMIT ?
+            ) AS newest
+            ORDER BY timestamp ASC, widget_id ASC
             """,
             [
                 str(project_id),
                 _as_duckdb_timestamp(from_timestamp),
                 _as_duckdb_timestamp(to_timestamp),
+                cap,
             ],
         )
 
@@ -348,16 +362,30 @@ class DuckDbEventStore:
         self,
         filters: EventStoreFilters,
         *,
-        columns: str = (
-            "id, timestamp, method, path, status_code, latency_ms, "
-            "service_name, environment, request_id, type, payload"
-        ),
+        columns: str | None = None,
+        slim_payload: bool = False,
         order_by: str = "timestamp DESC, id DESC",
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[int, list[tuple[Any, ...]]]:
+        if slim_payload:
+            resolved_columns = (
+                "id, timestamp, method, path, status_code, latency_ms, "
+                "service_name, environment, request_id, type, "
+                "CASE WHEN type = 'error' THEN json_object("
+                "'exception_message', json_extract_string(payload, '$.exception_message'), "
+                "'message', json_extract_string(payload, '$.message')"
+                ") ELSE CAST('{}' AS JSON) END AS payload"
+            )
+        elif columns is None:
+            resolved_columns = (
+                "id, timestamp, method, path, status_code, latency_ms, "
+                "service_name, environment, request_id, type, payload"
+            )
+        else:
+            resolved_columns = columns
         where_sql, params = self._compile_filters(filters)
-        inner_sql = f"SELECT {columns} FROM events WHERE {where_sql}"  # nosec B608
+        inner_sql = f"SELECT {resolved_columns} FROM events WHERE {where_sql}"  # nosec B608
         sql = (
             f"SELECT *, COUNT(*) OVER() AS __total FROM ({inner_sql}) AS filtered "
             f"ORDER BY {order_by} LIMIT ? OFFSET ?"  # nosec B608

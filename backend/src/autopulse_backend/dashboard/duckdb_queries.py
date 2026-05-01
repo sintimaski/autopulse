@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -10,6 +11,10 @@ from autopulse_backend.dashboard.error_grouping import (
 )
 from autopulse_backend.dashboard.messages import dashboard_request_log_message
 from autopulse_backend.dashboard.parsing import split_csv_values
+from autopulse_backend.dashboard.payload_limits import (
+    MAX_DIAGNOSIS_EVENT_MESSAGE_CHARS,
+    MAX_DIAGNOSIS_EVENT_STACK_CHARS,
+)
 from autopulse_backend.dashboard.time_window import (
     as_utc_datetime,
     iter_minute_buckets,
@@ -24,6 +29,30 @@ from autopulse_backend.schemas import (
     DashboardRequestItem,
 )
 from autopulse_backend.services.event_store import EventStoreFilters, get_duckdb_event_store
+
+
+def _dashboard_list_payload_cell(value: object) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _truncate_diagnosis_text(value: object, max_chars: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    return f"{text[: max_chars - 1]}…"
+
 
 EVENT_SELECT_COLUMNS = (
     "id, timestamp, method, path, status_code, latency_ms, "
@@ -67,7 +96,9 @@ def request_items(
     filters: EventStoreFilters, *, limit: int, offset: int
 ) -> tuple[int, list[DashboardRequestItem]]:
     store = get_duckdb_event_store()
-    total, rows = store.fetch_events_with_total(filters, limit=limit, offset=offset)
+    total, rows = store.fetch_events_with_total(
+        filters, limit=limit, offset=offset, slim_payload=True
+    )
     return total, [
         DashboardRequestItem(
             timestamp=as_utc_datetime(timestamp),
@@ -78,7 +109,9 @@ def request_items(
             service_name=service_name,
             environment=environment,
             request_id=request_id,
-            log_message=dashboard_request_log_message(event_type, payload),
+            log_message=dashboard_request_log_message(
+                event_type, _dashboard_list_payload_cell(payload)
+            ),
         )
         for (
             _event_id,
@@ -286,12 +319,12 @@ def error_group_events(
                 service_name=service_name,
                 environment=environment,
                 request_id=request_id,
-                stack_trace=payload_dict.get("stack_trace")
-                if isinstance(payload_dict.get("stack_trace"), str)
-                else None,
-                message=payload_dict.get("exception_message")
-                if isinstance(payload_dict.get("exception_message"), str)
-                else None,
+                stack_trace=_truncate_diagnosis_text(
+                    payload_dict.get("stack_trace"), MAX_DIAGNOSIS_EVENT_STACK_CHARS
+                ),
+                message=_truncate_diagnosis_text(
+                    payload_dict.get("exception_message"), MAX_DIAGNOSIS_EVENT_MESSAGE_CHARS
+                ),
                 exception_type=payload_dict.get("exception_type")
                 if isinstance(payload_dict.get("exception_type"), str)
                 else None,

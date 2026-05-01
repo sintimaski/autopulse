@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import random
 import signal
 import time
@@ -11,6 +12,7 @@ import httpx
 
 _KEEP_RUNNING = True
 RoleMode = Literal["viewer", "editor", "admin", "mixed"]
+Scenario = Literal["steady", "realistic"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,15 +25,26 @@ class RequestSpec:
 
 _REQUEST_SPECS: tuple[RequestSpec, ...] = (
     RequestSpec("health", "GET", "/health", 5),
-    RequestSpec("users-read", "GET", "/users/{user_id}", 8),
-    RequestSpec("users-create", "POST", "/users", 3),
-    RequestSpec("users-patch", "PATCH", "/users/{user_id}", 3),
-    RequestSpec("orders-read", "GET", "/orders/{order_id}", 8),
-    RequestSpec("orders-create", "POST", "/orders", 4),
-    RequestSpec("search", "GET", "/search", 7),
-    RequestSpec("auth-login", "POST", "/auth/login", 3),
-    RequestSpec("reports", "GET", "/reports/daily", 2),
-    # Uncaught exception → 500; keep low weight — other bursts hit 4xx/5xx on core routes.
+    RequestSpec("users-read", "GET", "/users/{user_id}", 7),
+    RequestSpec("users-create", "POST", "/users", 2),
+    RequestSpec("users-patch", "PATCH", "/users/{user_id}", 2),
+    RequestSpec("users-delete", "DELETE", "/users/{user_id}", 1),
+    RequestSpec("orders-read", "GET", "/orders/{order_id}", 6),
+    RequestSpec("orders-create", "POST", "/orders", 3),
+    RequestSpec("search", "GET", "/search", 6),
+    RequestSpec("auth-login", "POST", "/auth/login", 2),
+    RequestSpec("reports", "GET", "/reports/daily", 1),
+    RequestSpec("inventory", "GET", "/inventory/{sku}", 6),
+    RequestSpec("payments", "POST", "/payments/intents", 3),
+    RequestSpec("dispatch", "POST", "/integrations/dispatch", 2),
+    RequestSpec("analytics", "GET", "/analytics/summary", 5),
+    RequestSpec("quote", "GET", "/upstream/quote", 5),
+    RequestSpec("quota", "GET", "/quota/status", 3),
+    RequestSpec("checkout-preview", "GET", "/checkout/preview", 5),
+    RequestSpec("feedback", "POST", "/feedback", 3),
+    RequestSpec("errors-key", "GET", "/errors/key-missing", 1),
+    RequestSpec("errors-type", "GET", "/errors/type-mismatch", 1),
+    RequestSpec("errors-deadline", "GET", "/errors/deadline", 1),
     RequestSpec("boom", "GET", "/boom", 1),
 )
 
@@ -48,6 +61,42 @@ def _weighted_specs() -> list[RequestSpec]:
     return weighted
 
 
+_ERROR_BURST_NAMES = frozenset(
+    {
+        "boom",
+        "errors-key",
+        "errors-type",
+        "errors-deadline",
+        "payments",
+        "inventory",
+        "dispatch",
+        "checkout-preview",
+        "users-delete",
+        "orders-create",
+        "users-read",
+        "orders-read",
+        "reports",
+        "quota",
+        "quote",
+    },
+)
+
+
+def _burst_biased_pool(
+    base: list[RequestSpec],
+    *,
+    in_error_burst: bool,
+    rng: random.Random,
+) -> list[RequestSpec]:
+    if not in_error_burst:
+        return base
+    extra: list[RequestSpec] = []
+    for spec in base:
+        if spec.name in _ERROR_BURST_NAMES and rng.random() < 0.35:
+            extra.extend([spec] * rng.randint(1, 2))
+    return base + extra
+
+
 def _resolve_role(mode: RoleMode, *, rng: random.Random) -> str:
     if mode != "mixed":
         return mode
@@ -59,6 +108,21 @@ def _auth_headers(role: str, *, request_id: str) -> dict[str, str]:
         "x-request-id": request_id,
         "x-auth-token": f"demo:{role}:{role}-bot",
     }
+
+
+def _pick_sku(rng: random.Random) -> str:
+    if rng.random() < 0.72:
+        return rng.choice(["SKU-100", "SKU-200", "SKU-RETIRED"])
+    return f"SKU-{rng.randint(400, 999)}"
+
+
+def _realistic_rps_curve(elapsed_seconds: int) -> float:
+    """Deterministic diurnal-ish shape: quiet valleys and busy plateaus (no wall-clock)."""
+    t = elapsed_seconds % 120
+    # two peaks per 120s window
+    peak1 = math.exp(-((t - 22) ** 2) / 180.0)
+    peak2 = math.exp(-((t - 78) ** 2) / 200.0)
+    return 0.52 + 0.95 * max(peak1, peak2)
 
 
 def _request_payload(
@@ -76,30 +140,40 @@ def _request_payload(
     body: dict[str, Any] = {}
     user_id = rng.randint(1, 30)
     order_id = rng.randint(1000, 1100)
+    sku = _pick_sku(rng)
 
     if error_burst:
         if spec.name == "users-read":
             roll = rng.random()
-            if roll < 0.2:
+            if roll < 0.18:
                 headers = {"x-request-id": request_id}
-            elif roll < 0.35:
+            elif roll < 0.32:
                 headers = {"x-request-id": request_id, "Authorization": "Bearer expired"}
             elif roll < 0.55:
                 user_id = rng.choice([404, 9_999, 50_001])
         elif spec.name == "orders-read":
             order_roll = rng.random()
-            if order_roll < 0.25:
+            if order_roll < 0.22:
                 headers = {"x-request-id": request_id, "Authorization": "Bearer expired"}
-            elif order_roll < 0.55:
+            elif order_roll < 0.52:
                 order_id = rng.choice([7_001, 8_888, 12_345])
-        elif spec.name == "search" and rng.random() < 0.2:
+        elif spec.name == "search" and rng.random() < 0.18:
             headers = {"x-request-id": request_id}
-        elif spec.name in {"users-patch", "orders-create", "reports"} and rng.random() < 0.35:
+        elif (
+            spec.name in {"users-patch", "orders-create", "reports", "dispatch"}
+            and rng.random() < 0.32
+        ):
             headers["x-auth-token"] = "demo:viewer:viewer-forbidden"
-        elif spec.name == "users-patch" and rng.random() < 0.5:
+        elif spec.name == "users-patch" and rng.random() < 0.48:
             user_id = rng.choice([404, 99_999])
+        elif spec.name == "inventory" and rng.random() < 0.55:
+            sku = f"UNKNOWN-{rng.randint(1, 9999)}"
+        elif spec.name == "dispatch" and rng.random() < 0.5:
+            headers["x-integration-secret"] = "wrong-secret"
+        elif spec.name.startswith("errors-") and rng.random() < 0.2:
+            headers = {"x-request-id": request_id}
 
-    path = spec.path_template.format(user_id=user_id, order_id=order_id)
+    path = spec.path_template.format(user_id=user_id, order_id=order_id, sku=sku)
 
     if spec.name == "users-create":
         suffix = request_index % 100_000
@@ -110,16 +184,16 @@ def _request_payload(
         }
         if error_burst:
             choice = rng.random()
-            if choice < 0.28:
+            if choice < 0.26:
                 body["email"] = "bad-email"
-            elif choice < 0.52:
+            elif choice < 0.5:
                 body["email"] = f"blocked-{suffix}@blocked.example"
     elif spec.name == "users-patch":
         body = {
             "display_name": f"Patch {request_index}",
             "version": rng.randint(0, 4),
         }
-        if error_burst and rng.random() < 0.45:
+        if error_burst and rng.random() < 0.42:
             params["force_conflict"] = "true"
     elif spec.name == "orders-create":
         body = {
@@ -127,7 +201,7 @@ def _request_payload(
             "amount_cents": rng.randint(120, 9_999),
             "item": f"item-{rng.randint(1, 300)}",
         }
-        if error_burst and rng.random() < 0.45:
+        if error_burst and rng.random() < 0.42:
             params["force_unavailable"] = "true"
     elif spec.name == "search":
         params["q"] = f"q-{rng.randint(1, 50)}"
@@ -135,14 +209,52 @@ def _request_payload(
         chosen_role = rng.choice(["viewer", "editor", "admin"])
         body = {"username": f"{chosen_role}@example.com", "password": "demo-pass"}
         headers = {"x-request-id": request_id}
-        if error_burst and rng.random() < 0.45:
+        if error_burst and rng.random() < 0.42:
             body["password"] = "wrong-pass"  # nosec B105
     elif spec.name == "reports":
-        if error_burst and rng.random() < 0.45:
+        if error_burst and rng.random() < 0.42:
             params["force_timeout"] = "true"
     elif spec.name == "boom":
-        if role_mode == "mixed":
+        if error_burst and role_mode == "mixed" and rng.random() < 0.28:
+            headers["x-auth-token"] = "demo:viewer:viewer-boom"
+        else:
             headers["x-auth-token"] = "demo:admin:admin-bot"
+    elif spec.name == "payments":
+        amt = rng.randint(199, 24_999)
+        if error_burst and rng.random() < 0.38:
+            amt = rng.choice([5, 12, 25])
+        body = {"amount_cents": amt, "currency": "usd"}
+    elif spec.name == "dispatch":
+        body = {
+            "event_type": f"order.{rng.choice(['placed', 'shipped', 'cancelled'])}",
+            "payload": {"id": str(rng.randint(1, 50_000))},
+        }
+        headers.setdefault("x-integration-secret", "synthetic-secret")
+        if error_burst and rng.random() < 0.25:
+            body["event_type"] = ""
+    elif spec.name == "quote":
+        path = "/upstream/quote"
+        params["symbol"] = rng.choice(["SYNTH", "ACME", "EDGE", "VOID"])
+    elif spec.name == "checkout-preview":
+        path = "/checkout/preview"
+        params["items"] = rng.randint(1, 24)
+        if error_burst and rng.random() < 0.35:
+            params["force_timeout"] = "true"
+    elif spec.name == "feedback":
+        body = {"rating": rng.randint(1, 5), "comment": None}
+        if error_burst and rng.random() < 0.4:
+            body["rating"] = rng.choice([0, 6, 10, -1])
+    elif spec.name == "users-delete":
+        if error_burst and rng.random() < 0.42:
+            headers["x-auth-token"] = "demo:viewer:viewer-del"
+            user_id = rng.choice([1, 2, 3, 404])
+        elif error_burst and rng.random() < 0.55:
+            headers["x-auth-token"] = "demo:admin:admin-bot"
+            user_id = rng.choice([2, 3])
+        else:
+            headers["x-auth-token"] = "demo:admin:admin-bot"
+            user_id = rng.choice([1, 4, 5, 6, 7, 8, 404, 902])
+        path = spec.path_template.format(user_id=user_id, order_id=order_id, sku=sku)
 
     return path, spec.method, {"params": params, "json": body}, headers
 
@@ -158,11 +270,23 @@ def main() -> int:
         choices=["viewer", "editor", "admin", "mixed"],
         default="mixed",
     )
+    parser.add_argument(
+        "--scenario",
+        choices=["steady", "realistic"],
+        default="steady",
+        help="steady: fixed tick; realistic: diurnal-ish RPS curve + tick jitter",
+    )
+    parser.add_argument(
+        "--tick-jitter",
+        type=float,
+        default=0.18,
+        help="plus/minus fraction of 1s sleep (realistic scenario)",
+    )
     parser.add_argument("--spike-interval-seconds", type=int, default=20)
     parser.add_argument("--spike-multiplier", type=float, default=2.8)
     parser.add_argument("--error-burst-interval-seconds", type=int, default=25)
     parser.add_argument("--error-burst-duration-seconds", type=int, default=5)
-    parser.add_argument("--timeout-seconds", type=float, default=8.0)
+    parser.add_argument("--timeout-seconds", type=float, default=12.0)
     args = parser.parse_args()
 
     if args.duration_seconds <= 0:
@@ -177,6 +301,8 @@ def main() -> int:
         raise SystemExit("--error-burst-interval-seconds must be > 0")
     if args.error_burst_duration_seconds <= 0:
         raise SystemExit("--error-burst-duration-seconds must be > 0")
+    if not 0.0 <= args.tick_jitter <= 0.45:
+        raise SystemExit("--tick-jitter must be between 0 and 0.45")
 
     signal.signal(signal.SIGINT, _handle_stop_signal)
     signal.signal(signal.SIGTERM, _handle_stop_signal)
@@ -198,6 +324,7 @@ def main() -> int:
     print(f"- duration_seconds: {args.duration_seconds}")
     print(f"- rps: {args.rps}")
     print(f"- role_mode: {args.role_mode}")
+    print(f"- scenario: {args.scenario}")
     print(f"- seed: {args.seed}")
 
     with httpx.Client(timeout=args.timeout_seconds) as client:
@@ -210,11 +337,15 @@ def main() -> int:
                 and elapsed_seconds % args.error_burst_interval_seconds
                 < args.error_burst_duration_seconds
             )
-            current_rps = args.rps
+            pool = _burst_biased_pool(weighted, in_error_burst=in_error_burst, rng=rng)
+
+            curve = 1.0 if args.scenario == "steady" else _realistic_rps_curve(elapsed_seconds)
+            current_rps = max(1, int(round(args.rps * curve)))
             if in_spike:
-                current_rps = int(round(args.rps * args.spike_multiplier))
+                current_rps = max(1, int(round(current_rps * args.spike_multiplier)))
+
             for req_index in range(current_rps):
-                spec = rng.choice(weighted)
+                spec = rng.choice(pool)
                 total_requests += 1
                 request_id = f"load-{tick:05d}-{req_index:03d}"
                 path, method, payload, headers = _request_payload(
@@ -248,7 +379,12 @@ def main() -> int:
                 status_counts[response.status_code] = status_counts.get(response.status_code, 0) + 1
                 if not response.is_success:
                     failures += 1
-            time.sleep(1.0)
+
+            if args.scenario == "realistic":
+                jitter = 1.0 + rng.uniform(-args.tick_jitter, args.tick_jitter)
+            else:
+                jitter = 1.0
+            time.sleep(max(0.05, jitter))
 
     elapsed = round(time.monotonic() - start_time, 2)
     print("synthetic_load: complete")

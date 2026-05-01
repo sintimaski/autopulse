@@ -4,11 +4,12 @@ import asyncio
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import insert, select
+from sqlalchemy import desc, insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autopulse_backend.dashboard.payload_limits import MAX_DASHBOARD_WIDGET_POINTS_RETURNED
 from autopulse_backend.models import DashboardWidgetDefinition, DashboardWidgetPoint
 from autopulse_backend.services.event_store import (
     event_store_enabled,
@@ -122,8 +123,15 @@ async def list_widget_definitions(
 
 
 async def list_widget_points(
-    session: AsyncSession, *, project_id: UUID, from_timestamp: datetime, to_timestamp: datetime
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    from_timestamp: datetime,
+    to_timestamp: datetime,
+    max_rows: int | None = None,
 ) -> list[DashboardWidgetPoint]:
+    cap = int(max_rows) if max_rows is not None else MAX_DASHBOARD_WIDGET_POINTS_RETURNED
+    cap = max(100, min(cap, 50_000))
     if event_store_enabled():
         store = try_get_duckdb_event_store()
         if store is not None:
@@ -132,6 +140,7 @@ async def list_widget_points(
                 project_id=project_id,
                 from_timestamp=from_timestamp,
                 to_timestamp=to_timestamp,
+                max_rows=cap,
             )
             return [
                 DashboardWidgetPoint(
@@ -150,6 +159,9 @@ async def list_widget_points(
             DashboardWidgetPoint.timestamp >= from_timestamp,
             DashboardWidgetPoint.timestamp <= to_timestamp,
         )
-        .order_by(DashboardWidgetPoint.timestamp.asc())
+        .order_by(desc(DashboardWidgetPoint.timestamp), desc(DashboardWidgetPoint.id))
+        .limit(cap)
     )
-    return list(rows.scalars().all())
+    points = list(rows.scalars().all())
+    points.sort(key=lambda p: (p.timestamp, p.widget_id, p.id))
+    return points

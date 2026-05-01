@@ -129,6 +129,18 @@ def test_mark_project_dashboard_dirty_increments_version() -> None:
     assert second == 2
 
 
+def test_dashboard_query_request_clamps_pagination_limits() -> None:
+    payload = DashboardDataQueryRequest(
+        scope=DashboardDataQueryScope(window_minutes=60),
+        requests={"limit": 999_999, "offset": -5},
+        error_groups={"limit": 9_999, "offset": -1},
+    )
+    assert payload.requests.limit == 250
+    assert payload.requests.offset == 0
+    assert payload.error_groups.limit == 100
+    assert payload.error_groups.offset == 0
+
+
 def test_bundle_ttl_prefers_short_heavy_cache() -> None:
     light_payload = DashboardDataQueryRequest(scope=DashboardDataQueryScope(window_minutes=60))
     heavy_payload = DashboardDataQueryRequest(
