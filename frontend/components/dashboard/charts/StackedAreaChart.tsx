@@ -20,6 +20,8 @@ type StackedAreaChartProps = {
   labels: string[];
   series: StackedAreaSeries[];
   height?: number;
+  /** `stacked` (default): summed layers. `overlay`: shared Y axis, semi-transparent fills (e.g. % utilization). */
+  variant?: "stacked" | "overlay";
   onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
 };
 
@@ -40,44 +42,53 @@ export function StackedAreaChart({
   labels,
   series,
   height = 124,
+  variant = "stacked",
   onPointClick,
 }: StackedAreaChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
   const pointCount = labels.length;
+  const isOverlay = variant === "overlay";
+
   const maxStack = useMemo(
     () =>
       hasData
-        ? Math.max(
-            1,
-            ...Array.from({ length: pointCount }, (_, idx) =>
-              series.reduce((sum, entry) => sum + Math.max(0, Number(entry.values[idx] ?? 0)), 0),
-            ),
-          )
+        ? isOverlay
+          ? Math.max(
+              1,
+              ...series.flatMap((entry) => entry.values.map((v) => Math.max(0, Number(v ?? 0)))),
+            )
+          : Math.max(
+              1,
+              ...Array.from({ length: pointCount }, (_, idx) =>
+                series.reduce((sum, entry) => sum + Math.max(0, Number(entry.values[idx] ?? 0)), 0),
+              ),
+            )
         : 1,
-    [hasData, pointCount, series],
+    [hasData, isOverlay, pointCount, series],
   );
 
   const chartData = useMemo((): ChartData<"line"> => {
     if (!hasData) {
       return { labels: [], datasets: [] as ChartDataset<"line">[] };
     }
+    const fillAlpha = isOverlay ? 0.22 : 0.32;
     return {
       labels,
       datasets: series.map((entry) => ({
         label: entry.label,
         data: entry.values.map((v) => Math.max(0, Number(v ?? 0))),
         borderColor: entry.color,
-        backgroundColor: hexToRgba(entry.color, 0.32),
+        backgroundColor: hexToRgba(entry.color, fillAlpha),
         borderWidth: 1.5,
         tension: 0.25,
         fill: true,
-        stack: "stack0",
+        ...(isOverlay ? {} : { stack: "stack0" }),
         pointRadius: 0,
         pointHoverRadius: 3,
       })) as ChartDataset<"line">[],
     };
-  }, [hasData, labels, series]);
+  }, [hasData, isOverlay, labels, series]);
 
   const options = useMemo<ChartOptions<"line">>(
     () => ({
@@ -112,17 +123,21 @@ export function StackedAreaChart({
               const dsIndex = typeof ctx.datasetIndex === "number" ? ctx.datasetIndex : 0;
               const entry = series[dsIndex];
               const idx = ctx.dataIndex;
-              const stackedY = typeof ctx.parsed.y === "number" && Number.isFinite(ctx.parsed.y) ? ctx.parsed.y : 0;
-              if (
-                entry?.tooltipFormat &&
-                entry.tooltipRawValues &&
-                typeof idx === "number" &&
-                entry.tooltipRawValues.length > idx
-              ) {
-                const raw = Number(entry.tooltipRawValues[idx] ?? 0);
-                return `${ctx.dataset.label ?? ""}: ${entry.tooltipFormat(raw)} (${Math.round(stackedY)}% of mix)`;
+              const y = typeof ctx.parsed.y === "number" && Number.isFinite(ctx.parsed.y) ? ctx.parsed.y : 0;
+              if (entry?.tooltipFormat) {
+                if (
+                  entry.tooltipRawValues &&
+                  typeof idx === "number" &&
+                  idx >= 0 &&
+                  idx < entry.tooltipRawValues.length
+                ) {
+                  const raw = Number(entry.tooltipRawValues[idx] ?? 0);
+                  return `${ctx.dataset.label ?? ""}: ${entry.tooltipFormat(raw)}`;
+                }
+                return `${ctx.dataset.label ?? ""}: ${entry.tooltipFormat(y)}`;
               }
-              return `${ctx.dataset.label ?? ""}: ${Math.round(stackedY)}`;
+              const rounded = Math.round(y);
+              return `${ctx.dataset.label ?? ""}: ${rounded === y ? rounded : y.toFixed(1)}`;
             },
           },
         },
@@ -130,7 +145,7 @@ export function StackedAreaChart({
       scales: {
         x: {
           display: hasData,
-          stacked: true,
+          stacked: !isOverlay,
           grid: { display: false },
           ticks: {
             maxRotation: 0,
@@ -143,7 +158,7 @@ export function StackedAreaChart({
         },
         y: {
           display: hasData,
-          stacked: true,
+          stacked: !isOverlay,
           beginAtZero: true,
           suggestedMax: maxStack * 1.02,
           grid: { color: "rgba(100, 116, 139, 0.12)" },
@@ -156,7 +171,7 @@ export function StackedAreaChart({
         },
       },
     }),
-    [hasData, labels, maxStack, onPointClick, series],
+    [hasData, isOverlay, labels, maxStack, onPointClick, series],
   );
 
   if (!hasData) {
@@ -172,19 +187,19 @@ export function StackedAreaChart({
       </div>
       <div className="flex flex-wrap gap-3">
         {series.map((entry) => {
-          const mix = Math.round(Number(entry.values[pointCount - 1] ?? 0));
+          const yLast = Number(entry.values[pointCount - 1] ?? 0);
           const rawLatest = entry.tooltipRawValues?.[pointCount - 1];
-          const rawText =
+          const summary =
             typeof rawLatest === "number" && entry.tooltipFormat
               ? entry.tooltipFormat(rawLatest)
-              : null;
+              : entry.tooltipFormat
+                ? entry.tooltipFormat(yLast)
+                : String(Math.round(yLast) === yLast ? Math.round(yLast) : yLast.toFixed(1));
           return (
             <p key={entry.id} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-300">
               <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
               <span>{entry.label}</span>
-              <span className="tabular-nums text-slate-800 dark:text-neutral-100">
-                {rawText ? `${rawText} · ${mix}%` : mix}
-              </span>
+              <span className="tabular-nums text-slate-800 dark:text-neutral-100">{summary}</span>
             </p>
           );
         })}

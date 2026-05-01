@@ -563,15 +563,6 @@ export function DashboardInfrastructureSection({
     columns.disk = columnAligned(timelines.disk);
     columns.network = columnAligned(timelines.network);
 
-    const maxByKey = activeKeys.reduce<Record<InfraComposeKey, number>>(
-      (acc, key) => {
-        const peak = Math.max(1e-9, ...columns[key].map((v) => Math.max(0, v)));
-        acc[key] = peak;
-        return acc;
-      },
-      { cpu: 1e-9, memory: 1e-9, disk: 1e-9, network: 1e-9 },
-    );
-
     const unitCpu = typeof cpuWidget?.config?.unit === "string" ? cpuWidget.config.unit : "%";
     const unitMemory = typeof memoryWidget?.config?.unit === "string" ? memoryWidget.config.unit : "%";
     const unitDisk = typeof diskWidget?.config?.unit === "string" ? diskWidget.config.unit : "%";
@@ -582,32 +573,28 @@ export function DashboardInfrastructureSection({
       network: (v) => formatMegabytesAdaptive(v),
     };
 
-    const normalized = {} as Record<InfraComposeKey, number[]>;
-    for (const key of activeKeys) {
-      const cap = maxByKey[key];
-      normalized[key] = columns[key].map((v) => Math.max(0, v) / cap);
-    }
+    const netMb = columns.network;
+    const netPeak = Math.max(1e-9, ...netMb.map((v) => Math.max(0, v)));
+    const networkAsChartPercent = netMb.map((v) => (Math.max(0, v) / netPeak) * 100);
 
     const series: StackedAreaSeries[] = activeKeys.map((key) => {
       const { label, color } = INFRA_COMPOSE[key];
       const formatter = formatters[key];
-      const tooltipRawValues = columns[key];
-
-      const values = sortedTs.map((_, idx) => {
-        let denom = 0;
-        for (const k of activeKeys) {
-          denom += normalized[k][idx] ?? 0;
-        }
-        const numer = normalized[key][idx] ?? 0;
-        return denom > 0 ? (numer / denom) * 100 : 0;
-      });
-
+      if (key === "network") {
+        return {
+          id: key,
+          label,
+          color,
+          values: networkAsChartPercent,
+          tooltipRawValues: netMb,
+          tooltipFormat: formatter,
+        };
+      }
       return {
         id: key,
         label,
         color,
-        values,
-        tooltipRawValues,
+        values: columns[key],
         tooltipFormat: formatter,
       };
     });
@@ -750,7 +737,7 @@ export function DashboardInfrastructureSection({
           <ChartPanel
             className="h-full"
             title="Host resources over time"
-            description="Stacked area shows each resource’s share of relative load: each series is scaled to its own peak in this chart window, then normalized so layers sum to 100%. Tooltips list real units. This is a trend comparison (not additive usage)."
+            description="Overlaid areas: CPU, memory, and disk are host utilization (%). Network is cumulative traffic (MB) mapped to 0–100% of the peak in this chart window so it shares the axis; tooltips show actual MB."
           >
             <div className="mb-3 flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1">
@@ -774,6 +761,7 @@ export function DashboardInfrastructureSection({
             </div>
             {infraChartHasSeries ? (
               <StackedAreaChart
+                variant="overlay"
                 height={196}
                 labels={infrastructureCompositionChart.labels}
                 series={infrastructureCompositionChart.series}
