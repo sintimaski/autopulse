@@ -2,11 +2,13 @@
 
 import { useMemo, useState } from "react";
 
-import { trimSeriesToLastMinutes } from "../../../utils/dashboardData";
+import { aggregateSeriesByStep, trimSeriesToLastMinutes } from "../../../utils/dashboardData";
 import {
   BreakdownBarChart,
   ChartPanel,
+  MultiSeriesLineChart,
   StackedAreaChart,
+  type MultiSeriesLineChartSeries,
   type StackedAreaSeries,
 } from "../charts";
 import { MetricCard } from "../MetricCard";
@@ -35,6 +37,71 @@ function parseDashboardInstantMs(raw: string): number {
   return Date.parse(`${t}Z`);
 }
 
+function timestampsCrossCalendarDay(firstMs: number, lastMs: number): boolean {
+  const a = new Date(firstMs);
+  const b = new Date(lastMs);
+  return (
+    a.getFullYear() !== b.getFullYear() ||
+    a.getMonth() !== b.getMonth() ||
+    a.getDate() !== b.getDate()
+  );
+}
+
+/** X-axis category labels for host resources (and status fallback) — span-aware so dense samples are not all "HH:MM". */
+function formatHostChartAxisLabelSingle(ms: number, spanMs: number, crossesCalendarDay: boolean): string {
+  const d = new Date(ms);
+  if (spanMs >= 1000 * 60 * 60 * 48 || crossesCalendarDay) {
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  if (spanMs >= 1000 * 60 * 60 * 24) {
+    return d.toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  }
+  if (spanMs >= 1000 * 60 * 60) {
+    return d.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function buildHostChartAxisLabels(timestamps: string[]): string[] {
+  if (!timestamps.length) {
+    return [];
+  }
+  const msList = timestamps.map((t) => parseDashboardInstantMs(t));
+  const finite = msList.filter((n): n is number => Number.isFinite(n));
+  const sorted = [...finite].sort((a, b) => a - b);
+  const spanMs = sorted.length >= 2 ? Math.max(0, sorted[sorted.length - 1]! - sorted[0]!) : 0;
+  const crossesDay =
+    sorted.length >= 2 ? timestampsCrossCalendarDay(sorted[0]!, sorted[sorted.length - 1]!) : false;
+
+  const out: string[] = [];
+  let prev = "";
+  for (let i = 0; i < timestamps.length; i++) {
+    const n = msList[i];
+    if (!Number.isFinite(n)) {
+      const raw = timestamps[i]?.trim() || "—";
+      out.push(raw);
+      prev = raw;
+      continue;
+    }
+    let lab = formatHostChartAxisLabelSingle(n, spanMs, crossesDay);
+    if (lab === prev) {
+      lab = new Date(n).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+    if (lab === prev) {
+      lab = new Date(n).toISOString().replace("T", " ").slice(0, 23);
+    }
+    out.push(lab);
+    prev = lab;
+  }
+  return out;
+}
+
 const HOST_RESOURCES_CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 0, label: "Full loaded range" },
   { value: 15, label: "Last 15m" },
@@ -45,6 +112,26 @@ const HOST_RESOURCES_CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: number; label:
   { value: 480, label: "Last 8h" },
   { value: 1440, label: "Last 24h" },
 ];
+
+/** Roll-up width for host chart (aligned to chart window, capped when window is shorter). */
+const HOST_RESOURCES_CHART_BUCKET_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
+  { value: 0, label: "Native (per sample)" },
+  { value: 1, label: "1 minute" },
+  { value: 5, label: "5 minutes" },
+  { value: 15, label: "15 minutes" },
+  { value: 30, label: "30 minutes" },
+  { value: 60, label: "1 hour" },
+];
+
+const HOST_RESOURCES_CUMULATIVE_WIDGET_IDS = new Set<string>([
+  "infra_network_received_mb",
+  "infra_network_sent_mb",
+  "infra_disk_io_read_mb",
+]);
+
+function isCumulativeInfraWidgetId(widgetId: string): boolean {
+  return HOST_RESOURCES_CUMULATIVE_WIDGET_IDS.has(widgetId);
+}
 
 /** Series used by Host resources stacked chart — pulled back into the clipped set when time bounds drop them. */
 const HOST_RESOURCES_CHART_WIDGET_IDS: readonly string[] = [
@@ -103,16 +190,21 @@ function normalizeIncomingWidgetDefinitions(
   return result;
 }
 
+/**
+ * Pulls in missing infra series from `raw` only when the chart would otherwise omit a layer.
+ * Salvage must stay inside `salvageIncluded` so a "Last 15m" window cannot re-expand to the full load range.
+ */
 function mergeMissingHostResourceWidgetPoints(
   filtered: DashboardWidgetPoint[],
   raw: DashboardWidgetPoint[],
+  salvageIncluded: (p: DashboardWidgetPoint) => boolean,
 ): DashboardWidgetPoint[] {
   let out = [...filtered];
   for (const wid of HOST_RESOURCES_CHART_WIDGET_IDS) {
     if (out.some((p) => p.widget_id === wid)) {
       continue;
     }
-    const salvage = raw.filter((p) => p.widget_id === wid);
+    const salvage = raw.filter((p) => p.widget_id === wid && salvageIncluded(p));
     if (!salvage.length) {
       continue;
     }
@@ -133,6 +225,30 @@ function infraLineStub(widgetId: string): DashboardWidgetDefinition {
   };
 }
 
+/** Same window as the host-resources chart filter / chart window selector. */
+function hostChartPointInWindow(
+  p: DashboardWidgetPoint,
+  bounds: { fromTimestamp: string; toTimestamp: string },
+  lastMinutes: number,
+): boolean {
+  const toMs = parseDashboardInstantMs(bounds.toTimestamp);
+  if (!Number.isFinite(toMs)) {
+    return true;
+  }
+  const t = parseDashboardInstantMs(p.timestamp);
+  if (!Number.isFinite(t)) {
+    return false;
+  }
+  const fromBoundMs = parseDashboardInstantMs(bounds.fromTimestamp);
+  const startMs =
+    lastMinutes > 0
+      ? Math.max(Number.isFinite(fromBoundMs) ? fromBoundMs : -Infinity, toMs - lastMinutes * 60 * 1000)
+      : Number.isFinite(fromBoundMs)
+        ? fromBoundMs
+        : -Infinity;
+  return t >= startMs && t <= toMs;
+}
+
 function filterWidgetPointsForTimeSpan(
   points: DashboardWidgetPoint[],
   bounds: { fromTimestamp: string; toTimestamp: string },
@@ -142,18 +258,22 @@ function filterWidgetPointsForTimeSpan(
   if (!Number.isFinite(toMs)) {
     return points;
   }
-  const fromBoundMs = parseDashboardInstantMs(bounds.fromTimestamp);
-  const startMs =
-    lastMinutes > 0
-      ? Math.max(Number.isFinite(fromBoundMs) ? fromBoundMs : -Infinity, toMs - lastMinutes * 60 * 1000)
-      : Number.isFinite(fromBoundMs)
-        ? fromBoundMs
-        : -Infinity;
-  return points.filter((p) => {
-    const t = parseDashboardInstantMs(p.timestamp);
-    if (!Number.isFinite(t)) return false;
-    return t >= startMs && t <= toMs;
-  });
+  return points.filter((p) => hostChartPointInWindow(p, bounds, lastMinutes));
+}
+
+function rollingWindowBoundsFromPoints(
+  points: DashboardWidgetPoint[],
+): { fromMs: number; toMs: number } | null {
+  if (!points.length) {
+    return null;
+  }
+  const sorted = [...points].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  const fromMs = parseDashboardInstantMs(sorted[0]?.timestamp ?? "");
+  const toMs = parseDashboardInstantMs(sorted[sorted.length - 1]?.timestamp ?? "");
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
+    return null;
+  }
+  return { fromMs, toMs };
 }
 
 function trimSparklineForHostChart(
@@ -195,6 +315,174 @@ function trimWidgetPointsLastMinutes(
   });
 }
 
+/** Visible [from, to] in ms for the host chart — matches chart window + clip bounds, with start from data if unbounded. */
+function resolveHostChartDisplayRangeMs(
+  bounds: { fromTimestamp: string; toTimestamp: string },
+  lastMinutes: number,
+  filteredPoints: DashboardWidgetPoint[],
+): { fromMs: number; toMs: number } | null {
+  const clipToMs = parseDashboardInstantMs(bounds.toTimestamp);
+  if (!Number.isFinite(clipToMs)) {
+    return null;
+  }
+  const fromBoundMs = parseDashboardInstantMs(bounds.fromTimestamp);
+  let startMs =
+    lastMinutes > 0
+      ? Math.max(Number.isFinite(fromBoundMs) ? fromBoundMs : -Infinity, clipToMs - lastMinutes * 60 * 1000)
+      : Number.isFinite(fromBoundMs)
+        ? fromBoundMs
+        : -Infinity;
+  if (!Number.isFinite(startMs) || startMs === -Infinity) {
+    const finite = filteredPoints
+      .map((p) => parseDashboardInstantMs(p.timestamp))
+      .filter((n): n is number => Number.isFinite(n));
+    if (!finite.length) {
+      return null;
+    }
+    startMs = Math.min(...finite);
+  }
+  if (startMs > clipToMs) {
+    return null;
+  }
+  /** When infra samples stop before the dashboard clip end, do not extend the bucket axis to "now" (avoids fake flat lines). */
+  const pointTimes = filteredPoints
+    .map((p) => parseDashboardInstantMs(p.timestamp))
+    .filter((n): n is number => Number.isFinite(n));
+  let toMs = clipToMs;
+  if (pointTimes.length > 0) {
+    const dataMax = Math.max(...pointTimes);
+    const SLACK_MS = 2000;
+    if (dataMax + SLACK_MS < clipToMs) {
+      toMs = Math.max(startMs + 1, dataMax + SLACK_MS);
+    }
+  }
+  if (startMs >= toMs) {
+    return null;
+  }
+  return { fromMs: startMs, toMs };
+}
+
+/** One aligned bucket every `bucketMs` from `fromMs` up to `toMs` (last bucket may be shorter). */
+function enumerateAlignedBucketStarts(fromMs: number, toMs: number, bucketMs: number): number[] {
+  const span = toMs - fromMs;
+  if (!Number.isFinite(span) || span <= 0) {
+    return [fromMs];
+  }
+  const out: number[] = [];
+  for (let b = fromMs; b < toMs - 1e-9; b += bucketMs) {
+    out.push(b);
+  }
+  if (out.length === 0) {
+    out.push(fromMs);
+  }
+  return out;
+}
+
+/**
+ * Roll infra widget samples into a **full** bucket grid over `range` (one point per bucket per series).
+ * Gauges: mean of samples in the bucket, then forward-filled across empty buckets. Cumulative: last sample
+ * in the bucket, then forward-filled. Empty leading buckets use 0 so the x-axis spans the whole chart window.
+ */
+function bucketWidgetPointsForHostChart(
+  points: DashboardWidgetPoint[],
+  range: { fromMs: number; toMs: number },
+  bucketMinutes: number,
+): DashboardWidgetPoint[] {
+  if (bucketMinutes <= 0 || !points.length) {
+    return [...points].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+  const { fromMs, toMs } = range;
+  const bucketMs = bucketMinutes * 60 * 1000;
+  const bucketStarts = enumerateAlignedBucketStarts(fromMs, toMs, bucketMs);
+  const n = bucketStarts.length;
+
+  const byWidget = new Map<string, DashboardWidgetPoint[]>();
+  for (const p of points) {
+    const list = byWidget.get(p.widget_id) ?? [];
+    list.push(p);
+    byWidget.set(p.widget_id, list);
+  }
+  for (const list of byWidget.values()) {
+    list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  const out: DashboardWidgetPoint[] = [];
+
+  for (const [widgetId, pts] of byWidget.entries()) {
+    const cumulative = isCumulativeInfraWidgetId(widgetId);
+    const raw: (number | null)[] = Array.from({ length: n }, () => null);
+
+    for (let i = 0; i < n; i++) {
+      const bStart = bucketStarts[i]!;
+      const isLast = i === n - 1;
+      const items = pts.filter((p) => {
+        const t = parseDashboardInstantMs(p.timestamp);
+        if (!Number.isFinite(t) || t < bStart) {
+          return false;
+        }
+        if (isLast) {
+          return t <= toMs;
+        }
+        return t < bStart + bucketMs;
+      });
+      if (!items.length) {
+        continue;
+      }
+      if (cumulative) {
+        const last = [...items].sort((a, b) => a.timestamp.localeCompare(b.timestamp))[items.length - 1]!;
+        raw[i] = Math.max(0, Number(last.value) || 0);
+      } else {
+        const vals = items.map((x) => Math.max(0, Number(x.value) || 0));
+        raw[i] = vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+    }
+
+    let firstIdx = -1;
+    let lastIdx = -1;
+    for (let i = 0; i < n; i++) {
+      if (raw[i] !== null) {
+        if (firstIdx === -1) {
+          firstIdx = i;
+        }
+        lastIdx = i;
+      }
+    }
+
+    let carry: number | null = null;
+    for (let i = 0; i < n; i++) {
+      if (raw[i] !== null) {
+        carry = raw[i];
+        continue;
+      }
+      if (carry === null) {
+        continue;
+      }
+      if (cumulative) {
+        raw[i] = carry;
+      } else if (firstIdx !== -1 && i > firstIdx && i <= lastIdx) {
+        raw[i] = carry;
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      const bStart = bucketStarts[i]!;
+      const bucketEnd = Math.min(bStart + bucketMs, toMs);
+      const tsIso = new Date(bucketEnd).toISOString();
+      const v = raw[i];
+      const value = v === null || v === undefined || !Number.isFinite(v) ? NaN : v;
+      out.push({
+        widget_id: widgetId,
+        timestamp: tsIso,
+        label: null,
+        value,
+      });
+    }
+  }
+
+  out.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.widget_id.localeCompare(b.widget_id));
+  return out;
+}
+
 function widgetPointsToTotalsTimelineFromMap(
   widget: DashboardWidgetDefinition | undefined,
   pointsByWidget: Map<string, DashboardWidgetPoint[]>,
@@ -211,10 +499,24 @@ function widgetPointsToTotalsTimelineFromMap(
   const byTime = new Map<string, number>();
   for (const p of points) {
     const t = p.timestamp;
-    byTime.set(t, (byTime.get(t) ?? 0) + Math.max(0, Number(p.value)));
+    const v = Number(p.value);
+    if (Number.isNaN(v)) {
+      byTime.set(t, Number.NaN);
+      continue;
+    }
+    if (!Number.isFinite(v)) {
+      continue;
+    }
+    byTime.set(t, (byTime.get(t) ?? 0) + Math.max(0, v));
   }
   const timestamps = [...byTime.keys()].sort();
-  const values = timestamps.map((t) => Math.max(0, byTime.get(t) ?? 0));
+  const values = timestamps.map((t) => {
+    const v = byTime.get(t);
+    if (v !== undefined && Number.isNaN(v)) {
+      return Number.NaN;
+    }
+    return Math.max(0, v ?? 0);
+  });
   return { timestamps, values };
 }
 
@@ -277,6 +579,17 @@ export function DashboardInfrastructureSection({
   }
 
   const [hostChartWindowMinutes, setHostChartWindowMinutes] = useState(0);
+  const [hostChartBucketMinutes, setHostChartBucketMinutes] = useState(0);
+
+  const effectiveHostChartBucketMinutes = useMemo(() => {
+    if (hostChartBucketMinutes <= 0) {
+      return 0;
+    }
+    if (hostChartWindowMinutes <= 0) {
+      return hostChartBucketMinutes;
+    }
+    return Math.min(hostChartBucketMinutes, hostChartWindowMinutes);
+  }, [hostChartBucketMinutes, hostChartWindowMinutes]);
 
   /** Clip chart data to widget API window (aligned with embedded points); fall back to overview when missing. */
   const overviewFrom = overviewExtended.from_timestamp;
@@ -287,8 +600,9 @@ export function DashboardInfrastructureSection({
   const hostChartFilteredPoints = useMemo(() => {
     const raw = dashboardWidgets?.points ?? [];
     const bounds = { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo };
+    const windowSalvageOk = (p: DashboardWidgetPoint) => hostChartPointInWindow(p, bounds, hostChartWindowMinutes);
     const clipped = filterWidgetPointsForTimeSpan(raw, bounds, hostChartWindowMinutes);
-    let next = mergeMissingHostResourceWidgetPoints(clipped, raw);
+    let next = mergeMissingHostResourceWidgetPoints(clipped, raw, windowSalvageOk);
     if (next.length > 0) {
       return next;
     }
@@ -296,32 +610,61 @@ export function DashboardInfrastructureSection({
       return raw;
     }
     if (hostChartWindowMinutes <= 0) {
-      return mergeMissingHostResourceWidgetPoints(raw, raw);
+      return mergeMissingHostResourceWidgetPoints(raw, raw, windowSalvageOk);
     }
     const rolling = trimWidgetPointsLastMinutes(raw, hostChartWindowMinutes);
-    const rescued = mergeMissingHostResourceWidgetPoints(rolling, raw);
-    return rescued.length > 0 ? rescued : mergeMissingHostResourceWidgetPoints(raw, raw);
+    const rb = rollingWindowBoundsFromPoints(rolling);
+    const rollingSalvageOk =
+      rb !== null
+        ? (p: DashboardWidgetPoint) => {
+            const t = parseDashboardInstantMs(p.timestamp);
+            return Number.isFinite(t) && t >= rb.fromMs && t <= rb.toMs;
+          }
+        : (_p: DashboardWidgetPoint) => false;
+    const rescued = mergeMissingHostResourceWidgetPoints(rolling, raw, rollingSalvageOk);
+    return rescued.length > 0 ? rescued : mergeMissingHostResourceWidgetPoints(raw, raw, windowSalvageOk);
   }, [dashboardWidgets?.points, chartClipFrom, chartClipTo, hostChartWindowMinutes]);
+
+  const hostChartDisplayRangeMs = useMemo(() => {
+    return resolveHostChartDisplayRangeMs(
+      { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
+      hostChartWindowMinutes,
+      hostChartFilteredPoints,
+    );
+  }, [chartClipFrom, chartClipTo, hostChartWindowMinutes, hostChartFilteredPoints]);
+
+  const hostChartDisplayPoints = useMemo(() => {
+    if (!hostChartDisplayRangeMs) {
+      return hostChartFilteredPoints;
+    }
+    return bucketWidgetPointsForHostChart(
+      hostChartFilteredPoints,
+      hostChartDisplayRangeMs,
+      effectiveHostChartBucketMinutes,
+    );
+  }, [hostChartFilteredPoints, hostChartDisplayRangeMs, effectiveHostChartBucketMinutes]);
 
   const hostChartPointsByWidget = useMemo(() => {
     const grouped = new Map<string, DashboardWidgetPoint[]>();
-    for (const p of hostChartFilteredPoints) {
+    for (const p of hostChartDisplayPoints) {
       const bucket = grouped.get(p.widget_id) ?? [];
       bucket.push(p);
       grouped.set(p.widget_id, bucket);
     }
     return grouped;
-  }, [hostChartFilteredPoints]);
+  }, [hostChartDisplayPoints]);
 
-  const sparklineForHostChart = useMemo(
-    () =>
-      trimSparklineForHostChart(
-        sparklineSeries,
-        { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
-        hostChartWindowMinutes,
-      ),
-    [sparklineSeries, chartClipFrom, chartClipTo, hostChartWindowMinutes],
-  );
+  const sparklineForHostChart = useMemo(() => {
+    let series = trimSparklineForHostChart(
+      sparklineSeries,
+      { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
+      hostChartWindowMinutes,
+    );
+    if (effectiveHostChartBucketMinutes > 0) {
+      series = aggregateSeriesByStep(series, effectiveHostChartBucketMinutes);
+    }
+    return series;
+  }, [sparklineSeries, chartClipFrom, chartClipTo, hostChartWindowMinutes, effectiveHostChartBucketMinutes]);
 
   const findWidgetByKeywords = (keywords: string[]) =>
     widgetDefinitions.find((widget) => {
@@ -333,12 +676,9 @@ export function DashboardInfrastructureSection({
     widgetDefinitions.find((w) => w.widget_id === widgetId) ??
     (widgetPointsById.has(widgetId) ? infraLineStub(widgetId) : undefined);
 
-  const formatAxisTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
   /** When infrastructure widgets are absent, show request mix by status class (honest traffic proxy). */
   const sparklineToStatusStack = (buckets: OverviewBucket[]): { labels: string[]; series: StackedAreaSeries[] } => ({
-    labels: buckets.map((b) => formatAxisTime(b.minute)),
+    labels: buildHostChartAxisLabels(buckets.map((b) => b.minute)),
     series: [
       {
         id: "2xx",
@@ -541,7 +881,7 @@ export function DashboardInfrastructureSection({
       }
     }
     const sortedTs = [...allTs].sort();
-    const labels = sortedTs.map((t) => formatAxisTime(t));
+    const labels = buildHostChartAxisLabels(sortedTs);
 
     const columns: Record<InfraComposeKey, number[]> = {
       cpu: [],
@@ -550,18 +890,48 @@ export function DashboardInfrastructureSection({
       network: [],
     };
 
+    const gapMarkersInChart = effectiveHostChartBucketMinutes > 0;
+
     const columnAligned = (tl: { timestamps: string[]; values: number[] } | null) => {
       if (!tl) {
-        return sortedTs.map(() => 0);
+        return sortedTs.map(() => Number.NaN);
       }
       const map = new Map(tl.timestamps.map((stamp, idx) => [stamp, tl.values[idx] ?? 0]));
-      return sortedTs.map((stamp) => Math.max(0, map.get(stamp) ?? 0));
+      return sortedTs.map((stamp) => {
+        if (!map.has(stamp)) {
+          return Number.NaN;
+        }
+        const v = map.get(stamp) as number;
+        if (Number.isNaN(v)) {
+          return Number.NaN;
+        }
+        return Math.max(0, v);
+      });
+    };
+
+    /** Native mode: each infra widget timestamps differ slightly; union grid has NaN holes. Hold last value so lines render (no fake zeros). */
+    const forwardFillHoldNative = (values: number[]): number[] => {
+      let carry: number | null = null;
+      return values.map((v) => {
+        if (Number.isFinite(v) && !Number.isNaN(v)) {
+          carry = v;
+          return v;
+        }
+        return carry ?? 0;
+      });
     };
 
     columns.cpu = columnAligned(timelines.cpu);
     columns.memory = columnAligned(timelines.memory);
     columns.disk = columnAligned(timelines.disk);
     columns.network = columnAligned(timelines.network);
+
+    if (!gapMarkersInChart) {
+      columns.cpu = forwardFillHoldNative(columns.cpu);
+      columns.memory = forwardFillHoldNative(columns.memory);
+      columns.disk = forwardFillHoldNative(columns.disk);
+      columns.network = forwardFillHoldNative(columns.network);
+    }
 
     const unitCpu = typeof cpuWidget?.config?.unit === "string" ? cpuWidget.config.unit : "%";
     const unitMemory = typeof memoryWidget?.config?.unit === "string" ? memoryWidget.config.unit : "%";
@@ -574,8 +944,11 @@ export function DashboardInfrastructureSection({
     };
 
     const netMb = columns.network;
-    const netPeak = Math.max(1e-9, ...netMb.map((v) => Math.max(0, v)));
-    const networkAsChartPercent = netMb.map((v) => (Math.max(0, v) / netPeak) * 100);
+    const finiteNet = netMb.filter((v) => Number.isFinite(v) && v >= 0);
+    const netPeak = Math.max(1e-9, ...finiteNet.map((v) => Math.max(0, v)));
+    const networkAsChartPercent = netMb.map((v) =>
+      Number.isFinite(v) ? (Math.max(0, v) / netPeak) * 100 : Number.NaN,
+    );
 
     const series: StackedAreaSeries[] = activeKeys.map((key) => {
       const { label, color } = INFRA_COMPOSE[key];
@@ -711,6 +1084,17 @@ export function DashboardInfrastructureSection({
           minute: "2-digit",
         })})`;
 
+  const bucketRollupCaption =
+    effectiveHostChartBucketMinutes <= 0
+      ? "Native: one point per sample in the chart window (no roll-up)."
+      : `Roll-up: ${effectiveHostChartBucketMinutes}m buckets across the full chart window${
+          hostChartBucketMinutes > 0 &&
+          effectiveHostChartBucketMinutes !== hostChartBucketMinutes &&
+          hostChartWindowMinutes > 0
+            ? ` (bucket capped to the ${hostChartWindowMinutes}m window)`
+            : ""
+        }. Gauges average samples in each bucket; cumulative counters use the reading at the bucket end; empty buckets repeat the last value (0 before the first sample).`;
+
   return (
     <>
       <section className="grid w-full gap-4 xl:grid-cols-2 xl:items-stretch">
@@ -737,34 +1121,58 @@ export function DashboardInfrastructureSection({
           <ChartPanel
             className="h-full"
             title="Host resources over time"
-            description="Overlaid areas: CPU, memory, and disk are host utilization (%). Network is cumulative traffic (MB) mapped to 0–100% of the peak in this chart window so it shares the axis; tooltips show actual MB."
+            description="Four independent lines on one chart (0–100% axis): CPU, memory, and disk are real utilization. Network is cumulative MB scaled to 0–100% of the peak in this window so it fits the same axis—hover for actual MB. Roll-up bucket summarizes samples across the chart window."
           >
-            <div className="mb-3 flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Chart window
-                </span>
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
-                  value={hostChartWindowMinutes}
-                  onChange={(event) => setHostChartWindowMinutes(Number(event.target.value))}
-                  aria-label="Host resources chart time window"
-                >
-                  {HOST_RESOURCES_CHART_WINDOW_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="max-w-md text-xs leading-snug text-slate-500 dark:text-neutral-400">{chartWindowCaption}</p>
+            <div className="mb-3 flex flex-col gap-2">
+              <div className="flex flex-wrap items-end gap-3">
+                {hostChartBucketMinutes > 0 ? (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                      Chart window
+                    </span>
+                    <select
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                      value={hostChartWindowMinutes}
+                      onChange={(event) => setHostChartWindowMinutes(Number(event.target.value))}
+                      aria-label="Host resources chart time window"
+                    >
+                      {HOST_RESOURCES_CHART_WINDOW_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                    Roll-up bucket
+                  </span>
+                  <select
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                    value={hostChartBucketMinutes}
+                    onChange={(event) => setHostChartBucketMinutes(Number(event.target.value))}
+                    aria-label="Host resources chart roll-up bucket size"
+                  >
+                    {HOST_RESOURCES_CHART_BUCKET_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="max-w-xl text-xs leading-snug text-slate-500 dark:text-neutral-400">{chartWindowCaption}</p>
+              <p className="max-w-xl text-xs leading-snug text-slate-500 dark:text-neutral-400">{bucketRollupCaption}</p>
             </div>
             {infraChartHasSeries ? (
-              <StackedAreaChart
-                variant="overlay"
+              <MultiSeriesLineChart
                 height={196}
                 labels={infrastructureCompositionChart.labels}
-                series={infrastructureCompositionChart.series}
+                series={infrastructureCompositionChart.series as MultiSeriesLineChartSeries[]}
+                ySuggestedMaxCap={100}
+                pointRadius={effectiveHostChartBucketMinutes <= 0 ? 2.25 : 0}
+                emptyMessage="No infrastructure samples in this chart window."
               />
             ) : hasInfraSignals ? (
               <p className="text-sm text-slate-600 dark:text-neutral-300">

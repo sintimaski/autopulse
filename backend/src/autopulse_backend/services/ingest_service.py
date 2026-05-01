@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,10 +118,16 @@ async def persist_ingest_batch(
                 for definition in fallback_definitions
             ]
         )
+        # Stagger timestamps by microseconds so each metric is a distinct instant in DuckDB/SQL.
+        # Without this, fallback rows share `received_at` and roll-up charts show one x bucket.
         widget_points.extend(
             [
-                {"project_id": project_id, "timestamp": received_at, **point}
-                for point in fallback_points
+                {
+                    "project_id": project_id,
+                    "timestamp": received_at + timedelta(microseconds=idx),
+                    **point,
+                }
+                for idx, point in enumerate(fallback_points)
             ]
         )
     operational_definitions, operational_points = _extract_operational_widget_rows(

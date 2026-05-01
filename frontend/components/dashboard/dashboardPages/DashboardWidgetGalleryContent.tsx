@@ -14,11 +14,8 @@ import {
   type ScatterPlotPoint,
   type StackedAreaSeries,
 } from "../charts";
-import type {
-  DashboardWidgetDefinition,
-  DashboardWidgetPoint,
-  OverviewExtendedResponse,
-} from "../dashboardTypes";
+import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
+import type { DashboardWidgetDefinition, DashboardWidgetPoint } from "../dashboardTypes";
 
 const widgetSeriesPalette = ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#818cf8", "#a78bfa"];
 
@@ -34,22 +31,7 @@ export function DashboardWidgetGalleryContent() {
       </section>
     );
   }
-  const overviewExtended: OverviewExtendedResponse = homeSlice.overviewExtended ?? {
-    server_now: overview.server_now,
-    from_timestamp: overview.from_timestamp,
-    to_timestamp: overview.to_timestamp,
-    p50_latency_ms: overview.avg_latency_ms,
-    p95_latency_ms: overview.avg_latency_ms,
-    p99_latency_ms: overview.avg_latency_ms,
-    apdex_score: 1,
-    active_sessions_estimate: 0,
-    error_burst_count: 0,
-    active_incident_count: 0,
-    error_type_breakdown: [],
-    alerts_timeline: [],
-    service_breakdown: [],
-    route_breakdown: [],
-  };
+  const overviewExtended = resolveOverviewExtendedForHome(overview, requests, homeSlice.overviewExtended);
   const routeBreakdownByVolume = [...overviewExtended.route_breakdown]
     .sort((a, b) => b.request_count - a.request_count)
     .slice(0, 10);

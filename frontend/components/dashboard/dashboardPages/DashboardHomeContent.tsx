@@ -26,12 +26,12 @@ import {
   type StackedAreaSeries,
 } from "../charts";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
+import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
 import { buildScopedQuery } from "../dashboardQueryState";
 import {
   formatTimestamp,
   type DashboardWidgetDefinition,
   type DashboardWidgetPoint,
-  type OverviewExtendedResponse,
 } from "../dashboardTypes";
 
 export function DashboardHomeContent() {
@@ -50,22 +50,7 @@ export function DashboardHomeContent() {
       </section>
     );
   }
-  const overviewExtended: OverviewExtendedResponse = homeSlice.overviewExtended ?? {
-    server_now: overview.server_now,
-    from_timestamp: overview.from_timestamp,
-    to_timestamp: overview.to_timestamp,
-    p50_latency_ms: overview.avg_latency_ms,
-    p95_latency_ms: overview.avg_latency_ms,
-    p99_latency_ms: overview.avg_latency_ms,
-    apdex_score: 1,
-    active_sessions_estimate: 0,
-    error_burst_count: 0,
-    active_incident_count: 0,
-    error_type_breakdown: [],
-    alerts_timeline: [],
-    service_breakdown: [],
-    route_breakdown: [],
-  };
+  const overviewExtended = resolveOverviewExtendedForHome(overview, requests, homeSlice.overviewExtended);
   const phasedLiteDashboard = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
   if (phasedLiteDashboard) {
     const totalRequests = homeSlice.sparklineSeries.reduce(
