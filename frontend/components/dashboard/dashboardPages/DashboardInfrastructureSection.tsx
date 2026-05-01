@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { dashboardPanelP5 } from "../dashboardCardStyles";
 import { trimSeriesToLastMinutes } from "../../../utils/dashboardData";
 import {
   BreakdownBarChart,
@@ -728,7 +729,7 @@ export function DashboardInfrastructureSection({
     <>
       <section className="grid w-full gap-4 xl:grid-cols-2 xl:items-stretch">
         <div className="min-w-0">
-          <div className="flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <div className={`flex h-full flex-col ${dashboardPanelP5}`}>
             <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Infrastructure now</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Concrete host and app load values captured across macOS, Windows, and Linux.

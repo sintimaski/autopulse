@@ -1,5 +1,6 @@
 "use client";
 
+import { dashboardPanelP5 } from "../dashboardCardStyles";
 import { MetricCard } from "../MetricCard";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardHomeSlice } from "../data/useDashboardSlices";
@@ -135,7 +136,7 @@ export function DashboardWidgetGalleryContent() {
 
   return (
     <section className="space-y-8">
-      <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <div className={dashboardPanelP5}>
         <h1 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Backend widget gallery</h1>
         <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
           Every chart type the dashboard can render from SDK widgets, plus sample charts built from the current
@@ -144,7 +145,7 @@ export function DashboardWidgetGalleryContent() {
       </div>
 
       {widgetDefinitions.length ? (
-        <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <section className={dashboardPanelP5}>
           <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Custom widgets</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
             Dynamically provided by your SDK widget classes.
@@ -307,7 +308,7 @@ export function DashboardWidgetGalleryContent() {
         </p>
       )}
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <section className={dashboardPanelP5}>
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Chart options showcase</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           All available chart styles shown together: line, bars, donut, histogram, scatter, and stacked area.

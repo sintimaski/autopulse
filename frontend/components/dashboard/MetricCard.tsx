@@ -1,5 +1,7 @@
 "use client";
 
+import { dashboardCardFill } from "./dashboardCardStyles";
+
 export function MetricCard({
   label,
   value,
@@ -31,7 +33,7 @@ export function MetricCard({
     <article
       title={tooltip}
       onClick={onClick}
-      className={`rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/85 to-sky-50/60 p-4 shadow-sm ring-1 ${toneRing} dark:border-neutral-800 dark:bg-gradient-to-br dark:from-neutral-900 dark:via-neutral-900 dark:to-sky-950/20 ${
+      className={`rounded-2xl ${dashboardCardFill} p-4 shadow-sm ring-1 ${toneRing} ${
         onClick ? "cursor-pointer transition-transform hover:-translate-y-0.5" : ""
       }`}
     >
