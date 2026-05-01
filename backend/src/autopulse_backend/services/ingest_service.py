@@ -392,7 +392,11 @@ def _extract_infrastructure_widget_rows(
         if not isinstance(raw_value, int | float):
             continue
         value = float(raw_value)
-        if source_key.endswith("_bytes"):
+        # psutil uses ..._recv / ..._sent for NIC counters (bytes cumulative since boot).
+        if source_key.endswith("_bytes") or source_key in (
+            "network_bytes_recv",
+            "network_bytes_sent",
+        ):
             value = value / (1024 * 1024)
         definitions.append(
             {

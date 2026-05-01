@@ -99,7 +99,11 @@ def to_widget_payload(metrics: dict[str, Any]) -> tuple[list[dict[str, Any]], li
         if not isinstance(raw_value, int | float):
             continue
         value = float(raw_value)
-        if source_key.endswith("_bytes"):
+        # psutil uses ..._recv / ..._sent for NIC counters; they count bytes too.
+        if source_key.endswith("_bytes") or source_key in (
+            "network_bytes_recv",
+            "network_bytes_sent",
+        ):
             value = value / (1024 * 1024)
         definitions.append(
             {

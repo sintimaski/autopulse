@@ -224,7 +224,7 @@ export function DashboardHomeContent() {
           </div>
         </div>
         <div className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/30 p-4">
-          <div className="text-sm text-slate-300">
+          {/* <div className="text-sm text-slate-300">
             Need deeper diagnosis? Open grouped errors and route-level breakdown.
           </div>
           <Link
@@ -232,7 +232,7 @@ export function DashboardHomeContent() {
             className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:border-slate-500"
           >
             Open diagnosis
-          </Link>
+          </Link> */}
         </div>
         <div className="space-y-6 text-slate-900 dark:text-neutral-100">
           <DashboardInfrastructureSection

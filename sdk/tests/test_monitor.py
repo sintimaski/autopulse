@@ -13,11 +13,25 @@ from fastapi.testclient import TestClient
 from autopulse._embedded import DEFAULT_EMBEDDED_API_KEY
 from autopulse._monitor import (
     _AutoPulseMiddleware,
+    _build_infrastructure_widget_payload,
     _EventDispatcher,
     _MonitorConfig,
     _stable_error_hash,
     monitor,
 )
+
+
+def test_infrastructure_widget_payload_converts_network_bytes_to_mb() -> None:
+    """NIC counters use _recv/_sent keys, so they skip endswith('_bytes') byte conversion."""
+    payload = _build_infrastructure_widget_payload(
+        {
+            "network_bytes_recv": 524_288_000.0,
+            "network_bytes_sent": 1_048_576.0,
+        }
+    )
+    by_widget = {p["widget_id"]: float(p["value"]) for p in payload["points"]}
+    assert by_widget["infra_network_received_mb"] == pytest.approx(500.0)
+    assert by_widget["infra_network_sent_mb"] == pytest.approx(1.0)
 
 
 def _make_config(**overrides: Any) -> _MonitorConfig:

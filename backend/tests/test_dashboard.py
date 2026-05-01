@@ -235,6 +235,9 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
     assert points_by_widget["latency_hist"][0]["label"] == "<50ms"
     assert points_by_widget["infra_host_cpu_percent"][0]["value"] == 35.0
     assert points_by_widget["infra_process_memory_rss_mb"][0]["value"] == 150.0
+    # 524288000 B = 500 MiB; 104857600 B = 100 MiB (must not be stored as raw bytes).
+    assert points_by_widget["infra_network_received_mb"][0]["value"] == 500.0
+    assert points_by_widget["infra_network_sent_mb"][0]["value"] == 100.0
 
 
 def test_dashboard_widgets_include_infrastructure_fallback_when_sdk_payload_missing(

@@ -9,7 +9,11 @@ export type StackedAreaSeries = {
   id: string;
   label: string;
   color: string;
+  /** Y values rendered in the chart (stacked layers). */
   values: number[];
+  /** Raw samples for tooltip/footer when `values` are derived (e.g. normalized composition). */
+  tooltipRawValues?: number[];
+  tooltipFormat?: (raw: number) => string;
 };
 
 type StackedAreaChartProps = {
@@ -105,9 +109,20 @@ export function StackedAreaChart({
           callbacks: {
             title: (items) => labels[items[0]?.dataIndex ?? 0] ?? "",
             label: (ctx) => {
-              const v = ctx.parsed.y;
-              const n = typeof v === "number" && Number.isFinite(v) ? v : 0;
-              return `${ctx.dataset.label ?? ""}: ${Math.round(n)}`;
+              const dsIndex = typeof ctx.datasetIndex === "number" ? ctx.datasetIndex : 0;
+              const entry = series[dsIndex];
+              const idx = ctx.dataIndex;
+              const stackedY = typeof ctx.parsed.y === "number" && Number.isFinite(ctx.parsed.y) ? ctx.parsed.y : 0;
+              if (
+                entry?.tooltipFormat &&
+                entry.tooltipRawValues &&
+                typeof idx === "number" &&
+                entry.tooltipRawValues.length > idx
+              ) {
+                const raw = Number(entry.tooltipRawValues[idx] ?? 0);
+                return `${ctx.dataset.label ?? ""}: ${entry.tooltipFormat(raw)} (${Math.round(stackedY)}% of mix)`;
+              }
+              return `${ctx.dataset.label ?? ""}: ${Math.round(stackedY)}`;
             },
           },
         },
@@ -156,15 +171,23 @@ export function StackedAreaChart({
         <CanvasLine data={chartData} options={options} />
       </div>
       <div className="flex flex-wrap gap-3">
-        {series.map((entry) => (
-          <p key={entry.id} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-300">
-            <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-            <span>{entry.label}</span>
-            <span className="tabular-nums text-slate-800 dark:text-neutral-100">
-              {Math.round(Number(entry.values[pointCount - 1] ?? 0))}
-            </span>
-          </p>
-        ))}
+        {series.map((entry) => {
+          const mix = Math.round(Number(entry.values[pointCount - 1] ?? 0));
+          const rawLatest = entry.tooltipRawValues?.[pointCount - 1];
+          const rawText =
+            typeof rawLatest === "number" && entry.tooltipFormat
+              ? entry.tooltipFormat(rawLatest)
+              : null;
+          return (
+            <p key={entry.id} className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-300">
+              <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+              <span>{entry.label}</span>
+              <span className="tabular-nums text-slate-800 dark:text-neutral-100">
+                {rawText ? `${rawText} · ${mix}%` : mix}
+              </span>
+            </p>
+          );
+        })}
       </div>
       <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
         {labels[0]} {" -> "} {labels[labels.length - 1]}

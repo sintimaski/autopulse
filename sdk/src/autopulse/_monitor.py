@@ -208,7 +208,11 @@ def _build_infrastructure_widget_payload(metrics: Mapping[str, Any]) -> dict[str
         if not isinstance(raw, int | float):
             continue
         value = float(raw)
-        if source_key.endswith("_bytes"):
+        # psutil uses ..._recv / ..._sent for NIC counters (bytes cumulative since boot).
+        if source_key.endswith("_bytes") or source_key in (
+            "network_bytes_recv",
+            "network_bytes_sent",
+        ):
             value = value / (1024 * 1024)
         definitions.append(
             {
