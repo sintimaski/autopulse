@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -48,6 +47,7 @@ from autopulse_backend.schemas import (
     DashboardDiagnosisTimelineBucket,
     DashboardDiagnosisTimelineResponse,
 )
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
@@ -100,7 +100,7 @@ async def get_dashboard_diagnosis_timeline(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        timeline = await asyncio.to_thread(
+        timeline = await run_duckdb_read_sync(
             diagnosis_timeline,
             duckdb_filters,
             from_timestamp=resolved_from,
@@ -172,7 +172,7 @@ async def get_dashboard_diagnosis_failures_by_route(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        items = await asyncio.to_thread(failures_by_route, duckdb_filters)
+        items = await run_duckdb_read_sync(failures_by_route, duckdb_filters)
         return DashboardDiagnosisFailureRoutesResponse(
             server_now=server_now,
             from_timestamp=resolved_from,
@@ -249,7 +249,7 @@ async def get_dashboard_diagnosis_error_group_events(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        total, items = await asyncio.to_thread(
+        total, items = await run_duckdb_read_sync(
             error_group_events,
             duckdb_filters,
             group_key=group_key,

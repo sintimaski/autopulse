@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from uuid import UUID
 
@@ -11,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.dashboard.payload_limits import MAX_DASHBOARD_WIDGET_POINTS_RETURNED
 from autopulse_backend.models import DashboardWidgetDefinition, DashboardWidgetPoint
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync, run_duckdb_write_sync
 from autopulse_backend.services.event_store import (
     event_store_enabled,
     try_get_duckdb_event_store,
@@ -82,7 +82,7 @@ async def insert_widget_points(session: AsyncSession, points: list[dict[str, obj
     if event_store_enabled():
         store = try_get_duckdb_event_store()
         if store is not None:
-            await asyncio.to_thread(store.insert_widget_points, points)
+            await run_duckdb_write_sync(store.insert_widget_points, points)
             return
     normalized_points: list[dict[str, object]] = []
     for point in points:
@@ -135,7 +135,7 @@ async def list_widget_points(
     if event_store_enabled():
         store = try_get_duckdb_event_store()
         if store is not None:
-            rows = await asyncio.to_thread(
+            rows = await run_duckdb_read_sync(
                 store.list_widget_points,
                 project_id=project_id,
                 from_timestamp=from_timestamp,

@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from autopulse_backend.database import AsyncSessionLocal
 from autopulse_backend.models import Event
+from autopulse_backend.services.duckdb_async import run_duckdb_write_sync
 from autopulse_backend.services.event_store import get_duckdb_event_store
 
 
@@ -43,7 +44,7 @@ async def run_backfill(*, batch_size: int, since: datetime | None) -> int:
             }
             for row in rows
         ]
-        await asyncio.to_thread(store.insert_rows, payload)
+        await run_duckdb_write_sync(store.insert_rows, payload)
         copied += len(rows)
         last_id = int(rows[-1].id)
     return copied

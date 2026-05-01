@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime
 from uuid import UUID
 
@@ -13,6 +12,7 @@ from autopulse_backend.ingestion.exclude_autopulse import (
     resolve_exclude_autopulse_traffic,
 )
 from autopulse_backend.models import Event
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import (
     EventStoreFilters,
     event_store_enabled,
@@ -42,7 +42,7 @@ async def request_window_counts(
         )
         store = try_get_duckdb_event_store()
         if store is not None:
-            rows = await asyncio.to_thread(
+            rows = await run_duckdb_read_sync(
                 store.fetch_events,
                 filters,
                 columns="id, status_code, type",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -30,6 +29,7 @@ from autopulse_backend.schemas import (
     DashboardLogQueryRequest,
     DashboardLogQueryValidationResponse,
 )
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import event_store_enabled, get_duckdb_event_store
 
 router = APIRouter()
@@ -104,8 +104,9 @@ async def execute_dashboard_log_query(
         if parsed.order_by == "timestamp":
             order_by = "timestamp DESC, id DESC" if parsed.order_desc else "timestamp ASC, id ASC"
         requested_limit = max(1, min(payload.page_size, parsed.limit, LOG_QUERY_MAX_LIMIT))
-        rows = await asyncio.to_thread(
-            get_duckdb_event_store().fetch_events,
+        store = get_duckdb_event_store()
+        rows = await run_duckdb_read_sync(
+            store.fetch_events,
             duckdb_filters,
             columns=(
                 "id, timestamp, method, path, status_code, latency_ms, "

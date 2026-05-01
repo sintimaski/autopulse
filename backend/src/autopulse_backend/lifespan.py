@@ -20,6 +20,7 @@ from autopulse_backend.jobs import (
     start_scheduler,
 )
 from autopulse_backend.models import Base
+from autopulse_backend.services.duckdb_async import shutdown_duckdb_executors
 from autopulse_backend.services.ingest_aggregate_worker import (
     IngestAggregateWorkerHandle,
     start_ingest_aggregate_worker,
@@ -169,3 +170,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if isinstance(pressure, RetentionPressurePollHandle):
         await pressure.stop()
     app.state._autopulse_retention_pressure_poll = None
+    shutdown_duckdb_executors(wait=True)

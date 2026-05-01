@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
@@ -42,6 +41,7 @@ from autopulse_backend.schemas import (
     DashboardOverviewExtendedResponse,
     DashboardOverviewResponse,
 )
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
@@ -144,7 +144,7 @@ async def get_dashboard_overview(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        request_total, error_total, avg_latency_ms, series = await asyncio.to_thread(
+        request_total, error_total, avg_latency_ms, series = await run_duckdb_read_sync(
             overview_series,
             duckdb_filters,
             from_timestamp=resolved_from,
@@ -392,7 +392,7 @@ async def get_dashboard_overview_extended(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        data = await asyncio.to_thread(
+        data = await run_duckdb_read_sync(
             overview_extended,
             duckdb_filters,
             from_timestamp=resolved_from,

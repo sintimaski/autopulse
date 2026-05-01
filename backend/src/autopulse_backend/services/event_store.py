@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,6 +14,7 @@ import duckdb
 from autopulse_backend.config import Settings, get_settings
 from autopulse_backend.dashboard.log_query import parse_log_query
 from autopulse_backend.dashboard.payload_limits import MAX_DASHBOARD_WIDGET_POINTS_RETURNED
+from autopulse_backend.services.duckdb_async import run_duckdb_write_sync
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,4 +521,4 @@ async def insert_events_duckdb(rows: list[dict[str, Any]]) -> None:
     if not event_store_enabled():
         return
     store = get_duckdb_event_store()
-    await asyncio.to_thread(store.insert_rows, rows)
+    await run_duckdb_write_sync(store.insert_rows, rows)

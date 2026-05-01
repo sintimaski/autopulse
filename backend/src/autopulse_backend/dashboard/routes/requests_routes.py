@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -36,6 +35,7 @@ from autopulse_backend.ingestion.exclude_autopulse import (
 )
 from autopulse_backend.models import Event
 from autopulse_backend.schemas import DashboardRequestItem, DashboardRequestsResponse
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
@@ -105,7 +105,7 @@ async def get_dashboard_requests(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        total, items = await asyncio.to_thread(
+        total, items = await run_duckdb_read_sync(
             request_items, duckdb_filters, limit=limit, offset=offset
         )
         return DashboardRequestsResponse(

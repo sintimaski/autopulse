@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import sqlite3
 from contextlib import suppress
 from dataclasses import dataclass
@@ -24,6 +23,7 @@ from autopulse_backend.models import (
     MetricBucket,
     ProjectUiSettings,
 )
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync, run_duckdb_write_sync
 from autopulse_backend.services.event_store import event_store_enabled, get_duckdb_event_store
 
 
@@ -477,13 +477,13 @@ async def _duckdb_shrink_under_size_cap(
     max_batch = _DUCKDB_SHRINK_BATCH
     for _ in range(_DUCKDB_SHRINK_MAX_ITERATIONS):
         with suppress(Exception):
-            await asyncio.to_thread(store.checkpoint)
-        current_size = await asyncio.to_thread(store.file_size_bytes)
+            await run_duckdb_write_sync(store.checkpoint)
+        current_size = await run_duckdb_read_sync(store.file_size_bytes)
         if current_size <= max_bytes:
             break
         over_ratio = max(0.0, float(current_size - max_bytes) / float(max(current_size, 1)))
         batch = max(200, min(max_batch, int(max_batch * max(over_ratio, 0.05))))
-        deleted_now = await asyncio.to_thread(
+        deleted_now = await run_duckdb_write_sync(
             store.delete_oldest_events,
             rows_to_delete=batch,
             project_id=project_id,
@@ -495,7 +495,7 @@ async def _duckdb_shrink_under_size_cap(
             continue
         deleted_total += deleted_now
         with suppress(Exception):
-            await asyncio.to_thread(store.checkpoint)
+            await run_duckdb_write_sync(store.checkpoint)
         stall_rounds = 0
     return deleted_total
 
@@ -527,7 +527,7 @@ async def _apply_duckdb_retention(
         ).all()
         if days is not None
     }
-    project_ids_raw = await asyncio.to_thread(store.list_project_ids)
+    project_ids_raw = await run_duckdb_read_sync(store.list_project_ids)
     for raw_project_id in project_ids_raw:
         with suppress(ValueError):
             project_id = UUID(str(raw_project_id))
@@ -535,7 +535,7 @@ async def _apply_duckdb_retention(
             if not size_only and project_id in overrides:
                 cutoff = resolved_now - timedelta(days=max(1, overrides[project_id]))
             if not size_only:
-                deleted_for_project = await asyncio.to_thread(
+                deleted_for_project = await run_duckdb_write_sync(
                     store.delete_events_before,
                     cutoff=cutoff,
                     project_id=project_id,
@@ -558,10 +558,10 @@ async def _apply_duckdb_retention(
     ).all()
     for project_id, max_db_size_mb, max_log_rows in rotation_settings:
         if max_log_rows is not None:
-            project_count = await asyncio.to_thread(store.count_events_for_project, project_id)
+            project_count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
             overflow = max(0, int(project_count) - int(max_log_rows))
             if overflow > 0:
-                deleted_for_project = await asyncio.to_thread(
+                deleted_for_project = await run_duckdb_write_sync(
                     store.delete_oldest_events,
                     rows_to_delete=overflow,
                     project_id=project_id,
@@ -593,7 +593,7 @@ async def _apply_duckdb_retention(
         )
         deleted_total += deleted_global
         if deleted_global > 0:
-            for raw_project_id in await asyncio.to_thread(store.list_project_ids):
+            for raw_project_id in await run_duckdb_read_sync(store.list_project_ids):
                 with suppress(ValueError):
                     touched_project_ids.add(UUID(str(raw_project_id)))
     for project_id in touched_project_ids:
@@ -769,7 +769,7 @@ async def retention_pressure_pending(
         with suppress(Exception):
             store = get_duckdb_event_store()
             with suppress(Exception):
-                await asyncio.to_thread(store.checkpoint)
+                await run_duckdb_write_sync(store.checkpoint)
             file_cap_mb_candidates: list[int] = []
             if settings.embedded_sqlite_max_db_file_mb is not None:
                 file_cap_mb_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
@@ -781,7 +781,7 @@ async def retention_pressure_pending(
             file_cap_mb_candidates.extend(int(row[0]) for row in all_ui_mb.all())
             if file_cap_mb_candidates:
                 min_cap_mb = min(file_cap_mb_candidates)
-                size_bytes = await asyncio.to_thread(store.file_size_bytes)
+                size_bytes = await run_duckdb_read_sync(store.file_size_bytes)
                 if size_bytes > min_cap_mb * 1024 * 1024:
                     return True
             all_ui_rows = await session.execute(
@@ -793,7 +793,7 @@ async def retention_pressure_pending(
             for project_id, max_rows in all_ui_rows.all():
                 if max_rows is None:
                     continue
-                count = await asyncio.to_thread(store.count_events_for_project, project_id)
+                count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
                 if int(count) > int(max_rows):
                     return True
         return False
