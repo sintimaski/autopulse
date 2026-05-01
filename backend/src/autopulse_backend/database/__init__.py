@@ -6,6 +6,7 @@ from autopulse_backend.database.session import (
     get_db_session,
     get_engine,
     get_session_maker,
+    warm_database_connections,
 )
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "get_engine",
     "get_db_session",
     "get_session_maker",
+    "warm_database_connections",
     "upgrade_to_head",
 ]

@@ -43,11 +43,28 @@ def _as_duckdb_timestamp(value: datetime) -> str:
     return _as_utc(value).strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
+def _duckdb_connect_config() -> dict[str, str]:
+    """Per-connection DuckDB settings (see DuckDB configuration / pragmas docs)."""
+    cfg: dict[str, str] = {}
+    raw_threads = getenv("AUTOPULSE_DUCKDB_THREADS")
+    if raw_threads and raw_threads.strip():
+        try:
+            threads = max(1, min(int(raw_threads.strip()), 128))
+            cfg["threads"] = str(threads)
+        except ValueError:
+            pass
+    raw_mem = getenv("AUTOPULSE_DUCKDB_MEMORY_LIMIT")
+    if raw_mem and raw_mem.strip():
+        cfg["memory_limit"] = raw_mem.strip()
+    return cfg
+
+
 class DuckDbEventStore:
     def __init__(self, db_path: str) -> None:
         self._path = Path(db_path).expanduser().resolve()
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_conn = duckdb.connect(str(self._path))
+        _cfg = _duckdb_connect_config()
+        self._write_conn = duckdb.connect(str(self._path), config=_cfg)
         self._write_lock = Lock()
         self._read_index = 0
         self._read_index_lock = Lock()
@@ -56,7 +73,9 @@ class DuckDbEventStore:
         # DuckDB rejects opening the same file with different connection
         # configurations in one process. Keep pooled read connections in the
         # same mode as the primary writable connection.
-        self._read_connections = [duckdb.connect(str(self._path)) for _ in range(pool_size)]
+        self._read_connections = [
+            duckdb.connect(str(self._path), config=_cfg) for _ in range(pool_size)
+        ]
         self._read_locks = [Lock() for _ in range(pool_size)]
 
     def _resolve_read_pool_size(self) -> int:
@@ -385,10 +404,16 @@ class DuckDbEventStore:
         else:
             resolved_columns = columns
         where_sql, params = self._compile_filters(filters)
-        inner_sql = f"SELECT {resolved_columns} FROM events WHERE {where_sql}"  # nosec B608
+        # Avoid COUNT(*) OVER() on an unbounded inner result: that pattern scans
+        # the full filter match before LIMIT. MATERIALIZED CTE + COUNT on the
+        # cached result matches totals while keeping one pass over base events.
         sql = (
-            f"SELECT *, COUNT(*) OVER() AS __total FROM ({inner_sql}) AS filtered "
-            f"ORDER BY {order_by} LIMIT ? OFFSET ?"  # nosec B608
+            f"WITH filtered AS MATERIALIZED ("
+            f"SELECT {resolved_columns} FROM events WHERE {where_sql}"
+            f"), agg AS (SELECT COUNT(*)::BIGINT AS __total FROM filtered) "
+            f"SELECT page.*, agg.__total FROM ("
+            f"SELECT * FROM filtered ORDER BY {order_by} LIMIT ? OFFSET ?"
+            f") AS page CROSS JOIN agg"  # nosec B608
         )
         rows = self._fetchall_read(sql, [*params, limit, offset])
         if not rows:

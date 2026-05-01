@@ -4,10 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from autopulse_backend.core.config import Settings, get_settings
-from autopulse_backend.database import get_engine
+from autopulse_backend.database import get_session_maker
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.repositories.aggregates import (
     ErrorGroupAggregateDelta,
@@ -51,8 +49,7 @@ async def _run_worker(
     stop_event: asyncio.Event,
     settings: Settings,
 ) -> None:
-    engine = get_engine(settings.database_url)
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    session_maker = get_session_maker(settings.database_url)
     while not stop_event.is_set():
         payload = await queue.get()
         if stop_event.is_set():

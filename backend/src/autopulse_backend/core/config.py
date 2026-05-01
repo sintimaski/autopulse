@@ -118,6 +118,9 @@ class Settings:
     dashboard_auth_magic_link_ttl_minutes: int = 15
     dashboard_auth_allow_api_key_fallback: bool = False
     dashboard_auth_magic_link_base_url: str | None = None
+    # When > 0, broadcast dashboard_update over WS on this interval for projects with
+    # an open dashboard connection (ingest alone can feel sparse).
+    dashboard_ws_live_tick_seconds: float = 0.0
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -367,5 +370,10 @@ def get_settings() -> Settings:
         ),
         dashboard_auth_magic_link_base_url=(
             getenv("DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "").strip() or None
+        ),
+        dashboard_ws_live_tick_seconds=_env_float(
+            "AUTOPULSE_DASHBOARD_WS_LIVE_TICK_SECONDS",
+            4.0,
+            minimum=0.0,
         ),
     )

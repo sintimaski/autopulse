@@ -256,7 +256,7 @@ const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 const MAX_WIDGET_POINTS_TOTAL = 2400;
 const DASHBOARD_REWRITE_PHASED_ENABLED =
   process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
-const LIVE_REFRESH_THROTTLE_MS = 750;
+const LIVE_REFRESH_THROTTLE_MS = 400;
 const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
 const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
   const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
@@ -402,6 +402,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveFallbackRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const livePendingRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveSocketRef = useRef<WebSocket | null>(null);
   const liveLastRefreshAtRef = useRef(0);
   const hasLoadedDashboardData = useRef(false);
@@ -799,6 +800,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (liveReconnectTimer.current) {
         clearTimeout(liveReconnectTimer.current);
       }
+      if (livePendingRefreshTimer.current) {
+        clearTimeout(livePendingRefreshTimer.current);
+      }
       if (liveSocketRef.current) {
         liveSocketRef.current.close();
         liveSocketRef.current = null;
@@ -815,6 +819,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (liveReconnectTimer.current) {
         clearTimeout(liveReconnectTimer.current);
         liveReconnectTimer.current = null;
+      }
+      if (livePendingRefreshTimer.current) {
+        clearTimeout(livePendingRefreshTimer.current);
+        livePendingRefreshTimer.current = null;
       }
       if (liveSocketRef.current) {
         liveSocketRef.current.close();
@@ -854,8 +862,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             return;
           }
           const now = Date.now();
-          if (now - liveLastRefreshAtRef.current < LIVE_REFRESH_THROTTLE_MS) {
+          const elapsedMs = now - liveLastRefreshAtRef.current;
+          if (elapsedMs < LIVE_REFRESH_THROTTLE_MS) {
+            // Keep at most one trailing refresh during bursty WS traffic.
+            if (livePendingRefreshTimer.current) {
+              return;
+            }
+            const delayMs = Math.max(1, LIVE_REFRESH_THROTTLE_MS - elapsedMs);
+            livePendingRefreshTimer.current = setTimeout(() => {
+              livePendingRefreshTimer.current = null;
+              liveLastRefreshAtRef.current = Date.now();
+              setRefreshToken((token) => token + 1);
+            }, delayMs);
             return;
+          }
+          if (livePendingRefreshTimer.current) {
+            clearTimeout(livePendingRefreshTimer.current);
+            livePendingRefreshTimer.current = null;
           }
           liveLastRefreshAtRef.current = now;
           setRefreshToken((token) => token + 1);
@@ -886,6 +909,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (liveReconnectTimer.current) {
         clearTimeout(liveReconnectTimer.current);
         liveReconnectTimer.current = null;
+      }
+      if (livePendingRefreshTimer.current) {
+        clearTimeout(livePendingRefreshTimer.current);
+        livePendingRefreshTimer.current = null;
       }
       if (liveSocketRef.current) {
         liveSocketRef.current.close();

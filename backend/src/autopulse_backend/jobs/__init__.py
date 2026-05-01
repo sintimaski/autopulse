@@ -11,11 +11,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
 from autopulse_backend.core.config import Settings, get_settings
-from autopulse_backend.database import dispose_engine_for_url, get_engine
+from autopulse_backend.database import dispose_engine_for_url, get_engine, get_session_maker
 from autopulse_backend.maintenance.retention import (
     _resolve_sqlite_db_path,
     _sqlite_db_disk_footprint_bytes,
@@ -88,8 +86,7 @@ async def run_alerts_once(
     resolved_settings = settings or get_settings()
     resolved_sender = sender or build_alert_sender(resolved_settings)
     await _ensure_sqlite_schema_from_models(resolved_settings.database_url)
-    engine = get_engine(resolved_settings.database_url)
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    session_maker = get_session_maker(resolved_settings.database_url)
     async with session_maker() as session:
         return await evaluate_alerts_once(session, resolved_settings, sender=resolved_sender)
 
@@ -123,8 +120,7 @@ async def run_retention_once(
     async with _retention_run_lock:
         logger.info("Retention lock acquired")
         await _ensure_sqlite_schema_from_models(url)
-        engine = get_engine(url)
-        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        session_maker = get_session_maker(url)
         async with session_maker() as session:
             result = await run_retention_cleanup_once(session, resolved_settings)
         deleted = result.deleted_events
@@ -259,8 +255,7 @@ async def _run_periodic(
     stop_event: asyncio.Event,
     operation: Callable[[], Awaitable[None]],
 ) -> None:
-    engine = get_engine(settings.database_url)
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    session_maker = get_session_maker(settings.database_url)
     logger.info(
         "Periodic loop started: job=%s interval_seconds=%.2f lease_enabled=%s",
         job_name,
@@ -384,8 +379,7 @@ async def _retention_pressure_poll_loop(settings: Settings, stop_event: asyncio.
     min_interval = float(settings.retention_pressure_min_interval_seconds)
     if poll <= 0:
         return
-    engine = get_engine(settings.database_url)
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+    session_maker = get_session_maker(settings.database_url)
     last_run_mono: float | None = None
     while not stop_event.is_set():
         pending = False

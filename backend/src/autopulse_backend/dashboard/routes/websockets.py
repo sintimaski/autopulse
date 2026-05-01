@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autopulse_backend.auth import ProjectContext, get_dashboard_auth_session
 from autopulse_backend.config import get_settings
-from autopulse_backend.database import get_engine
+from autopulse_backend.database import get_session_maker
 from autopulse_backend.realtime import project_websocket_hub
 
 router = APIRouter()
@@ -22,9 +21,7 @@ async def dashboard_updates(websocket: WebSocket) -> None:
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing dashboard session"
         )
         return
-    session_maker = async_sessionmaker(
-        bind=get_engine(), expire_on_commit=False, class_=AsyncSession
-    )
+    session_maker = get_session_maker()
     async with session_maker() as session:
         auth_session = await get_dashboard_auth_session(
             session=session, settings=settings, request=websocket
@@ -61,9 +58,7 @@ async def dashboard_log_query_stream(websocket: WebSocket) -> None:
             code=status.WS_1008_POLICY_VIOLATION, reason="Missing dashboard session"
         )
         return
-    session_maker = async_sessionmaker(
-        bind=get_engine(), expire_on_commit=False, class_=AsyncSession
-    )
+    session_maker = get_session_maker()
     async with session_maker() as session:
         auth_session = await get_dashboard_auth_session(
             session=session, settings=settings, request=websocket

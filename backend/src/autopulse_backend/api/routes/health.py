@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import text
 
@@ -57,8 +59,12 @@ async def internal_metrics(request: Request) -> dict[str, object]:
                     else None
                 ),
             }
+    tick_task = getattr(request.app.state, "_autopulse_dashboard_ws_tick_task", None)
+    dashboard_ws_tick_running = isinstance(tick_task, asyncio.Task) and not tick_task.done()
     return {
         "service": "autopulse-backend",
+        "dashboard_ws_live_tick_seconds": settings.dashboard_ws_live_tick_seconds,
+        "dashboard_ws_tick_running": dashboard_ws_tick_running,
         "scheduler_running": isinstance(scheduler, SchedulerHandle),
         "retention_pressure_poll_running": isinstance(pressure, RetentionPressurePollHandle)
         and not pressure.task.done(),

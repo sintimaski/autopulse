@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any
@@ -18,13 +19,11 @@ class InfrastructureMetricsSampler:
     ttl_seconds: float = 2.0
     _last_sample: dict[str, float] = field(default_factory=dict)
     _last_sampled_at: float = 0.0
+    _sample_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
-    def sample(self) -> dict[str, float]:
+    def _sample_uncached(self) -> dict[str, float]:
         if psutil is None:
             return {}
-        now = monotonic()
-        if self._last_sample and (now - self._last_sampled_at) < self.ttl_seconds:
-            return dict(self._last_sample)
         process = psutil.Process()
         vm = psutil.virtual_memory()
         disk = psutil.disk_usage("/")
@@ -60,6 +59,20 @@ class InfrastructureMetricsSampler:
                         sample["embedded_log_store_usage_percent"] = (
                             (size_bytes / (1024 * 1024)) / cap_mb
                         ) * 100.0
+        return sample
+
+    async def sample(self) -> dict[str, float]:
+        if psutil is None:
+            return {}
+        now = monotonic()
+        if self._last_sample and (now - self._last_sampled_at) < self.ttl_seconds:
+            return dict(self._last_sample)
+        async with self._sample_lock:
+            now = monotonic()
+            if self._last_sample and (now - self._last_sampled_at) < self.ttl_seconds:
+                return dict(self._last_sample)
+            sample = await asyncio.to_thread(self._sample_uncached)
+            now = monotonic()
         self._last_sample = sample
         self._last_sampled_at = now
         return dict(sample)

@@ -1,12 +1,14 @@
 """Async helpers for DuckDB work on thread pools.
 
-DuckDB calls are synchronous. ``asyncio.to_thread`` uses the process default
-`ThreadPoolExecutor`, which is shared with ingest, retention, and dashboard
-code. Under high ingest load, dashboard reads can queue behind many writers and
-appear to "block".
+The official DuckDB Python package exposes a **synchronous** API (queries run in
+the embedded engine). There is no first-party ``async``/await driver; helpers
+such as ``aioduck`` still delegate to worker threads under the hood.
 
-Dedicated pools isolate dashboard-style reads from write-heavy paths so reads
-still get threads while writes compete only within the write pool.
+We offload DuckDB onto dedicated `ThreadPoolExecutor` pools so the asyncio event
+loop stays responsive. Throughput and latency on the hot path are improved by
+tuning the embedded store (see ``event_store`` connection config, CTE-based
+pagination SQL, and ``AUTOPULSE_DUCKDB_*`` env vars) rather than pretending the
+Python client is non-blocking IO.
 """
 
 from __future__ import annotations

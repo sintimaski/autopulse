@@ -57,3 +57,44 @@ def test_duckdb_event_store_insert_filter_and_delete(tmp_path) -> None:
 
     deleted = store.delete_events_before(cutoff=now - timedelta(seconds=90))
     assert deleted == 1
+
+
+def test_duckdb_fetch_events_with_total_slim_pagination(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events2.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    rows_in = []
+    for i in range(5):
+        rows_in.append(
+            {
+                "project_id": project_id,
+                "timestamp": now - timedelta(minutes=10 - i),
+                "received_at": now - timedelta(minutes=10 - i),
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": f"/p{i}",
+                "status_code": 200,
+                "latency_ms": float(i),
+                "payload": {"n": i},
+                "request_id": f"r-{i}",
+            }
+        )
+    store.insert_rows(rows_in)
+    filters = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(minutes=30),
+        to_timestamp=now,
+    )
+    total, page = store.fetch_events_with_total(
+        filters, limit=2, offset=0, slim_payload=True, order_by="timestamp DESC, id DESC"
+    )
+    assert total == 5
+    assert len(page) == 2
+    total2, page2 = store.fetch_events_with_total(
+        filters, limit=2, offset=2, slim_payload=True, order_by="timestamp DESC, id DESC"
+    )
+    assert total2 == 5
+    assert len(page2) == 2

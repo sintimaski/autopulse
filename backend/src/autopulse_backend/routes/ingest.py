@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +34,41 @@ from autopulse_backend.services.ingest_service import persist_ingest_batch
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+async def _ingest_websocket_fanout(
+    *,
+    project_id: UUID,
+    accepted: int,
+    received_at: datetime,
+) -> None:
+    """Broadcast ingest + dashboard_update without blocking the ingest HTTP handler.
+
+    Slow or stalled WebSocket clients must not delay ``POST /ingest`` or the live tick loop.
+    """
+    try:
+        await project_websocket_hub.publish_ingest(
+            message=IngestBroadcastMessage(
+                project_id=project_id,
+                accepted=accepted,
+                received_at=received_at,
+            )
+        )
+        dashboard_version = await mark_project_dashboard_dirty(project_id)
+        await project_websocket_hub.publish_dashboard_update(
+            message=DashboardUpdateMessage(
+                project_id=project_id,
+                version=dashboard_version,
+                reason="ingest",
+                updated_slices=("overview", "requests", "errors", "widgets"),
+                updated_at=received_at,
+            )
+        )
+    except Exception:
+        logger.exception(
+            "ingest_websocket_fanout_failed",
+            extra={"event": "ingest_websocket_fanout_failed", "project_id": str(project_id)},
+        )
 
 
 def _is_https_request(request: Request, *, trust_forwarded_proto: bool) -> bool:
@@ -154,21 +191,11 @@ async def ingest_events(
             await upsert_metric_buckets(session, persist_result.metric_bucket_deltas)
             await upsert_error_group_aggregates(session, persist_result.error_group_deltas)
             service_metrics.increment("ingest.aggregate_worker.sync_fallback")
-    await project_websocket_hub.publish_ingest(
-        message=IngestBroadcastMessage(
+    asyncio.create_task(
+        _ingest_websocket_fanout(
             project_id=context.project_id,
             accepted=accepted,
             received_at=received_at,
-        )
-    )
-    dashboard_version = await mark_project_dashboard_dirty(context.project_id)
-    await project_websocket_hub.publish_dashboard_update(
-        message=DashboardUpdateMessage(
-            project_id=context.project_id,
-            version=dashboard_version,
-            reason="ingest",
-            updated_slices=("overview", "requests", "errors", "widgets"),
-            updated_at=received_at,
         )
     )
     service_metrics.increment("ingest.accepted.batches")

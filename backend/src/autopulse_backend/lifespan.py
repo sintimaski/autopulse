@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
@@ -10,7 +11,7 @@ from autopulse_backend.core.config import (
     _is_autopulse_embedded_default_sqlite_file,
     get_settings,
 )
-from autopulse_backend.database import get_engine
+from autopulse_backend.database import get_engine, warm_database_connections
 from autopulse_backend.jobs import (
     RetentionPressurePollHandle,
     SchedulerHandle,
@@ -20,7 +21,9 @@ from autopulse_backend.jobs import (
     start_scheduler,
 )
 from autopulse_backend.models import Base
+from autopulse_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
 from autopulse_backend.services.duckdb_async import shutdown_duckdb_executors
+from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
 from autopulse_backend.services.ingest_aggregate_worker import (
     IngestAggregateWorkerHandle,
     start_ingest_aggregate_worker,
@@ -31,29 +34,43 @@ logger = logging.getLogger(__name__)
 
 
 def _ensure_autopulse_backend_logging() -> None:
-    """Uvicorn leaves the root logger at WARNING; attach a handler so app INFO is visible."""
+    """Ensure ``autopulse_backend`` INFO logs reach stderr.
+
+    Uvicorn leaves the root logger at WARNING. Some environments also attach a
+    ``NullHandler`` (or other handlers) to ``autopulse_backend`` before lifespan
+    runs; the old early-return skipped adding a ``StreamHandler``, so startup
+    ``logger.info`` lines never appeared.
+    """
     pkg = logging.getLogger("autopulse_backend")
-    if pkg.handlers:
-        return
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
-    pkg.addHandler(handler)
     pkg.setLevel(logging.INFO)
+    has_stream = any(isinstance(h, logging.StreamHandler) for h in pkg.handlers)
+    if not has_stream:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+        handler.setLevel(logging.INFO)
+        pkg.addHandler(handler)
+    else:
+        for h in pkg.handlers:
+            if isinstance(h, logging.StreamHandler) and h.level > logging.INFO:
+                h.setLevel(logging.INFO)
     pkg.propagate = False
 
 
 def _log_grouped_startup_settings() -> None:
     """Log non-secret effective settings grouped for startup debugging."""
     settings = get_settings()
-    logger.info(
+    # Log on the package logger so messages always use the handlers configured in
+    # ``_ensure_autopulse_backend_logging`` (child loggers can be misconfigured in some hosts).
+    log = logging.getLogger("autopulse_backend")
+    log.info(
         "Startup settings [database]: database_url=%s",
         settings.database_url,
     )
-    logger.info(
+    log.info(
         "Startup settings [cors]: cors_allow_origins=%s",
         ",".join(settings.cors_allow_origins),
     )
-    logger.info(
+    log.info(
         "Startup settings [ingest]: max_request_bytes=%d rate_limit=%d/%ds "
         "distributed_rate_limit=%s async_aggregate=%s aggregate_queue_max=%d "
         "drop_autopulse_traffic=%s",
@@ -65,7 +82,7 @@ def _log_grouped_startup_settings() -> None:
         settings.ingest_async_aggregate_queue_max_size,
         settings.ingest_drop_autopulse_traffic_from_db,
     )
-    logger.info(
+    log.info(
         "Startup settings [jobs_retention]: jobs_enable_scheduler=%s "
         "scheduler_lease_enabled=%s scheduler_lease_ttl_seconds=%d "
         "alert_interval_seconds=%.2f retention_interval_seconds=%.2f "
@@ -82,7 +99,7 @@ def _log_grouped_startup_settings() -> None:
         settings.retention_raw_events_days,
         settings.embedded_sqlite_max_db_file_mb,
     )
-    logger.info(
+    log.info(
         "Startup settings [dashboard_auth]: enabled=%s allowed_email=%s "
         "api_key_fallback=%s session_ttl_minutes=%d magic_link_ttl_minutes=%d",
         settings.dashboard_auth_enabled,
@@ -91,7 +108,7 @@ def _log_grouped_startup_settings() -> None:
         settings.dashboard_auth_session_ttl_minutes,
         settings.dashboard_auth_magic_link_ttl_minutes,
     )
-    logger.info(
+    log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "
         "email_from=%s default_destination_set=%s webhook_set=%s slack_set=%s "
         "discord_set=%s",
@@ -103,6 +120,10 @@ def _log_grouped_startup_settings() -> None:
         bool(settings.alert_webhook_url),
         bool(settings.alert_slack_webhook_url),
         bool(settings.alert_discord_webhook_url),
+    )
+    log.info(
+        "Startup settings [realtime]: dashboard_ws_live_tick_seconds=%.2f",
+        settings.dashboard_ws_live_tick_seconds,
     )
 
 
@@ -117,6 +138,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = get_engine(settings.database_url)
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+
+    await warm_database_connections(settings.database_url)
+    if event_store_enabled(settings):
+        try_get_duckdb_event_store()
 
     if settings.jobs_enable_scheduler:
         app.state._autopulse_scheduler = start_scheduler(settings=settings)
@@ -156,6 +181,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state._autopulse_retention_pressure_poll = None
 
+    if settings.dashboard_ws_live_tick_seconds > 0:
+        app.state._autopulse_dashboard_ws_tick_task = asyncio.create_task(
+            run_dashboard_ws_live_tick_loop(
+                interval_seconds=settings.dashboard_ws_live_tick_seconds,
+            ),
+            name="autopulse-dashboard-ws-tick",
+        )
+        logger.info(
+            "Dashboard WebSocket live tick enabled (every %.2fs for connected clients)",
+            settings.dashboard_ws_live_tick_seconds,
+        )
+    else:
+        app.state._autopulse_dashboard_ws_tick_task = None
+
     yield
 
     scheduler = getattr(app.state, "_autopulse_scheduler", None)
@@ -170,4 +209,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if isinstance(pressure, RetentionPressurePollHandle):
         await pressure.stop()
     app.state._autopulse_retention_pressure_poll = None
+    tick_task = getattr(app.state, "_autopulse_dashboard_ws_tick_task", None)
+    if isinstance(tick_task, asyncio.Task) and not tick_task.done():
+        tick_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await tick_task
+    app.state._autopulse_dashboard_ws_tick_task = None
     shutdown_duckdb_executors(wait=True)

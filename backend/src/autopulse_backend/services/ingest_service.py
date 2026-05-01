@@ -110,7 +110,7 @@ async def persist_ingest_batch(
         for point in widget_points
     )
     if not has_infrastructure_points:
-        sampled = _infrastructure_sampler.sample()
+        sampled = await _infrastructure_sampler.sample()
         fallback_definitions, fallback_points = infrastructure_to_widget_payload(sampled)
         widget_definitions.extend(
             [

@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from os import getenv
 from uuid import UUID
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
+
+
+def _ws_send_timeout_seconds() -> float:
+    raw = getenv("AUTOPULSE_WS_SEND_TIMEOUT_SECONDS")
+    if raw is None or not raw.strip():
+        return 3.0
+    try:
+        return max(0.25, min(float(raw.strip()), 60.0))
+    except ValueError:
+        return 3.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,33 +77,65 @@ class ProjectWebSocketHub:
         if not project_connections:
             self._project_connections.pop(project_id, None)
 
-    async def publish_ingest(self, *, message: IngestBroadcastMessage) -> None:
-        project_connections = self._project_connections.get(message.project_id)
+    def connected_project_ids(self) -> list[UUID]:
+        """Projects that currently have at least one dashboard WebSocket connection."""
+        return list(self._project_connections.keys())
+
+    async def _broadcast_text(self, *, project_id: UUID, payload: str, log_context: str) -> None:
+        """Send the same payload to all dashboard sockets for a project.
+
+        Sends run in parallel with a per-socket timeout so one slow or blocked
+        client (browser not reading TCP buffer) cannot stall ingest or the live
+        tick loop for other subscribers.
+        """
+        project_connections = self._project_connections.get(project_id)
         if not project_connections:
             return
-        payload = message.to_json()
-        disconnected: list[WebSocket] = []
-        for websocket in project_connections:
+        recipients = list(project_connections)
+        timeout = _ws_send_timeout_seconds()
+
+        async def _send_one(websocket: WebSocket) -> tuple[WebSocket, bool]:
             try:
-                await websocket.send_text(payload)
+                await asyncio.wait_for(websocket.send_text(payload), timeout=timeout)
+                return (websocket, True)
+            except TimeoutError:
+                logger.warning(
+                    "websocket_send_timeout",
+                    extra={"project_id": str(project_id), "context": log_context},
+                )
+                return (websocket, False)
             except Exception:
-                disconnected.append(websocket)
-        for websocket in disconnected:
-            self.remove_connection(project_id=message.project_id, websocket=websocket)
+                return (websocket, False)
+
+        results = await asyncio.gather(
+            *(_send_one(ws) for ws in recipients),
+            return_exceptions=True,
+        )
+        for item in results:
+            if isinstance(item, BaseException):
+                logger.debug(
+                    "websocket_broadcast_task_failed",
+                    exc_info=item,
+                    extra={"project_id": str(project_id), "context": log_context},
+                )
+                continue
+            websocket, ok = item
+            if not ok:
+                self.remove_connection(project_id=project_id, websocket=websocket)
+
+    async def publish_ingest(self, *, message: IngestBroadcastMessage) -> None:
+        await self._broadcast_text(
+            project_id=message.project_id,
+            payload=message.to_json(),
+            log_context="ingest",
+        )
 
     async def publish_dashboard_update(self, *, message: DashboardUpdateMessage) -> None:
-        project_connections = self._project_connections.get(message.project_id)
-        if not project_connections:
-            return
-        payload = message.to_json()
-        disconnected: list[WebSocket] = []
-        for websocket in project_connections:
-            try:
-                await websocket.send_text(payload)
-            except Exception:
-                disconnected.append(websocket)
-        for websocket in disconnected:
-            self.remove_connection(project_id=message.project_id, websocket=websocket)
+        await self._broadcast_text(
+            project_id=message.project_id,
+            payload=message.to_json(),
+            log_context=f"dashboard_update:{message.reason}",
+        )
 
 
 project_websocket_hub = ProjectWebSocketHub()

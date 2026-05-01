@@ -60,12 +60,27 @@ _bundle_inflight: dict[str, asyncio.Task[DashboardDataQueryResponse]] = {}
 _bundle_inflight_lock = asyncio.Lock()
 _bundle_light_concurrency = asyncio.Semaphore(8)
 _bundle_heavy_concurrency = asyncio.Semaphore(2)
-_bundle_version_lock = asyncio.Lock()
+_bundle_version_meta_lock = asyncio.Lock()
+_bundle_project_version_locks: dict[str, asyncio.Lock] = {}
 _bundle_project_versions: dict[str, int] = {}
 
 
 def _project_version_key(project_id: UUID) -> str:
     return str(project_id)
+
+
+async def _async_lock_for_project_version(project_id: UUID) -> asyncio.Lock:
+    """Return a per-project lock so high ingest on project A does not serialize B's reads."""
+    key = _project_version_key(project_id)
+    lock = _bundle_project_version_locks.get(key)
+    if lock is not None:
+        return lock
+    async with _bundle_version_meta_lock:
+        lock = _bundle_project_version_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _bundle_project_version_locks[key] = lock
+        return lock
 
 
 async def mark_project_dashboard_dirty(project_id: UUID) -> int:
@@ -76,7 +91,8 @@ async def mark_project_dashboard_dirty(project_id: UUID) -> int:
     """
 
     key = _project_version_key(project_id)
-    async with _bundle_version_lock:
+    lock = await _async_lock_for_project_version(project_id)
+    async with lock:
         current = _bundle_project_versions.get(key, 0) + 1
         _bundle_project_versions[key] = current
         return current
@@ -84,7 +100,8 @@ async def mark_project_dashboard_dirty(project_id: UUID) -> int:
 
 async def get_project_dashboard_version(project_id: UUID) -> int:
     key = _project_version_key(project_id)
-    async with _bundle_version_lock:
+    lock = await _async_lock_for_project_version(project_id)
+    async with lock:
         return _bundle_project_versions.get(key, 0)
 
 
