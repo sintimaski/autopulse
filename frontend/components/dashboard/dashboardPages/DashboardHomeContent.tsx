@@ -44,7 +44,7 @@ export function DashboardHomeContent() {
     return (
       <section className="space-y-4">
         <OverviewScopeFacetBoard />
-        <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4 text-sm text-slate-300">
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
           {d.errorMessage ?? "Loading dashboard metrics..."}
         </div>
       </section>
@@ -167,8 +167,8 @@ export function DashboardHomeContent() {
             />
           ))}
         </div>
-        <div className="w-full rounded-xl border border-white/10 bg-slate-950/30 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-slate-100">Traffic volume</h3>
+        <div className="w-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+          <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic volume</h3>
           <VolumeChart
             series={homeSlice.sparklineSeries}
             fromTimestamp={homeSlice.windowFromTimestamp}
@@ -176,63 +176,52 @@ export function DashboardHomeContent() {
             globalWindowMinutes={homeSlice.windowMinutes}
           />
         </div>
-        <div className="w-full rounded-xl border border-white/10 bg-slate-950/30 px-3 py-2">
-          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        <div className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+          <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
             Errors and latency trend
           </h3>
           <div className="grid grid-cols-2 gap-4">
             <div className="min-w-0">
-              <div className="mb-0.5 text-[10px] text-slate-500">Errors</div>
-              <SparklineMini values={sparklineErrors} svgClassName="h-3 w-full text-rose-400" />
+              <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Errors</div>
+              <SparklineMini values={sparklineErrors} svgClassName="h-3 w-full text-rose-500 dark:text-rose-400" />
             </div>
             <div className="min-w-0">
-              <div className="mb-0.5 text-[10px] text-slate-500">Latency</div>
-              <SparklineMini values={sparklineLatency} svgClassName="h-3 w-full text-sky-400" />
+              <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Latency</div>
+              <SparklineMini values={sparklineLatency} svgClassName="h-3 w-full text-sky-600 dark:text-sky-400" />
             </div>
           </div>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-100">Top failing routes</h3>
+          <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h3>
             <div className="space-y-2">
               {routeBreakdownTop.length ? (
                 routeBreakdownTop.map((route) => (
                   <div key={route.key} className="flex items-center justify-between text-sm">
-                    <span className="truncate pr-3 text-slate-200">{route.key}</span>
-                    <span className="text-rose-300">{route.error_count} errors</span>
+                    <span className="truncate pr-3 text-slate-700 dark:text-neutral-200">{route.key}</span>
+                    <span className="text-rose-600 dark:text-rose-300">{route.error_count} errors</span>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-400">No failing routes in this window.</p>
+                <p className="text-sm text-slate-500 dark:text-neutral-400">No failing routes in this window.</p>
               )}
             </div>
           </div>
-          <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-slate-100">Top services by traffic</h3>
+          <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-neutral-100">Top services by traffic</h3>
             <div className="space-y-2">
               {serviceBreakdownTop.length ? (
                 serviceBreakdownTop.map((service) => (
                   <div key={service.key} className="flex items-center justify-between text-sm">
-                    <span className="truncate pr-3 text-slate-200">{service.key}</span>
-                    <span className="text-sky-300">{service.request_count} req</span>
+                    <span className="truncate pr-3 text-slate-700 dark:text-neutral-200">{service.key}</span>
+                    <span className="text-sky-700 dark:text-sky-300">{service.request_count} req</span>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-slate-400">No service traffic in this window.</p>
+                <p className="text-sm text-slate-500 dark:text-neutral-400">No service traffic in this window.</p>
               )}
             </div>
           </div>
-        </div>
-        <div className="flex items-center justify-between rounded-xl border border-white/10 bg-slate-950/30 p-4">
-          {/* <div className="text-sm text-slate-300">
-            Need deeper diagnosis? Open grouped errors and route-level breakdown.
-          </div>
-          <Link
-            href="/diagnosis"
-            className="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:border-slate-500"
-          >
-            Open diagnosis
-          </Link> */}
         </div>
         <div className="space-y-6 text-slate-900 dark:text-neutral-100">
           <DashboardInfrastructureSection
