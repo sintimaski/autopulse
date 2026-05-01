@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 
-import { dashboardPanelP5 } from "./dashboardCardStyles";
 import { useDashboardData } from "./DashboardDataContext";
 import { buildCurrentScopedState, buildScopedQuery } from "./dashboardQueryState";
 import { buildGuidedTroubleshootingHints } from "../../utils/guidedTroubleshooting";
@@ -112,7 +111,7 @@ export function GuidedTroubleshootingPanel() {
   }
 
   return (
-    <section className={dashboardPanelP5}>
+    <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Guided troubleshooting</h2>
       <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
         Symptom-driven next steps based on current dashboard signals.

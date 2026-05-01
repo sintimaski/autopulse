@@ -3,8 +3,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { dashboardCardFill } from "../dashboardCardStyles";
-
 type ChartPanelProps = {
   title: string;
   description?: string;
@@ -24,7 +22,7 @@ export function ChartPanel({
 }: ChartPanelProps) {
   return (
     <article
-      className={`rounded-2xl ${dashboardCardFill} p-4 shadow-sm ring-1 ring-slate-900/[0.05] dark:ring-white/[0.06] ${
+      className={`rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/85 to-sky-50/60 p-4 shadow-sm ring-1 ring-slate-900/[0.05] dark:border-neutral-800 dark:bg-gradient-to-br dark:from-neutral-900 dark:via-neutral-900 dark:to-sky-950/20 dark:ring-white/[0.06] ${
         className ?? ""
       }`}
     >

@@ -25,7 +25,6 @@ import {
   type ScatterPlotPoint,
   type StackedAreaSeries,
 } from "../charts";
-import { dashboardPanelCompact, dashboardPanelP5 } from "../dashboardCardStyles";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
 import { buildScopedQuery } from "../dashboardQueryState";
 import {
@@ -765,7 +764,7 @@ export function DashboardHomeContent() {
       </section>
 
       {widgetDefinitions.length ? (
-        <section className={dashboardPanelP5}>
+        <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Custom widgets</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
             Dynamically provided by your SDK widget classes.
@@ -944,7 +943,7 @@ export function DashboardHomeContent() {
         </p>
       </div>
 
-      <section className={dashboardPanelCompact}>
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-2.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <OverviewScopeFacetBoard />
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -963,7 +962,7 @@ export function DashboardHomeContent() {
         </div>
       </section>
 
-      <section className={dashboardPanelP5}>
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Requests (bars) and trend cards for volume, error rate, error count, and latency. Hover for values or
@@ -1209,7 +1208,7 @@ export function DashboardHomeContent() {
         </ChartPanel>
       </section>
 
-      <section className={dashboardPanelP5}>
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Metrics dictionary</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Expand for complete metrics and backend-derived values.
