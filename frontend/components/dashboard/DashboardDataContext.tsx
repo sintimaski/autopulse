@@ -218,6 +218,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const liveWsBackoffUntilRef = useRef(0);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
+  const dashboardFetchInFlightRef = useRef(false);
+  const dashboardQueuedRefreshRef = useRef(false);
   const [liveUpdatesConnected, setLiveUpdatesConnected] = useState(false);
   const rawDashboardPathname = usePathname();
   const dashboardRoutePath = useMemo(
@@ -421,6 +423,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (isInitialLoad) {
         setLoading(true);
       }
+      dashboardFetchInFlightRef.current = true;
       setErrorMessage(null);
       try {
         const minLatency = Number(minLatencyMs);
@@ -597,6 +600,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setErrorMessage(buildDashboardNetworkError(error));
         }
       } finally {
+        dashboardFetchInFlightRef.current = false;
+        if (!isCancelled() && dashboardQueuedRefreshRef.current) {
+          dashboardQueuedRefreshRef.current = false;
+          setRefreshToken((token) => token + 1);
+        }
         if (isInitialLoad && !isCancelled()) {
           setLoading(false);
         }
@@ -653,6 +661,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!hasApiKey) {
       setLiveUpdatesConnected(false);
+      dashboardQueuedRefreshRef.current = false;
       if (liveReconnectTimer.current) {
         clearTimeout(liveReconnectTimer.current);
         liveReconnectTimer.current = null;
@@ -674,6 +683,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         : LIVE_REFRESH_THROTTLE_MS;
     const scheduleLiveRefreshFromWebSocket = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      if (dashboardFetchInFlightRef.current) {
+        // Coalesce bursty updates while the current dashboard query is in flight.
+        dashboardQueuedRefreshRef.current = true;
         return;
       }
       const now = Date.now();
@@ -757,6 +771,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       setLiveUpdatesConnected(false);
+      dashboardQueuedRefreshRef.current = false;
       if (liveReconnectTimer.current) {
         clearTimeout(liveReconnectTimer.current);
         liveReconnectTimer.current = null;
