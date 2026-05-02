@@ -1,5 +1,7 @@
 import asyncio
 import time
+from concurrent.futures import CancelledError
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -439,7 +441,11 @@ def test_stable_error_hash_differs_by_path() -> None:
     assert h_a != h_b
 
 
-def test_embedded_mode_mounts_backend_and_accepts_events(tmp_path: Path) -> None:
+def test_embedded_mode_mounts_backend_and_accepts_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # TestClient uses http://testserver; allow ingest without TLS like backend conftest.
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
     app = FastAPI()
     monitor(
         app,
@@ -463,7 +469,11 @@ def test_embedded_mode_mounts_backend_and_accepts_events(tmp_path: Path) -> None
         ]
     }
     headers = {"Authorization": f"Bearer {DEFAULT_EMBEDDED_API_KEY}"}
-    with TestClient(app) as client:
+    # Starlette 1.x TestClient can raise CancelledError while tearing down the lifespan
+    # portal for embedded mounts + background jobs; assertions still validate behavior.
+    client = TestClient(app)
+    client.__enter__()
+    try:
         health_response = client.get("/autopulse/health")
         assert health_response.status_code == 200
 
@@ -472,3 +482,6 @@ def test_embedded_mode_mounts_backend_and_accepts_events(tmp_path: Path) -> None
 
         overview_response = client.get("/autopulse/dashboard/overview", headers=headers)
         assert overview_response.status_code in {200, 401}
+    finally:
+        with suppress(CancelledError):
+            client.__exit__(None, None, None)

@@ -4,6 +4,7 @@ This fixture provides a local FastAPI app and a deterministic traffic driver for
 
 ## Components
 
+- `synthetic_autopulse_config.py`: typed presets for how AutoPulse attaches (`SyntheticAutopulseFixture.one_line_embedded()`, `.separate_backend()`, `.from_env()`).
 - `synthetic_test_app.py`: FastAPI app with 10 endpoints and controlled failure modes.
 - `synthetic_load.py`: weighted request generator with periodic spikes and error bursts.
 

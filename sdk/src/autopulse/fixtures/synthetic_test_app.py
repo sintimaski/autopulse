@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -15,14 +14,16 @@ from pydantic import BaseModel, Field
 
 from autopulse import (
     BarChartWidget,
+    BaseDashboardWidget,
     CardWidget,
     DonutChartWidget,
     HistogramWidget,
     LineChartWidget,
     ScatterPlotWidget,
     StackedAreaWidget,
-    autopulse,
+    monitor,
 )
+from autopulse.fixtures.synthetic_autopulse_config import SyntheticAutopulseFixture
 
 logger = logging.getLogger("autopulse.synthetic_test_app")
 
@@ -127,7 +128,7 @@ def _should_happen(*, probability: float, salt: str) -> bool:
     return _stable_roll(salt) < bounded_probability
 
 
-def _build_demo_dashboard_widgets() -> list[object]:
+def _build_demo_dashboard_widgets() -> list[BaseDashboardWidget]:
     # Simple deterministic processing over fixture data to showcase each widget type.
     total_users = len(_USERS)
     total_orders = len(_ORDERS)
@@ -331,32 +332,19 @@ EDITOR_AUTH = Depends(_require_editor)
 ADMIN_AUTH = Depends(_require_admin)
 
 
-def create_app(*, enable_monitor: bool = True) -> FastAPI:
+def create_app(
+    *,
+    enable_monitor: bool = True,
+    autopulse_fixture: SyntheticAutopulseFixture | None = None,
+) -> FastAPI:
     app = FastAPI(title="AutoPulse Synthetic Test App", version="0.1.0")
 
     if enable_monitor:
-        mode = os.getenv("AUTOPULSE_MODE", "embedded").strip().lower()
-        monitor_kwargs: dict[str, object] = {
-            "mode": mode,
-            "service_name": os.getenv("AUTOPULSE_SERVICE_NAME", "synthetic-test-api"),
-            "environment": os.getenv("AUTOPULSE_ENVIRONMENT", "dev"),
-            "batch_size": int(os.getenv("AUTOPULSE_BATCH_SIZE", "20")),
-            "flush_interval_s": float(os.getenv("AUTOPULSE_FLUSH_INTERVAL_S", "1.0")),
-            "debug": os.getenv("AUTOPULSE_DEBUG", "").strip().lower() in {"1", "true", "yes"},
-            "mount_prefix": os.getenv("AUTOPULSE_MOUNT_PREFIX", "/autopulse"),
-            "database_url": os.getenv(
-                "AUTOPULSE_DATABASE_URL",
-                "sqlite+aiosqlite:///./autopulse.db",
-            ),
-            "frontend_mode": os.getenv("AUTOPULSE_FRONTEND_MODE", "static"),
-            "dashboard_widgets": _build_demo_dashboard_widgets(),
-        }
-        if mode == "remote":
-            monitor_kwargs["api_key"] = os.getenv("AUTOPULSE_API_KEY")
-            monitor_kwargs["ingest_url"] = os.getenv(
-                "AUTOPULSE_INGEST_URL", "http://localhost:8000/ingest"
-            )
-        autopulse(app, **monitor_kwargs)
+        fixture = autopulse_fixture or SyntheticAutopulseFixture.from_env()
+        monitor(
+            app,
+            **fixture.monitor_kwargs(dashboard_widgets=_build_demo_dashboard_widgets()),
+        )
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):  # type: ignore[no-untyped-def]
