@@ -40,6 +40,16 @@ jobs:
       - name: Pytest (SQLite + coverage)
         run: uv run pytest --cov=autopulse --cov=autopulse_backend --cov-report=term-missing
 
+      - name: pip-audit
+        run: |
+          uv export --no-dev --no-editable --format requirements-txt -o /tmp/autopulse-reqs.txt
+          uvx pip-audit -r /tmp/autopulse-reqs.txt --desc on -S
+
+      - name: Backend job smoke
+        run: |
+          uv run python -m autopulse_backend.jobs alerts-once >/dev/null
+          uv run python -m autopulse_backend.jobs retention-once >/dev/null
+
   python-postgres:
     runs-on: ubuntu-latest
     services:
@@ -92,6 +102,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: npm audit (high+)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Lint
         run: npm run lint

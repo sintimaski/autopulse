@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
+from autopulse_backend.auth import (
+    ProjectContext,
+    authenticate_dashboard_project,
+    ensure_dashboard_admin_or_owner,
+    ensure_dashboard_not_viewer,
+)
 from autopulse_backend.config import get_settings
 from autopulse_backend.dashboard.params import (
     FROM_TIMESTAMP_QUERY,
@@ -37,6 +42,8 @@ from autopulse_backend.services.alert_service import (
 )
 
 router = APIRouter()
+
+_AlertChannelStatus = Literal["active", "configured", "planned", "unavailable"]
 
 
 _REASON_CODE_MESSAGES: dict[str, str] = {
@@ -182,56 +189,103 @@ async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesRespon
     webhook_active = (
         webhook_configured and mode in {"webhook", "composite"} and settings.alerts_enabled
     )
+    slack_status: str
+    if slack_active:
+        slack_status = "active"
+    elif slack_configured and settings.alerts_enabled and mode not in {"slack", "composite"}:
+        slack_status = "configured"
+    elif slack_configured:
+        slack_status = "unavailable"
+    else:
+        slack_status = "planned"
+    discord_status: str
+    if discord_active:
+        discord_status = "active"
+    elif discord_configured and settings.alerts_enabled and mode not in {"discord", "composite"}:
+        discord_status = "configured"
+    elif discord_configured:
+        discord_status = "unavailable"
+    else:
+        discord_status = "planned"
+    webhook_status: str
+    if webhook_active:
+        webhook_status = "active"
+    elif webhook_configured and settings.alerts_enabled and mode not in {"webhook", "composite"}:
+        webhook_status = "configured"
+    elif webhook_configured:
+        webhook_status = "unavailable"
+    else:
+        webhook_status = "planned"
     channels = [
         DashboardAlertChannelCapability(
             channel="email",
-            status=email_status,
+            status=cast(_AlertChannelStatus, email_status),
             enabled=email_status == "active",
             reason=email_reason,
         ),
         DashboardAlertChannelCapability(
             channel="slack",
-            status="active" if slack_active else ("unavailable" if slack_configured else "planned"),
+            status=cast(_AlertChannelStatus, slack_status),
             enabled=slack_active,
             reason=(
                 "Slack webhook configured and included in alert_sender_mode."
                 if slack_active
                 else (
                     "Slack webhook is configured but alert_sender_mode excludes slack."
-                    if slack_configured
-                    else "Slack delivery is not enabled. Set ALERT_SLACK_WEBHOOK_URL."
+                    if slack_status == "configured"
+                    else (
+                        "Slack webhook is set but alerts are disabled."
+                        if slack_configured and not settings.alerts_enabled
+                        else (
+                            "Slack delivery is not enabled. Set ALERT_SLACK_WEBHOOK_URL."
+                            if not slack_configured
+                            else "Slack channel is not active for this deployment."
+                        )
+                    )
                 )
             ),
         ),
         DashboardAlertChannelCapability(
             channel="discord",
-            status=(
-                "active" if discord_active else ("unavailable" if discord_configured else "planned")
-            ),
+            status=cast(_AlertChannelStatus, discord_status),
             enabled=discord_active,
             reason=(
                 "Discord webhook configured and included in alert_sender_mode."
                 if discord_active
                 else (
                     "Discord webhook is configured but alert_sender_mode excludes discord."
-                    if discord_configured
-                    else "Discord delivery is not enabled. Set ALERT_DISCORD_WEBHOOK_URL."
+                    if discord_status == "configured"
+                    else (
+                        "Discord webhook is set but alerts are disabled."
+                        if discord_configured and not settings.alerts_enabled
+                        else (
+                            "Discord delivery is not enabled. Set ALERT_DISCORD_WEBHOOK_URL."
+                            if not discord_configured
+                            else "Discord channel is not active for this deployment."
+                        )
+                    )
                 )
             ),
         ),
         DashboardAlertChannelCapability(
             channel="webhook",
-            status=(
-                "active" if webhook_active else ("unavailable" if webhook_configured else "planned")
-            ),
+            status=cast(_AlertChannelStatus, webhook_status),
             enabled=webhook_active,
             reason=(
                 "Generic webhook configured and included in alert_sender_mode."
                 if webhook_active
                 else (
                     "Webhook URL is configured but alert_sender_mode excludes it."
-                    if webhook_configured
-                    else "Generic webhook delivery is not configured."
+                    if webhook_status == "configured"
+                    else (
+                        "Webhook URL is set but alerts are disabled."
+                        if webhook_configured and not settings.alerts_enabled
+                        else (
+                            "Generic webhook delivery is not configured."
+                            if not webhook_configured
+                            else "Webhook channel is not active for this deployment."
+                        )
+                    )
                 )
             ),
         ),
@@ -243,6 +297,7 @@ async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesRespon
 async def send_test_alert_dispatch(
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: Annotated[None, Depends(ensure_dashboard_not_viewer)],
 ) -> DashboardAlertTestResponse:
     """Send a synthetic alert through the configured sender and record the dispatch row.
 
@@ -304,6 +359,7 @@ async def update_dashboard_alert_settings(
     payload: DashboardAlertSettingsUpdate,
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
 ) -> DashboardAlertSettings:
     settings = get_settings()
     alert_settings = await get_or_create_project_alert_settings(

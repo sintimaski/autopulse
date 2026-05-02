@@ -344,7 +344,7 @@ class DashboardAlertDispatchesResponse(BaseModel):
 
 class DashboardAlertChannelCapability(BaseModel):
     channel: Literal["email", "slack", "discord", "webhook"]
-    status: Literal["active", "planned", "unavailable"]
+    status: Literal["active", "configured", "planned", "unavailable"]
     enabled: bool
     reason: str
 
@@ -486,7 +486,7 @@ class DashboardSessionResponse(BaseModel):
     expires_at: datetime | None = None
     project_id: str | None = None
     organization_id: str | None = None
-    membership_role: Literal["owner", "member"] | None = None
+    membership_role: Literal["owner", "admin", "member", "viewer"] | None = None
 
 
 class DashboardOnboardingStatusResponse(BaseModel):
@@ -495,6 +495,7 @@ class DashboardOnboardingStatusResponse(BaseModel):
     ingest_key_ready: bool
     first_event_received: bool
     first_diagnostic_signal_ready: bool
+    next_recommended_action: str = ""
     current_step: Literal[
         "authenticate_session",
         "confirm_project",
@@ -583,7 +584,7 @@ class DashboardOrganizationSummary(BaseModel):
     organization_id: str
     organization_name: str
     projects: list[DashboardProjectSummary]
-    role: Literal["owner", "member"]
+    role: Literal["owner", "admin", "member", "viewer"]
 
 
 class DashboardOrganizationListResponse(BaseModel):
@@ -593,7 +594,7 @@ class DashboardOrganizationListResponse(BaseModel):
 class DashboardMembershipItem(BaseModel):
     user_id: str
     email: str
-    role: Literal["owner", "member"]
+    role: Literal["owner", "admin", "member", "viewer"]
     invited_email: str | None = None
     created_at: datetime
 
@@ -605,7 +606,7 @@ class DashboardMembershipListResponse(BaseModel):
 
 class DashboardInviteMemberRequest(BaseModel):
     email: str
-    role: Literal["owner", "member"] = "member"
+    role: Literal["owner", "admin", "member", "viewer"] = "member"
 
     @field_validator("email")
     @classmethod
@@ -617,4 +618,4 @@ class DashboardInviteMemberRequest(BaseModel):
 
 
 class DashboardUpdateMemberRoleRequest(BaseModel):
-    role: Literal["owner", "member"]
+    role: Literal["owner", "admin", "member", "viewer"]

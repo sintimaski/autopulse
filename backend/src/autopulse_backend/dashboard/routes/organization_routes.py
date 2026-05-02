@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.auth import DashboardAuthSession, require_dashboard_auth_session
+from autopulse_backend.auth import (
+    DashboardAuthSession,
+    normalize_membership_role,
+    require_dashboard_auth_session,
+)
 from autopulse_backend.database import get_db_session
 from autopulse_backend.models import (
     DashboardUser,
@@ -85,7 +89,7 @@ async def list_organizations(
             DashboardOrganizationSummary(
                 organization_id=str(organization.id),
                 organization_name=organization.name,
-                role=membership.role if membership.role in {"owner", "member"} else "member",
+                role=normalize_membership_role(membership.role),
                 projects=[
                     DashboardProjectSummary(
                         project_id=str(project.id),
@@ -135,7 +139,7 @@ async def list_organization_members(
             DashboardMembershipItem(
                 user_id=str(user.id),
                 email=user.email,
-                role=membership.role if membership.role in {"owner", "member"} else "member",
+                role=normalize_membership_role(membership.role),
                 invited_email=membership.invited_email,
                 created_at=membership.created_at,
             )
@@ -161,8 +165,17 @@ async def invite_organization_member(
         organization_id=organization_id,
         user_id=auth_session.user_id,
     )
-    if acting_membership.role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner role required")
+    acting_role = (acting_membership.role or "").lower()
+    if acting_role not in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner or admin role required",
+        )
+    if acting_role == "admin" and payload.role in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admins cannot assign owner or admin roles",
+        )
     invited_user = await session.scalar(
         select(DashboardUser).where(DashboardUser.email == payload.email)
     )
@@ -202,7 +215,7 @@ async def invite_organization_member(
     return DashboardMembershipItem(
         user_id=str(invited_user.id),
         email=invited_user.email,
-        role=membership.role if membership.role in {"owner", "member"} else "member",
+        role=normalize_membership_role(membership.role),
         invited_email=membership.invited_email,
         created_at=membership.created_at,
     )
@@ -252,7 +265,7 @@ async def update_organization_member_role(
     return DashboardMembershipItem(
         user_id=str(user.id),
         email=user.email,
-        role=membership.role if membership.role in {"owner", "member"} else "member",
+        role=normalize_membership_role(membership.role),
         invited_email=membership.invited_email,
         created_at=membership.created_at,
     )

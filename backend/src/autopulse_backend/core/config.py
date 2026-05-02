@@ -41,6 +41,69 @@ def _env_optional_positive_int(name: str) -> int | None:
     return value
 
 
+def _parse_email_domains(raw: str | None) -> tuple[str, ...]:
+    if not raw or not raw.strip():
+        return ()
+    domains: list[str] = []
+    for part in raw.split(","):
+        d = part.strip().lower().lstrip("@")
+        if d and "@" not in d:
+            domains.append(d)
+    return tuple(domains)
+
+
+def _oidc_fully_configured(
+    *,
+    enabled: bool,
+    issuer: str | None,
+    client_id: str | None,
+    client_secret: str | None,
+    redirect_uri: str | None,
+    state_secret: str | None,
+) -> bool:
+    if not enabled:
+        return False
+    return bool(
+        (issuer or "").strip()
+        and (client_id or "").strip()
+        and (client_secret or "").strip()
+        and (redirect_uri or "").strip()
+        and (state_secret or "").strip()
+    )
+
+
+def validate_deployment_settings(settings: Settings) -> None:
+    """Raise ``ValueError`` when production invariants are violated."""
+    env = (settings.autopulse_env or "development").strip().lower()
+    if env != "production":
+        return
+    if settings.dev_scenarios_enabled:
+        raise ValueError("DEV_SCENARIOS_ENABLED must be false when AUTOPULSE_ENV=production")
+    if settings.dashboard_auth_enabled and settings.dashboard_enforce_origin_for_mutations is False:
+        raise ValueError(
+            "DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS must be true when AUTOPULSE_ENV=production "
+            "and dashboard auth is enabled"
+        )
+    if not settings.dashboard_auth_enabled:
+        return
+    allow = (settings.dashboard_auth_allowed_email or "").strip()
+    domains = settings.dashboard_allowed_email_domains
+    oidc_ok = _oidc_fully_configured(
+        enabled=settings.dashboard_oidc_enabled,
+        issuer=settings.dashboard_oidc_issuer_url,
+        client_id=settings.dashboard_oidc_client_id,
+        client_secret=settings.dashboard_oidc_client_secret,
+        redirect_uri=settings.dashboard_oidc_redirect_uri,
+        state_secret=settings.dashboard_oidc_state_secret,
+    )
+    if not allow and not domains and not oidc_ok:
+        raise ValueError(
+            "Production dashboard auth requires at least one of: DASHBOARD_AUTH_ALLOWED_EMAIL, "
+            "DASHBOARD_ALLOWED_EMAIL_DOMAINS, or fully configured OIDC "
+            "(DASHBOARD_OIDC_ENABLED plus issuer, client id/secret, redirect URI, state secret)"
+        )
+
+
 def _env_float(name: str, default: float, *, minimum: float | None = None) -> float:
     raw = getenv(name)
     if raw is None:
@@ -123,6 +186,19 @@ class Settings:
     # When > 0, broadcast dashboard_update over WS on this interval for projects with
     # an open dashboard connection (ingest alone can feel sparse).
     dashboard_ws_live_tick_seconds: float = 0.0
+    autopulse_env: str = "development"
+    dashboard_allowed_email_domains: tuple[str, ...] = ()
+    dashboard_oidc_enabled: bool = False
+    dashboard_oidc_issuer_url: str | None = None
+    dashboard_oidc_client_id: str | None = None
+    dashboard_oidc_client_secret: str | None = None
+    dashboard_oidc_redirect_uri: str | None = None
+    dashboard_oidc_scopes: str = "openid email profile"
+    dashboard_oidc_state_secret: str | None = None
+    dashboard_oidc_cookie_name: str = "autopulse_oidc_state"
+    dashboard_oidc_post_login_redirect: str | None = None
+    dashboard_enforce_origin_for_mutations: bool = False
+    ingest_aggregate_worker_max_retries: int = 3
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -242,7 +318,27 @@ def get_settings() -> Settings:
         getenv("AUTOPULSE_DUCKDB_PATH", "./.autopulse/events.duckdb").strip()
         or "./.autopulse/events.duckdb"
     )
-    return Settings(
+    autopulse_env = getenv("AUTOPULSE_ENV", "development").strip().lower() or "development"
+    dashboard_allowed_email_domains = _parse_email_domains(
+        getenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS")
+    )
+    dashboard_oidc_enabled = _env_bool("DASHBOARD_OIDC_ENABLED", False)
+    dashboard_oidc_issuer_url = getenv("DASHBOARD_OIDC_ISSUER_URL", "").strip() or None
+    dashboard_oidc_client_id = getenv("DASHBOARD_OIDC_CLIENT_ID", "").strip() or None
+    dashboard_oidc_client_secret = getenv("DASHBOARD_OIDC_CLIENT_SECRET", "").strip() or None
+    dashboard_oidc_redirect_uri = getenv("DASHBOARD_OIDC_REDIRECT_URI", "").strip() or None
+    dashboard_oidc_scopes = (
+        getenv("DASHBOARD_OIDC_SCOPES", "openid email profile").strip() or "openid email profile"
+    )
+    dashboard_oidc_state_secret = getenv("DASHBOARD_OIDC_STATE_SECRET", "").strip() or None
+    dashboard_oidc_cookie_name = (
+        getenv("DASHBOARD_OIDC_COOKIE_NAME", "autopulse_oidc_state").strip()
+        or "autopulse_oidc_state"
+    )
+    dashboard_oidc_post_login_redirect = (
+        getenv("DASHBOARD_OIDC_POST_LOGIN_REDIRECT", "").strip() or None
+    )
+    settings = Settings(
         database_url=database_url,
         event_store=event_store,
         event_store_duckdb_path=event_store_duckdb_path,
@@ -384,4 +480,23 @@ def get_settings() -> Settings:
             4.0,
             minimum=0.0,
         ),
+        autopulse_env=autopulse_env,
+        dashboard_allowed_email_domains=dashboard_allowed_email_domains,
+        dashboard_oidc_enabled=dashboard_oidc_enabled,
+        dashboard_oidc_issuer_url=dashboard_oidc_issuer_url,
+        dashboard_oidc_client_id=dashboard_oidc_client_id,
+        dashboard_oidc_client_secret=dashboard_oidc_client_secret,
+        dashboard_oidc_redirect_uri=dashboard_oidc_redirect_uri,
+        dashboard_oidc_scopes=dashboard_oidc_scopes,
+        dashboard_oidc_state_secret=dashboard_oidc_state_secret,
+        dashboard_oidc_cookie_name=dashboard_oidc_cookie_name,
+        dashboard_oidc_post_login_redirect=dashboard_oidc_post_login_redirect,
+        dashboard_enforce_origin_for_mutations=_env_bool(
+            "DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS", False
+        ),
+        ingest_aggregate_worker_max_retries=_env_int(
+            "INGEST_AGGREGATE_WORKER_MAX_RETRIES", 3, minimum=0
+        ),
     )
+    validate_deployment_settings(settings)
+    return settings

@@ -27,6 +27,7 @@ import {
   type StackedAreaSeries,
 } from "../charts";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
+import { DashboardHomeLoadingShell } from "./DashboardHomeLoadingShell";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
 import { buildScopedQuery } from "../dashboardQueryState";
 import {
@@ -42,16 +43,7 @@ export function DashboardHomeContent() {
   const overview = homeSlice.overview;
   const requests = homeSlice.requests;
   if (!overview || !requests) {
-    return (
-      <section className="space-y-4">
-        <DashboardScopeFacetShell className="sticky top-0 z-30">
-          <OverviewScopeFacetBoard />
-        </DashboardScopeFacetShell>
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
-          {d.errorMessage ?? "Loading dashboard metrics..."}
-        </div>
-      </section>
-    );
+    return <DashboardHomeLoadingShell message={d.errorMessage ?? "Loading dashboard metrics..."} />;
   }
   const overviewExtended = resolveOverviewExtendedForHome(overview, requests, homeSlice.overviewExtended);
   const phasedLiteDashboard = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";

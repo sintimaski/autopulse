@@ -5,7 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
+from autopulse_backend.auth import (
+    ProjectContext,
+    authenticate_dashboard_project,
+    ensure_dashboard_admin_or_owner,
+    ensure_dashboard_not_viewer,
+)
 from autopulse_backend.config import get_settings
 from autopulse_backend.dashboard.repositories.project_ui import get_or_create_project_ui_settings
 from autopulse_backend.dashboard.serializers import (
@@ -39,6 +44,7 @@ async def update_dashboard_theme_settings(
     payload: DashboardThemeSettingsUpdate,
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: Annotated[None, Depends(ensure_dashboard_not_viewer)],
 ) -> DashboardThemeSettings:
     settings = await get_or_create_project_ui_settings(session, context.project_id)
     settings.theme_preference = payload.theme_preference
@@ -69,6 +75,7 @@ async def update_dashboard_retention_settings(
     payload: DashboardRetentionSettingsUpdate,
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
 ) -> DashboardRetentionSettings:
     settings = get_settings()
     ui_settings = await get_or_create_project_ui_settings(session, context.project_id)

@@ -109,6 +109,15 @@ def _log_grouped_startup_settings() -> None:
         settings.dashboard_auth_magic_link_ttl_minutes,
     )
     log.info(
+        "Startup settings [deployment]: autopulse_env=%s oidc_enabled=%s "
+        "email_domains=%s enforce_origin=%s aggregate_max_retries=%d",
+        settings.autopulse_env,
+        settings.dashboard_oidc_enabled,
+        ",".join(settings.dashboard_allowed_email_domains),
+        settings.dashboard_enforce_origin_for_mutations,
+        settings.ingest_aggregate_worker_max_retries,
+    )
+    log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "
         "email_from=%s default_destination_set=%s webhook_set=%s slack_set=%s "
         "discord_set=%s",
@@ -135,13 +144,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
     if settings.database_url.startswith("sqlite"):
+        from autopulse_backend.database.migrations import upgrade_to_head
+
+        upgrade_to_head()
+        logger.info("Applied Alembic migrations / SQLite schema repair (SQLite DATABASE_URL)")
         engine = get_engine(settings.database_url)
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
+    else:
+        from autopulse_backend.database.migrations import upgrade_to_head
+
+        upgrade_to_head()
+        logger.info("Applied Alembic migrations to head (non-SQLite DATABASE_URL)")
 
     await warm_database_connections(settings.database_url)
     if event_store_enabled(settings):
-        try_get_duckdb_event_store()
+        # Open DuckDB off the asyncio loop so embedded startup (merged lifespans + host
+        # jobs) can still interleave; synchronous connect + pool warmup blocked ``yield``.
+        await asyncio.to_thread(try_get_duckdb_event_store)
 
     if settings.jobs_enable_scheduler:
         app.state._autopulse_scheduler = start_scheduler(settings=settings)

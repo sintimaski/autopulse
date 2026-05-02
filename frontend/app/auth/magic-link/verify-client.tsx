@@ -5,6 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { buildApiUrl } from "../../../components/dashboard/dashboardTypes";
 
+/**
+ * Deduplicate magic-link verify POSTs across React 18 Strict Mode (effects run twice on mount).
+ * Without this, the first POST consumes the token and the second gets 401 "Invalid or expired magic link".
+ */
+const magicLinkVerifyInFlight = new Set<string>();
+
 export function MagicLinkVerifyClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,6 +29,10 @@ export function MagicLinkVerifyClient() {
         }
         return;
       }
+      if (magicLinkVerifyInFlight.has(token)) {
+        return;
+      }
+      magicLinkVerifyInFlight.add(token);
       try {
         const response = await fetch(buildApiUrl("/dashboard/auth/magic-link/verify"), {
           method: "POST",
@@ -31,7 +41,16 @@ export function MagicLinkVerifyClient() {
           body: JSON.stringify({ token }),
         });
         if (!response.ok) {
-          throw new Error(`verify failed (${response.status})`);
+          let detail = `verify failed (${response.status})`;
+          try {
+            const body = (await response.json()) as { detail?: unknown };
+            if (typeof body.detail === "string") {
+              detail = body.detail;
+            }
+          } catch {
+            // ignore
+          }
+          throw new Error(detail);
         }
         await response.json();
         let destination = "/dashboard";
@@ -58,11 +77,17 @@ export function MagicLinkVerifyClient() {
           router.replace(destination);
           router.refresh();
         }, 150);
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setStatus("error");
-          setMessage("Invalid or expired link. Request a new sign-in email.");
+          const hint =
+            err instanceof Error && err.message && !err.message.startsWith("verify failed")
+              ? err.message
+              : "Invalid or expired link. Request a new sign-in email.";
+          setMessage(hint);
         }
+      } finally {
+        magicLinkVerifyInFlight.delete(token);
       }
     };
     void run();
