@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from os import getenv
@@ -64,47 +66,45 @@ class DuckDbEventStore:
         self._path = Path(db_path).expanduser().resolve()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         _cfg = _duckdb_connect_config()
-        self._write_conn = duckdb.connect(str(self._path), config=_cfg)
+        self._write_conn = self._open_connection(str(self._path), _cfg)
         self._write_lock = Lock()
-        self._read_index = 0
-        self._read_index_lock = Lock()
         self._ensure_schema()
-        pool_size = self._resolve_read_pool_size()
-        # DuckDB rejects opening the same file with different connection
-        # configurations in one process. Keep pooled read connections in the
-        # same mode as the primary writable connection.
-        self._read_connections = [
-            duckdb.connect(str(self._path), config=_cfg) for _ in range(pool_size)
-        ]
-        self._read_locks = [Lock() for _ in range(pool_size)]
 
-    def _resolve_read_pool_size(self) -> int:
-        raw = getenv("AUTOPULSE_DUCKDB_READ_POOL_SIZE")
-        if raw is None:
-            return 4
-        try:
-            parsed = int(raw)
-        except ValueError:
-            return 4
-        return max(1, min(parsed, 12))
+    def _open_connection(self, path: str, config: dict[str, str]) -> Any:
+        attempts = int(getenv("AUTOPULSE_DUCKDB_CONNECT_RETRIES", "16").strip() or "16")
+        attempts = max(1, min(attempts, 64))
+        base_delay_s = float(
+            getenv("AUTOPULSE_DUCKDB_CONNECT_RETRY_BASE_S", "0.08").strip() or "0.08"
+        )
+        base_delay_s = max(0.01, min(base_delay_s, 2.0))
+        last: duckdb.IOException | None = None
+        for attempt in range(attempts):
+            try:
+                return duckdb.connect(path, config=config)
+            except duckdb.IOException as exc:
+                last = exc
+                msg = str(exc).lower()
+                if "lock" not in msg and "conflicting" not in msg:
+                    raise
+                if attempt + 1 >= attempts:
+                    break
+                time.sleep(min(base_delay_s * (2 ** min(attempt, 8)), 3.0))
+        assert last is not None
+        raise last
 
-    def _next_read_slot(self) -> int:
-        with self._read_index_lock:
-            idx = self._read_index
-            self._read_index = (self._read_index + 1) % len(self._read_connections)
-            return idx
+    def close(self) -> None:
+        with self._write_lock, suppress(Exception):
+            self._write_conn.close()
 
     def _fetchall_read(self, sql: str, params: list[Any] | None = None) -> list[tuple[Any, ...]]:
-        idx = self._next_read_slot()
         params_list = params or []
-        with self._read_locks[idx]:
-            return self._read_connections[idx].execute(sql, params_list).fetchall()
+        with self._write_lock:
+            return self._write_conn.execute(sql, params_list).fetchall()
 
     def _fetchone_read(self, sql: str, params: list[Any] | None = None) -> tuple[Any, ...] | None:
-        idx = self._next_read_slot()
         params_list = params or []
-        with self._read_locks[idx]:
-            return self._read_connections[idx].execute(sql, params_list).fetchone()
+        with self._write_lock:
+            return self._write_conn.execute(sql, params_list).fetchone()
 
     def _ensure_schema(self) -> None:
         self._write_conn.execute(
@@ -588,6 +588,15 @@ def try_get_duckdb_event_store() -> DuckDbEventStore | None:
         return get_duckdb_event_store()
     except duckdb.IOException:
         return None
+
+
+def shutdown_duckdb_event_store() -> None:
+    global _duckdb_store
+    with _duckdb_store_lock:
+        store = _duckdb_store
+        _duckdb_store = None
+        if store is not None:
+            store.close()
 
 
 async def insert_events_duckdb(rows: list[dict[str, Any]]) -> None:

@@ -23,7 +23,11 @@ from autopulse_backend.jobs import (
 from autopulse_backend.models import Base
 from autopulse_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
 from autopulse_backend.services.duckdb_async import shutdown_duckdb_executors
-from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
+from autopulse_backend.services.event_store import (
+    event_store_enabled,
+    shutdown_duckdb_event_store,
+    try_get_duckdb_event_store,
+)
 from autopulse_backend.services.ingest_aggregate_worker import (
     IngestAggregateWorkerHandle,
     start_ingest_aggregate_worker,
@@ -216,3 +220,4 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await tick_task
     app.state._autopulse_dashboard_ws_tick_task = None
     shutdown_duckdb_executors(wait=True)
+    shutdown_duckdb_event_store()
