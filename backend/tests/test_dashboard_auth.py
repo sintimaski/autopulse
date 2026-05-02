@@ -451,7 +451,7 @@ def test_dashboard_session_cookie_expired_is_unauthenticated(
             try:
                 async with session_maker() as session:
                     await session.execute(
-                        text("UPDATE dashboard_sessions " "SET expires_at = :past"),
+                        text("UPDATE dashboard_sessions SET expires_at = :past"),
                         {"past": datetime.now(tz=UTC) - timedelta(minutes=1)},
                     )
                     await session.commit()
@@ -545,6 +545,7 @@ def test_dashboard_onboarding_status_and_alert_capabilities(
         onboarding = client.get("/dashboard/auth/onboarding-status")
         assert onboarding.status_code == 200
         payload = onboarding.json()
+        assert isinstance(payload.get("next_recommended_action"), str)
         assert payload["session_authenticated"] is True
         assert payload["project_ready"] is True
         assert payload["ingest_key_ready"] is True

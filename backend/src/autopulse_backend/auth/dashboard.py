@@ -47,6 +47,17 @@ def _normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def _email_matches_allowed_domains(email: str, domains: tuple[str, ...]) -> bool:
+    if not domains:
+        return False
+    normalized = _normalize_email(email)
+    if "@" not in normalized:
+        return False
+    _, _, domain = normalized.partition("@")
+    host = domain.strip().lower()
+    return any(host == d or host.endswith(f".{d}") for d in domains)
+
+
 def _hash_token(token: str) -> bytes:
     return hashlib.sha256(token.encode("utf-8")).digest()
 
@@ -208,10 +219,18 @@ async def create_magic_link_token(
 ) -> str | None:
     normalized_email = _normalize_email(email)
     allowed_email = _normalize_email(settings.dashboard_auth_allowed_email or "")
+    domains = settings.dashboard_allowed_email_domains
+    env = (settings.autopulse_env or "development").strip().lower()
     if not settings.dashboard_auth_enabled:
         raise _forbidden("Dashboard authentication is disabled.")
-    if allowed_email and normalized_email != allowed_email:
-        # Return None for unknown email so request endpoint remains non-enumerating.
+    if allowed_email:
+        if normalized_email != allowed_email:
+            # Return None for unknown email so request endpoint remains non-enumerating.
+            return None
+    elif domains:
+        if not _email_matches_allowed_domains(normalized_email, domains):
+            return None
+    elif env == "production":
         return None
 
     raw_token = secrets.token_urlsafe(32)
@@ -289,6 +308,74 @@ async def _send_magic_link_email_best_effort(
         return
 
 
+async def issue_dashboard_session_for_user(
+    *,
+    session: AsyncSession,
+    response: Response,
+    settings: Settings,
+    request: HTTPConnection,
+    email: str,
+    idp_provider: str | None = None,
+    idp_subject: str | None = None,
+) -> DashboardAuthSession:
+    """Create or refresh a dashboard user; optionally link IdP claims; set session cookie."""
+    normalized_email = _normalize_email(email)
+    now = _now()
+    user: DashboardUser | None = None
+    if idp_provider and idp_subject:
+        user = await session.scalar(
+            select(DashboardUser).where(
+                DashboardUser.idp_provider == idp_provider,
+                DashboardUser.idp_subject == idp_subject,
+            )
+        )
+    if user is None:
+        user = await session.scalar(
+            select(DashboardUser).where(DashboardUser.email == normalized_email)
+        )
+    if user is None:
+        user = DashboardUser(
+            email=normalized_email,
+            idp_provider=idp_provider,
+            idp_subject=idp_subject,
+        )
+        session.add(user)
+        await session.flush()
+    else:
+        user.email = normalized_email
+        if idp_provider and idp_subject:
+            user.idp_provider = idp_provider
+            user.idp_subject = idp_subject
+    user.last_login_at = now
+
+    raw_session_token = secrets.token_urlsafe(48)
+    expires_at = now + timedelta(minutes=settings.dashboard_auth_session_ttl_minutes)
+    project_id, organization_id, membership_role = await _resolve_project_for_user(
+        session=session,
+        user_id=user.id,
+        email=normalized_email,
+    )
+    session_row = DashboardSession(
+        user_id=user.id,
+        organization_id=organization_id,
+        project_id=project_id,
+        token_hash=_hash_token(raw_session_token),
+        expires_at=expires_at,
+        last_seen_at=now,
+    )
+    session.add(session_row)
+    await session.commit()
+    _set_session_cookie(response, settings, request, raw_session_token, expires_at=expires_at)
+    return DashboardAuthSession(
+        user_id=user.id,
+        project_id=project_id,
+        organization_id=organization_id,
+        membership_role=membership_role,
+        email=normalized_email,
+        expires_at=expires_at,
+    )
+
+
 async def verify_magic_link_and_create_session(
     *,
     session: AsyncSession,
@@ -314,39 +401,16 @@ async def verify_magic_link_and_create_session(
         raise _unauthorized("Invalid or expired magic link.")
 
     email = _normalize_email(magic_link.email)
-    user = await session.scalar(select(DashboardUser).where(DashboardUser.email == email))
-    if user is None:
-        user = DashboardUser(email=email)
-        session.add(user)
-        await session.flush()
-    user.last_login_at = now
     magic_link.used_at = now
-
-    raw_session_token = secrets.token_urlsafe(48)
-    expires_at = now + timedelta(minutes=settings.dashboard_auth_session_ttl_minutes)
-    project_id, organization_id, membership_role = await _resolve_project_for_user(
+    await session.flush()
+    return await issue_dashboard_session_for_user(
         session=session,
-        user_id=user.id,
+        response=response,
+        settings=settings,
+        request=request,
         email=email,
-    )
-    session_row = DashboardSession(
-        user_id=user.id,
-        organization_id=organization_id,
-        project_id=project_id,
-        token_hash=_hash_token(raw_session_token),
-        expires_at=expires_at,
-        last_seen_at=now,
-    )
-    session.add(session_row)
-    await session.commit()
-    _set_session_cookie(response, settings, request, raw_session_token, expires_at=expires_at)
-    return DashboardAuthSession(
-        user_id=user.id,
-        project_id=project_id,
-        organization_id=organization_id,
-        membership_role=membership_role,
-        email=email,
-        expires_at=expires_at,
+        idp_provider=None,
+        idp_subject=None,
     )
 
 

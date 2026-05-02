@@ -113,6 +113,11 @@ def _log_grouped_startup_settings() -> None:
         settings.dashboard_auth_magic_link_ttl_minutes,
     )
     log.info(
+        "Startup settings [deployment]: autopulse_env=%s aggregate_max_retries=%d",
+        settings.autopulse_env,
+        settings.ingest_aggregate_worker_max_retries,
+    )
+    log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "
         "email_from=%s default_destination_set=%s webhook_set=%s slack_set=%s "
         "discord_set=%s",
@@ -137,6 +142,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _ensure_autopulse_backend_logging()
     _log_grouped_startup_settings()
     settings = get_settings()
+
+    if not settings.database_url.startswith("sqlite"):
+        from autopulse_backend.database.migrations import upgrade_to_head
+
+        upgrade_to_head()
+        logger.info("Applied Alembic migrations to head (non-SQLite DATABASE_URL)")
 
     if settings.database_url.startswith("sqlite"):
         engine = get_engine(settings.database_url)

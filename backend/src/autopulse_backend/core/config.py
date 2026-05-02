@@ -68,6 +68,7 @@ class Settings:
     ingest_distributed_rate_limit_enabled: bool = False
     ingest_async_aggregate_enabled: bool = True
     ingest_async_aggregate_queue_max_size: int = 2000
+    ingest_aggregate_worker_max_retries: int = 3
     ingest_require_https: bool = True
     ingest_trust_forwarded_proto: bool = True
     ingest_drop_autopulse_traffic_from_db: bool = True
@@ -109,6 +110,7 @@ class Settings:
     alert_email_smtp_password: str | None = None
     alert_slack_webhook_url: str | None = None
     alert_discord_webhook_url: str | None = None
+    autopulse_env: str = "development"
     dev_scenarios_enabled: bool = False
     dev_scenarios_max_duration_seconds: int = 180
     dev_scenarios_max_events: int = 5000
@@ -123,6 +125,64 @@ class Settings:
     # When > 0, broadcast dashboard_update over WS on this interval for projects with
     # an open dashboard connection (ingest alone can feel sparse).
     dashboard_ws_live_tick_seconds: float = 0.0
+    dashboard_allowed_email_domains: tuple[str, ...] = ()
+    dashboard_oidc_enabled: bool = False
+    dashboard_oidc_issuer_url: str | None = None
+    dashboard_oidc_client_id: str | None = None
+    dashboard_oidc_client_secret: str | None = None
+    dashboard_oidc_redirect_uri: str | None = None
+    dashboard_oidc_scopes: str = "openid email profile"
+    dashboard_oidc_state_secret: str | None = None
+    dashboard_oidc_cookie_name: str = "autopulse_oidc_state"
+    dashboard_oidc_post_login_redirect: str | None = None
+    dashboard_enforce_origin_for_mutations: bool = False
+
+
+def _parse_email_domains(raw: str | None) -> tuple[str, ...]:
+    if not raw or not raw.strip():
+        return ()
+    domains: list[str] = []
+    for part in raw.split(","):
+        d = part.strip().lower().lstrip("@")
+        if d and "@" not in d:
+            domains.append(d)
+    return tuple(domains)
+
+
+def _oidc_fully_configured(settings: Settings) -> bool:
+    if not settings.dashboard_oidc_enabled:
+        return False
+    return bool(
+        (settings.dashboard_oidc_issuer_url or "").strip()
+        and (settings.dashboard_oidc_client_id or "").strip()
+        and (settings.dashboard_oidc_client_secret or "").strip()
+        and (settings.dashboard_oidc_redirect_uri or "").strip()
+        and (settings.dashboard_oidc_state_secret or "").strip()
+    )
+
+
+def validate_deployment_settings(settings: Settings) -> None:
+    """Raise ``ValueError`` when production invariants are violated."""
+    env = (settings.autopulse_env or "development").strip().lower()
+    if env != "production":
+        return
+    if settings.dev_scenarios_enabled:
+        raise ValueError("DEV_SCENARIOS_ENABLED must be false when AUTOPULSE_ENV=production")
+    if not settings.dashboard_auth_enabled:
+        return
+    allow = (settings.dashboard_auth_allowed_email or "").strip()
+    domains = settings.dashboard_allowed_email_domains
+    if not allow and not domains and not _oidc_fully_configured(settings):
+        raise ValueError(
+            "Production dashboard auth requires DASHBOARD_AUTH_ALLOWED_EMAIL, "
+            "DASHBOARD_ALLOWED_EMAIL_DOMAINS, or fully configured OIDC "
+            "(DASHBOARD_OIDC_ENABLED plus issuer, client id/secret, redirect URI, state secret)"
+        )
+    if not settings.dashboard_enforce_origin_for_mutations:
+        raise ValueError(
+            "DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS must be true when AUTOPULSE_ENV=production "
+            "and DASHBOARD_AUTH_ENABLED is true"
+        )
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -242,7 +302,27 @@ def get_settings() -> Settings:
         getenv("AUTOPULSE_DUCKDB_PATH", "./.autopulse/events.duckdb").strip()
         or "./.autopulse/events.duckdb"
     )
-    return Settings(
+    dashboard_allowed_email_domains = _parse_email_domains(
+        getenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS")
+    )
+    dashboard_oidc_enabled = _env_bool("DASHBOARD_OIDC_ENABLED", False)
+    dashboard_oidc_issuer_url = getenv("DASHBOARD_OIDC_ISSUER_URL", "").strip() or None
+    dashboard_oidc_client_id = getenv("DASHBOARD_OIDC_CLIENT_ID", "").strip() or None
+    dashboard_oidc_client_secret = getenv("DASHBOARD_OIDC_CLIENT_SECRET", "").strip() or None
+    dashboard_oidc_redirect_uri = getenv("DASHBOARD_OIDC_REDIRECT_URI", "").strip() or None
+    dashboard_oidc_scopes = (
+        getenv("DASHBOARD_OIDC_SCOPES", "openid email profile").strip() or "openid email profile"
+    )
+    dashboard_oidc_state_secret = getenv("DASHBOARD_OIDC_STATE_SECRET", "").strip() or None
+    dashboard_oidc_cookie_name = (
+        getenv("DASHBOARD_OIDC_COOKIE_NAME", "autopulse_oidc_state").strip()
+        or "autopulse_oidc_state"
+    )
+    dashboard_oidc_post_login_redirect = (
+        getenv("DASHBOARD_OIDC_POST_LOGIN_REDIRECT", "").strip() or None
+    )
+    autopulse_env = getenv("AUTOPULSE_ENV", "development").strip().lower() or "development"
+    settings = Settings(
         database_url=database_url,
         event_store=event_store,
         event_store_duckdb_path=event_store_duckdb_path,
@@ -275,6 +355,11 @@ def get_settings() -> Settings:
             "INGEST_ASYNC_AGGREGATE_QUEUE_MAX_SIZE",
             2000,
             minimum=1,
+        ),
+        ingest_aggregate_worker_max_retries=_env_int(
+            "INGEST_AGGREGATE_WORKER_MAX_RETRIES",
+            3,
+            minimum=0,
         ),
         ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", True),
         ingest_trust_forwarded_proto=_env_bool("INGEST_TRUST_FORWARDED_PROTO", True),
@@ -348,6 +433,7 @@ def get_settings() -> Settings:
         alert_email_smtp_password=getenv("ALERT_EMAIL_SMTP_PASSWORD"),
         alert_slack_webhook_url=getenv("ALERT_SLACK_WEBHOOK_URL"),
         alert_discord_webhook_url=getenv("ALERT_DISCORD_WEBHOOK_URL"),
+        autopulse_env=autopulse_env,
         dev_scenarios_enabled=_env_bool("DEV_SCENARIOS_ENABLED", False),
         dev_scenarios_max_duration_seconds=_env_int(
             "DEV_SCENARIOS_MAX_DURATION_SECONDS",
@@ -384,4 +470,19 @@ def get_settings() -> Settings:
             4.0,
             minimum=0.0,
         ),
+        dashboard_allowed_email_domains=dashboard_allowed_email_domains,
+        dashboard_oidc_enabled=dashboard_oidc_enabled,
+        dashboard_oidc_issuer_url=dashboard_oidc_issuer_url,
+        dashboard_oidc_client_id=dashboard_oidc_client_id,
+        dashboard_oidc_client_secret=dashboard_oidc_client_secret,
+        dashboard_oidc_redirect_uri=dashboard_oidc_redirect_uri,
+        dashboard_oidc_scopes=dashboard_oidc_scopes,
+        dashboard_oidc_state_secret=dashboard_oidc_state_secret,
+        dashboard_oidc_cookie_name=dashboard_oidc_cookie_name,
+        dashboard_oidc_post_login_redirect=dashboard_oidc_post_login_redirect,
+        dashboard_enforce_origin_for_mutations=_env_bool(
+            "DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS", False
+        ),
     )
+    validate_deployment_settings(settings)
+    return settings

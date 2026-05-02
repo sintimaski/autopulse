@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -15,7 +15,10 @@ from autopulse_backend.auth import (
     create_magic_link_token,
     generate_api_key,
     get_dashboard_auth_session,
+    normalize_membership_role,
     require_dashboard_auth_session,
+    require_owner,
+    require_owner_or_admin,
     revoke_current_dashboard_session,
     verify_magic_link_and_create_session,
 )
@@ -44,12 +47,16 @@ from autopulse_backend.schemas import (
     DashboardSessionResponse,
 )
 
+OnboardingStep = Literal[
+    "authenticate_session",
+    "confirm_project",
+    "provision_ingest_key",
+    "send_first_event",
+    "open_diagnosis",
+    "completed",
+]
+
 router = APIRouter()
-
-
-def _require_owner(auth_session: DashboardAuthSession) -> None:
-    if auth_session.membership_role != "owner":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner role required")
 
 
 @router.post("/auth/magic-link/request", response_model=DashboardMagicLinkRequestResponse)
@@ -107,11 +114,7 @@ async def verify_dashboard_magic_link(
         organization_id=(
             str(auth_session.organization_id) if auth_session.organization_id is not None else None
         ),
-        membership_role=(
-            auth_session.membership_role
-            if auth_session.membership_role in {"owner", "member"}
-            else None
-        ),
+        membership_role=normalize_membership_role(auth_session.membership_role),
     )
 
 
@@ -121,6 +124,7 @@ async def bootstrap_dashboard_tenant(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardBootstrapTenantResponse:
+    require_owner(auth_session)
     organization_id, project_id = await bootstrap_dashboard_tenant_for_user(
         session=session,
         user_id=auth_session.user_id,
@@ -152,7 +156,7 @@ async def list_dashboard_api_keys(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardApiKeyListResponse:
-    _require_owner(auth_session)
+    require_owner_or_admin(auth_session)
     rows = (
         (
             await session.execute(
@@ -181,7 +185,7 @@ async def issue_dashboard_api_key(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardApiKeyIssueResponse:
-    _require_owner(auth_session)
+    require_owner_or_admin(auth_session)
     raw_api_key, key_id, key_salt, key_hash = generate_api_key()
     created_at = datetime.now(tz=UTC)
     session.add(
@@ -217,7 +221,7 @@ async def rotate_dashboard_api_key(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardApiKeyRotateResponse:
-    _require_owner(auth_session)
+    require_owner_or_admin(auth_session)
     existing = await session.scalar(
         select(ApiKey).where(
             ApiKey.project_id == auth_session.project_id,
@@ -264,7 +268,7 @@ async def revoke_dashboard_api_key(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardApiKeyItem:
-    _require_owner(auth_session)
+    require_owner_or_admin(auth_session)
     existing = await session.scalar(
         select(ApiKey).where(
             ApiKey.project_id == auth_session.project_id,
@@ -314,11 +318,7 @@ async def get_dashboard_session(
         organization_id=(
             str(auth_session.organization_id) if auth_session.organization_id is not None else None
         ),
-        membership_role=(
-            auth_session.membership_role
-            if auth_session.membership_role in {"owner", "member"}
-            else None
-        ),
+        membership_role=normalize_membership_role(auth_session.membership_role),
     )
 
 
@@ -349,7 +349,7 @@ async def get_dashboard_onboarding_status(
         )
     )
     if has_diagnostic_signal:
-        current_step = "completed"
+        current_step: OnboardingStep = "completed"
     elif has_first_event:
         current_step = "open_diagnosis"
     elif has_ingest_key:
@@ -358,17 +358,16 @@ async def get_dashboard_onboarding_status(
         current_step = "provision_ingest_key"
     else:
         current_step = "confirm_project"
-    session.add(
-        GovernanceAuditEvent(
-            organization_id=auth_session.organization_id,
-            actor_user_id=auth_session.user_id,
-            action="onboarding_status_checked",
-            target_type="onboarding",
-            target_id=str(auth_session.project_id),
-            detail={"current_step": current_step},
-        )
-    )
-    await session.commit()
+    hints: dict[str, str] = {
+        "authenticate_session": "Sign in with magic link or OIDC to continue.",
+        "confirm_project": "Confirm your project exists or create one from onboarding.",
+        "provision_ingest_key": "Issue an ingest API key from Settings and store it in your app.",
+        "send_first_event": (
+            "Send traffic from your instrumented app so AutoPulse can receive events."
+        ),
+        "open_diagnosis": "Open Diagnosis to view grouped errors and recent failures.",
+        "completed": "You are receiving diagnostic signals for this project.",
+    }
     return DashboardOnboardingStatusResponse(
         session_authenticated=True,
         project_ready=bool(project_exists),
@@ -376,6 +375,7 @@ async def get_dashboard_onboarding_status(
         first_event_received=bool(has_first_event),
         first_diagnostic_signal_ready=bool(has_diagnostic_signal),
         current_step=current_step,
+        next_recommended_action=hints.get(current_step, "Continue onboarding."),
     )
 
 

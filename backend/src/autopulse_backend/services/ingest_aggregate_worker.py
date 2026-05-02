@@ -23,6 +23,7 @@ class IngestAggregatePayload:
     metric_bucket_deltas: list[MetricBucketDelta]
     error_group_deltas: list[ErrorGroupAggregateDelta]
     enqueued_at: datetime
+    retry_count: int = 0
 
 
 @dataclass(slots=True)
@@ -73,8 +74,23 @@ async def _run_worker(
                     "metric_bucket_deltas": metric_bucket_count,
                     "error_group_deltas": error_group_count,
                     "enqueued_at": payload.enqueued_at.isoformat(),
+                    "retry_count": payload.retry_count,
                 },
             )
+            max_retries = max(0, settings.ingest_aggregate_worker_max_retries)
+            if payload.retry_count < max_retries:
+                backoff = min(2.0, 0.05 * (2**payload.retry_count))
+                await asyncio.sleep(backoff)
+                await queue.put(
+                    IngestAggregatePayload(
+                        metric_bucket_deltas=payload.metric_bucket_deltas,
+                        error_group_deltas=payload.error_group_deltas,
+                        enqueued_at=payload.enqueued_at,
+                        retry_count=payload.retry_count + 1,
+                    )
+                )
+            else:
+                service_metrics.increment("ingest.aggregate_worker.dead_lettered")
 
 
 def start_ingest_aggregate_worker(

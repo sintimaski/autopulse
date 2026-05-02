@@ -37,8 +37,16 @@ jobs:
       - name: Bandit
         run: uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend
 
+      - name: pip-audit
+        run: uv run pip-audit
+
       - name: Pytest (SQLite + coverage)
         run: uv run pytest --cov=autopulse --cov=autopulse_backend --cov-report=term-missing
+
+      - name: Backend job smoke (alerts + retention once)
+        run: |
+          uv run python -m autopulse_backend.jobs alerts-once >/dev/null
+          uv run python -m autopulse_backend.jobs retention-once >/dev/null
 
   python-postgres:
     runs-on: ubuntu-latest
@@ -92,6 +100,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high
 
       - name: Lint
         run: npm run lint
