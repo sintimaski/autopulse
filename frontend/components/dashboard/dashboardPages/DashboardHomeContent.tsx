@@ -44,7 +44,7 @@ export function DashboardHomeContent() {
   if (!overview || !requests) {
     return (
       <section className="space-y-4">
-        <DashboardScopeFacetShell>
+        <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
@@ -127,7 +127,7 @@ export function DashboardHomeContent() {
     ];
     return (
       <section className="space-y-6">
-        <DashboardScopeFacetShell>
+        <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
         {homeSlice.errorMessage ? (
@@ -924,7 +924,7 @@ export function DashboardHomeContent() {
         </p>
       </div>
 
-      <DashboardScopeFacetShell>
+      <DashboardScopeFacetShell className="sticky top-0 z-30">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <OverviewScopeFacetBoard />
           <div className="flex shrink-0 flex-wrap items-center gap-2">

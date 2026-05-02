@@ -291,7 +291,7 @@ export function VolumeChart({
                 <CanvasBar data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
-            <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-3">
               <TimeSeriesLineChart
                 title="Request Volume Trend"
                 values={displayed.map((bucket) => Number(bucket.request_count || 0))}
