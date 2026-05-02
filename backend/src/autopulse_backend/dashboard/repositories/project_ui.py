@@ -48,7 +48,7 @@ async def get_or_create_project_ui_settings(
             "ADD COLUMN archival_mode VARCHAR(32) NOT NULL DEFAULT 'db_archive'",
             "ALTER TABLE project_ui_settings "
             "ADD COLUMN archival_status VARCHAR(16) NOT NULL DEFAULT 'idle'",
-            "ALTER TABLE project_ui_settings ADD COLUMN archival_last_success_at DATETIME NULL",
+            "ALTER TABLE project_ui_settings " "ADD COLUMN archival_last_success_at DATETIME NULL",
             "ALTER TABLE project_ui_settings ADD COLUMN archival_last_error TEXT NULL",
         ]
         for statement in alter_statements:

@@ -207,7 +207,7 @@ export type AlertDispatchItem = {
 
 export type AlertChannelCapability = {
   channel: "email" | "slack" | "discord" | "webhook";
-  status: "active" | "configured" | "planned" | "unavailable";
+  status: "active" | "planned" | "unavailable";
   enabled: boolean;
   reason: string;
 };
@@ -282,7 +282,7 @@ export type DashboardSessionResponse = {
   expires_at: string | null;
   project_id: string | null;
   organization_id: string | null;
-  membership_role: "owner" | "admin" | "member" | "viewer" | null;
+  membership_role: "owner" | "member" | null;
 };
 
 export type DashboardOnboardingStatusResponse = {
@@ -291,7 +291,6 @@ export type DashboardOnboardingStatusResponse = {
   ingest_key_ready: boolean;
   first_event_received: boolean;
   first_diagnostic_signal_ready: boolean;
-  next_recommended_action: string;
   current_step:
     | "authenticate_session"
     | "confirm_project"
@@ -311,7 +310,7 @@ export type DashboardOrganizationSummary = {
   organization_id: string;
   organization_name: string;
   projects: DashboardProjectSummary[];
-  role: "owner" | "admin" | "member" | "viewer";
+  role: "owner" | "member";
 };
 
 export type DashboardOrganizationListResponse = {
@@ -321,7 +320,7 @@ export type DashboardOrganizationListResponse = {
 export type DashboardMembershipItem = {
   user_id: string;
   email: string;
-  role: "owner" | "admin" | "member" | "viewer";
+  role: "owner" | "member";
   invited_email: string | null;
   created_at: string;
 };

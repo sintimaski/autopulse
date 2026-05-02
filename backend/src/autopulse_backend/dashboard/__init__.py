@@ -8,7 +8,6 @@ from autopulse_backend.dashboard.routes import (
     diagnosis,
     error_groups,
     log_query_routes,
-    oidc_routes,
     organization_routes,
     overview,
     query_bundle,
@@ -20,7 +19,6 @@ from autopulse_backend.dashboard.routes import (
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 router.include_router(auth_routes.router)
-router.include_router(oidc_routes.router)
 router.include_router(websockets.router)
 router.include_router(overview.router)
 router.include_router(diagnosis.router)

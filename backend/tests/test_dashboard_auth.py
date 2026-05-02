@@ -553,11 +553,9 @@ def test_dashboard_onboarding_status_and_alert_capabilities(
             "open_diagnosis",
             "completed",
         }
-        assert isinstance(payload.get("next_recommended_action"), str)
-        assert payload["next_recommended_action"].strip()
 
         capabilities = client.get("/dashboard/alert-capabilities")
         assert capabilities.status_code == 200
         channels = {item["channel"]: item for item in capabilities.json()["channels"]}
         assert channels["email"]["status"] in {"active", "unavailable"}
-        assert channels["slack"]["status"] in {"planned", "configured", "unavailable"}
+        assert channels["slack"]["status"] == "planned"

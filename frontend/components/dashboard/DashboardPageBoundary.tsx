@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
@@ -164,12 +163,12 @@ export function DashboardPageBoundary({
           <p className="mt-2 text-sm">
             This view requires recent traffic data that has not arrived yet. If you are onboarding,
             finish the checklist in{" "}
-            <Link
+            <a
               href="/onboarding"
               className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
             >
               Onboarding
-            </Link>{" "}
+            </a>{" "}
             to send a first event, then refresh.
           </p>
         </section>

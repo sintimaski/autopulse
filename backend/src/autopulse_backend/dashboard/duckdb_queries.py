@@ -500,7 +500,7 @@ def overview_extended(
             COUNT(*) AS count
         """,
         suffix_sql=(
-            "AND (type = 'error' OR status_code >= 500) GROUP BY 1 ORDER BY 2 DESC LIMIT 8"
+            "AND (type = 'error' OR status_code >= 500) " "GROUP BY 1 ORDER BY 2 DESC LIMIT 8"
         ),
     )
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from logging.config import fileConfig
 from os import getenv
 
@@ -13,19 +12,6 @@ from autopulse_backend.models import Base
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-    # ``alembic.ini`` sets the Alembic loggers to INFO; that is useful for one-off CLI
-    # sessions but noisy when ``upgrade_to_head()`` runs during Uvicorn startup (and
-    # on every worker / reload). Keep SQLAlchemy engine at WARN from the ini; tame the
-    # migration framework chatter unless explicitly overridden.
-    if getenv("AUTOPULSE_ALEMBIC_LOG", "").strip().lower() not in {
-        "1",
-        "true",
-        "yes",
-        "debug",
-        "info",
-    }:
-        for _name in ("alembic", "alembic.runtime.migration"):
-            logging.getLogger(_name).setLevel(logging.WARNING)
 
 target_metadata = Base.metadata
 

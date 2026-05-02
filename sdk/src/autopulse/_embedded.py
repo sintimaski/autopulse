@@ -50,13 +50,6 @@ def _apply_backend_environment(*, database_url: str) -> None:
     os.environ.setdefault("JOBS_RETENTION_INTERVAL_SECONDS", "300")
     # Global SQLite file ceiling (oldest events across all projects). Set to 0 to disable.
     os.environ.setdefault("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "512")
-    # In-process ingest uses ``httpx.ASGITransport`` (HTTP scope, not TLS). A repo ``.env``
-    # often sets ``INGEST_REQUIRE_HTTPS=true`` for production; that rejects every embedded
-    # batch with 400 while the SDK fails silently, so DuckDB/SQLite never receive events.
-    os.environ["INGEST_REQUIRE_HTTPS"] = "false"
-    # Dashboard and ingest are mounted under ``/autopulse``. ``INGEST_DROP_AUTOPULSE_*=true``
-    # (typical for standalone API servers) drops every embedded event before persistence.
-    os.environ["INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB"] = "false"
 
 
 def _add_event_handler(app: Any, event: str, handler: Any) -> bool:
@@ -140,20 +133,11 @@ async def _ensure_embedded_project_and_key(
 
 
 def _start_embedded_background_jobs(app: Any) -> None:
-    """Optionally duplicate backend scheduler/poller on the *host* app.
+    """Start backend scheduler/poller explicitly for embedded hosts.
 
-    FastAPI 0.115+ merges mounted lifespans, so the AutoPulse backend already starts
-    schedulers from ``lifespan``. Running the same jobs on the host as well contends
-    on SQLite during startup and can prevent ``lifespan`` from yielding (Uvicorn stuck
-    on "Waiting for application startup"). Enable only if your ASGI host skips mount
-    lifespans: ``AUTOPULSE_EMBEDDED_HOST_JOBS=1``.
+    Mounted backend lifespans are not guaranteed to run in all host setups, so start
+    retention/alerts loops from the host app startup path as well.
     """
-    if os.getenv("AUTOPULSE_EMBEDDED_HOST_JOBS", "").strip().lower() not in {
-        "1",
-        "true",
-        "yes",
-    }:
-        return
     from autopulse_backend.core.config import (
         _is_autopulse_embedded_default_sqlite_file,
         get_settings,
@@ -294,14 +278,13 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
 
             # Never block application startup on retention; large local DB cleanup can be slow.
             async def _run_retention_background() -> None:
-                # Host ``on_startup`` runs before the mounted backend lifespan yields; wait
-                # briefly so migrations / create_all on the shared SQLite file can finish.
-                await asyncio.sleep(0.15)
                 with suppress(Exception):
                     await run_retention_once(settings=get_settings())
 
             task = asyncio.create_task(_run_retention_background())
             app.state._autopulse_startup_retention_task = task
+            # Ensure periodic loops run in embedded hosts even if mounted
+            # subapp lifespan is skipped.
             _start_embedded_background_jobs(app)
 
         async def stop_startup_retention_task() -> None:

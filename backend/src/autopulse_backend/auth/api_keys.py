@@ -26,7 +26,6 @@ _SALT_BYTES: Final[int] = 16
 @dataclass(frozen=True, slots=True)
 class ProjectContext:
     project_id: UUID
-    membership_role: str | None = None
 
 
 def _derive_secret_hash(secret: str, salt: bytes) -> bytes:
@@ -120,13 +119,9 @@ async def authenticate_dashboard_project(
         if settings.dashboard_auth_allow_api_key_fallback and authorization:
             scheme, _, token = authorization.partition(" ")
             if scheme.lower() == "bearer" and token:
-                ctx = await authenticate_project_token(session=session, token=token)
-                return ProjectContext(project_id=ctx.project_id, membership_role="owner")
+                return await authenticate_project_token(session=session, token=token)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Dashboard session is required",
         )
-    return ProjectContext(
-        project_id=auth_session.project_id,
-        membership_role=auth_session.membership_role,
-    )
+    return ProjectContext(project_id=auth_session.project_id)

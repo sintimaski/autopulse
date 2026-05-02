@@ -344,10 +344,9 @@ def create_app(*, enable_monitor: bool = True) -> FastAPI:
             "flush_interval_s": float(os.getenv("AUTOPULSE_FLUSH_INTERVAL_S", "1.0")),
             "debug": os.getenv("AUTOPULSE_DEBUG", "").strip().lower() in {"1", "true", "yes"},
             "mount_prefix": os.getenv("AUTOPULSE_MOUNT_PREFIX", "/autopulse"),
-            "database_url": (
-                os.getenv("AUTOPULSE_DATABASE_URL")
-                or os.getenv("DATABASE_URL")
-                or "sqlite+aiosqlite:///./autopulse.db"
+            "database_url": os.getenv(
+                "AUTOPULSE_DATABASE_URL",
+                "sqlite+aiosqlite:///./autopulse.db",
             ),
             "frontend_mode": os.getenv("AUTOPULSE_FRONTEND_MODE", "static"),
             "dashboard_widgets": _build_demo_dashboard_widgets(),

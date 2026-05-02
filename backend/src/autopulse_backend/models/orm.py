@@ -433,8 +433,6 @@ class DashboardUser(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    idp_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    idp_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class DashboardMagicLink(Base):

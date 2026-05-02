@@ -13,12 +13,7 @@ from pathlib import Path
 
 from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
 from autopulse_backend.core.config import Settings, get_settings
-from autopulse_backend.database import (
-    dispose_engine_for_url,
-    get_engine,
-    get_session_maker,
-    upgrade_to_head,
-)
+from autopulse_backend.database import dispose_engine_for_url, get_engine, get_session_maker
 from autopulse_backend.maintenance.retention import (
     _resolve_sqlite_db_path,
     _sqlite_db_disk_footprint_bytes,
@@ -78,7 +73,6 @@ async def _ensure_sqlite_schema_from_models(database_url: str) -> None:
     """Match FastAPI lifespan: file-backed SQLite may be opened before the API has run."""
     if not database_url.startswith("sqlite"):
         return
-    upgrade_to_head()
     engine = get_engine(database_url)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
