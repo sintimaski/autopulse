@@ -1,5 +1,7 @@
 "use client";
 
+import type { KeyboardEvent, MouseEvent } from "react";
+
 export function MetricCard({
   label,
   value,
@@ -27,12 +29,32 @@ export function MetricCard({
       : tone === "warning"
         ? "ring-amber-500/25 dark:ring-amber-700/40"
         : "ring-sky-500/20 dark:ring-sky-800/30";
+  const clickable = Boolean(onClick);
+  const interactiveProps = clickable
+    ? {
+        role: "button" as const,
+        tabIndex: 0,
+        onClick: (event: MouseEvent<HTMLElement>) => {
+          onClick?.();
+          event.stopPropagation();
+        },
+        onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
+          if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+            event.preventDefault();
+            onClick?.();
+          }
+        },
+        "aria-label": helper ? `${label}: ${value}. ${helper}` : `${label}: ${value}`,
+      }
+    : {};
   return (
     <article
       title={tooltip}
-      onClick={onClick}
+      {...interactiveProps}
       className={`rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ${toneRing} dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-md dark:shadow-black/30 ${
-        onClick ? "cursor-pointer transition-transform hover:-translate-y-0.5" : ""
+        clickable
+          ? "cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 dark:focus-visible:ring-sky-400/60"
+          : ""
       }`}
     >
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">{label}</h3>

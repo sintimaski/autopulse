@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -945,8 +946,75 @@ def test_dashboard_alert_dispatches_include_delivery_status_fields(
     item = payload["items"][0]
     assert item["status"] == "failed"
     assert item["reason_code"] == "provider_rejected"
+    assert item["reason_message"]
     assert item["attempt_count"] == 2
     assert item["delivered_at"] is None
+
+
+def test_dashboard_alert_capabilities_reports_active_and_unavailable_channels(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Alert Capabilities")
+    monkeypatch.setenv("ALERTS_ENABLED", "true")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_SENDER_MODE", "email")
+    monkeypatch.setenv("ALERT_SLACK_WEBHOOK_URL", "https://hooks.example.com/slack")
+    monkeypatch.delenv("ALERT_DISCORD_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("ALERT_WEBHOOK_URL", raising=False)
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/alert-capabilities",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    by_channel = {channel["channel"]: channel for channel in payload["channels"]}
+    assert by_channel["email"]["status"] == "active"
+    assert by_channel["email"]["enabled"] is True
+    assert by_channel["slack"]["status"] == "unavailable"
+    assert by_channel["slack"]["enabled"] is False
+    assert "alert_sender_mode excludes slack" in by_channel["slack"]["reason"].lower()
+    assert by_channel["discord"]["status"] == "planned"
+    assert by_channel["webhook"]["status"] == "planned"
+
+
+def test_dashboard_alert_test_dispatch_records_attempt(
+    backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, project_id = _seed_project_and_key(
+        backend_test_database_url, "Project Alert Test Dispatch"
+    )
+    monkeypatch.setenv("ALERTS_ENABLED", "true")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_SENDER_MODE", "email")
+    monkeypatch.setenv("ALERT_DEFAULT_DESTINATION_EMAIL", "ops@example.com")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.post(
+            "/dashboard/alert-test",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "sent"
+        assert payload["delivered_via"] in {"email", "file"}
+        assert payload["destination_email"] == "ops@example.com"
+
+        dispatches = client.get(
+            "/dashboard/alert-dispatches",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert dispatches.status_code == 200
+    items = dispatches.json()["items"]
+    test_alerts = [item for item in items if item["alert_type"] == "test"]
+    assert len(test_alerts) == 1
+    assert project_id
 
 
 def test_dashboard_theme_settings_can_exclude_autopulse_traffic(

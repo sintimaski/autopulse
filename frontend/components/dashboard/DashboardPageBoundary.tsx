@@ -54,13 +54,18 @@ export function ApiKeyMissing() {
           Enter your email to request a magic link. Dashboard access is session-first; ingest API keys are only for your app SDK.
         </p>
         <div className="mt-5 space-y-3">
-          <input
-            className="w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-400"
-            type="email"
-            value={email}
-            placeholder="you@example.com"
-            onChange={(event) => setEmail(event.target.value)}
-          />
+          <label className="block">
+            <span className="sr-only">Email for magic link sign-in</span>
+            <input
+              className="w-full rounded-lg border border-white/20 bg-black/25 px-3 py-2 text-sm text-white placeholder:text-slate-400"
+              type="email"
+              autoComplete="email"
+              value={email}
+              placeholder="you@example.com"
+              aria-label="Email address"
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </label>
           <button
             type="button"
             className="w-full rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
@@ -70,7 +75,11 @@ export function ApiKeyMissing() {
             Request magic link
           </button>
         </div>
-        {message ? <p className="mt-4 text-xs text-slate-200">{message}</p> : null}
+        {message ? (
+          <p className="mt-4 text-xs text-slate-200" role="status" aria-live="polite">
+            {message}
+          </p>
+        ) : null}
       </div>
     </main>
   );
@@ -84,7 +93,9 @@ export type DashboardPageDataReady =
   /** Alerts: sparkline + dispatches (no error-group list). */
   | "traffic-alerts"
   /** Settings: project JSON only (no traffic bundle). */
-  | "settings-only";
+  | "settings-only"
+  /** Onboarding: always allow children to render; no traffic required. */
+  | "onboarding";
 
 export function DashboardPageBoundary({
   children,
@@ -99,7 +110,9 @@ export function DashboardPageBoundary({
       ? Boolean(d.overview && d.requests && d.errorGroups)
       : dataReady === "traffic-requests" || dataReady === "traffic-alerts"
         ? Boolean(d.overview && d.requests)
-        : Boolean(d.alertSettings && d.retentionSettings);
+        : dataReady === "onboarding"
+          ? true
+          : Boolean(d.alertSettings && d.retentionSettings);
 
   if (d.loading) {
     return (
@@ -134,7 +147,33 @@ export function DashboardPageBoundary({
   }
 
   if (!hasRenderableData) {
-    return null;
+    // Fall-through empty state so pages never render a blank main column.
+    // Happens when a slice endpoint returned 200 but with nothing renderable
+    // (e.g. new project with no traffic yet) and no error was reported.
+    return (
+      <div className="mx-auto max-w-[88rem]">
+        <section
+          className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300"
+          role="status"
+          aria-live="polite"
+        >
+          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
+            No data for this view yet
+          </h2>
+          <p className="mt-2 text-sm">
+            This view requires recent traffic data that has not arrived yet. If you are onboarding,
+            finish the checklist in{" "}
+            <a
+              href="/onboarding"
+              className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+            >
+              Onboarding
+            </a>{" "}
+            to send a first event, then refresh.
+          </p>
+        </section>
+      </div>
+    );
   }
 
   return <div className="mx-auto max-w-[88rem] space-y-6">{children}</div>;

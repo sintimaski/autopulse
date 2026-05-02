@@ -353,6 +353,17 @@ class DashboardAlertCapabilitiesResponse(BaseModel):
     channels: list[DashboardAlertChannelCapability]
 
 
+class DashboardAlertTestResponse(BaseModel):
+    status: str
+    delivered_via: str
+    reason_code: str | None = None
+    reason_message: str | None = None
+    attempt_count: int
+    delivered_at: datetime | None = None
+    provider_message_id: str | None = None
+    destination_email: str | None = None
+
+
 class DashboardThemeSettings(BaseModel):
     theme_preference: Literal["system", "light", "dark"]
     exclude_autopulse_traffic: bool

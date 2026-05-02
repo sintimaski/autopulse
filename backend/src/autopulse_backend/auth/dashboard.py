@@ -100,6 +100,12 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
 
 
 async def _resolve_default_project_id(session: AsyncSession) -> UUID:
+    """Resolve or create a default project when no tenant exists at all.
+
+    Use this only as a last resort during empty-database bootstrap. Do NOT use it to
+    silently bind newly-verifying users to the earliest project they do not own. The
+    real per-user resolution lives in ``_resolve_project_for_user``.
+    """
     project = await session.scalar(select(Project).order_by(Project.created_at.asc()).limit(1))
     if project is None:
         organization = Organization(name="Default Organization")
@@ -111,40 +117,58 @@ async def _resolve_default_project_id(session: AsyncSession) -> UUID:
     return project.id
 
 
-async def _ensure_project_organization_membership(
+async def _resolve_project_for_user(
     *,
     session: AsyncSession,
-    project_id: UUID,
     user_id: UUID,
     email: str,
-) -> tuple[UUID | None, str | None]:
-    project = await session.scalar(select(Project).where(Project.id == project_id))
-    if project is None:
-        return None, None
-    if project.organization_id is None:
-        organization = Organization(name=f"{project.name} Organization")
-        session.add(organization)
-        await session.flush()
-        project.organization_id = organization.id
-    organization_id = project.organization_id
-    if organization_id is None:
-        return None, None
+) -> tuple[UUID, UUID | None, str | None]:
+    """Return ``(project_id, organization_id, membership_role)`` for this user.
+
+    Resolution order:
+    1. Most-recent existing membership for this user -> their org's oldest project
+       (creating a project under that org if it has none).
+    2. Empty-database bootstrap -> create a fresh org + project owned by this user.
+    3. Otherwise (projects exist but none owned by this user) -> create a fresh
+       org + project for this user so they never land on tenants they do not own.
+    """
     membership = await session.scalar(
-        select(OrganizationMembership).where(
-            OrganizationMembership.organization_id == organization_id,
-            OrganizationMembership.user_id == user_id,
-        )
+        select(OrganizationMembership)
+        .where(OrganizationMembership.user_id == user_id)
+        .order_by(OrganizationMembership.created_at.desc())
+        .limit(1)
     )
-    if membership is None:
-        membership = OrganizationMembership(
-            organization_id=organization_id,
-            user_id=user_id,
-            role="owner",
-            invited_email=email,
+    if membership is not None:
+        organization_id = membership.organization_id
+        project = await session.scalar(
+            select(Project)
+            .where(Project.organization_id == organization_id)
+            .order_by(Project.created_at.asc())
+            .limit(1)
         )
-        session.add(membership)
-        await session.flush()
-    return organization_id, membership.role
+        if project is None:
+            project = Project(name="Default Project", organization_id=organization_id)
+            session.add(project)
+            await session.flush()
+        return project.id, organization_id, membership.role
+
+    any_project_exists = await session.scalar(select(Project.id).limit(1))
+    organization = Organization(name=f"{email}'s Organization")
+    session.add(organization)
+    await session.flush()
+    project = Project(name="Default Project", organization_id=organization.id)
+    session.add(project)
+    await session.flush()
+    new_membership = OrganizationMembership(
+        organization_id=organization.id,
+        user_id=user_id,
+        role="owner",
+        invited_email=email,
+    )
+    session.add(new_membership)
+    await session.flush()
+    del any_project_exists
+    return project.id, organization.id, new_membership.role
 
 
 async def bootstrap_dashboard_tenant_for_user(
@@ -300,10 +324,8 @@ async def verify_magic_link_and_create_session(
 
     raw_session_token = secrets.token_urlsafe(48)
     expires_at = now + timedelta(minutes=settings.dashboard_auth_session_ttl_minutes)
-    project_id = await _resolve_default_project_id(session)
-    organization_id, membership_role = await _ensure_project_organization_membership(
+    project_id, organization_id, membership_role = await _resolve_project_for_user(
         session=session,
-        project_id=project_id,
         user_id=user.id,
         email=email,
     )
@@ -393,23 +415,28 @@ async def get_dashboard_auth_session(
     if user is None:
         return None
     organization_id = session_row.organization_id
-    membership_role = None
+    membership_role: str | None = None
     if organization_id is None:
-        organization_id, membership_role = await _ensure_project_organization_membership(
-            session=session,
-            project_id=session_row.project_id,
-            user_id=user.id,
-            email=user.email,
-        )
+        # Legacy session predates organization tracking. Look up the project's org,
+        # then require an existing membership for this user. Never silently grant
+        # ownership on the auth heartbeat path.
+        project = await session.scalar(select(Project).where(Project.id == session_row.project_id))
+        if project is None or project.organization_id is None:
+            return None
+        organization_id = project.organization_id
         session_row.organization_id = organization_id
-    if organization_id is not None and membership_role is None:
-        membership = await session.scalar(
-            select(OrganizationMembership).where(
-                OrganizationMembership.organization_id == organization_id,
-                OrganizationMembership.user_id == user.id,
-            )
+    membership = await session.scalar(
+        select(OrganizationMembership).where(
+            OrganizationMembership.organization_id == organization_id,
+            OrganizationMembership.user_id == user.id,
         )
-        membership_role = membership.role if membership is not None else None
+    )
+    if membership is None:
+        # Session references a tenant the user does not actually belong to.
+        # Treat as unauthenticated so the caller forces a clean re-login that
+        # routes through ``_resolve_project_for_user``.
+        return None
+    membership_role = membership.role
     # Keep plain values before any write/rollback path; rollback can expire ORM attributes
     # and later attribute access may trigger async IO from sync contexts (MissingGreenlet).
     user_id = user.id

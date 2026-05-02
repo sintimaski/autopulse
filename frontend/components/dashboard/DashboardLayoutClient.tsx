@@ -432,6 +432,12 @@ function ShellWithData({ children }: { children: ReactNode }) {
     pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
   const hasIssuedApiKey = d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey);
   const hasFirstEvent = (d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0;
+  const onboardingComplete =
+    d.onboardingStatus?.current_step === "completed" ||
+    (d.onboardingStatus !== null &&
+      d.onboardingStatus.first_diagnostic_signal_ready &&
+      d.onboardingStatus.first_event_received);
+  const showOnboardingNav = !onboardingComplete;
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const statusStrip = (
@@ -514,6 +520,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       isDark={isDark}
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}
+      showOnboardingNav={showOnboardingNav}
       filterToolbarAutoCollapse={showServerScope}
       filterToolbarCompactLabel={
         pathname === "/diagnosis"

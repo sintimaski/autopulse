@@ -79,7 +79,47 @@ export function DiagnosisContent() {
   }, [pathname]);
 
   if (!requests || !errorGroups || !timeline || !failures) {
-    return null;
+    const missing = [
+      !requests ? "requests" : null,
+      !errorGroups ? "errorGroups" : null,
+      !timeline ? "timeline" : null,
+      !failures ? "failures" : null,
+    ].filter((entry): entry is string => entry !== null);
+    return (
+      <section
+        className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+        role="status"
+        aria-live="polite"
+      >
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
+          Diagnosis is waiting for data
+        </h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+          The diagnosis view needs recent traffic to rank incidents. Missing slices:{" "}
+          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">
+            {missing.join(", ")}
+          </code>
+          .
+        </p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+          Once your app sends events, this view will populate automatically. You can also{" "}
+          <Link
+            href="/onboarding"
+            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+          >
+            resume onboarding
+          </Link>{" "}
+          or{" "}
+          <Link
+            href={buildRequestsPageHref(scopedState)}
+            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+          >
+            open Requests
+          </Link>{" "}
+          if evidence arrived outside this scope.
+        </p>
+      </section>
+    );
   }
 
   return (

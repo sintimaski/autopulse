@@ -76,15 +76,25 @@ export function MagicLinkVerifyClient() {
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/60 backdrop-blur">
         <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
-        <p className="mt-3 text-sm leading-relaxed text-slate-300">{message}</p>
+        <p
+          className="mt-3 text-sm leading-relaxed text-slate-300"
+          role="status"
+          aria-live="polite"
+        >
+          {message}
+        </p>
         <div className="mt-5">
           {status === "verifying" ? (
             <div
               className="h-9 w-9 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400"
-              aria-hidden
+              role="progressbar"
+              aria-label="Verifying magic link"
             />
           ) : status === "success" ? (
-            <div className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+            <div
+              className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-100"
+              role="status"
+            >
               Signed in.
             </div>
           ) : (

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -13,6 +14,8 @@ from autopulse_backend.repositories.aggregates import (
     upsert_error_group_aggregates,
     upsert_metric_buckets,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +57,8 @@ async def _run_worker(
         payload = await queue.get()
         if stop_event.is_set():
             break
+        metric_bucket_count = len(payload.metric_bucket_deltas)
+        error_group_count = len(payload.error_group_deltas)
         try:
             async with session_maker() as session:
                 await upsert_metric_buckets(session, payload.metric_bucket_deltas)
@@ -61,6 +66,15 @@ async def _run_worker(
             service_metrics.increment("ingest.aggregate_worker.succeeded")
         except Exception:
             service_metrics.increment("ingest.aggregate_worker.failed")
+            logger.exception(
+                "ingest_aggregate_worker_failed",
+                extra={
+                    "event": "ingest_aggregate_worker_failed",
+                    "metric_bucket_deltas": metric_bucket_count,
+                    "error_group_deltas": error_group_count,
+                    "enqueued_at": payload.enqueued_at.isoformat(),
+                },
+            )
 
 
 def start_ingest_aggregate_worker(

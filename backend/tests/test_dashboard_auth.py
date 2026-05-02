@@ -375,6 +375,152 @@ def test_dashboard_member_cannot_manage_api_keys(
         assert member_issue.status_code == 403
 
 
+def test_dashboard_magic_link_does_not_bind_new_user_to_existing_project(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """New users must not inherit ownership of an unrelated seeded tenant.
+
+    Before hardening, magic-link verification assigned every new user to the
+    earliest-created project via ``_resolve_default_project_id`` and silently
+    granted owner membership on its organization, leaking ownership across
+    tenants. After the fix, the new user must land on a fresh org/project they
+    actually own.
+    """
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+
+    async def _seeded_project_id() -> str:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                result = await session.execute(text("SELECT id FROM projects LIMIT 1"))
+                row = result.first()
+                assert row is not None
+                return str(row[0])
+        finally:
+            await engine.dispose()
+
+    seeded_project_id = asyncio.run(_seeded_project_id())
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="new-user@example.com", tmp_path=tmp_path)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+        payload = verify_response.json()
+        assert payload["authenticated"] is True
+        assert payload["project_id"] != seeded_project_id
+
+        orgs_response = client.get("/dashboard/organizations")
+        assert orgs_response.status_code == 200
+        organizations = orgs_response.json()["organizations"]
+        assert len(organizations) == 1
+        assert organizations[0]["role"] == "owner"
+
+
+def test_dashboard_session_cookie_expired_is_unauthenticated(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        async def _expire_sessions() -> None:
+            engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+            session_maker = async_sessionmaker(
+                bind=engine, expire_on_commit=False, class_=AsyncSession
+            )
+            try:
+                async with session_maker() as session:
+                    await session.execute(
+                        text("UPDATE dashboard_sessions " "SET expires_at = :past"),
+                        {"past": datetime.now(tz=UTC) - timedelta(minutes=1)},
+                    )
+                    await session.commit()
+            finally:
+                await engine.dispose()
+
+        asyncio.run(_expire_sessions())
+
+        session_response = client.get("/dashboard/auth/session")
+        assert session_response.status_code == 200
+        assert session_response.json()["authenticated"] is False
+
+        denied_response = client.get(
+            "/dashboard/overview",
+            params={
+                "from_timestamp": (datetime.now(tz=UTC) - timedelta(minutes=5)).isoformat(),
+                "to_timestamp": datetime.now(tz=UTC).isoformat(),
+            },
+        )
+        assert denied_response.status_code == 401
+
+
+def test_dashboard_session_without_membership_is_rejected(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Sessions pointing at a tenant the user does not belong to must be rejected."""
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        async def _drop_membership() -> None:
+            engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+            session_maker = async_sessionmaker(
+                bind=engine, expire_on_commit=False, class_=AsyncSession
+            )
+            try:
+                async with session_maker() as session:
+                    await session.execute(text("DELETE FROM organization_memberships"))
+                    await session.commit()
+            finally:
+                await engine.dispose()
+
+        asyncio.run(_drop_membership())
+
+        session_response = client.get("/dashboard/auth/session")
+        assert session_response.status_code == 200
+        assert session_response.json()["authenticated"] is False
+
+        denied_response = client.get(
+            "/dashboard/overview",
+            params={
+                "from_timestamp": (datetime.now(tz=UTC) - timedelta(minutes=5)).isoformat(),
+                "to_timestamp": datetime.now(tz=UTC).isoformat(),
+            },
+        )
+        assert denied_response.status_code == 401
+
+
 def test_dashboard_onboarding_status_and_alert_capabilities(
     backend_test_database_url: str,
     monkeypatch,

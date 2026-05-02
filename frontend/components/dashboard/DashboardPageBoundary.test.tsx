@@ -8,6 +8,13 @@ describe("ApiKeyMissing", () => {
     const html = renderToStaticMarkup(<ApiKeyMissing />);
     expect(html).toContain("Dashboard sign in");
     expect(html).toContain("Request magic link");
-    expect(html).toContain("Verify and continue");
+    // Session-first copy preserved.
+    expect(html).toContain("session-first");
+  });
+
+  it("provides an accessible email input", () => {
+    const html = renderToStaticMarkup(<ApiKeyMissing />);
+    expect(html).toContain('aria-label="Email address"');
+    expect(html).toContain("Email for magic link sign-in");
   });
 });

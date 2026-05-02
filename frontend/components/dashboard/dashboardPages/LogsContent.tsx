@@ -75,7 +75,21 @@ export function LogsContent() {
   }, [logsSlice.filteredSorted]);
   const requests = logsSlice.requests;
   if (!requests) {
-    return null;
+    return (
+      <section
+        className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
+        role="status"
+        aria-live="polite"
+      >
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
+          Requests are loading or missing
+        </h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+          No request-log slice is available right now. Adjust the scope filters, refresh, or send
+          a first event from the onboarding checklist.
+        </p>
+      </section>
+    );
   }
   const serverWindowTotal = requests.total;
   const activeClientControls = d.envTags.size + d.serviceTags.size + (d.groupBy !== "none" ? 1 : 0);

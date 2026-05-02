@@ -10,6 +10,7 @@ import {
   LayoutGrid,
   PanelLeft,
   PanelLeftClose,
+  Rocket,
   RotateCw,
   Settings,
   Stethoscope,
@@ -20,7 +21,9 @@ import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
 
 const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
-const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
+type NavItem = { href: string; label: string; Icon: LucideIcon };
+
+const BASE_NAV: readonly NavItem[] = [
   { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
   { href: "/widgets-showcase", label: "Widget gallery", Icon: LayoutGrid },
   { href: "/requests", label: "Requests", Icon: ScrollText },
@@ -28,6 +31,12 @@ const nav: readonly { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/settings", label: "Settings", Icon: Settings },
 ] as const;
+
+const ONBOARDING_NAV: NavItem = {
+  href: "/onboarding",
+  label: "Onboarding",
+  Icon: Rocket,
+};
 
 export function DashboardAppShell({
   children,
@@ -43,6 +52,7 @@ export function DashboardAppShell({
   isDark,
   diagnosisNavQuery = "",
   logsNavQuery = "",
+  showOnboardingNav = false,
 }: {
   children: ReactNode;
   /** Omitted to hide the header control (live data is driven by WebSocket + scope changes). */
@@ -60,7 +70,10 @@ export function DashboardAppShell({
   diagnosisNavQuery?: string;
   /** Last persisted or live `/logs` server-scope query string (without `?`). */
   logsNavQuery?: string;
+  /** Show the Onboarding link while onboarding is incomplete. */
+  showOnboardingNav?: boolean;
 }) {
+  const nav: readonly NavItem[] = showOnboardingNav ? [ONBOARDING_NAV, ...BASE_NAV] : BASE_NAV;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {

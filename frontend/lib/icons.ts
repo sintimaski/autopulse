@@ -18,6 +18,7 @@ export {
   ListChecks,
   PanelLeft,
   PanelLeftClose,
+  Rocket,
   RotateCw,
   ScrollText,
   Settings,
