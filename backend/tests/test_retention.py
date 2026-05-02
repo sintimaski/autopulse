@@ -461,6 +461,8 @@ def test_embedded_sqlite_global_file_cap_uses_min_ui_when_embedded_cap_unset(
 def test_duckdb_size_shrink_falls_back_to_widget_points(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from autopulse_backend.maintenance import retention_duckdb
+
     class _FakeStore:
         def __init__(self) -> None:
             self._size_reads = 0
@@ -484,7 +486,7 @@ def test_duckdb_size_shrink_falls_back_to_widget_points(
             return 250 if self.widget_delete_calls == 1 else 0
 
     store = _FakeStore()
-    monkeypatch.setattr(retention_mod, "get_duckdb_event_store", lambda: store)
+    monkeypatch.setattr(retention_duckdb, "get_duckdb_event_store", lambda: store)
 
     async def _run_read(fn, *args, **kwargs):
         return fn(*args, **kwargs)
@@ -492,11 +494,11 @@ def test_duckdb_size_shrink_falls_back_to_widget_points(
     async def _run_write(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
-    monkeypatch.setattr(retention_mod, "run_duckdb_read_sync", _run_read)
-    monkeypatch.setattr(retention_mod, "run_duckdb_write_sync", _run_write)
+    monkeypatch.setattr(retention_duckdb, "run_duckdb_read_sync", _run_read)
+    monkeypatch.setattr(retention_duckdb, "run_duckdb_write_sync", _run_write)
 
     deleted = asyncio.run(
-        retention_mod._duckdb_shrink_under_size_cap(
+        retention_duckdb._duckdb_shrink_under_size_cap(
             max_bytes=100,
             project_id=None,
         )

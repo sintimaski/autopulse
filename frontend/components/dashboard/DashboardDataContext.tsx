@@ -82,283 +82,40 @@ import {
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
+import {
+  DASHBOARD_FETCH_TIMEOUT_MS,
+  DASHBOARD_REFRESH_INTERVAL_MS,
+  DASHBOARD_WS_RECONNECT_DELAY_MS,
+  fetchWithTimeout,
+  LIVE_FETCH_SLOW_MS,
+  LIVE_REFRESH_BACKOFF_DURATION_MS,
+  LIVE_REFRESH_BACKOFF_THROTTLE_MS,
+  LIVE_REFRESH_THROTTLE_MS,
+  trimDashboardWidgetPayload,
+} from "./dashboardDataFetchUtils";
+import type {
+  DashboardAlertsSliceValue,
+  DashboardDataContextValue,
+  DashboardDiagnosisSliceValue,
+  DashboardHomeSliceValue,
+  DashboardLogsSliceValue,
+  SavedSqlFilterPreset,
+} from "./dashboardDataContextTypes";
 
-export type SavedSqlFilterPreset = {
-  id: string;
-  name: string;
-  where: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type DashboardDataContextValue = {
-  hasApiKey: boolean;
-  sessionEmail: string | null;
-  /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
-  authSessionResolved: boolean;
-  windowMinutes: number;
-  windowFromTimestamp: string;
-  windowToTimestamp: string;
-  serverNowTimestamp: string | null;
-  isAbsoluteWindow: boolean;
-  method: string;
-  statusClass: string;
-  requestLimit: number;
-  requestPage: number;
-  errorGroupLimit: number;
-  errorGroupPage: number;
-  minLatencyMs: string;
-  maxLatencyMs: string;
-  serverServiceQuery: string;
-  serverEnvironmentQuery: string;
-  serverServiceTags: string[];
-  serverEnvironmentTags: string[];
-  pathQuery: string;
-  groupBy: GroupBy;
-  sortKey: SortKey;
-  sortDir: SortDir;
-  envTags: Set<string>;
-  serviceTags: Set<string>;
-  overview: OverviewResponse | null;
-  overviewExtended: OverviewExtendedResponse | null;
-  dashboardWidgets: DashboardWidgetsResponse | null;
-  requests: RequestsResponse | null;
-  errorGroups: ErrorGroupsResponse | null;
-  diagnosisTimeline: DiagnosisTimelineResponse | null;
-  diagnosisFailures: DiagnosisFailureRoutesResponse | null;
-  diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
-  alertSettings: AlertSettings | null;
-  apiKeys: DashboardApiKeyItem[];
-  lastIssuedApiKey: string | null;
-  alertDispatches: AlertDispatchesResponse | null;
-  alertCapabilities: AlertChannelCapability[];
-  onboardingStatus: DashboardOnboardingStatusResponse | null;
-  retentionSettings: RetentionSettings | null;
-  themePreference: ThemePreference;
-  excludeAutopulseTraffic: boolean;
-  errorGroupSort: "last_seen" | "count";
-  loading: boolean;
-  errorMessage: string | null;
-  refreshToken: number;
-  runbookMessage: string | null;
-  alertSettingsMessage: string | null;
-  alertSettingsSaving: boolean;
-  themeSettingsSaving: boolean;
-  expandedRequestIds: Set<string>;
-  setRequestLimit: (n: number) => void;
-  setRequestPage: React.Dispatch<React.SetStateAction<number>>;
-  setErrorGroupLimit: (n: number) => void;
-  setErrorGroupPage: React.Dispatch<React.SetStateAction<number>>;
-  setMinLatencyMs: React.Dispatch<React.SetStateAction<string>>;
-  setMaxLatencyMs: React.Dispatch<React.SetStateAction<string>>;
-  setServerServiceQuery: React.Dispatch<React.SetStateAction<string>>;
-  setServerEnvironmentQuery: React.Dispatch<React.SetStateAction<string>>;
-  setServerServiceTags: (tags: string[]) => void;
-  setServerEnvironmentTags: (tags: string[]) => void;
-  setPathQuery: React.Dispatch<React.SetStateAction<string>>;
-  setGroupBy: React.Dispatch<React.SetStateAction<GroupBy>>;
-  setErrorGroupSort: (s: "last_seen" | "count") => void;
-  setRefreshToken: React.Dispatch<React.SetStateAction<number>>;
-  onServerWindowChange: (minutes: number) => void;
-  setAbsoluteWindow: (fromIso: string, toIso: string) => void;
-  clearAbsoluteWindow: () => void;
-  onServerMethodChange: (value: string) => void;
-  onServerStatusClassChange: (value: string) => void;
-  toggleEnv: (value: string) => void;
-  toggleService: (value: string) => void;
-  clearClientFilters: () => void;
-  /** Replace logs page client filters (group/sort/tags) from URL or defaults. */
-  hydrateLogsViewFromUrl: (next: PersistedLogsClientSlice) => void;
-  copyRunbookCommand: (command: string, label: string) => Promise<void>;
-  saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
-  saveThemePreference: (next: ThemePreference) => Promise<boolean>;
-  saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
-  saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
-  refreshApiKeys: () => Promise<void>;
-  issueApiKey: () => Promise<boolean>;
-  rotateApiKey: (keyId: string) => Promise<boolean>;
-  revokeApiKey: (keyId: string) => Promise<boolean>;
-  validateSqlFilterDraft: () => Promise<LogQueryValidationResponse | null>;
-  applySqlFilter: () => Promise<boolean>;
-  disableSqlFilter: () => void;
-  setSqlFilterDraft: React.Dispatch<React.SetStateAction<string>>;
-  setSqlFilterApplied: React.Dispatch<React.SetStateAction<string>>;
-  setSqlFilterEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  updateAlertSettingsDraft: (next: AlertSettings) => void;
-  toggleRequestRow: (id: string) => void;
-  onSortHeader: (key: SortKey) => void;
-  rawItems: RequestItem[];
-  availableEnvironments: string[];
-  availableServices: string[];
-  filteredSorted: RequestItem[];
-  topFailingRoutes: [string, number][];
-  recentErrorsPreview: ErrorGroupItem[];
-  displayedErrorGroups: ErrorGroupItem[];
-  recentAlertDispatches: AlertDispatchItem[];
-  grouped: { key: string; label: string; items: RequestItem[] }[];
-  sparklineSeries: OverviewBucket[];
-  operationalSignals: ReturnType<typeof computeOperationalSignals>;
-  sqlFilterDraft: string;
-  sqlFilterApplied: string;
-  sqlFilterEnabled: boolean;
-  sqlFilterValidation: LogQueryValidationResponse | null;
-  sqlFilterValidating: boolean;
-  savedSqlFilterPresets: SavedSqlFilterPreset[];
-  saveSqlFilterPreset: (name: string, where: string) => {
-    ok: boolean;
-    error?: string;
-  };
-  removeSqlFilterPreset: (id: string) => void;
-  applySavedSqlFilterPreset: (id: string) => void;
-  WINDOW_OPTIONS: typeof WINDOW_OPTIONS;
-  METHOD_OPTIONS: typeof METHOD_OPTIONS;
-  STATUS_CLASS_OPTIONS: typeof STATUS_CLASS_OPTIONS;
-  REQUEST_LIMIT_OPTIONS: typeof REQUEST_LIMIT_OPTIONS;
-  ERROR_GROUP_LIMIT_OPTIONS: typeof ERROR_GROUP_LIMIT_OPTIONS;
-  GROUP_OPTIONS: typeof GROUP_OPTIONS;
-  RUNBOOK_ALERTS_CMD: typeof RUNBOOK_ALERTS_CMD;
-  RUNBOOK_RETENTION_CMD: typeof RUNBOOK_RETENTION_CMD;
-  M5_ALERT_DEFAULTS: typeof M5_ALERT_DEFAULTS;
-};
-
-export type DashboardHomeSliceValue = {
-  overview: OverviewResponse | null;
-  overviewExtended: OverviewExtendedResponse | null;
-  dashboardWidgets: DashboardWidgetsResponse | null;
-  requests: RequestsResponse | null;
-  errorGroups: ErrorGroupsResponse | null;
-  sparklineSeries: OverviewBucket[];
-  operationalSignals: ReturnType<typeof computeOperationalSignals>;
-  rawItems: RequestItem[];
-  windowMinutes: number;
-  isAbsoluteWindow: boolean;
-  windowFromTimestamp: string;
-  windowToTimestamp: string;
-  method: string;
-  statusClass: string;
-  requestLimit: number;
-  errorGroupLimit: number;
-  errorGroupSort: "last_seen" | "count";
-  minLatencyMs: string;
-  maxLatencyMs: string;
-  pathQuery: string;
-  serverEnvironmentQuery: string;
-  serverServiceQuery: string;
-  sqlFilterApplied: string;
-  sqlFilterEnabled: boolean;
-  errorMessage: string | null;
-};
-
-export type DashboardDiagnosisSliceValue = {
-  diagnosisTimeline: DiagnosisTimelineResponse | null;
-  diagnosisFailures: DiagnosisFailureRoutesResponse | null;
-  diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
-  errorGroups: ErrorGroupsResponse | null;
-};
-
-export type DashboardAlertsSliceValue = {
-  alertDispatches: AlertDispatchesResponse | null;
-  alertSettings: AlertSettings | null;
-  alertCapabilities: AlertChannelCapability[];
-};
-
-export type DashboardLogsSliceValue = {
-  requests: RequestsResponse | null;
-  filteredSorted: RequestItem[];
-  grouped: { key: string; label: string; items: RequestItem[] }[];
-  availableServices: string[];
-  availableEnvironments: string[];
-};
+export type {
+  DashboardAlertsSliceValue,
+  DashboardDataContextValue,
+  DashboardDiagnosisSliceValue,
+  DashboardHomeSliceValue,
+  DashboardLogsSliceValue,
+  SavedSqlFilterPreset,
+} from "./dashboardDataContextTypes";
 
 const DashboardDataContext = createContext<DashboardDataContextValue | null>(null);
 const DashboardHomeSliceContext = createContext<DashboardHomeSliceValue | null>(null);
 const DashboardDiagnosisSliceContext = createContext<DashboardDiagnosisSliceValue | null>(null);
 const DashboardAlertsSliceContext = createContext<DashboardAlertsSliceValue | null>(null);
 const DashboardLogsSliceContext = createContext<DashboardLogsSliceValue | null>(null);
-const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
-const MAX_WIDGET_POINTS_PER_WIDGET = 240;
-const MAX_WIDGET_POINTS_TOTAL = 2400;
-const DASHBOARD_REWRITE_PHASED_ENABLED =
-  process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
-const LIVE_REFRESH_THROTTLE_MS = 400;
-/** When recent fetches were slow or errored, widen WS-driven refresh spacing. */
-const LIVE_REFRESH_BACKOFF_THROTTLE_MS = 2500;
-const LIVE_REFRESH_BACKOFF_DURATION_MS = 20_000;
-/** Elapsed time above this after a successful response triggers WS refresh backoff. */
-const LIVE_FETCH_SLOW_MS = 7000;
-const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
-const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
-  const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
-  const parsedSeconds = Number(raw);
-  if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
-    return Math.max(250, Math.floor(parsedSeconds * 1000));
-  }
-  return 5_000;
-})();
-
-function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number,
-  parentSignal?: AbortSignal,
-): Promise<Response> {
-  const controller = new AbortController();
-  const onParentAbort = () => {
-    controller.abort(parentSignal?.reason);
-  };
-  if (parentSignal) {
-    if (parentSignal.aborted) {
-      controller.abort(parentSignal.reason);
-    } else {
-      parentSignal.addEventListener("abort", onParentAbort, { once: true });
-    }
-  }
-  const timeoutId = window.setTimeout(() => {
-    controller.abort(new DOMException("Dashboard request timed out", "AbortError"));
-  }, timeoutMs);
-  return fetch(input, { ...init, signal: controller.signal }).finally(() => {
-    window.clearTimeout(timeoutId);
-    if (parentSignal) {
-      parentSignal.removeEventListener("abort", onParentAbort);
-    }
-  });
-}
-
-function trimDashboardWidgetPayload(
-  payload: DashboardWidgetsResponse,
-): DashboardWidgetsResponse {
-  const grouped = new Map<string, DashboardWidgetsResponse["points"]>();
-  for (const point of payload.points ?? []) {
-    const bucket = grouped.get(point.widget_id);
-    if (bucket) {
-      bucket.push(point);
-    } else {
-      grouped.set(point.widget_id, [point]);
-    }
-  }
-
-  let merged: DashboardWidgetsResponse["points"] = [];
-  for (const widgetId of grouped.keys()) {
-    const points = grouped.get(widgetId) ?? [];
-    points.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    const recent =
-      points.length > MAX_WIDGET_POINTS_PER_WIDGET
-        ? points.slice(points.length - MAX_WIDGET_POINTS_PER_WIDGET)
-        : points;
-    merged = merged.concat(recent);
-  }
-
-  if (merged.length > MAX_WIDGET_POINTS_TOTAL) {
-    merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    merged = merged.slice(0, MAX_WIDGET_POINTS_TOTAL);
-    merged.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  }
-
-  return {
-    ...payload,
-    points: merged,
-  };
-}
 
 export function useDashboardData(): DashboardDataContextValue {
   const ctx = useContext(DashboardDataContext);
