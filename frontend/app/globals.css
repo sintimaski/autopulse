@@ -3,10 +3,27 @@
 
 :root {
   color-scheme: light;
+
+  /*
+   * Dashboard scope facet bar (`DashboardScopeFacetShell`):
+   * rim = 1px padding + linear-gradient on outer; inner is solid fill.
+   */
+  --ap-scope-rim-width: 1px;
+  --ap-scope-rim-radius: 1rem;
+  --ap-scope-rim-angle: 118deg;
+  --ap-scope-rim-orange: #fb923c;
+  --ap-scope-rim-purple: #a78bfa;
+  --ap-scope-inner-bg: rgb(255 255 255 / 0.97);
+  --ap-scope-inner-bg-dark: rgb(23 23 23 / 0.97);
+  --ap-scope-elev-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(249 115 22 / 0.04);
+  --ap-scope-elev-shadow-dark: 0 1px 3px rgb(0 0 0 / 0.35), 0 0 0 1px rgb(255 255 255 / 0.04);
 }
 
 .dark {
   color-scheme: dark;
+
+  --ap-scope-rim-orange: #fdba74;
+  --ap-scope-rim-purple: #c4b5fd;
 }
 
 html {
@@ -15,6 +32,31 @@ html {
 
 body {
   background-color: #0b0d10;
+}
+
+.ap-scope-facet-shell {
+  border-radius: var(--ap-scope-rim-radius);
+  padding: var(--ap-scope-rim-width);
+  background: linear-gradient(
+    var(--ap-scope-rim-angle),
+    var(--ap-scope-rim-orange),
+    var(--ap-scope-rim-purple)
+  );
+  box-shadow: var(--ap-scope-elev-shadow);
+}
+
+.dark .ap-scope-facet-shell {
+  box-shadow: var(--ap-scope-elev-shadow-dark);
+}
+
+.ap-scope-facet-shell__inner {
+  border-radius: calc(var(--ap-scope-rim-radius) - var(--ap-scope-rim-width));
+  background: var(--ap-scope-inner-bg);
+  padding: 0.625rem 0.75rem;
+}
+
+.dark .ap-scope-facet-shell__inner {
+  background: var(--ap-scope-inner-bg-dark);
 }
 
 .ap-surface {

@@ -489,10 +489,17 @@ async def _duckdb_shrink_under_size_cap(
             project_id=project_id,
         )
         if deleted_now <= 0:
-            stall_rounds += 1
-            if stall_rounds >= 3:
-                break
-            continue
+            # Dashboard widget points can dominate file growth under host-metrics-heavy ingest.
+            deleted_now = await run_duckdb_write_sync(
+                store.delete_oldest_widget_points,
+                rows_to_delete=batch,
+                project_id=project_id,
+            )
+            if deleted_now <= 0:
+                stall_rounds += 1
+                if stall_rounds >= 3:
+                    break
+                continue
         deleted_total += deleted_now
         with suppress(Exception):
             await run_duckdb_write_sync(store.checkpoint)

@@ -4,6 +4,22 @@ import { useEffect, useState } from "react";
 
 import { buildApiUrl } from "./dashboardTypes";
 
+const DASHBOARD_AUTH_SESSION_TIMEOUT_MS = 12_000;
+
+function fetchSessionWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => {
+    controller.abort(new DOMException("Dashboard auth session timed out", "AbortError"));
+  }, timeoutMs);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+    window.clearTimeout(timeoutId);
+  });
+}
+
 export function useDashboardAuthSession(): {
   hasSession: boolean;
   authSessionResolved: boolean;
@@ -17,9 +33,11 @@ export function useDashboardAuthSession(): {
     let cancelled = false;
     const run = async () => {
       try {
-        const response = await fetch(buildApiUrl("/dashboard/auth/session"), {
-          credentials: "include",
-        });
+        const response = await fetchSessionWithTimeout(
+          buildApiUrl("/dashboard/auth/session"),
+          { credentials: "include" },
+          DASHBOARD_AUTH_SESSION_TIMEOUT_MS,
+        );
         if (!response.ok) {
           if (!cancelled) {
             setHasSession(false);

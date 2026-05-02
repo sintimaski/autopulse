@@ -53,13 +53,31 @@ function emptyBucket(minute: string): OverviewBucket {
   };
 }
 
+/** Parse API instants as UTC when no zone suffix is present (matches backend UTC semantics). */
+export function parseDashboardInstantUtcMs(raw: string): number {
+  const t = raw.trim();
+  if (!t) {
+    return Number.NaN;
+  }
+  if (/z$|[+-]\d{2}:?\d{2}$/i.test(t)) {
+    return Date.parse(t);
+  }
+  return Date.parse(`${t}Z`);
+}
+
+function truncateUtcToMinuteWall(ms: number): string {
+  const d = new Date(ms);
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), 0, 0),
+  ).toISOString();
+}
+
 function normalizeMinuteIso(minute: string): string {
-  const parsed = new Date(minute);
-  if (!Number.isFinite(parsed.getTime())) {
+  const parsedMs = parseDashboardInstantUtcMs(minute);
+  if (!Number.isFinite(parsedMs)) {
     return minute;
   }
-  parsed.setSeconds(0, 0);
-  return parsed.toISOString();
+  return truncateUtcToMinuteWall(parsedMs);
 }
 
 function fillMinuteBucketGaps(series: OverviewBucket[]): OverviewBucket[] {
@@ -72,8 +90,8 @@ function fillMinuteBucketGaps(series: OverviewBucket[]): OverviewBucket[] {
   }));
   const sorted = normalized.sort((a, b) => a.minute.localeCompare(b.minute));
   const byMinute = new Map(sorted.map((bucket) => [bucket.minute, bucket]));
-  const start = new Date(sorted[0].minute).getTime();
-  const end = new Date(sorted[sorted.length - 1].minute).getTime();
+  const start = parseDashboardInstantUtcMs(sorted[0].minute);
+  const end = parseDashboardInstantUtcMs(sorted[sorted.length - 1].minute);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
     return sorted;
   }
@@ -100,9 +118,11 @@ export function resolveSparklineSeries(
   }
   const buckets = new Map<string, OverviewBucket>();
   for (const item of requests.items) {
-    const minute = new Date(item.timestamp);
-    minute.setSeconds(0, 0);
-    const key = minute.toISOString();
+    const ts = parseDashboardInstantUtcMs(item.timestamp);
+    if (!Number.isFinite(ts)) {
+      continue;
+    }
+    const key = truncateUtcToMinuteWall(ts);
     const existing = buckets.get(key);
     if (existing) {
       existing.request_count += 1;
@@ -152,9 +172,15 @@ export function trimSeriesToLastMinutes(
     return series;
   }
   const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
-  const lastTs = new Date(sorted[sorted.length - 1].minute).getTime();
+  const lastTs = parseDashboardInstantUtcMs(sorted[sorted.length - 1].minute);
+  if (!Number.isFinite(lastTs)) {
+    return sorted;
+  }
   const cutoff = lastTs - lastMinutes * 60 * 1000;
-  return sorted.filter((b) => new Date(b.minute).getTime() >= cutoff);
+  return sorted.filter((b) => {
+    const t = parseDashboardInstantUtcMs(b.minute);
+    return Number.isFinite(t) && t >= cutoff;
+  });
 }
 
 /**
@@ -186,7 +212,10 @@ export function aggregateSeriesByStep(
   };
   const map = new Map<string, Acc>();
   for (const b of sorted) {
-    const t = new Date(b.minute).getTime();
+    const t = parseDashboardInstantUtcMs(b.minute);
+    if (!Number.isFinite(t)) {
+      continue;
+    }
     const bucketStart = Math.floor(t / spanMs) * spanMs;
     const key = new Date(bucketStart).toISOString();
     const rc = Number(b.request_count || 0);
@@ -225,8 +254,8 @@ export function aggregateSeriesByStep(
     return [];
   }
   const groupedByMinute = new Map(grouped.map((bucket) => [bucket.minute, bucket]));
-  const start = new Date(grouped[0].minute).getTime();
-  const end = new Date(grouped[grouped.length - 1].minute).getTime();
+  const start = parseDashboardInstantUtcMs(grouped[0].minute);
+  const end = parseDashboardInstantUtcMs(grouped[grouped.length - 1].minute);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
     return grouped;
   }

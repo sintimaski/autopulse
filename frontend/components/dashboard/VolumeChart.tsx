@@ -10,21 +10,9 @@ import {
   maxBucketRequestCount,
   trimSeriesToLastMinutes,
 } from "../../utils/dashboardData";
+import { buildAlignedChartSpanOptions, buildVolumeStepOptions } from "../../utils/dashboardChartWindows";
 import { CanvasBar } from "./charts/chartCanvas";
 import { TimeSeriesLineChart } from "./charts/TimeSeriesLineChart";
-
-const CHART_SPAN_OPTIONS: { value: number; label: string }[] = [
-  { value: 0, label: "Full loaded range" },
-  { value: 15, label: "Last 15m" },
-  { value: 30, label: "Last 30m" },
-  { value: 60, label: "Last 60m" },
-  { value: 120, label: "Last 2h" },
-  { value: 240, label: "Last 4h" },
-  { value: 480, label: "Last 8h" },
-  { value: 1440, label: "Last 24h" },
-];
-
-const STEP_OPTIONS = [1, 2, 5, 15, 30, 60] as const;
 
 function formatMinuteLabel(iso: string): string {
   try {
@@ -42,6 +30,17 @@ function formatMinuteLabel(iso: string): string {
 function parseIsoTimestamp(value: string): Date {
   const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value);
   return new Date(hasZone ? value : `${value}Z`);
+}
+
+function clampStepToAllowed(step: number, allowed: readonly number[]): number {
+  if (!allowed.length) {
+    return Math.max(1, Math.floor(step));
+  }
+  if (allowed.includes(step)) {
+    return step;
+  }
+  const atOrBelow = allowed.filter((s) => s <= step);
+  return atOrBelow.length > 0 ? atOrBelow[atOrBelow.length - 1]! : allowed[0]!;
 }
 
 function barColorForBucket(bucket: OverviewBucket): string {
@@ -72,15 +71,38 @@ export function VolumeChart({
 }) {
   const router = useRouter();
   const [chartSpanMinutes, setChartSpanMinutes] = useState(0);
-  const [stepMinutes, setStepMinutes] = useState<(typeof STEP_OPTIONS)[number]>(1);
+  const [stepMinutes, setStepMinutes] = useState(1);
+
+  const chartSpanOptions = useMemo(
+    () => buildAlignedChartSpanOptions(globalWindowMinutes),
+    [globalWindowMinutes],
+  );
+
+  const effectiveChartSpanMinutes = useMemo(() => {
+    const allowed = new Set(chartSpanOptions.map((o) => o.value));
+    return allowed.has(chartSpanMinutes) ? chartSpanMinutes : 0;
+  }, [chartSpanMinutes, chartSpanOptions]);
+
+  const effectiveSpanMinutes =
+    effectiveChartSpanMinutes > 0 ? effectiveChartSpanMinutes : Math.max(1, globalWindowMinutes);
+
+  const allowedStepMinutes = useMemo(
+    () => buildVolumeStepOptions(effectiveSpanMinutes),
+    [effectiveSpanMinutes],
+  );
+
+  const effectiveStepMinutes = useMemo(
+    () => clampStepToAllowed(stepMinutes, allowedStepMinutes),
+    [allowedStepMinutes, stepMinutes],
+  );
 
   const displayed = useMemo(() => {
     const trimmed =
-      chartSpanMinutes <= 0
+      effectiveChartSpanMinutes <= 0
         ? [...series].sort((a, b) => a.minute.localeCompare(b.minute))
-        : trimSeriesToLastMinutes(series, chartSpanMinutes);
-    return aggregateSeriesByStep(trimmed, stepMinutes);
-  }, [series, chartSpanMinutes, stepMinutes]);
+        : trimSeriesToLastMinutes(series, effectiveChartSpanMinutes);
+    return aggregateSeriesByStep(trimmed, effectiveStepMinutes);
+  }, [series, effectiveChartSpanMinutes, effectiveStepMinutes]);
 
   const max = maxBucketRequestCount(displayed);
   const displayedRef = useRef(displayed);
@@ -95,7 +117,9 @@ export function VolumeChart({
   const onBucketClick = useCallback(
     (bucket: OverviewBucket) => {
       const bucketStart = parseIsoTimestamp(bucket.minute).toISOString();
-      const bucketEnd = new Date(parseIsoTimestamp(bucket.minute).getTime() + stepMinutes * 60_000).toISOString();
+      const bucketEnd = new Date(
+        parseIsoTimestamp(bucket.minute).getTime() + effectiveStepMinutes * 60_000,
+      ).toISOString();
       const params = new URLSearchParams(diagnosisBaseQuery ?? {});
       params.set("from_timestamp", bucketStart);
       params.set("to_timestamp", bucketEnd);
@@ -103,7 +127,7 @@ export function VolumeChart({
       const query = params.toString();
       router.push(`/diagnosis?${query}#grouped-errors`);
     },
-    [diagnosisBaseQuery, router, stepMinutes],
+    [diagnosisBaseQuery, router, effectiveStepMinutes],
   );
 
   const volumeBarData = useMemo((): ChartData<"bar"> => {
@@ -219,12 +243,12 @@ export function VolumeChart({
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
             Chart span
             <select
-              value={chartSpanMinutes}
+              value={effectiveChartSpanMinutes}
               onChange={(e) => setChartSpanMinutes(Number(e.target.value))}
               className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
-              {CHART_SPAN_OPTIONS.map((opt) => (
-                <option key={opt.label} value={opt.value}>
+              {chartSpanOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
@@ -233,11 +257,11 @@ export function VolumeChart({
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
             Step (minutes)
             <select
-              value={stepMinutes}
-              onChange={(e) => setStepMinutes(Number(e.target.value) as (typeof STEP_OPTIONS)[number])}
+              value={effectiveStepMinutes}
+              onChange={(e) => setStepMinutes(Number(e.target.value))}
               className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
-              {STEP_OPTIONS.map((m) => (
+              {allowedStepMinutes.map((m) => (
                 <option key={m} value={m}>
                   {m}m buckets
                 </option>

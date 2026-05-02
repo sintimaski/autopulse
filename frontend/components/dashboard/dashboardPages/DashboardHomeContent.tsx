@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { MetricCard } from "../MetricCard";
+import { DashboardScopeFacetShell } from "../DashboardScopeFacetShell";
 import { OverviewScopeFacetBoard } from "../OverviewScopeFacetBoard";
 import { SparklineMini } from "../SparklineMini";
 import { StatusPill } from "../StatusPill";
@@ -43,7 +44,9 @@ export function DashboardHomeContent() {
   if (!overview || !requests) {
     return (
       <section className="space-y-4">
-        <OverviewScopeFacetBoard />
+        <DashboardScopeFacetShell>
+          <OverviewScopeFacetBoard />
+        </DashboardScopeFacetShell>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
           {d.errorMessage ?? "Loading dashboard metrics..."}
         </div>
@@ -124,7 +127,9 @@ export function DashboardHomeContent() {
     ];
     return (
       <section className="space-y-6">
-        <OverviewScopeFacetBoard />
+        <DashboardScopeFacetShell>
+          <OverviewScopeFacetBoard />
+        </DashboardScopeFacetShell>
         {homeSlice.errorMessage ? (
           <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
             {homeSlice.errorMessage}
@@ -213,6 +218,7 @@ export function DashboardHomeContent() {
             sparklineSeries={homeSlice.sparklineSeries}
             overviewExtended={overviewExtended}
             dashboardWidgets={d.dashboardWidgets}
+            globalWindowMinutes={homeSlice.windowMinutes}
           />
         </div>
       </section>
@@ -905,6 +911,7 @@ export function DashboardHomeContent() {
           sparklineSeries={d.sparklineSeries}
           overviewExtended={overviewExtended}
           dashboardWidgets={d.dashboardWidgets}
+          globalWindowMinutes={d.windowMinutes}
         />
         <p className="text-center text-sm text-slate-500 dark:text-neutral-400">
           <Link
@@ -917,7 +924,7 @@ export function DashboardHomeContent() {
         </p>
       </div>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 px-3 py-2.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+      <DashboardScopeFacetShell>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <OverviewScopeFacetBoard />
           <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -934,7 +941,7 @@ export function DashboardHomeContent() {
             </Link>
           </div>
         </div>
-      </section>
+      </DashboardScopeFacetShell>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>

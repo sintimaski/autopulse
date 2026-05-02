@@ -98,3 +98,38 @@ def test_duckdb_fetch_events_with_total_slim_pagination(tmp_path) -> None:
     )
     assert total2 == 5
     assert len(page2) == 2
+
+
+def test_duckdb_widget_point_rotation_helpers(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events3.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    store.insert_widget_points(
+        [
+            {
+                "project_id": project_id,
+                "widget_id": "w1",
+                "timestamp": now - timedelta(minutes=3),
+                "label": "cpu",
+                "value": 10.0,
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "w1",
+                "timestamp": now - timedelta(minutes=2),
+                "label": "cpu",
+                "value": 20.0,
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "w1",
+                "timestamp": now - timedelta(minutes=1),
+                "label": "cpu",
+                "value": 30.0,
+            },
+        ]
+    )
+    assert store.count_widget_points_for_project(project_id) == 3
+    deleted = store.delete_oldest_widget_points(rows_to_delete=2, project_id=project_id)
+    assert deleted == 2
+    assert store.count_widget_points_for_project(project_id) == 1

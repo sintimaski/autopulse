@@ -257,6 +257,11 @@ const MAX_WIDGET_POINTS_TOTAL = 2400;
 const DASHBOARD_REWRITE_PHASED_ENABLED =
   process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
 const LIVE_REFRESH_THROTTLE_MS = 400;
+/** When recent fetches were slow or errored, widen WS-driven refresh spacing. */
+const LIVE_REFRESH_BACKOFF_THROTTLE_MS = 2500;
+const LIVE_REFRESH_BACKOFF_DURATION_MS = 20_000;
+/** Elapsed time above this after a successful response triggers WS refresh backoff. */
+const LIVE_FETCH_SLOW_MS = 7000;
 const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
 const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
   const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
@@ -405,6 +410,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const livePendingRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveSocketRef = useRef<WebSocket | null>(null);
   const liveLastRefreshAtRef = useRef(0);
+  const liveWsBackoffUntilRef = useRef(0);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
   const [liveUpdatesConnected, setLiveUpdatesConnected] = useState(false);
@@ -559,6 +565,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const isCancelled = () => controller.signal.aborted || runId !== dashboardFetchRunId.current;
 
     const run = async () => {
+      const fetchStartedAt = Date.now();
       const routePath = dashboardRoutePath;
       if (routePath === "/settings") {
         return;
@@ -681,6 +688,18 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           DASHBOARD_FETCH_TIMEOUT_MS,
           controller.signal,
         );
+        const elapsedMs = Date.now() - fetchStartedAt;
+        if (!isCancelled()) {
+          const status = batchResponse.status;
+          if (
+            elapsedMs >= LIVE_FETCH_SLOW_MS ||
+            status === 429 ||
+            status === 503 ||
+            status >= 500
+          ) {
+            liveWsBackoffUntilRef.current = Date.now() + LIVE_REFRESH_BACKOFF_DURATION_MS;
+          }
+        }
         const results: DashboardFetchResult[] = [{ endpoint: "overview", response: batchResponse }];
         if (isCancelled()) {
           return;
@@ -754,6 +773,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
+          if (
+            !isCancelled() &&
+            error.message === "Dashboard request timed out"
+          ) {
+            liveWsBackoffUntilRef.current = Date.now() + LIVE_REFRESH_BACKOFF_DURATION_MS;
+          }
           return;
         }
         if (!hasLoadedDashboardData.current) {
@@ -831,6 +856,40 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       return;
     }
     let cancelled = false;
+    const wsThrottleMs = () =>
+      Date.now() < liveWsBackoffUntilRef.current
+        ? LIVE_REFRESH_BACKOFF_THROTTLE_MS
+        : LIVE_REFRESH_THROTTLE_MS;
+    const scheduleLiveRefreshFromWebSocket = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      const now = Date.now();
+      const throttleMs = wsThrottleMs();
+      const elapsedMs = now - liveLastRefreshAtRef.current;
+      if (elapsedMs < throttleMs) {
+        // Keep at most one trailing refresh during bursty WS traffic.
+        if (livePendingRefreshTimer.current) {
+          return;
+        }
+        const delayMs = Math.max(1, throttleMs - elapsedMs);
+        livePendingRefreshTimer.current = setTimeout(() => {
+          livePendingRefreshTimer.current = null;
+          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+            return;
+          }
+          liveLastRefreshAtRef.current = Date.now();
+          setRefreshToken((token) => token + 1);
+        }, delayMs);
+        return;
+      }
+      if (livePendingRefreshTimer.current) {
+        clearTimeout(livePendingRefreshTimer.current);
+        livePendingRefreshTimer.current = null;
+      }
+      liveLastRefreshAtRef.current = now;
+      setRefreshToken((token) => token + 1);
+    };
     const connect = () => {
       if (cancelled) {
         return;
@@ -861,27 +920,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           if (parsed.type !== "dashboard_update" && parsed.type !== "ingest") {
             return;
           }
-          const now = Date.now();
-          const elapsedMs = now - liveLastRefreshAtRef.current;
-          if (elapsedMs < LIVE_REFRESH_THROTTLE_MS) {
-            // Keep at most one trailing refresh during bursty WS traffic.
-            if (livePendingRefreshTimer.current) {
-              return;
-            }
-            const delayMs = Math.max(1, LIVE_REFRESH_THROTTLE_MS - elapsedMs);
-            livePendingRefreshTimer.current = setTimeout(() => {
-              livePendingRefreshTimer.current = null;
-              liveLastRefreshAtRef.current = Date.now();
-              setRefreshToken((token) => token + 1);
-            }, delayMs);
-            return;
-          }
-          if (livePendingRefreshTimer.current) {
-            clearTimeout(livePendingRefreshTimer.current);
-            livePendingRefreshTimer.current = null;
-          }
-          liveLastRefreshAtRef.current = now;
-          setRefreshToken((token) => token + 1);
+          scheduleLiveRefreshFromWebSocket();
         };
         socket.onclose = () => {
           if (cancelled) {
@@ -946,6 +985,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
     };
   }, [hasApiKey, liveUpdatesConnected]);
+
+  useEffect(() => {
+    if (!hasApiKey) {
+      return;
+    }
+    const onVisibilityChange = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "visible") {
+        return;
+      }
+      setRefreshToken((token) => token + 1);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [hasApiKey]);
 
   const rawItems = useMemo(
     () =>

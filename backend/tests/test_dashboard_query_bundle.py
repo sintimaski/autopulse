@@ -141,7 +141,13 @@ def test_dashboard_query_request_clamps_pagination_limits() -> None:
     assert payload.error_groups.offset == 0
 
 
-def test_bundle_ttl_prefers_short_heavy_cache() -> None:
+def test_bundle_ttl_prefers_short_heavy_cache(monkeypatch) -> None:
+    """Default product tuning: heavy bundles use a shorter cache than light.
+
+    Deployments may override TTLs via env; this test pins defaults for the invariant.
+    """
+    monkeypatch.setattr(query_bundle, "BUNDLE_LIGHT_CACHE_TTL_SECONDS", 4.0)
+    monkeypatch.setattr(query_bundle, "BUNDLE_HEAVY_CACHE_TTL_SECONDS", 1.5)
     light_payload = DashboardDataQueryRequest(scope=DashboardDataQueryScope(window_minutes=60))
     heavy_payload = DashboardDataQueryRequest(
         scope=DashboardDataQueryScope(window_minutes=60),

@@ -168,7 +168,7 @@ export function MultiSeriesLineChart({
         },
       },
     }),
-    [hasData, labels, onPointClick, pointRadius, series, ySuggestedMax],
+    [hasData, labels, onPointClick, series, ySuggestedMax],
   );
 
   if (!hasData) {

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 
 import { useDashboardData } from "./DashboardDataContext";
-import { METHOD_OPTIONS, STATUS_CLASS_OPTIONS } from "./dashboardTypes";
+import { METHOD_OPTIONS, STATUS_CLASS_OPTIONS, WINDOW_OPTIONS } from "./dashboardTypes";
 
 const selectClass =
   "rounded-md border border-slate-200 bg-white py-1 pl-2 pr-7 text-xs text-slate-900 shadow-sm outline-none focus:ring-1 focus:ring-sky-500/50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:focus:ring-neutral-500/40";
@@ -27,6 +27,26 @@ export function OverviewScopeFacetBoard() {
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+      <label
+        className={`flex items-center gap-1.5 ${labelClass}`}
+        title="Applies to every chart and number below"
+      >
+        <span className="shrink-0">Window</span>
+        <select
+          value={d.windowMinutes}
+          onChange={(e) => {
+            d.onServerWindowChange(Number(e.target.value));
+          }}
+          className={selectClass}
+          aria-label="Time window for all dashboard metrics"
+        >
+          {WINDOW_OPTIONS.map((minutes) => (
+            <option key={minutes} value={minutes}>
+              {minutes >= 60 ? `${Math.round(minutes / 60)}h` : `${minutes}m`}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className={`flex items-center gap-1.5 ${labelClass}`}>
         <span className="shrink-0">Method</span>
         <select

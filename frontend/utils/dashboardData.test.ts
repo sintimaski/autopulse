@@ -5,6 +5,7 @@ import {
   computeOperationalSignals,
   M5_ALERT_DEFAULTS,
   maxBucketRequestCount,
+  parseDashboardInstantUtcMs,
   resolveSparklineSeries,
   trimSeriesToLastMinutes,
 } from "./dashboardData";
@@ -40,6 +41,22 @@ describe("resolveSparklineSeries", () => {
     });
   });
 
+  it("treats zone-less overview minutes as UTC when filling gaps", () => {
+    const overview = {
+      series: [
+        { minute: "2026-04-26T10:00:00", request_count: 2, error_count: 0, avg_latency_ms: 10 },
+        { minute: "2026-04-26T10:02:00", request_count: 1, error_count: 1, avg_latency_ms: 30 },
+      ],
+    };
+    const out = resolveSparklineSeries(overview, null);
+    expect(out).toHaveLength(3);
+    expect(out.map((b) => b.minute)).toEqual([
+      "2026-04-26T10:00:00.000Z",
+      "2026-04-26T10:01:00.000Z",
+      "2026-04-26T10:02:00.000Z",
+    ]);
+  });
+
   it("aggregates request rows by minute when overview series is empty", () => {
     const overviewEmpty = { series: [] };
     const requests = {
@@ -58,6 +75,20 @@ describe("resolveSparklineSeries", () => {
     expect(result[0].count_3xx).toBe(0);
     expect(result[0].count_4xx).toBe(0);
     expect(result[0].count_5xx).toBe(2);
+  });
+
+  it("aggregates zone-less request timestamps as UTC minutes", () => {
+    const overviewEmpty = { series: [] };
+    const requests = {
+      items: [
+        { timestamp: "2026-04-26T10:00:10", status_code: 200, latency_ms: 10 },
+        { timestamp: "2026-04-26T10:00:40", status_code: 500, latency_ms: 20 },
+      ],
+    };
+    const result = resolveSparklineSeries(overviewEmpty, requests);
+    expect(result).toHaveLength(1);
+    expect(result[0].minute).toBe("2026-04-26T10:00:00.000Z");
+    expect(result[0].request_count).toBe(2);
   });
 
   it("uses request-derived series when preferRequests is true", () => {
@@ -86,6 +117,17 @@ describe("resolveSparklineSeries", () => {
   });
 });
 
+describe("parseDashboardInstantUtcMs", () => {
+  it("appends Z for zone-less ISO strings", () => {
+    expect(parseDashboardInstantUtcMs("2026-04-26T10:00:00")).toBe(Date.parse("2026-04-26T10:00:00Z"));
+  });
+
+  it("parses explicit Z and numeric offsets", () => {
+    expect(parseDashboardInstantUtcMs("2026-04-26T10:00:00Z")).toBe(Date.parse("2026-04-26T10:00:00Z"));
+    expect(parseDashboardInstantUtcMs("2026-04-26T11:00:00+01:00")).toBe(Date.parse("2026-04-26T10:00:00Z"));
+  });
+});
+
 describe("trimSeriesToLastMinutes", () => {
   it("returns full series when lastMinutes covers span", () => {
     const series = [
@@ -103,6 +145,17 @@ describe("trimSeriesToLastMinutes", () => {
     const trimmed = trimSeriesToLastMinutes(series, 5);
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].minute).toBe("2026-04-26T10:10:00.000Z");
+  });
+
+  it("uses UTC semantics for zone-less minute strings when computing cutoff", () => {
+    const series = [
+      { minute: "2026-04-26T08:00:00", request_count: 1, error_count: 0, avg_latency_ms: 1 },
+      { minute: "2026-04-26T10:00:00", request_count: 2, error_count: 0, avg_latency_ms: 2 },
+    ];
+    const trimmed = trimSeriesToLastMinutes(series, 90);
+    expect(trimmed).toHaveLength(1);
+    expect(trimmed[0].minute).toBe("2026-04-26T10:00:00");
+    expect(trimmed[0].request_count).toBe(2);
   });
 });
 

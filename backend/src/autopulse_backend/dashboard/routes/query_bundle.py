@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections import OrderedDict
 from datetime import UTC, datetime, timedelta
 from time import monotonic
@@ -51,15 +52,60 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
-BUNDLE_LIGHT_CACHE_TTL_SECONDS = 4.0
-BUNDLE_HEAVY_CACHE_TTL_SECONDS = 1.5
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        parsed = float(str(raw).strip())
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        parsed = int(str(raw).strip())
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, parsed))
+
+
+# Light = default overview+requests bundle; heavy = extended/widgets/diagnosis slices.
+# Env names match common deployments (see backend/.env examples).
+BUNDLE_LIGHT_CACHE_TTL_SECONDS = _env_float(
+    "AUTOPULSE_DASHBOARD_QUERY_CACHE_TTL_SECONDS",
+    4.0,
+    minimum=0.05,
+    maximum=120.0,
+)
+BUNDLE_HEAVY_CACHE_TTL_SECONDS = _env_float(
+    "AUTOPULSE_DASHBOARD_QUERY_CACHE_STALE_TTL_SECONDS",
+    1.5,
+    minimum=0.05,
+    maximum=120.0,
+)
 BUNDLE_CACHE_MAX_ITEMS = 128
 _bundle_cache: OrderedDict[str, tuple[float, DashboardDataQueryResponse]] = OrderedDict()
 _bundle_cache_lock = asyncio.Lock()
 _bundle_inflight: dict[str, asyncio.Task[DashboardDataQueryResponse]] = {}
 _bundle_inflight_lock = asyncio.Lock()
-_bundle_light_concurrency = asyncio.Semaphore(8)
-_bundle_heavy_concurrency = asyncio.Semaphore(2)
+_bundle_light_concurrency = asyncio.Semaphore(
+    _env_int("AUTOPULSE_DASHBOARD_QUERY_LIGHT_CONCURRENCY", 8, minimum=1, maximum=64)
+)
+_bundle_heavy_concurrency = asyncio.Semaphore(
+    _env_int(
+        "AUTOPULSE_DASHBOARD_QUERY_PRESSURE_INFLIGHT_THRESHOLD",
+        2,
+        minimum=1,
+        maximum=32,
+    )
+)
 _bundle_version_meta_lock = asyncio.Lock()
 _bundle_project_version_locks: dict[str, asyncio.Lock] = {}
 _bundle_project_versions: dict[str, int] = {}

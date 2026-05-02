@@ -479,6 +479,16 @@ class DuckDbEventStore:
         )
         return int(row[0] if row else 0)
 
+    def count_widget_points_for_project(self, project_id: UUID | None = None) -> int:
+        if project_id is None:
+            row = self._fetchone_read("SELECT COUNT(*) FROM dashboard_widget_points")
+            return int(row[0] if row else 0)
+        row = self._fetchone_read(
+            "SELECT COUNT(*) FROM dashboard_widget_points WHERE project_id = ?",
+            [str(project_id)],
+        )
+        return int(row[0] if row else 0)
+
     def delete_oldest_events(self, *, rows_to_delete: int, project_id: UUID | None = None) -> int:
         if rows_to_delete <= 0:
             return 0
@@ -505,6 +515,44 @@ class DuckDbEventStore:
                 "DELETE FROM events WHERE id IN ("
                 "SELECT id FROM events WHERE project_id = ? "
                 "ORDER BY received_at ASC, id ASC LIMIT ?"
+                ")"
+            )
+            params = [str(project_id), rows_to_delete]
+        with self._write_lock:
+            deleted_row = self._write_conn.execute(count_sql, params).fetchone()
+            deleted = int(deleted_row[0] if deleted_row else 0)
+            if deleted > 0:
+                self._write_conn.execute(delete_sql, params)
+        return deleted
+
+    def delete_oldest_widget_points(
+        self, *, rows_to_delete: int, project_id: UUID | None = None
+    ) -> int:
+        if rows_to_delete <= 0:
+            return 0
+        if project_id is None:
+            count_sql = (
+                "SELECT COUNT(*) FROM ("
+                "SELECT id FROM dashboard_widget_points ORDER BY timestamp ASC, id ASC LIMIT ?"
+                ")"
+            )
+            delete_sql = (
+                "DELETE FROM dashboard_widget_points WHERE id IN ("
+                "SELECT id FROM dashboard_widget_points ORDER BY timestamp ASC, id ASC LIMIT ?"
+                ")"
+            )
+            params = [rows_to_delete]
+        else:
+            count_sql = (
+                "SELECT COUNT(*) FROM ("
+                "SELECT id FROM dashboard_widget_points WHERE project_id = ? "
+                "ORDER BY timestamp ASC, id ASC LIMIT ?"
+                ")"
+            )
+            delete_sql = (
+                "DELETE FROM dashboard_widget_points WHERE id IN ("
+                "SELECT id FROM dashboard_widget_points WHERE project_id = ? "
+                "ORDER BY timestamp ASC, id ASC LIMIT ?"
                 ")"
             )
             params = [str(project_id), rows_to_delete]

@@ -4,6 +4,10 @@ import { useMemo, useState } from "react";
 
 import { aggregateSeriesByStep, trimSeriesToLastMinutes } from "../../../utils/dashboardData";
 import {
+  buildAlignedChartSpanOptions,
+  buildAlignedRollupBucketOptions,
+} from "../../../utils/dashboardChartWindows";
+import {
   BreakdownBarChart,
   ChartPanel,
   MultiSeriesLineChart,
@@ -25,6 +29,8 @@ type Props = {
   sparklineSeries: OverviewBucket[];
   overviewExtended: OverviewExtendedResponse;
   dashboardWidgets: DashboardWidgetsResponse | null;
+  /** Main dashboard server query window — chart sub-windows and roll-ups must not exceed this. */
+  globalWindowMinutes: number;
 };
 
 /** Prefer UTC for zone-less API timestamps so comparisons match bucket/point ranges. */
@@ -101,27 +107,6 @@ function buildHostChartAxisLabels(timestamps: string[]): string[] {
   }
   return out;
 }
-
-const HOST_RESOURCES_CHART_WINDOW_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
-  { value: 0, label: "Full loaded range" },
-  { value: 15, label: "Last 15m" },
-  { value: 30, label: "Last 30m" },
-  { value: 60, label: "Last 60m" },
-  { value: 120, label: "Last 2h" },
-  { value: 240, label: "Last 4h" },
-  { value: 480, label: "Last 8h" },
-  { value: 1440, label: "Last 24h" },
-];
-
-/** Roll-up width for host chart (aligned to chart window, capped when window is shorter). */
-const HOST_RESOURCES_CHART_BUCKET_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
-  { value: 0, label: "Native (per sample)" },
-  { value: 1, label: "1 minute" },
-  { value: 5, label: "5 minutes" },
-  { value: 15, label: "15 minutes" },
-  { value: 30, label: "30 minutes" },
-  { value: 60, label: "1 hour" },
-];
 
 const HOST_RESOURCES_CUMULATIVE_WIDGET_IDS = new Set<string>([
   "infra_network_received_mb",
@@ -557,6 +542,7 @@ export function DashboardInfrastructureSection({
   sparklineSeries,
   overviewExtended,
   dashboardWidgets,
+  globalWindowMinutes,
 }: Props) {
   const routeBreakdownByVolume = [...overviewExtended.route_breakdown]
     .sort((a, b) => b.request_count - a.request_count)
@@ -581,15 +567,42 @@ export function DashboardInfrastructureSection({
   const [hostChartWindowMinutes, setHostChartWindowMinutes] = useState(0);
   const [hostChartBucketMinutes, setHostChartBucketMinutes] = useState(0);
 
+  const hostChartWindowOptions = useMemo(
+    () => buildAlignedChartSpanOptions(globalWindowMinutes),
+    [globalWindowMinutes],
+  );
+
+  const effectiveHostChartWindowMinutes = useMemo(() => {
+    const allowed = new Set(hostChartWindowOptions.map((o) => o.value));
+    return allowed.has(hostChartWindowMinutes) ? hostChartWindowMinutes : 0;
+  }, [hostChartWindowMinutes, hostChartWindowOptions]);
+
+  const rollupBucketCapMinutes = useMemo(() => {
+    if (effectiveHostChartWindowMinutes > 0) {
+      return Math.min(effectiveHostChartWindowMinutes, Math.max(1, globalWindowMinutes));
+    }
+    return Math.max(1, globalWindowMinutes);
+  }, [effectiveHostChartWindowMinutes, globalWindowMinutes]);
+
+  const hostChartBucketOptions = useMemo(
+    () => buildAlignedRollupBucketOptions(rollupBucketCapMinutes),
+    [rollupBucketCapMinutes],
+  );
+
+  const effectiveHostChartBucketPick = useMemo(() => {
+    const allowed = new Set(hostChartBucketOptions.map((o) => o.value));
+    return allowed.has(hostChartBucketMinutes) ? hostChartBucketMinutes : 0;
+  }, [hostChartBucketMinutes, hostChartBucketOptions]);
+
   const effectiveHostChartBucketMinutes = useMemo(() => {
-    if (hostChartBucketMinutes <= 0) {
+    if (effectiveHostChartBucketPick <= 0) {
       return 0;
     }
-    if (hostChartWindowMinutes <= 0) {
-      return hostChartBucketMinutes;
+    if (effectiveHostChartWindowMinutes <= 0) {
+      return effectiveHostChartBucketPick;
     }
-    return Math.min(hostChartBucketMinutes, hostChartWindowMinutes);
-  }, [hostChartBucketMinutes, hostChartWindowMinutes]);
+    return Math.min(effectiveHostChartBucketPick, effectiveHostChartWindowMinutes);
+  }, [effectiveHostChartBucketPick, effectiveHostChartWindowMinutes]);
 
   /** Clip chart data to widget API window (aligned with embedded points); fall back to overview when missing. */
   const overviewFrom = overviewExtended.from_timestamp;
@@ -600,8 +613,9 @@ export function DashboardInfrastructureSection({
   const hostChartFilteredPoints = useMemo(() => {
     const raw = dashboardWidgets?.points ?? [];
     const bounds = { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo };
-    const windowSalvageOk = (p: DashboardWidgetPoint) => hostChartPointInWindow(p, bounds, hostChartWindowMinutes);
-    const clipped = filterWidgetPointsForTimeSpan(raw, bounds, hostChartWindowMinutes);
+    const windowSalvageOk = (p: DashboardWidgetPoint) =>
+      hostChartPointInWindow(p, bounds, effectiveHostChartWindowMinutes);
+    const clipped = filterWidgetPointsForTimeSpan(raw, bounds, effectiveHostChartWindowMinutes);
     let next = mergeMissingHostResourceWidgetPoints(clipped, raw, windowSalvageOk);
     if (next.length > 0) {
       return next;
@@ -609,10 +623,10 @@ export function DashboardInfrastructureSection({
     if (raw.length === 0) {
       return raw;
     }
-    if (hostChartWindowMinutes <= 0) {
+    if (effectiveHostChartWindowMinutes <= 0) {
       return mergeMissingHostResourceWidgetPoints(raw, raw, windowSalvageOk);
     }
-    const rolling = trimWidgetPointsLastMinutes(raw, hostChartWindowMinutes);
+    const rolling = trimWidgetPointsLastMinutes(raw, effectiveHostChartWindowMinutes);
     const rb = rollingWindowBoundsFromPoints(rolling);
     const rollingSalvageOk =
       rb !== null
@@ -623,15 +637,15 @@ export function DashboardInfrastructureSection({
         : (_p: DashboardWidgetPoint) => false;
     const rescued = mergeMissingHostResourceWidgetPoints(rolling, raw, rollingSalvageOk);
     return rescued.length > 0 ? rescued : mergeMissingHostResourceWidgetPoints(raw, raw, windowSalvageOk);
-  }, [dashboardWidgets?.points, chartClipFrom, chartClipTo, hostChartWindowMinutes]);
+  }, [dashboardWidgets?.points, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes]);
 
   const hostChartDisplayRangeMs = useMemo(() => {
     return resolveHostChartDisplayRangeMs(
       { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
-      hostChartWindowMinutes,
+      effectiveHostChartWindowMinutes,
       hostChartFilteredPoints,
     );
-  }, [chartClipFrom, chartClipTo, hostChartWindowMinutes, hostChartFilteredPoints]);
+  }, [chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes, hostChartFilteredPoints]);
 
   const hostChartDisplayPoints = useMemo(() => {
     if (!hostChartDisplayRangeMs) {
@@ -658,13 +672,13 @@ export function DashboardInfrastructureSection({
     let series = trimSparklineForHostChart(
       sparklineSeries,
       { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
-      hostChartWindowMinutes,
+      effectiveHostChartWindowMinutes,
     );
     if (effectiveHostChartBucketMinutes > 0) {
       series = aggregateSeriesByStep(series, effectiveHostChartBucketMinutes);
     }
     return series;
-  }, [sparklineSeries, chartClipFrom, chartClipTo, hostChartWindowMinutes, effectiveHostChartBucketMinutes]);
+  }, [sparklineSeries, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes, effectiveHostChartBucketMinutes]);
 
   const findWidgetByKeywords = (keywords: string[]) =>
     widgetDefinitions.find((widget) => {
@@ -1065,8 +1079,8 @@ export function DashboardInfrastructureSection({
   const chartCaptionTo = chartClipTo.trim() ? chartClipTo : overviewExtended.server_now;
 
   const chartWindowCaption =
-    hostChartWindowMinutes > 0
-      ? `Last ${hostChartWindowMinutes}m of the widget load window (ends ${new Date(chartCaptionTo).toLocaleString(undefined, {
+    effectiveHostChartWindowMinutes > 0
+      ? `Last ${effectiveHostChartWindowMinutes}m of the widget load window (ends ${new Date(chartCaptionTo).toLocaleString(undefined, {
           month: "short",
           day: "numeric",
           hour: "2-digit",
@@ -1088,10 +1102,10 @@ export function DashboardInfrastructureSection({
     effectiveHostChartBucketMinutes <= 0
       ? "Native: one point per sample in the chart window (no roll-up)."
       : `Roll-up: ${effectiveHostChartBucketMinutes}m buckets across the full chart window${
-          hostChartBucketMinutes > 0 &&
-          effectiveHostChartBucketMinutes !== hostChartBucketMinutes &&
-          hostChartWindowMinutes > 0
-            ? ` (bucket capped to the ${hostChartWindowMinutes}m window)`
+          effectiveHostChartBucketPick > 0 &&
+          effectiveHostChartBucketMinutes !== effectiveHostChartBucketPick &&
+          effectiveHostChartWindowMinutes > 0
+            ? ` (bucket capped to the ${effectiveHostChartWindowMinutes}m window)`
             : ""
         }. Gauges average samples in each bucket; cumulative counters use the reading at the bucket end; empty buckets repeat the last value (0 before the first sample).`;
 
@@ -1125,18 +1139,18 @@ export function DashboardInfrastructureSection({
           >
             <div className="mb-3 flex flex-col gap-2">
               <div className="flex flex-wrap items-end gap-3">
-                {hostChartBucketMinutes > 0 ? (
+                {effectiveHostChartBucketPick > 0 ? (
                   <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
                       Chart window
                     </span>
                     <select
                       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
-                      value={hostChartWindowMinutes}
+                      value={effectiveHostChartWindowMinutes}
                       onChange={(event) => setHostChartWindowMinutes(Number(event.target.value))}
                       aria-label="Host resources chart time window"
                     >
-                      {HOST_RESOURCES_CHART_WINDOW_OPTIONS.map((opt) => (
+                      {hostChartWindowOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
                         </option>
@@ -1150,11 +1164,11 @@ export function DashboardInfrastructureSection({
                   </span>
                   <select
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
-                    value={hostChartBucketMinutes}
+                    value={effectiveHostChartBucketPick}
                     onChange={(event) => setHostChartBucketMinutes(Number(event.target.value))}
                     aria-label="Host resources chart roll-up bucket size"
                   >
-                    {HOST_RESOURCES_CHART_BUCKET_OPTIONS.map((opt) => (
+                    {hostChartBucketOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>
