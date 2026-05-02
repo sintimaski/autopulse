@@ -166,6 +166,21 @@ export function DashboardHomeContent() {
             globalWindowMinutes={homeSlice.windowMinutes}
           />
         </div>
+        <div className="space-y-6 text-slate-900 dark:text-neutral-100">
+          <details className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-800 dark:text-neutral-100">
+              Advanced infrastructure insights
+            </summary>
+            <div className="mt-4">
+              <DashboardInfrastructureSection
+                sparklineSeries={homeSlice.sparklineSeries}
+                overviewExtended={overviewExtended}
+                dashboardWidgets={d.dashboardWidgets}
+                globalWindowMinutes={homeSlice.windowMinutes}
+              />
+            </div>
+          </details>
+        </div>
         <div className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
             Errors and latency trend
@@ -173,15 +188,23 @@ export function DashboardHomeContent() {
           <div className="grid grid-cols-2 gap-4">
             <div className="min-w-0">
               <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Errors</div>
-              <SparklineMini values={sparklineErrors} svgClassName="h-3 w-full text-rose-500 dark:text-rose-400" />
+              <SparklineMini
+                interactive={false}
+                values={sparklineErrors}
+                svgClassName="h-6 w-full text-rose-500 dark:text-rose-400"
+              />
             </div>
             <div className="min-w-0">
               <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Latency</div>
-              <SparklineMini values={sparklineLatency} svgClassName="h-3 w-full text-sky-600 dark:text-sky-400" />
+              <SparklineMini
+                interactive={false}
+                values={sparklineLatency}
+                svgClassName="h-6 w-full text-sky-600 dark:text-sky-400"
+              />
             </div>
           </div>
         </div>
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
             <h3 className="mb-3 text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h3>
             <div className="space-y-2">
@@ -212,14 +235,47 @@ export function DashboardHomeContent() {
               )}
             </div>
           </div>
-        </div>
-        <div className="space-y-6 text-slate-900 dark:text-neutral-100">
-          <DashboardInfrastructureSection
-            sparklineSeries={homeSlice.sparklineSeries}
-            overviewExtended={overviewExtended}
-            dashboardWidgets={d.dashboardWidgets}
-            globalWindowMinutes={homeSlice.windowMinutes}
-          />
+          <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06] md:col-span-2 xl:col-span-1">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                Recent errors
+              </h3>
+              <Link
+                href="/diagnosis#grouped-errors"
+                className="shrink-0 text-[11px] font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+              >
+                Open diagnosis
+              </Link>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-neutral-800">
+              {d.recentErrorsPreview.length ? (
+                d.recentErrorsPreview.slice(0, 6).map((item) => (
+                  <div key={item.group_key} className="flex items-baseline justify-between gap-2 py-1.5 first:pt-0">
+                    <div className="min-w-0 flex-1 leading-tight">
+                      <span className="text-[11px] font-medium text-slate-800 dark:text-neutral-200">
+                        {item.exception_type ?? "Error"}
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-neutral-500"> · </span>
+                      <span className="font-mono text-[11px] text-slate-600 dark:text-neutral-300">{item.path}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span
+                        className="max-w-[6.5rem] truncate text-right text-[10px] text-slate-500 dark:text-neutral-500"
+                        title={formatTimestamp(item.last_seen)}
+                      >
+                        {formatTimestamp(item.last_seen)}
+                      </span>
+                      <span className="rounded bg-rose-100 px-1.5 py-0 text-[10px] font-semibold text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+                        {item.count}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="py-1 text-xs text-slate-500 dark:text-neutral-400">No grouped errors in this window.</p>
+              )}
+            </div>
+          </div>
         </div>
       </section>
     );

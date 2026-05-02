@@ -8,7 +8,7 @@ uv run mypy
 uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
 
 echo "[release-gates] backend tests"
-uv run pytest backend/tests -q
+uv run pytest
 
 echo "[release-gates] frontend checks"
 npm --prefix frontend run lint

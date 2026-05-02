@@ -249,8 +249,32 @@ export type DashboardHomeSliceValue = {
   errorMessage: string | null;
 };
 
+export type DashboardDiagnosisSliceValue = {
+  diagnosisTimeline: DiagnosisTimelineResponse | null;
+  diagnosisFailures: DiagnosisFailureRoutesResponse | null;
+  diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
+  errorGroups: ErrorGroupsResponse | null;
+};
+
+export type DashboardAlertsSliceValue = {
+  alertDispatches: AlertDispatchesResponse | null;
+  alertSettings: AlertSettings | null;
+  alertCapabilities: AlertChannelCapability[];
+};
+
+export type DashboardLogsSliceValue = {
+  requests: RequestsResponse | null;
+  filteredSorted: RequestItem[];
+  grouped: { key: string; label: string; items: RequestItem[] }[];
+  availableServices: string[];
+  availableEnvironments: string[];
+};
+
 const DashboardDataContext = createContext<DashboardDataContextValue | null>(null);
 const DashboardHomeSliceContext = createContext<DashboardHomeSliceValue | null>(null);
+const DashboardDiagnosisSliceContext = createContext<DashboardDiagnosisSliceValue | null>(null);
+const DashboardAlertsSliceContext = createContext<DashboardAlertsSliceValue | null>(null);
+const DashboardLogsSliceContext = createContext<DashboardLogsSliceValue | null>(null);
 const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
 const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 const MAX_WIDGET_POINTS_TOTAL = 2400;
@@ -352,6 +376,30 @@ export function useDashboardHomeDataSlice(): DashboardHomeSliceValue {
   return ctx;
 }
 
+export function useDashboardDiagnosisDataSlice(): DashboardDiagnosisSliceValue {
+  const ctx = useContext(DashboardDiagnosisSliceContext);
+  if (!ctx) {
+    throw new Error("useDashboardDiagnosisDataSlice must be used within DashboardDataProvider");
+  }
+  return ctx;
+}
+
+export function useDashboardAlertsDataSlice(): DashboardAlertsSliceValue {
+  const ctx = useContext(DashboardAlertsSliceContext);
+  if (!ctx) {
+    throw new Error("useDashboardAlertsDataSlice must be used within DashboardDataProvider");
+  }
+  return ctx;
+}
+
+export function useDashboardLogsDataSlice(): DashboardLogsSliceValue {
+  const ctx = useContext(DashboardLogsSliceContext);
+  if (!ctx) {
+    throw new Error("useDashboardLogsDataSlice must be used within DashboardDataProvider");
+  }
+  return ctx;
+}
+
 export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
@@ -420,6 +468,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [rawDashboardPathname],
   );
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
+  /** Snapshot of request_id values from the last `requests` payload; used to prune stale row expansion only. */
+  const prevVisibleRequestIdSetRef = useRef<Set<string>>(new Set());
   const hasHydratedPersistedScope = useRef(false);
   const serverEnvironmentTags = useMemo(
     () => splitCommaSeparated(serverEnvironmentQuery),
@@ -600,7 +650,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           : routePath === "/widgets-showcase"
             ? Math.min(requestLimit, 100)
             : requestLimit;
-      const requestsOffsetForRoute = routePath === "/dashboard" ? 0 : requestPage * requestLimit;
+      // Widget gallery is not a paginated requests view; reuse logs/requests page index otherwise
+      // yields a large offset and an empty `requests.items` sample (flat charts, "no data").
+      const requestsOffsetForRoute =
+        routePath === "/dashboard" || routePath === "/widgets-showcase"
+          ? 0
+          : requestPage * requestLimit;
       const errorGroupsLimitForRoute =
         routePath === "/dashboard" ? Math.min(errorGroupLimit, 10) : errorGroupLimit;
       const errorGroupsOffsetForRoute = routePath === "/dashboard" ? 0 : errorGroupPage * errorGroupLimit;
@@ -1576,33 +1631,30 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!requests?.items?.length) {
-      if (expandedRequestIds.size > 0) {
-        setExpandedRequestIds(new Set());
-      }
-      return;
-    }
-    const visibleIds = new Set(
-      requests.items
+    const visibleRequestIds = new Set(
+      (requests?.items ?? [])
         .map((item) => item.request_id)
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     );
+    const prevVisibleRequestIds = prevVisibleRequestIdSetRef.current;
     setExpandedRequestIds((prev) => {
       if (prev.size === 0) {
         return prev;
       }
       let changed = false;
-      const next = new Set<string>();
+      const next = new Set(prev);
       for (const id of prev) {
-        if (visibleIds.has(id)) {
-          next.add(id);
-        } else {
+        // Logs/Diagnosis use composite keys (never in this set). Only drop expansion when a
+        // visible request row from the previous fetch is no longer present.
+        if (prevVisibleRequestIds.has(id) && !visibleRequestIds.has(id)) {
+          next.delete(id);
           changed = true;
         }
       }
       return changed ? next : prev;
     });
-  }, [requests, expandedRequestIds.size]);
+    prevVisibleRequestIdSetRef.current = visibleRequestIds;
+  }, [requests]);
 
   const onSortHeader = useCallback(
     (key: SortKey) => {
@@ -1883,6 +1935,36 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  const diagnosisSliceValue = useMemo(
+    (): DashboardDiagnosisSliceValue => ({
+      diagnosisTimeline,
+      diagnosisFailures,
+      diagnosisErrorGroupEvents,
+      errorGroups,
+    }),
+    [diagnosisTimeline, diagnosisFailures, diagnosisErrorGroupEvents, errorGroups],
+  );
+
+  const alertsSliceValue = useMemo(
+    (): DashboardAlertsSliceValue => ({
+      alertDispatches,
+      alertSettings,
+      alertCapabilities,
+    }),
+    [alertDispatches, alertSettings, alertCapabilities],
+  );
+
+  const logsSliceValue = useMemo(
+    (): DashboardLogsSliceValue => ({
+      requests,
+      filteredSorted,
+      grouped,
+      availableServices,
+      availableEnvironments,
+    }),
+    [requests, filteredSorted, grouped, availableServices, availableEnvironments],
+  );
+
   const value = useMemo(
     (): DashboardDataContextValue => ({
       hasApiKey,
@@ -2116,7 +2198,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   return (
     <DashboardDataContext.Provider value={value}>
       <DashboardHomeSliceContext.Provider value={homeSliceValue}>
-        {children}
+        <DashboardDiagnosisSliceContext.Provider value={diagnosisSliceValue}>
+          <DashboardAlertsSliceContext.Provider value={alertsSliceValue}>
+            <DashboardLogsSliceContext.Provider value={logsSliceValue}>
+              {children}
+            </DashboardLogsSliceContext.Provider>
+          </DashboardAlertsSliceContext.Provider>
+        </DashboardDiagnosisSliceContext.Provider>
       </DashboardHomeSliceContext.Provider>
     </DashboardDataContext.Provider>
   );

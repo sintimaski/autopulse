@@ -24,6 +24,7 @@ dev = [
     "mypy>=1.11.0",
     "bandit[toml]>=1.7.8",
     "pytest>=8.3.0",
+    "pytest-cov>=6.2.1",
     "pre-commit>=4.0.0",
 ]
 
@@ -41,6 +42,11 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["sdk/tests", "backend/tests"]
 addopts = "-q"
+
+[tool.coverage.report]
+fail_under = 35
+show_missing = true
+skip_covered = true
 
 [tool.mypy]
 python_version = "3.11"

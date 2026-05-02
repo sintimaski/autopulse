@@ -22,4 +22,6 @@ def configure_backend_database() -> None:
     if not value:
         return
     os.environ["DATABASE_URL"] = value
+    os.environ.setdefault("INGEST_REQUIRE_HTTPS", "false")
+    os.environ.setdefault("INTERNAL_METRICS_BEARER_TOKEN", "test-internal-metrics-token")
     upgrade_to_head()

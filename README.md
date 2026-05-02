@@ -72,7 +72,7 @@ NEXT_PUBLIC_AUTOPULSE_API_KEY=<project_api_key>
 
 Background jobs (`uv run python -m autopulse_backend.jobs alerts-once`) print the **number of alert dispatches** for that run. A line showing `0` means no spike or outage alert was sent in that pass (for example no projects, traffic below configured thresholds, cooldown, or `ALERTS_ENABLED=false`), not that the command crashed. The CLI process still exits with status `0`.
 
-Backend tests that touch Postgres need `BACKEND_TEST_DATABASE_URL` (see CI workflow services).
+Backend tests that touch Postgres need `BACKEND_TEST_DATABASE_URL` (the CI workflow runs both SQLite and Postgres lanes).
 
 ## MVP dashboard parity snapshot
 
@@ -82,6 +82,7 @@ The frontend tracks `DEVELOPMENT.md` dashboard requirements:
 - Logs: time, method, path, status, latency, service, environment.
 - Diagnosis: grouped errors with type/message/route/count/first/last seen and sample stack.
 - Alerts: heuristic visibility and runbook actions (minimal in-app settings remain backend-dependent).
+- Guardrail: advanced SQL WHERE toolbar controls are disabled by default; enable only for internal diagnostics via `NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI=1`.
 
 ## Tooling and quality gates
 

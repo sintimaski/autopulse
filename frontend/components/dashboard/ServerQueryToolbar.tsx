@@ -59,6 +59,7 @@ export type ServerScopeToolbarVariant = "diagnosis" | "logs" | "requests";
 
 export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVariant }) {
   const d = useDashboardData();
+  const advancedQueryUiEnabled = process.env.NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI === "1";
   const scopeTitle =
     variant === "diagnosis" ? "Diagnosis scope" : variant === "requests" ? "Requests scope" : "Logs scope";
   const selectedEnvironmentTags = useMemo(
@@ -83,7 +84,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
     d.maxLatencyMs.trim() !== "",
     d.serverEnvironmentTags.length > 0,
     d.serverServiceTags.length > 0,
-    sqlScopeActive,
+    advancedQueryUiEnabled && sqlScopeActive,
   ].filter(Boolean).length;
   const fromInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
@@ -484,142 +485,148 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         />
       </div>
 
-      <div className="mt-2.5 rounded-lg border border-slate-200 bg-white/90 p-2 dark:border-neutral-700 dark:bg-neutral-950/40">
-        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((prev) => !prev)}
+      {advancedQueryUiEnabled ? (
+        <div className="mt-2.5 rounded-lg border border-slate-200 bg-white/90 p-2 dark:border-neutral-700 dark:bg-neutral-950/40">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((prev) => !prev)}
               className="ap-btn px-2 py-1 text-xs"
-          >
-            {showAdvanced ? "Hide advanced" : "Show advanced"}
-          </button>
-          <span className="text-xs text-slate-500 dark:text-neutral-400">SQL WHERE filter controls</span>
-        </div>
-        {showAdvanced ? (
-          <>
-            <textarea
-              value={d.sqlFilterDraft}
-              onChange={(event) => d.setSqlFilterDraft(event.target.value)}
-              placeholder="e.g. status_code >= 500 AND method = 'GET'"
-              className="h-16 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
-            />
-            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/60">
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={presetNameDraft}
-                  onChange={(event) => setPresetNameDraft(event.target.value)}
-                  placeholder="Preset name (e.g. Critical 5xx routes)"
-                  className="min-w-[190px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const saved = d.saveSqlFilterPreset(presetNameDraft, d.sqlFilterDraft);
-                    if (!saved.ok) {
-                      setPresetFeedback(saved.error ?? "Unable to save preset.");
-                      return;
-                    }
-                    setPresetNameDraft("");
-                    setPresetFeedback("Preset saved.");
-                  }}
-                  className="ap-btn px-2.5 py-1.5 text-xs"
-                >
-                  Save preset
-                </button>
+            >
+              {showAdvanced ? "Hide advanced" : "Show advanced"}
+            </button>
+            <span className="text-xs text-slate-500 dark:text-neutral-400">SQL WHERE filter controls</span>
+          </div>
+          {showAdvanced ? (
+            <>
+              <textarea
+                value={d.sqlFilterDraft}
+                onChange={(event) => d.setSqlFilterDraft(event.target.value)}
+                placeholder="e.g. status_code >= 500 AND method = 'GET'"
+                className="h-16 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+              />
+              <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/60">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={presetNameDraft}
+                    onChange={(event) => setPresetNameDraft(event.target.value)}
+                    placeholder="Preset name (e.g. Critical 5xx routes)"
+                    className="min-w-[190px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const saved = d.saveSqlFilterPreset(presetNameDraft, d.sqlFilterDraft);
+                      if (!saved.ok) {
+                        setPresetFeedback(saved.error ?? "Unable to save preset.");
+                        return;
+                      }
+                      setPresetNameDraft("");
+                      setPresetFeedback("Preset saved.");
+                    }}
+                    className="ap-btn px-2.5 py-1.5 text-xs"
+                  >
+                    Save preset
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <select
+                    value={selectedPresetId}
+                    onChange={(event) => setSelectedPresetId(event.target.value)}
+                    className="min-w-[230px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                  >
+                    <option value="">Saved presets ({d.savedSqlFilterPresets.length})</option>
+                    {d.savedSqlFilterPresets.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!selectedPresetId}
+                    onClick={() => {
+                      d.applySavedSqlFilterPreset(selectedPresetId);
+                      setPresetFeedback("Preset applied.");
+                    }}
+                    className="ap-btn-primary px-2.5 py-1.5 text-xs"
+                  >
+                    Apply preset
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedPresetId}
+                    onClick={() => {
+                      d.removeSqlFilterPreset(selectedPresetId);
+                      setSelectedPresetId("");
+                      setPresetFeedback("Preset removed.");
+                    }}
+                    className="ap-btn px-2.5 py-1.5 text-xs"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] text-slate-500 dark:text-neutral-400">
+                  Presets are stored per signed-in user ({d.sessionEmail ?? "anonymous"}).
+                </p>
+                {presetFeedback ? (
+                  <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">{presetFeedback}</p>
+                ) : null}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedPresetId}
-                  onChange={(event) => setSelectedPresetId(event.target.value)}
-                  className="min-w-[230px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
-                >
-                  <option value="">Saved presets ({d.savedSqlFilterPresets.length})</option>
-                  {d.savedSqlFilterPresets.map((preset) => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </option>
-                  ))}
-                </select>
                 <button
                   type="button"
-                  disabled={!selectedPresetId}
-                  onClick={() => {
-                    d.applySavedSqlFilterPreset(selectedPresetId);
-                    setPresetFeedback("Preset applied.");
-                  }}
-                  className="ap-btn-primary px-2.5 py-1.5 text-xs"
+                  disabled={d.sqlFilterValidating}
+                  onClick={() => void d.validateSqlFilterDraft()}
+                  title="Validate SQL filter"
+                  aria-label="Validate SQL filter"
+                  className="ap-btn p-1.5"
                 >
-                  Apply preset
+                  <ListChecks className="size-3.5" aria-hidden />
                 </button>
                 <button
                   type="button"
-                  disabled={!selectedPresetId}
-                  onClick={() => {
-                    d.removeSqlFilterPreset(selectedPresetId);
-                    setSelectedPresetId("");
-                    setPresetFeedback("Preset removed.");
-                  }}
-                  className="ap-btn px-2.5 py-1.5 text-xs"
+                  disabled={d.sqlFilterValidating}
+                  onClick={() => void d.applySqlFilter()}
+                  title="Apply SQL filter to scope"
+                  aria-label="Apply SQL filter to scope"
+                  className="ap-btn-primary p-1.5"
                 >
-                  Remove
+                  <Check className="size-3.5" aria-hidden />
                 </button>
+                <button
+                  type="button"
+                  onClick={() => d.disableSqlFilter()}
+                  disabled={!d.sqlFilterEnabled}
+                  title="Disable SQL filter"
+                  aria-label="Disable SQL filter"
+                  className="ap-btn p-1.5"
+                >
+                  <Ban className="size-3.5" aria-hidden />
+                </button>
+                {d.sqlFilterValidation ? (
+                  <span
+                    className={`text-xs ${d.sqlFilterValidation.valid ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
+                  >
+                    {d.sqlFilterValidation.valid ? "Valid WHERE" : d.sqlFilterValidation.error ?? "Invalid"}
+                  </span>
+                ) : null}
               </div>
-              <p className="mt-2 text-[11px] text-slate-500 dark:text-neutral-400">
-                Presets are stored per signed-in user ({d.sessionEmail ?? "anonymous"}).
-              </p>
-              {presetFeedback ? (
-                <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">{presetFeedback}</p>
-              ) : null}
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={d.sqlFilterValidating}
-                onClick={() => void d.validateSqlFilterDraft()}
-                title="Validate SQL filter"
-                aria-label="Validate SQL filter"
-                className="ap-btn p-1.5"
-              >
-                <ListChecks className="size-3.5" aria-hidden />
-              </button>
-              <button
-                type="button"
-                disabled={d.sqlFilterValidating}
-                onClick={() => void d.applySqlFilter()}
-                title="Apply SQL filter to scope"
-                aria-label="Apply SQL filter to scope"
-                className="ap-btn-primary p-1.5"
-              >
-                <Check className="size-3.5" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={() => d.disableSqlFilter()}
-                disabled={!d.sqlFilterEnabled}
-                title="Disable SQL filter"
-                aria-label="Disable SQL filter"
-                className="ap-btn p-1.5"
-              >
-                <Ban className="size-3.5" aria-hidden />
-              </button>
-              {d.sqlFilterValidation ? (
-                <span
-                  className={`text-xs ${d.sqlFilterValidation.valid ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"}`}
-                >
-                  {d.sqlFilterValidation.valid ? "Valid WHERE" : d.sqlFilterValidation.error ?? "Invalid"}
-                </span>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <p className="text-xs text-slate-500 dark:text-neutral-400">
-            Keep this hidden for quick triage. Expand when you need precise SQL-level scoping.
-          </p>
-        )}
-        {d.sqlFilterEnabled ? (
-          <p className="mt-2 text-xs font-medium text-sky-800 dark:text-sky-200">SQL filter enabled for current scope.</p>
-        ) : null}
-      </div>
+            </>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-neutral-400">
+              Keep this hidden for quick triage. Expand when you need precise SQL-level scoping.
+            </p>
+          )}
+          {d.sqlFilterEnabled ? (
+            <p className="mt-2 text-xs font-medium text-sky-800 dark:text-sky-200">SQL filter enabled for current scope.</p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-2.5 rounded-lg border border-slate-200 bg-white/90 p-2 text-xs text-slate-500 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-400">
+          Advanced SQL scope controls are disabled by default to keep the MVP focused on fast diagnosis.
+        </div>
+      )}
     </div>
   );
 }

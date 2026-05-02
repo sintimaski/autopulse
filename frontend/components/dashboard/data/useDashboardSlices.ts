@@ -2,7 +2,12 @@
 
 import { useMemo } from "react";
 
-import { useDashboardData, useDashboardHomeDataSlice } from "../DashboardDataContext";
+import {
+  useDashboardAlertsDataSlice,
+  useDashboardDiagnosisDataSlice,
+  useDashboardHomeDataSlice,
+  useDashboardLogsDataSlice,
+} from "../DashboardDataContext";
 
 export function useDashboardHomeSlice() {
   const d = useDashboardHomeDataSlice();
@@ -65,7 +70,7 @@ export function useDashboardHomeSlice() {
 }
 
 export function useDashboardDiagnosisSlice() {
-  const d = useDashboardData();
+  const d = useDashboardDiagnosisDataSlice();
   return useMemo(
     () => ({
       diagnosisTimeline: d.diagnosisTimeline,
@@ -78,7 +83,7 @@ export function useDashboardDiagnosisSlice() {
 }
 
 export function useDashboardAlertsSlice() {
-  const d = useDashboardData();
+  const d = useDashboardAlertsDataSlice();
   return useMemo(
     () => ({
       alertDispatches: d.alertDispatches,
@@ -90,7 +95,7 @@ export function useDashboardAlertsSlice() {
 }
 
 export function useDashboardLogsSlice() {
-  const d = useDashboardData();
+  const d = useDashboardLogsDataSlice();
   return useMemo(
     () => ({
       requests: d.requests,

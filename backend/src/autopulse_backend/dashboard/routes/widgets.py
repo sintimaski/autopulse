@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -12,7 +12,7 @@ from autopulse_backend.dashboard.params import (
     TO_TIMESTAMP_QUERY,
     WINDOW_MINUTES_QUERY,
 )
-from autopulse_backend.dashboard.time_window import resolve_time_window
+from autopulse_backend.dashboard.time_window import as_utc_datetime, resolve_time_window
 from autopulse_backend.database import get_db_session
 from autopulse_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from autopulse_backend.schemas import (
@@ -22,6 +22,11 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
+
+# Widget definitions persist across sessions; points are tied to ingest timestamps and may
+# fall outside the active overview window (e.g. no traffic for 90m). Query a bounded lookback
+# so the gallery and bundled `/dashboard/query` still return points for known definitions.
+_WIDGET_POINTS_LOOKBACK = timedelta(days=7)
 
 
 @router.get("/widgets", response_model=DashboardWidgetsResponse)
@@ -39,12 +44,15 @@ async def get_dashboard_widgets(
     definitions = await dashboard_widgets_repo.list_widget_definitions(
         session, project_id=context.project_id
     )
-    points = await dashboard_widgets_repo.list_widget_points(
+    points_from = min(resolved_from, resolved_to - _WIDGET_POINTS_LOOKBACK)
+    points_raw = await dashboard_widgets_repo.list_widget_points(
         session,
         project_id=context.project_id,
-        from_timestamp=resolved_from,
+        from_timestamp=points_from,
         to_timestamp=resolved_to,
     )
+    narrow = [p for p in points_raw if resolved_from <= as_utc_datetime(p.timestamp) <= resolved_to]
+    points = narrow if narrow else points_raw
     return DashboardWidgetsResponse(
         server_now=server_now,
         from_timestamp=resolved_from,

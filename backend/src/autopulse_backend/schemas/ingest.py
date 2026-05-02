@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class IngestEvent(BaseModel):
@@ -11,13 +11,13 @@ class IngestEvent(BaseModel):
 
     type: Literal["request", "error"]
     timestamp: datetime
-    service_name: str
-    environment: str
-    method: str
-    path: str
+    service_name: str = Field(min_length=1, max_length=120)
+    environment: str = Field(min_length=1, max_length=120)
+    method: str = Field(min_length=1, max_length=24)
+    path: str = Field(min_length=1, max_length=2048)
     status_code: int
     latency_ms: float
-    request_id: str | None = None
+    request_id: str | None = Field(default=None, max_length=128)
 
     @field_validator("timestamp")
     @classmethod
@@ -25,6 +25,12 @@ class IngestEvent(BaseModel):
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def limit_extra_fields(self) -> IngestEvent:
+        if len(self.model_extra or {}) > 32:
+            raise ValueError("event contains too many additional fields")
+        return self
 
 
 class IngestBatchRequest(BaseModel):

@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import { MetricCard } from "../MetricCard";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardHomeSlice } from "../data/useDashboardSlices";
@@ -14,10 +16,61 @@ import {
   type ScatterPlotPoint,
   type StackedAreaSeries,
 } from "../charts";
+import { resolveSparklineSeries, type OverviewBucket } from "../../../utils/dashboardData";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
-import type { DashboardWidgetDefinition, DashboardWidgetPoint } from "../dashboardTypes";
+import type {
+  BreakdownItem,
+  DashboardWidgetDefinition,
+  DashboardWidgetPoint,
+  OverviewResponse,
+  RequestItem,
+  RequestsResponse,
+} from "../dashboardTypes";
 
 const widgetSeriesPalette = ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#818cf8", "#a78bfa"];
+
+function statusClassSplitTotal(series: OverviewBucket[]): number {
+  return series.reduce(
+    (sum, bucket) =>
+      sum +
+      Number(bucket.count_2xx || 0) +
+      Number(bucket.count_3xx || 0) +
+      Number(bucket.count_4xx || 0) +
+      Number(bucket.count_5xx || 0),
+    0,
+  );
+}
+
+/** When `overview_extended.route_breakdown` is empty, derive routes from the loaded request sample. */
+function inferRouteBreakdownFromItems(items: RequestItem[]): BreakdownItem[] {
+  type Acc = { request_count: number; error_count: number; latencies: number[] };
+  const map = new Map<string, Acc>();
+  for (const item of items) {
+    const key = String(item.path ?? "").trim() || "(unknown)";
+    const acc = map.get(key) ?? { request_count: 0, error_count: 0, latencies: [] };
+    acc.request_count += 1;
+    if (item.status_code >= 500) {
+      acc.error_count += 1;
+    }
+    const lat = Number(item.latency_ms);
+    if (Number.isFinite(lat) && lat >= 0) {
+      acc.latencies.push(lat);
+    }
+    map.set(key, acc);
+  }
+  return [...map.entries()].map(([key, acc]) => {
+    const sorted = [...acc.latencies].sort((a, b) => a - b);
+    const avg_latency_ms =
+      sorted.length > 0 ? sorted.reduce((s, v) => s + v, 0) / sorted.length : 0;
+    return {
+      key,
+      request_count: acc.request_count,
+      error_count: acc.error_count,
+      error_rate: acc.request_count ? acc.error_count / acc.request_count : 0,
+      avg_latency_ms,
+    };
+  });
+}
 
 export function DashboardWidgetGalleryContent() {
   const d = useDashboardData();
@@ -31,14 +84,54 @@ export function DashboardWidgetGalleryContent() {
       </section>
     );
   }
-  const overviewExtended = resolveOverviewExtendedForHome(overview, requests, homeSlice.overviewExtended);
-  const routeBreakdownByVolume = [...overviewExtended.route_breakdown]
-    .sort((a, b) => b.request_count - a.request_count)
-    .slice(0, 10);
-  const total2xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_2xx || 0), 0);
-  const total3xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_3xx || 0), 0);
-  const total4xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_4xx || 0), 0);
-  const total5xx = d.sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_5xx || 0), 0);
+  return (
+    <DashboardWidgetGalleryBody d={d} homeSlice={homeSlice} overview={overview} requests={requests} />
+  );
+}
+
+function DashboardWidgetGalleryBody({
+  d,
+  homeSlice,
+  overview,
+  requests,
+}: {
+  d: ReturnType<typeof useDashboardData>;
+  homeSlice: ReturnType<typeof useDashboardHomeSlice>;
+  overview: OverviewResponse;
+  requests: RequestsResponse;
+}) {
+  const overviewExtended = useMemo(
+    () => resolveOverviewExtendedForHome(overview, requests, homeSlice.overviewExtended),
+    [overview, requests, homeSlice.overviewExtended],
+  );
+
+  const routeBreakdownBasis = useMemo((): BreakdownItem[] => {
+    if (overviewExtended.route_breakdown.length > 0) {
+      return overviewExtended.route_breakdown;
+    }
+    return inferRouteBreakdownFromItems(d.rawItems);
+  }, [overviewExtended.route_breakdown, d.rawItems]);
+
+  const routeBreakdownByVolume = useMemo(
+    () => [...routeBreakdownBasis].sort((a, b) => b.request_count - a.request_count).slice(0, 10),
+    [routeBreakdownBasis],
+  );
+
+  /** Overview minute buckets often omit per-status counts; rebuild from the request sample for demos. */
+  const sparklineForStatusCharts = useMemo(() => {
+    if (statusClassSplitTotal(d.sparklineSeries) > 0) {
+      return d.sparklineSeries;
+    }
+    if ((requests.items?.length ?? 0) > 0) {
+      return resolveSparklineSeries(overview, requests, { preferRequests: true });
+    }
+    return d.sparklineSeries;
+  }, [d.sparklineSeries, overview, requests]);
+
+  const total2xx = sparklineForStatusCharts.reduce((sum, bucket) => sum + Number(bucket.count_2xx || 0), 0);
+  const total3xx = sparklineForStatusCharts.reduce((sum, bucket) => sum + Number(bucket.count_3xx || 0), 0);
+  const total4xx = sparklineForStatusCharts.reduce((sum, bucket) => sum + Number(bucket.count_4xx || 0), 0);
+  const total5xx = sparklineForStatusCharts.reduce((sum, bucket) => sum + Number(bucket.count_5xx || 0), 0);
   const statusClassTotal = total2xx + total3xx + total4xx + total5xx;
   const statusDonutItems = [
     { id: "2xx", label: "2xx", value: total2xx, color: "#34d399" },
@@ -51,35 +144,41 @@ export function DashboardWidgetGalleryContent() {
       id: "success",
       label: "Successful (2xx+3xx)",
       color: "#34d399",
-      values: d.sparklineSeries.map((bucket) => Number(bucket.count_2xx || 0) + Number(bucket.count_3xx || 0)),
+      values: sparklineForStatusCharts.map(
+        (bucket) => Number(bucket.count_2xx || 0) + Number(bucket.count_3xx || 0),
+      ),
     },
     {
       id: "client",
       label: "Client errors (4xx)",
       color: "#f59e0b",
-      values: d.sparklineSeries.map((bucket) => Number(bucket.count_4xx || 0)),
+      values: sparklineForStatusCharts.map((bucket) => Number(bucket.count_4xx || 0)),
     },
     {
       id: "server",
       label: "Server errors (5xx)",
       color: "#f43f5e",
-      values: d.sparklineSeries.map((bucket) => Number(bucket.count_5xx || 0)),
+      values: sparklineForStatusCharts.map((bucket) => Number(bucket.count_5xx || 0)),
     },
   ];
-  const routeRiskScatter: ScatterPlotPoint[] = [...overviewExtended.route_breakdown]
-    .sort((a, b) => b.request_count - a.request_count)
-    .slice(0, 20)
-    .map((route) => {
-      const errorRatePct = route.error_rate * 100;
-      return {
-        id: route.key,
-        x: route.request_count,
-        y: errorRatePct,
-        label: `${route.key} · ${route.request_count} req · ${errorRatePct.toFixed(2)}% err`,
-        tone: errorRatePct >= 10 ? "danger" : errorRatePct >= 3 ? "warning" : "neutral",
-      };
-    });
-  const latencyHistogramBuckets = (() => {
+  const routeRiskScatter = useMemo(
+    (): ScatterPlotPoint[] =>
+      [...routeBreakdownBasis]
+        .sort((a, b) => b.request_count - a.request_count)
+        .slice(0, 20)
+        .map((route) => {
+          const errorRatePct = route.error_rate * 100;
+          return {
+            id: route.key,
+            x: route.request_count,
+            y: errorRatePct,
+            label: `${route.key} · ${route.request_count} req · ${errorRatePct.toFixed(2)}% err`,
+            tone: errorRatePct >= 10 ? "danger" : errorRatePct >= 3 ? "warning" : "neutral",
+          };
+        }),
+    [routeBreakdownBasis],
+  );
+  const latencyHistogramBuckets = useMemo(() => {
     const ranges = [
       { label: "<50ms", min: 0, max: 50 },
       { label: "50-100ms", min: 50, max: 100 },
@@ -92,8 +191,8 @@ export function DashboardWidgetGalleryContent() {
       label: range.label,
       count: d.rawItems.filter((item) => item.latency_ms >= range.min && item.latency_ms < range.max).length,
     }));
-  })();
-  const statusClassLabels = d.sparklineSeries.map((bucket) =>
+  }, [d.rawItems]);
+  const statusClassLabels = sparklineForStatusCharts.map((bucket) =>
     new Date(bucket.minute).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   );
   const showcaseScatterPoints: ScatterPlotPoint[] = routeRiskScatter.slice(0, 8);

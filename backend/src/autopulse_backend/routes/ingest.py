@@ -126,6 +126,27 @@ async def ingest_events(
                 ),
             )
 
+    event_count = len(batch.events)
+    if event_count > settings.ingest_max_events_per_batch:
+        service_metrics.increment("ingest.rejected.batch_too_large")
+        logger.warning(
+            "ingest_rejected batch_too_large",
+            extra={
+                "event": "ingest_rejected",
+                "reason": "batch_too_large",
+                "event_count": event_count,
+                "ingest_max_events_per_batch": settings.ingest_max_events_per_batch,
+                "project_id": str(context.project_id),
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "Ingest batch exceeds max event count "
+                f"({settings.ingest_max_events_per_batch} events)."
+            ),
+        )
+
     if settings.ingest_distributed_rate_limit_enabled:
         try:
             allowed = await allow_distributed_ingest_request(

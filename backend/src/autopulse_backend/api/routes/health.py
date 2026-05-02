@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from sqlalchemy import text
@@ -15,6 +16,63 @@ from autopulse_backend.services.event_store import (
 )
 
 router = APIRouter(tags=["system"])
+
+
+def _require_internal_metrics_access(request: Request) -> None:
+    settings = get_settings()
+    expected = settings.internal_metrics_bearer_token
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Metrics endpoint is disabled.",
+        )
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token or not secrets.compare_digest(token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized metrics access",
+        )
+
+
+def _build_metrics_snapshot(request: Request) -> dict[str, object]:
+    settings = get_settings()
+    scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
+    pressure = getattr(request.app.state, "_autopulse_retention_pressure_poll", None)
+    tick_task = getattr(request.app.state, "_autopulse_dashboard_ws_tick_task", None)
+    dashboard_ws_tick_running = isinstance(tick_task, asyncio.Task) and not tick_task.done()
+    duckdb_metrics: dict[str, object] = {}
+    if event_store_enabled(settings):
+        store = try_get_duckdb_event_store()
+        if store is not None:
+            size_bytes = int(store.file_size_bytes())
+            cap_mb = settings.embedded_sqlite_max_db_file_mb
+            duckdb_metrics = {
+                "path": settings.event_store_duckdb_path,
+                "file_size_bytes": size_bytes,
+                "file_size_mb": round(size_bytes / (1024 * 1024), 3),
+                "max_size_mb": int(cap_mb) if cap_mb is not None else None,
+                "usage_ratio": (
+                    float(size_bytes) / float(int(cap_mb) * 1024 * 1024)
+                    if cap_mb is not None and int(cap_mb) > 0
+                    else None
+                ),
+            }
+    return {
+        "service": "autopulse-backend",
+        "dashboard_ws_live_tick_seconds": settings.dashboard_ws_live_tick_seconds,
+        "dashboard_ws_tick_running": dashboard_ws_tick_running,
+        "scheduler_running": isinstance(scheduler, SchedulerHandle),
+        "retention_pressure_poll_running": isinstance(pressure, RetentionPressurePollHandle)
+        and not pressure.task.done(),
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
+        "jobs_retention_interval_seconds": settings.jobs_retention_interval_seconds,
+        "event_store": settings.event_store,
+        "duckdb": duckdb_metrics if duckdb_metrics else None,
+        "counters": service_metrics.snapshot(),
+        "jobs": service_metrics.job_snapshot(),
+    }
 
 
 @router.get("/health")
@@ -39,48 +97,14 @@ async def ready() -> dict[str, str]:
 
 @router.get("/internal/metrics")
 async def internal_metrics(request: Request) -> dict[str, object]:
-    scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
-    pressure = getattr(request.app.state, "_autopulse_retention_pressure_poll", None)
-    settings = get_settings()
-    duckdb_metrics: dict[str, object] = {}
-    if event_store_enabled(settings):
-        store = try_get_duckdb_event_store()
-        if store is not None:
-            size_bytes = int(store.file_size_bytes())
-            cap_mb = settings.embedded_sqlite_max_db_file_mb
-            duckdb_metrics = {
-                "path": settings.event_store_duckdb_path,
-                "file_size_bytes": size_bytes,
-                "file_size_mb": round(size_bytes / (1024 * 1024), 3),
-                "max_size_mb": int(cap_mb) if cap_mb is not None else None,
-                "usage_ratio": (
-                    float(size_bytes) / float(int(cap_mb) * 1024 * 1024)
-                    if cap_mb is not None and int(cap_mb) > 0
-                    else None
-                ),
-            }
-    tick_task = getattr(request.app.state, "_autopulse_dashboard_ws_tick_task", None)
-    dashboard_ws_tick_running = isinstance(tick_task, asyncio.Task) and not tick_task.done()
-    return {
-        "service": "autopulse-backend",
-        "dashboard_ws_live_tick_seconds": settings.dashboard_ws_live_tick_seconds,
-        "dashboard_ws_tick_running": dashboard_ws_tick_running,
-        "scheduler_running": isinstance(scheduler, SchedulerHandle),
-        "retention_pressure_poll_running": isinstance(pressure, RetentionPressurePollHandle)
-        and not pressure.task.done(),
-        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
-        "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
-        "jobs_retention_interval_seconds": settings.jobs_retention_interval_seconds,
-        "event_store": settings.event_store,
-        "duckdb": duckdb_metrics if duckdb_metrics else None,
-        "counters": service_metrics.snapshot(),
-        "jobs": service_metrics.job_snapshot(),
-    }
+    _require_internal_metrics_access(request)
+    return _build_metrics_snapshot(request)
 
 
 @router.get("/metrics")
 async def prometheus_metrics(request: Request) -> Response:
-    snapshot = await internal_metrics(request)
+    _require_internal_metrics_access(request)
+    snapshot = _build_metrics_snapshot(request)
     counters = snapshot.get("counters", {})
     jobs = snapshot.get("jobs", {})
     lines = [

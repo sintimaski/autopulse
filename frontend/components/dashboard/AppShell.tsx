@@ -7,13 +7,13 @@ import {
   Activity,
   Bell,
   LayoutDashboard,
+  LayoutGrid,
   PanelLeft,
   PanelLeftClose,
   RotateCw,
   Settings,
   Stethoscope,
   ScrollText,
-  LayoutGrid,
 } from "../../lib/icons";
 import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";

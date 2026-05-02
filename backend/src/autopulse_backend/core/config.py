@@ -62,12 +62,13 @@ class Settings:
     event_store_duckdb_path: str
     cors_allow_origins: tuple[str, ...]
     ingest_max_request_bytes: int = 1_048_576
+    ingest_max_events_per_batch: int = 500
     ingest_rate_limit_requests_per_window: int = 1200
     ingest_rate_limit_window_seconds: int = 60
     ingest_distributed_rate_limit_enabled: bool = False
     ingest_async_aggregate_enabled: bool = True
     ingest_async_aggregate_queue_max_size: int = 2000
-    ingest_require_https: bool = False
+    ingest_require_https: bool = True
     ingest_trust_forwarded_proto: bool = True
     ingest_drop_autopulse_traffic_from_db: bool = True
     default_sdk_version: str = "unknown"
@@ -88,7 +89,7 @@ class Settings:
     sqlite_size_retention_only: bool = False
     logs_query_max_window_minutes: int = 1440
     jobs_enable_scheduler: bool = False
-    jobs_scheduler_lease_enabled: bool = False
+    jobs_scheduler_lease_enabled: bool = True
     jobs_scheduler_lease_ttl_seconds: int = 120
     jobs_alert_interval_seconds: float = 60.0
     jobs_retention_interval_seconds: float = 3600.0
@@ -118,6 +119,7 @@ class Settings:
     dashboard_auth_magic_link_ttl_minutes: int = 15
     dashboard_auth_allow_api_key_fallback: bool = False
     dashboard_auth_magic_link_base_url: str | None = None
+    internal_metrics_bearer_token: str | None = None
     # When > 0, broadcast dashboard_update over WS on this interval for projects with
     # an open dashboard connection (ingest alone can feel sparse).
     dashboard_ws_live_tick_seconds: float = 0.0
@@ -246,6 +248,11 @@ def get_settings() -> Settings:
         event_store_duckdb_path=event_store_duckdb_path,
         cors_allow_origins=cors_allow_origins,
         ingest_max_request_bytes=_env_int("INGEST_MAX_REQUEST_BYTES", 1_048_576, minimum=1),
+        ingest_max_events_per_batch=_env_int(
+            "INGEST_MAX_EVENTS_PER_BATCH",
+            500,
+            minimum=1,
+        ),
         ingest_rate_limit_requests_per_window=_env_int(
             "INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW",
             1200,
@@ -269,7 +276,7 @@ def get_settings() -> Settings:
             2000,
             minimum=1,
         ),
-        ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", False),
+        ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", True),
         ingest_trust_forwarded_proto=_env_bool("INGEST_TRUST_FORWARDED_PROTO", True),
         ingest_drop_autopulse_traffic_from_db=_env_bool(
             "INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB",
@@ -311,7 +318,7 @@ def get_settings() -> Settings:
         ),
         logs_query_max_window_minutes=_env_int("LOGS_QUERY_MAX_WINDOW_MINUTES", 1440, minimum=1),
         jobs_enable_scheduler=jobs_enable_scheduler,
-        jobs_scheduler_lease_enabled=_env_bool("JOBS_SCHEDULER_LEASE_ENABLED", False),
+        jobs_scheduler_lease_enabled=_env_bool("JOBS_SCHEDULER_LEASE_ENABLED", True),
         jobs_scheduler_lease_ttl_seconds=_env_int(
             "JOBS_SCHEDULER_LEASE_TTL_SECONDS",
             120,
@@ -371,6 +378,7 @@ def get_settings() -> Settings:
         dashboard_auth_magic_link_base_url=(
             getenv("DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "").strip() or None
         ),
+        internal_metrics_bearer_token=(getenv("INTERNAL_METRICS_BEARER_TOKEN", "").strip() or None),
         dashboard_ws_live_tick_seconds=_env_float(
             "AUTOPULSE_DASHBOARD_WS_LIVE_TICK_SECONDS",
             4.0,

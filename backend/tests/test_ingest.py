@@ -245,6 +245,55 @@ def test_ingest_rejects_payload_larger_than_configured_limit(
     assert _count_events(backend_test_database_url) == 0
 
 
+def test_ingest_rejects_batch_larger_than_configured_event_limit(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_MAX_EVENTS_PER_BATCH", "2")
+    app = create_app()
+    now = datetime.now(tz=UTC).isoformat()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/batch-limit/1",
+                "status_code": 200,
+                "latency_ms": 8.0,
+            },
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/batch-limit/2",
+                "status_code": 200,
+                "latency_ms": 9.0,
+            },
+            {
+                "type": "request",
+                "timestamp": now,
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/batch-limit/3",
+                "status_code": 200,
+                "latency_ms": 10.0,
+            },
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Ingest batch exceeds max event count (2 events)."}
+    assert _count_events(backend_test_database_url) == 0
+
+
 def test_ingest_rate_limit_returns_429_with_retry_after(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -409,7 +458,10 @@ def test_internal_metrics_tracks_ingest_counters(
     }
     with TestClient(app) as client:
         accepted = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
-        metrics = client.get("/internal/metrics")
+        metrics = client.get(
+            "/internal/metrics",
+            headers={"Authorization": "Bearer test-internal-metrics-token"},
+        )
     assert accepted.status_code == 200
     assert metrics.status_code == 200
     counters = metrics.json()["counters"]
@@ -439,10 +491,21 @@ def test_prometheus_metrics_endpoint_exposes_ingest_counters(
     }
     with TestClient(app) as client:
         ingest = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
-        metrics = client.get("/metrics")
+        metrics = client.get(
+            "/metrics",
+            headers={"Authorization": "Bearer test-internal-metrics-token"},
+        )
     assert ingest.status_code == 200
     assert metrics.status_code == 200
     assert "autopulse_ingest_accepted_batches" in metrics.text
+
+
+def test_internal_metrics_requires_bearer_token(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/internal/metrics")
+    assert response.status_code == 401
 
 
 def test_ingest_accepts_optional_unknown_event_fields(

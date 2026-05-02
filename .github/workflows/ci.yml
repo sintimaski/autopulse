@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  python:
+  python-sqlite:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: sqlite+aiosqlite:///./autopulse_ci.db
@@ -37,8 +37,43 @@ jobs:
       - name: Bandit
         run: uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend
 
-      - name: Pytest
-        run: uv run pytest
+      - name: Pytest (SQLite + coverage)
+        run: uv run pytest --cov=autopulse --cov=autopulse_backend --cov-report=term-missing
+
+  python-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autopulse
+          POSTGRES_PASSWORD: autopulse
+          POSTGRES_DB: autopulse_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autopulse -d autopulse_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://autopulse:autopulse@127.0.0.1:5432/autopulse_ci
+      BACKEND_TEST_DATABASE_URL: postgresql+asyncpg://autopulse:autopulse@127.0.0.1:5432/autopulse_ci
+      AUTOPULSE_EVENT_STORE: duckdb
+      AUTOPULSE_DUCKDB_PATH: ./.autopulse/ci-events-postgres.duckdb
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment
+        run: uv sync --group dev
+
+      - name: Pytest (Postgres backend)
+        run: uv run pytest backend/tests -q
 
   frontend:
     runs-on: ubuntu-latest
