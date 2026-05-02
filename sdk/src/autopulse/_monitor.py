@@ -527,6 +527,10 @@ def monitor(app: Any, **kwargs: Any) -> None:
             ),
         }
     )
+    raw_dashboard_widgets = resolved_kwargs.get("dashboard_widgets")
+    widgets_iterable = (
+        raw_dashboard_widgets if isinstance(raw_dashboard_widgets, list | tuple) else ()
+    )
     config = _MonitorConfig(
         api_key=resolved_kwargs.get("api_key", env_api_key),
         ingest_url=resolved_kwargs.get("ingest_url", env_ingest_url),
@@ -563,13 +567,7 @@ def monitor(app: Any, **kwargs: Any) -> None:
         capture_query_params=bool(resolved_kwargs.get("capture_query_params", True)),
         scrub_keys=scrub_keys,
         dashboard_widgets=tuple(
-            widget
-            for widget in (
-                resolved_kwargs.get("dashboard_widgets")
-                if isinstance(resolved_kwargs.get("dashboard_widgets"), list | tuple)
-                else []
-            )
-            if isinstance(widget, BaseDashboardWidget)
+            widget for widget in widgets_iterable if isinstance(widget, BaseDashboardWidget)
         ),
         infrastructure_sampler=(
             InfrastructureSampler()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +11,7 @@ from autopulse_backend.models import ProjectUiSettings
 
 async def get_or_create_project_ui_settings(
     session: AsyncSession,
-    project_id,
+    project_id: UUID,
 ) -> ProjectUiSettings:
     try:
         settings = await session.scalar(

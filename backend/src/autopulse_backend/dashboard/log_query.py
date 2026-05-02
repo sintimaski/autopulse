@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy.sql import ColumnElement
 
 from autopulse_backend.dashboard.time_window import as_utc_datetime
 from autopulse_backend.models import Event
@@ -115,7 +116,7 @@ def encode_log_cursor(timestamp: datetime, event_id: int) -> str:
     return base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("utf-8")
 
 
-def apply_log_query_filters(filters: list, where_clauses: list[str]) -> None:
+def apply_log_query_filters(filters: list[ColumnElement[bool]], where_clauses: list[str]) -> None:
     for clause in where_clauses:
         eq_match = re.match(
             r"^(method|environment|service_name)\s*=\s*'([^']+)'\s*$",
@@ -166,7 +167,9 @@ def apply_log_query_filters(filters: list, where_clauses: list[str]) -> None:
         )
 
 
-def append_event_sql_filters(filters: list, event_sql_filter: str | None) -> None:
+def append_event_sql_filters(
+    filters: list[ColumnElement[bool]], event_sql_filter: str | None
+) -> None:
     """Apply log-query WHERE fragments (AND-separated) to an existing Event filter list."""
     if not event_sql_filter or not event_sql_filter.strip():
         return

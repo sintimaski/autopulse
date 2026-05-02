@@ -207,13 +207,13 @@ async def execute_dashboard_log_query(
         .order_by(direction, Event.id.desc() if parsed.order_desc else Event.id.asc())
         .limit(requested_limit + 1)
     )
-    rows = list(results)
-    has_more = len(rows) > requested_limit
-    selected_rows = rows[:requested_limit]
+    orm_rows = results.all()
+    orm_has_more = len(orm_rows) > requested_limit
+    selected_orm_rows = orm_rows[:requested_limit]
     next_cursor = None
-    if has_more and selected_rows:
-        last = selected_rows[-1]
-        next_cursor = encode_log_cursor(timestamp=last[1], event_id=int(last[0]))
+    if orm_has_more and selected_orm_rows:
+        last_orm = selected_orm_rows[-1]
+        next_cursor = encode_log_cursor(timestamp=last_orm[1], event_id=int(last_orm[0]))
     return DashboardLogQueryPageResponse(
         server_now=server_now,
         query=parsed.normalized_query,
@@ -240,6 +240,6 @@ async def execute_dashboard_log_query(
                 service_name,
                 environment,
                 request_id,
-            ) in selected_rows
+            ) in selected_orm_rows
         ],
     )

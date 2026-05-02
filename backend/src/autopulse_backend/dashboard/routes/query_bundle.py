@@ -4,9 +4,10 @@ import asyncio
 import json
 import os
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from time import monotonic
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -285,7 +286,9 @@ async def _run_bundle_query(
     scope = payload.scope
     session_maker = get_session_maker()
 
-    async def run_with_session(handler):
+    async def run_with_session(
+        handler: Callable[[AsyncSession], Awaitable[Any]],
+    ) -> Any:
         async with session_maker() as isolated_session:
             return await handler(isolated_session)
 

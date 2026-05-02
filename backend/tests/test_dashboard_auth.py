@@ -42,17 +42,36 @@ def _truncate_tables(database_url: str) -> None:
     async def run() -> None:
         engine = create_async_engine(database_url, pool_pre_ping=True)
         session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        tables = (
+            "dashboard_sessions",
+            "dashboard_magic_links",
+            "governance_audit_events",
+            "organization_memberships",
+            "archived_events",
+            "error_group_aggregates",
+            "metric_buckets",
+            "events",
+            "api_keys",
+            "dashboard_users",
+            "projects",
+            "organizations",
+        )
         try:
             async with session_maker() as session:
-                await session.execute(
-                    text(
-                        "TRUNCATE TABLE dashboard_sessions, dashboard_magic_links, "
-                        "governance_audit_events, organization_memberships, archived_events, "
-                        "error_group_aggregates, metric_buckets, dashboard_users, events, "
-                        "api_keys, projects, organizations "
-                        "RESTART IDENTITY CASCADE"
+                if "sqlite" in database_url:
+                    res = await session.execute(
+                        text("SELECT name FROM sqlite_master WHERE type='table'")
                     )
-                )
+                    existing = {str(row[0]) for row in res.fetchall()}
+                    await session.execute(text("PRAGMA foreign_keys=OFF"))
+                    for table in tables:
+                        if table in existing:
+                            await session.execute(text(f"DELETE FROM {table}"))
+                    await session.execute(text("PRAGMA foreign_keys=ON"))
+                else:
+                    await session.execute(
+                        text("TRUNCATE TABLE " + ", ".join(tables) + " RESTART IDENTITY CASCADE")
+                    )
                 await session.commit()
         finally:
             await engine.dispose()

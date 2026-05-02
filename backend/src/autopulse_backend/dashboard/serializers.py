@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from autopulse_backend.models import ProjectAlertSettings, ProjectUiSettings
 from autopulse_backend.schemas import (
     DashboardAlertSettings,
@@ -22,13 +24,13 @@ def serialize_alert_settings(settings: ProjectAlertSettings) -> DashboardAlertSe
 
 
 def serialize_theme_settings(settings: ProjectUiSettings) -> DashboardThemeSettings:
-    theme = (
-        settings.theme_preference
+    theme_pref: Literal["system", "light", "dark"] = (
+        cast(Literal["system", "light", "dark"], settings.theme_preference)
         if settings.theme_preference in {"system", "light", "dark"}
         else "system"
     )
     return DashboardThemeSettings(
-        theme_preference=theme,
+        theme_preference=theme_pref,
         exclude_autopulse_traffic=bool(settings.exclude_autopulse_traffic),
     )
 
@@ -59,14 +61,14 @@ def serialize_retention_settings(
             else None
         ),
         retention_plan=(
-            settings.retention_plan
+            cast(Literal["starter", "standard", "extended"], settings.retention_plan)
             if settings.retention_plan in {"starter", "standard", "extended"}
             else "standard"
         ),
         archival_enabled=bool(settings.archival_enabled),
         archival_mode="db_archive",
         archival_status=(
-            settings.archival_status
+            cast(Literal["idle", "running", "failed"], settings.archival_status)
             if settings.archival_status in {"idle", "running", "failed"}
             else "idle"
         ),

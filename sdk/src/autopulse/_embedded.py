@@ -205,7 +205,7 @@ def _mount_embedded_ui(backend_app: Any, *, static_dir: str | None = None) -> No
         name="autopulse-ui",
     )
 
-    @backend_app.get("/", include_in_schema=False)
+    @backend_app.get("/", include_in_schema=False)  # type: ignore[untyped-decorator]
     async def _embedded_root_redirect() -> RedirectResponse:
         return RedirectResponse(url="/ui/")
 

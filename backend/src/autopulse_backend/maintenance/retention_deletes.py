@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +20,7 @@ from autopulse_backend.models import (
 async def _archive_events_before_delete(
     *,
     session: AsyncSession,
-    project_id,
+    project_id: UUID,
     cutoff: datetime,
     archived_at: datetime,
     enabled: bool,
@@ -200,7 +201,7 @@ async def _sqlite_pressure_delete_auxiliary_batch(
 async def _delete_oldest_project_events(
     *,
     session: AsyncSession,
-    project_id,
+    project_id: UUID,
     rows_to_delete: int,
 ) -> int:
     if rows_to_delete <= 0:

@@ -6,7 +6,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Literal
+from typing import Any, Literal, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -111,7 +111,7 @@ _ALLOWED_ROLES: tuple[Role, ...] = ("viewer", "editor", "admin")
 
 
 def _user_has_orders(uid: int) -> bool:
-    return any(int(o.get("user_id", 0)) == uid for o in _ORDERS.values())
+    return any(int(cast(int, o.get("user_id", 0))) == uid for o in _ORDERS.values())
 
 
 def _utc_now() -> str:
@@ -133,7 +133,9 @@ def _build_demo_dashboard_widgets() -> list[BaseDashboardWidget]:
     total_users = len(_USERS)
     total_orders = len(_ORDERS)
     avg_order_value = (
-        sum(int(order["amount_cents"]) for order in _ORDERS.values()) / max(total_orders, 1) / 100.0
+        sum(int(cast(int, order["amount_cents"])) for order in _ORDERS.values())
+        / max(total_orders, 1)
+        / 100.0
     )
     role_counts: dict[str, int] = {"viewer": 0, "editor": 0, "admin": 0}
     for user in _USERS.values():
@@ -148,7 +150,8 @@ def _build_demo_dashboard_widgets() -> list[BaseDashboardWidget]:
         ("-1m", float(total_orders + 4)),
     ]
     orders_by_item = [
-        (str(order["item"]), float(order["amount_cents"]) / 100.0) for order in _ORDERS.values()
+        (str(order["item"]), float(cast(int, order["amount_cents"])) / 100.0)
+        for order in _ORDERS.values()
     ]
     latency_histogram = [
         ("<50ms", 12.0),
@@ -193,7 +196,7 @@ def _build_demo_dashboard_widgets() -> list[BaseDashboardWidget]:
             widget_id="synthetic_recent_load",
             title="Recent synthetic load",
             description="Derived minute trend for fixture traffic",
-            points=recent_load_points,
+            points=cast(Any, recent_load_points),
             color="#818cf8",
             unit="req",
             order=20,
@@ -225,7 +228,7 @@ def _build_demo_dashboard_widgets() -> list[BaseDashboardWidget]:
             widget_id="synthetic_route_risk",
             title="Route risk scatter",
             description="x=request volume, y=error rate %",
-            points=route_risk_scatter,
+            points=cast(Any, route_risk_scatter),
             x_label="Request volume",
             y_label="Error rate %",
             order=60,
@@ -234,7 +237,7 @@ def _build_demo_dashboard_widgets() -> list[BaseDashboardWidget]:
             widget_id="synthetic_outcome_stack",
             title="Outcome stack",
             description="Success/client/server composition over time",
-            points=stacked_mix,
+            points=cast(Any, stacked_mix),
             order=70,
         ),
     ]
@@ -250,7 +253,8 @@ def _parse_test_token(x_auth_token: str | None) -> AuthContext | None:
             detail="Invalid x-auth-token format",
         )
     _, role_raw, user_id = parts
-    role: Role | None = role_raw.lower() if role_raw.lower() in _ALLOWED_ROLES else None
+    role_lower = role_raw.lower()
+    role: Role | None = role_lower if role_lower in _ALLOWED_ROLES else None
     if role is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -416,7 +420,7 @@ def create_app(
             user["display_name"] = payload.display_name
         if payload.role is not None:
             user["role"] = payload.role
-        user["version"] = int(user["version"]) + 1
+        user["version"] = int(cast(int, user["version"])) + 1
         logger.info("user_updated actor=%s user_id=%s", auth.user_id, user_id)
         return {"user": user}
 

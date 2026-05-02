@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from os import getenv
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -21,7 +22,7 @@ _engines: dict[str, AsyncEngine] = {}
 _session_makers: dict[str, async_sessionmaker_type[AsyncSession]] = {}
 
 
-def _async_pool_kwargs(database_url: str) -> dict:
+def _async_pool_kwargs(database_url: str) -> dict[str, Any]:
     """Connection pool options: NullPool for SQLite; bounded pool for Postgres/async drivers."""
     if database_url.startswith("sqlite"):
         return {"pool_pre_ping": True, "poolclass": NullPool}

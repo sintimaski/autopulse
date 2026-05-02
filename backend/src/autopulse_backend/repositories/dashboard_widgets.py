@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import desc, insert, select
@@ -23,6 +24,7 @@ async def upsert_widget_definitions(
     if not definitions:
         return
     dialect = session.bind.dialect.name if session.bind is not None else ""
+    stmt: Any
     if dialect == "sqlite":
         stmt = sqlite_insert(DashboardWidgetDefinition).values(definitions)
         stmt = stmt.on_conflict_do_update(
@@ -69,9 +71,11 @@ async def upsert_widget_definitions(
         existing.description = (
             str(definition["description"]) if definition.get("description") is not None else None
         )
-        existing.display_order = int(definition["display_order"])
+        existing.display_order = int(cast(int, definition["display_order"]))
         existing.config = (
-            dict(definition["config"]) if isinstance(definition.get("config"), dict) else {}
+            cast(dict[str, Any], definition["config"])
+            if isinstance(definition.get("config"), dict)
+            else {}
         )
         existing.updated_at = definition["updated_at"]  # type: ignore[assignment]
 
@@ -152,7 +156,7 @@ async def list_widget_points(
                 )
                 for widget_id, timestamp, label, value in rows
             ]
-    rows = await session.execute(
+    db_rows = await session.execute(
         select(DashboardWidgetPoint)
         .where(
             DashboardWidgetPoint.project_id == project_id,
@@ -162,6 +166,6 @@ async def list_widget_points(
         .order_by(desc(DashboardWidgetPoint.timestamp), desc(DashboardWidgetPoint.id))
         .limit(cap)
     )
-    points = list(rows.scalars().all())
+    points = list(db_rows.scalars().all())
     points.sort(key=lambda p: (p.timestamp, p.widget_id, p.id))
     return points

@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import and_, exists, literal, or_, select
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql import ColumnElement
 
 from autopulse_backend.dashboard.payload_limits import (
     MAX_ERROR_GROUP_MESSAGE_CHARS,
@@ -30,7 +32,7 @@ def synthetic_error_key(
     return digest.hexdigest()
 
 
-def derived_error_group_key(payload_dict: dict, path: str) -> str:
+def derived_error_group_key(payload_dict: dict[str, Any], path: str) -> str:
     raw_hash = payload_dict.get("error_hash")
     error_hash = raw_hash.strip() if isinstance(raw_hash, str) else ""
     route = path or ""
@@ -46,7 +48,9 @@ def derived_error_group_key(payload_dict: dict, path: str) -> str:
     return synthetic_error_key(exception_type, exception_message, route)
 
 
-def error_like_events_predicate(resolved_from: datetime, resolved_to: datetime):
+def error_like_events_predicate(
+    resolved_from: datetime, resolved_to: datetime
+) -> ColumnElement[bool]:
     """Match SDK `type=error` rows, plus `type=request` 5xx when no paired error (same request_id).
 
     HTTPException / synthetic apps often emit only a request row for 503/500; uncaught handlers emit

@@ -108,7 +108,7 @@ async def generate_traffic_scenario(
         received_at=now,
     )
     return ScenarioGenerateResponse(
-        accepted=accepted,
+        accepted=accepted.accepted,
         generated=stats.generated_events,
         duration_seconds=duration_seconds,
         base_rate_per_second=payload.base_rate_per_second,

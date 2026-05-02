@@ -8,10 +8,13 @@ from typing import Any
 from autopulse_backend.config import get_settings
 from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
 
+psutil: Any
 try:
-    import psutil
+    import psutil as _psutil
 except Exception:  # pragma: no cover - optional dependency
     psutil = None
+else:
+    psutil = _psutil
 
 
 @dataclass(slots=True)

@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from os import getenv
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import duckdb
@@ -45,9 +45,9 @@ def _as_duckdb_timestamp(value: datetime) -> str:
     return _as_utc(value).strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
-def _duckdb_connect_config() -> dict[str, str]:
+def _duckdb_connect_config() -> dict[str, Any]:
     """Per-connection DuckDB settings (see DuckDB configuration / pragmas docs)."""
-    cfg: dict[str, str] = {}
+    cfg: dict[str, Any] = {}
     raw_threads = getenv("AUTOPULSE_DUCKDB_THREADS")
     if raw_threads and raw_threads.strip():
         try:
@@ -70,7 +70,7 @@ class DuckDbEventStore:
         self._write_lock = Lock()
         self._ensure_schema()
 
-    def _open_connection(self, path: str, config: dict[str, str]) -> Any:
+    def _open_connection(self, path: str, config: dict[str, Any]) -> Any:
         attempts = int(getenv("AUTOPULSE_DUCKDB_CONNECT_RETRIES", "16").strip() or "16")
         attempts = max(1, min(attempts, 64))
         base_delay_s = float(
@@ -99,12 +99,18 @@ class DuckDbEventStore:
     def _fetchall_read(self, sql: str, params: list[Any] | None = None) -> list[tuple[Any, ...]]:
         params_list = params or []
         with self._write_lock:
-            return self._write_conn.execute(sql, params_list).fetchall()
+            return cast(
+                list[tuple[Any, ...]],
+                self._write_conn.execute(sql, params_list).fetchall(),
+            )
 
     def _fetchone_read(self, sql: str, params: list[Any] | None = None) -> tuple[Any, ...] | None:
         params_list = params or []
         with self._write_lock:
-            return self._write_conn.execute(sql, params_list).fetchone()
+            return cast(
+                tuple[Any, ...] | None,
+                self._write_conn.execute(sql, params_list).fetchone(),
+            )
 
     def _ensure_schema(self) -> None:
         self._write_conn.execute(
@@ -492,6 +498,7 @@ class DuckDbEventStore:
     def delete_oldest_events(self, *, rows_to_delete: int, project_id: UUID | None = None) -> int:
         if rows_to_delete <= 0:
             return 0
+        params: list[Any]
         if project_id is None:
             count_sql = (
                 "SELECT COUNT(*) FROM ("
@@ -530,6 +537,7 @@ class DuckDbEventStore:
     ) -> int:
         if rows_to_delete <= 0:
             return 0
+        params_wp: list[Any]
         if project_id is None:
             count_sql = (
                 "SELECT COUNT(*) FROM ("
@@ -541,7 +549,7 @@ class DuckDbEventStore:
                 "SELECT id FROM dashboard_widget_points ORDER BY timestamp ASC, id ASC LIMIT ?"
                 ")"
             )
-            params = [rows_to_delete]
+            params_wp = [rows_to_delete]
         else:
             count_sql = (
                 "SELECT COUNT(*) FROM ("
@@ -555,12 +563,12 @@ class DuckDbEventStore:
                 "ORDER BY timestamp ASC, id ASC LIMIT ?"
                 ")"
             )
-            params = [str(project_id), rows_to_delete]
+            params_wp = [str(project_id), rows_to_delete]
         with self._write_lock:
-            deleted_row = self._write_conn.execute(count_sql, params).fetchone()
+            deleted_row = self._write_conn.execute(count_sql, params_wp).fetchone()
             deleted = int(deleted_row[0] if deleted_row else 0)
             if deleted > 0:
-                self._write_conn.execute(delete_sql, params)
+                self._write_conn.execute(delete_sql, params_wp)
         return deleted
 
 

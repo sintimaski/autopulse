@@ -4,10 +4,13 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any
 
+psutil: Any
 try:
-    import psutil
+    import psutil as _psutil
 except Exception:  # pragma: no cover - optional runtime dependency
     psutil = None
+else:
+    psutil = _psutil
 
 
 @dataclass(slots=True)

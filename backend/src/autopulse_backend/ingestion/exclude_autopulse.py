@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from uuid import UUID
+
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.models import Event, ProjectUiSettings
@@ -28,7 +30,7 @@ def is_autopulse_internal_path(path: str | None) -> bool:
     )
 
 
-async def resolve_exclude_autopulse_traffic(session: AsyncSession, project_id) -> bool:
+async def resolve_exclude_autopulse_traffic(session: AsyncSession, project_id: UUID) -> bool:
     setting = await session.scalar(
         select(ProjectUiSettings.exclude_autopulse_traffic).where(
             ProjectUiSettings.project_id == project_id
@@ -40,7 +42,7 @@ async def resolve_exclude_autopulse_traffic(session: AsyncSession, project_id) -
 
 
 def append_exclude_autopulse_event_filters(
-    filters: list,
+    filters: list[ColumnElement[bool]],
     *,
     exclude_autopulse_traffic: bool,
 ) -> None:

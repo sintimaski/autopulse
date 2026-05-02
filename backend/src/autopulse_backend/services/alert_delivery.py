@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import httpx
@@ -133,6 +133,12 @@ class WebhookAlertSender:
                             detail={"delivery_error": str(exc)},
                         )
                     await asyncio.sleep(self.initial_backoff_seconds * attempt)
+        return AlertDeliveryResult(
+            status="failed",
+            delivered_via=self.delivery_kind,
+            reason_code="timeout",
+            attempt_count=max(1, self.max_attempts),
+        )
 
 
 @dataclass(slots=True)
@@ -229,6 +235,12 @@ class EmailAlertSender:
                             detail={"delivery_error": str(exc), "provider": provider},
                         )
                     await asyncio.sleep(self.initial_backoff_seconds * attempt)
+        return AlertDeliveryResult(
+            status="failed",
+            delivered_via=self.delivery_kind,
+            reason_code="timeout",
+            attempt_count=max(1, self.max_attempts),
+        )
 
     async def _send_file(self, destination: str, signal: AlertSignal) -> AlertDeliveryResult:
         message = _build_email_message(self.from_email, destination, signal)
@@ -403,7 +415,7 @@ class DiscordWebhookAlertSender(WebhookAlertSender):
 
 async def _send_webhook_payload(
     webhook_url: str,
-    payload: dict[str, str | dict[str, float | int | str] | list[str] | None],
+    payload: dict[str, Any],
     *,
     timeout_seconds: float,
     max_attempts: int,
@@ -432,6 +444,12 @@ async def _send_webhook_payload(
                         detail={"delivery_error": str(exc)},
                     )
                 await asyncio.sleep(initial_backoff_seconds * attempt)
+    return AlertDeliveryResult(
+        status="failed",
+        delivered_via=delivery_kind,
+        reason_code="timeout",
+        attempt_count=max(1, max_attempts),
+    )
 
 
 def build_alert_sender(settings: Settings) -> AlertSender:
@@ -520,7 +538,7 @@ def _extract_provider_message_id(provider: str, response: httpx.Response) -> str
                     return value
         except ValueError:
             return None
-    return response.headers.get("x-request-id")
+    return cast(str | None, response.headers.get("x-request-id"))
 
 
 def _format_alert_text(signal: AlertSignal) -> str:

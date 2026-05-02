@@ -22,6 +22,7 @@ members = ["sdk", "backend"]
 dev = [
     "ruff>=0.8.0",
     "mypy>=1.11.0",
+    "types-psutil>=6.1.0.20241221",
     "bandit[toml]>=1.7.8",
     "pytest>=8.3.0",
     "pytest-cov>=6.2.1",

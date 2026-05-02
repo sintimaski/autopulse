@@ -4,6 +4,7 @@ import hashlib
 import random
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +69,7 @@ def split_csv_values(raw: str) -> tuple[str, ...]:
 def _weighted_routes() -> list[dict[str, object]]:
     weighted: list[dict[str, object]] = []
     for family in _ROUTE_FAMILIES:
-        weighted.extend([family] * int(family["weight"]))
+        weighted.extend([family] * int(cast(int, family["weight"])))
     return weighted
 
 

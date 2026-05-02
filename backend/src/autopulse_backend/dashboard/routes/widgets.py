@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +60,10 @@ async def get_dashboard_widgets(
         definitions=[
             DashboardWidgetDefinition(
                 widget_id=item.widget_id,
-                type=item.widget_type,
+                type=cast(
+                    Literal["card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"],
+                    item.widget_type,
+                ),
                 title=item.title,
                 description=item.description,
                 order=item.display_order,

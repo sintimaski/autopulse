@@ -446,6 +446,7 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
 ) -> None:
     # TestClient uses http://testserver; allow ingest without TLS like backend conftest.
     monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-events.duckdb"))
     app = FastAPI()
     monitor(
         app,
