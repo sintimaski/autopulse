@@ -13,20 +13,20 @@ This fixture provides a local FastAPI app and a deterministic traffic driver for
 From repository root:
 
 ```bash
-uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010
+uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000
 ```
 
 Embedded mode also exposes local AutoPulse endpoints at:
 
-- `http://localhost:8010/autopulse/ingest`
-- `http://localhost:8010/autopulse/dashboard/*`
-- `ws://localhost:8010/autopulse/dashboard/updates?token=…` (sends `subscribed` + `pong` to client `ping`; **`ingest` broadcasts only after batches hit this same server’s `/ingest`**)
-- `http://localhost:8010/autopulse/ui/` (static assets when available)
+- `http://localhost:8000/autopulse/ingest`
+- `http://localhost:8000/autopulse/dashboard/*`
+- `ws://localhost:8000/autopulse/dashboard/updates?token=…` (sends `subscribed` + `pong` to client `ping`; **`ingest` broadcasts only after batches hit this same server’s `/ingest`**)
+- `http://localhost:8000/autopulse/ui/` (static assets when available)
 
 In another terminal:
 
 ```bash
-uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8010 --duration-seconds 120 --rps 8 --role-mode mixed
+uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8000 --duration-seconds 120 --rps 8 --role-mode mixed
 ```
 
 ## Environment Variables

@@ -10,6 +10,7 @@ from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_engine
 from autopulse_backend.jobs import RetentionPressurePollHandle, SchedulerHandle
 from autopulse_backend.metrics import service_metrics
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import (
     event_store_enabled,
     try_get_duckdb_event_store,
@@ -23,8 +24,8 @@ def _require_internal_metrics_access(request: Request) -> None:
     expected = settings.internal_metrics_bearer_token
     if not expected:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Metrics endpoint is disabled.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Metrics endpoint is disabled (set INTERNAL_METRICS_BEARER_TOKEN).",
         )
     authorization = request.headers.get("authorization", "")
     scheme, _, token = authorization.partition(" ")
@@ -153,6 +154,20 @@ async def ready() -> dict[str, str]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database not ready",
         ) from exc
+    if event_store_enabled(settings):
+        store = try_get_duckdb_event_store()
+        if store is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="DuckDB event store not ready",
+            )
+        try:
+            await run_duckdb_read_sync(store.ping_sync)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="DuckDB event store ping failed",
+            ) from exc
     return {"status": "ready"}
 
 

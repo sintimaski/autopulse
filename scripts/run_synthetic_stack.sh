@@ -18,6 +18,12 @@ if [ -f .env.autopulse ]; then
   set +a
 fi
 
+FRONTEND_DIR="$ROOT_DIR/frontend"
+if [[ ! -f "$FRONTEND_DIR/node_modules/next/dist/bin/next" ]]; then
+  echo "error: frontend dependencies missing (no Next.js CLI)." >&2
+  echo "  Run: npm --prefix frontend install" >&2
+  exit 1
+fi
 echo "Building frontend…"
 npm --prefix frontend run build
 
@@ -28,5 +34,5 @@ export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-./.autopulse/events.duckd
 echo "DATABASE_URL=${DATABASE_URL:-<unset>}"
 echo "AUTOPULSE_EVENT_STORE=${AUTOPULSE_EVENT_STORE}"
 echo "AUTOPULSE_DUCKDB_PATH=${AUTOPULSE_DUCKDB_PATH}"
-echo "Starting: uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010 --log-level info"
-exec uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010 --log-level info
+echo "Starting: uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000 --log-level info"
+exec uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000 --log-level info

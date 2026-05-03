@@ -8,12 +8,17 @@ Opinionated observability for FastAPI applications. Product scope, architecture,
 |------|----------|
 | `sdk/` | Python SDK (installable package `autopulse`) |
 | `backend/` | FastAPI ingestion, dashboard read API, alert/retention jobs |
-| `frontend/` | Next.js dashboard application (overview, logs, diagnosis, alerts) |
+| `frontend/` | Next.js dashboard application (overview, requests, diagnosis, alerts) |
 | `agents/` | Implementation, review, and analysis playbooks |
 | `docs/cursor/` | Editor-specific development notes |
 
 Contributor entry point: **[AGENTS.md](./AGENTS.md)**.
 Execution guide: **[docs/DEVELOPMENT_PROCESS.md](./docs/DEVELOPMENT_PROCESS.md)**.
+
+## Product vs local validation (read this once)
+
+- **Hosted / split stack** is the long-term production shape: dashboard session auth, `POST /ingest` from customer apps, and multi-instance deployment concerns described in **[docs/ops/DEPLOYMENT_MULTI_INSTANCE.md](./docs/ops/DEPLOYMENT_MULTI_INSTANCE.md)**.
+- **Embedded + synthetic fixture** in this repo is the fastest way to validate SDK + static UI + ingest together; it is not a substitute for production operations. **[DEVELOPMENT.md](./DEVELOPMENT.md)** defines MVP scope and “done”; see **[docs/ops/BACKUP_RESTORE.md](./docs/ops/BACKUP_RESTORE.md)** for durable state.
 
 ## Local development
 
@@ -25,7 +30,7 @@ npm --prefix frontend install
 cp backend/.env.example backend/.env   # once; edit email etc.
 # First boot creates repo-root .env.autopulse (ingest + NEXT_PUBLIC_*). Then:
 npm --prefix frontend run build        # or use scripts/run_synthetic_stack.sh (sources .env.autopulse)
-uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010
+uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000
 ```
 
 First embedded `monitor()` boot writes **`.env.autopulse`** (gitignored) with `AUTOPULSE_EMBEDDED_API_KEY` and matching `NEXT_PUBLIC_*` for static UI. **`./scripts/run_synthetic_stack.sh`** sources `backend/.env` then **`.env.autopulse`** before `npm run build`, so the second run onward is mostly automatic. A one-shot startup ingest (`/.well-known/autopulse-onboarding`) runs unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`. Override path with `AUTOPULSE_ENV_AUTOPULSE_FILE`.
@@ -48,10 +53,10 @@ Remote-only ingest works with **`pip install autopulse`** alone.
 Then generate fixture traffic:
 
 ```bash
-uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8010 --duration-seconds 120 --rps 8 --role-mode mixed
+uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8000 --duration-seconds 120 --rps 8 --role-mode mixed
 ```
 
-Embedded endpoints are available under `http://localhost:8010/autopulse/*`.
+Embedded endpoints are available under `http://localhost:8000/autopulse/*`.
 
 Split backend/frontend flow (for backend or frontend-only iteration):
 
@@ -86,6 +91,8 @@ NEXT_PUBLIC_AUTOPULSE_API_KEY=<project_api_key>
 
 Background jobs (`uv run python -m autopulse_backend.jobs alerts-once`) print the **number of alert dispatches** for that run. A line showing `0` means no spike or outage alert was sent in that pass (for example no projects, traffic below configured thresholds, cooldown, or `ALERTS_ENABLED=false`), not that the command crashed. The CLI process still exits with status `0`.
 
+Operator recovery: `uv run python -m autopulse_backend.jobs replay-aggregate-dead-letters-once` reapplies aggregate payloads that exhausted the async ingest aggregate worker (see metrics/logs for `ingest.aggregate_worker.dead_lettered`).
+
 Backend tests that touch Postgres need `BACKEND_TEST_DATABASE_URL` (the CI workflow runs both SQLite and Postgres lanes).
 
 ## MVP dashboard parity snapshot
@@ -93,7 +100,7 @@ Backend tests that touch Postgres need `BACKEND_TEST_DATABASE_URL` (the CI workf
 The frontend tracks `DEVELOPMENT.md` dashboard requirements:
 
 - Overview: requests/minute, error rate, average latency, volume chart, top failing routes, recent errors.
-- Logs: time, method, path, status, latency, service, environment.
+- Requests: time, method, path, status, latency, service, environment.
 - Diagnosis: grouped errors with type/message/route/count/first/last seen and sample stack.
 - Alerts: heuristic visibility and runbook actions (minimal in-app settings remain backend-dependent).
 - Guardrail: advanced SQL WHERE toolbar controls are disabled by default; enable only for internal diagnostics via `NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI=1`.

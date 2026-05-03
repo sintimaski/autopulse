@@ -4,6 +4,7 @@ import asyncio
 import gzip
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
@@ -23,6 +24,8 @@ from starlette.responses import Response
 from autopulse._infrastructure import InfrastructureSampler
 from autopulse.widgets import BaseDashboardWidget, serialize_dashboard_widgets
 
+logger = logging.getLogger("autopulse.monitor")
+
 # Gzip ingest bodies at or above this UTF-8 JSON size to cut bandwidth (server decompresses).
 _INGEST_JSON_GZIP_MIN_BYTES = 2048
 
@@ -37,6 +40,7 @@ DEFAULT_SCRUB_KEYS = frozenset(
         "token",
         "api_key",
         "apikey",
+        "x-api-key",
         "access_token",
         "refresh_token",
     }
@@ -159,6 +163,7 @@ def _is_sensitive_key(key: str, scrub_keys: frozenset[str]) -> bool:
             "passwd",
             "api_key",
             "apikey",
+            "api-key",
             "authorization",
             "cookie",
         )
@@ -448,11 +453,12 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             "method": request.method,
             "request_id": request.headers.get("x-request-id"),
         }
-        if self._config.dashboard_widgets:
+        send_ok = self._dispatcher._send_enabled
+        if send_ok and self._config.dashboard_widgets:
             widget_payload = serialize_dashboard_widgets(list(self._config.dashboard_widgets))
             if widget_payload["definitions"] or widget_payload["points"]:
                 common["dashboard_widgets"] = widget_payload
-        if self._config.infrastructure_sampler is not None:
+        if send_ok and self._config.infrastructure_sampler is not None:
             infrastructure_metrics = self._config.infrastructure_sampler.sample()
             if infrastructure_metrics:
                 common["infrastructure_metrics"] = infrastructure_metrics
@@ -468,9 +474,9 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
                     )
                 else:
                     common["dashboard_widgets"] = infra_widget_payload
-        if self._config.capture_headers:
+        if send_ok and self._config.capture_headers:
             common["headers"] = dict(request.headers.items())
-        if self._config.capture_query_params:
+        if send_ok and self._config.capture_query_params:
             common["query_params"] = dict(request.query_params.multi_items())
         try:
             response = await call_next(request)
@@ -626,6 +632,12 @@ def monitor(app: Any, **kwargs: Any) -> None:
         client=resolved_kwargs.get("http_client"),
         owns_client=resolved_kwargs.get("owns_http_client"),
     )
+    if mode != "embedded" and not dispatcher._send_enabled:
+        logger.warning(
+            "autopulse.monitor: remote ingest is disabled because AUTOPULSE_INGEST_URL and "
+            "AUTOPULSE_API_KEY are not both set; middleware is attached but events will not "
+            "be sent."
+        )
     app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
     if not _add_event_handler(app, "startup", dispatcher.start):
         return

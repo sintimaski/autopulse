@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -13,6 +14,7 @@ from autopulse_backend.dashboard.error_grouping import (
 )
 from autopulse_backend.dashboard.time_window import minute_bucket
 from autopulse_backend.ingestion.exclude_autopulse import is_autopulse_internal_path
+from autopulse_backend.metrics import service_metrics
 from autopulse_backend.models import Event
 from autopulse_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from autopulse_backend.repositories import events as events_repo
@@ -30,6 +32,8 @@ from autopulse_backend.services.infrastructure_metrics import (
 from autopulse_backend.services.infrastructure_metrics import (
     to_widget_payload as infrastructure_to_widget_payload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,11 +143,23 @@ async def persist_ingest_batch(
     widget_points.extend(operational_points)
     # Widget payload persistence must not depend on metric aggregate mode.
     # Some deployments disable inline aggregate writes and rely on workers.
-    await dashboard_widgets_repo.upsert_widget_definitions(session, widget_definitions)
-    await dashboard_widgets_repo.insert_widget_points(session, widget_points)
-    if persist_aggregates:
-        await upsert_metric_buckets(session, metric_bucket_deltas)
-        await upsert_error_group_aggregates(session, error_group_deltas)
+    try:
+        await dashboard_widgets_repo.upsert_widget_definitions(session, widget_definitions)
+        await dashboard_widgets_repo.insert_widget_points(session, widget_points)
+        if persist_aggregates:
+            await upsert_metric_buckets(session, metric_bucket_deltas)
+            await upsert_error_group_aggregates(session, error_group_deltas)
+    except Exception:
+        service_metrics.increment("ingest.persist_sql_tail_failed")
+        logger.exception(
+            "ingest_persist_sql_tail_failed",
+            extra={
+                "event": "ingest_persist_sql_tail_failed",
+                "project_id": str(project_id),
+                "event_store_duckdb": bool(event_store_enabled()),
+            },
+        )
+        raise
     return PersistIngestResult(
         accepted=accepted,
         metric_bucket_deltas=metric_bucket_deltas,

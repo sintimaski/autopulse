@@ -45,7 +45,8 @@ export type SavedSqlFilterPreset = {
 };
 
 export type DashboardDataContextValue = {
-  hasApiKey: boolean;
+  /** True when the dashboard session cookie is authenticated (not the project ingest API key). */
+  hasDashboardSession: boolean;
   sessionEmail: string | null;
   /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
   authSessionResolved: boolean;
@@ -128,6 +129,7 @@ export type DashboardDataContextValue = {
   saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
   saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
   refreshApiKeys: () => Promise<void>;
+  signOutDashboard: () => Promise<void>;
   /** Persists project onboarding completion after first ingest (server-validated). */
   completeOnboarding: () => Promise<boolean>;
   issueApiKey: () => Promise<boolean>;

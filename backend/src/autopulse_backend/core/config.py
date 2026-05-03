@@ -108,6 +108,8 @@ class Settings:
     ingest_async_aggregate_enabled: bool = True
     ingest_async_aggregate_queue_max_size: int = 2000
     ingest_aggregate_worker_max_retries: int = 3
+    ingest_idempotency_ttl_hours: int = 24
+    ingest_idempotency_stale_seconds: int = 45
     ingest_require_https: bool = True
     ingest_trust_forwarded_proto: bool = True
     ingest_drop_autopulse_traffic_from_db: bool = True
@@ -206,6 +208,10 @@ def validate_deployment_settings(settings: Settings) -> None:
     env = (settings.autopulse_env or "development").strip().lower()
     if env != "production":
         return
+    if settings.dashboard_auth_magic_link_dev_expose_token:
+        raise ValueError(
+            "DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN must be false when AUTOPULSE_ENV=production"
+        )
     if settings.dev_scenarios_enabled:
         raise ValueError("DEV_SCENARIOS_ENABLED must be false when AUTOPULSE_ENV=production")
     if not settings.dashboard_auth_enabled:
@@ -290,7 +296,7 @@ def get_settings() -> Settings:
         "CORS_ALLOW_ORIGINS",
         "http://localhost:3000,http://127.0.0.1:3000,"
         "http://localhost:8000,http://127.0.0.1:8000,"
-        "http://localhost:8010,http://127.0.0.1:8010",
+        "http://localhost:8000,http://127.0.0.1:8000",
     )
     cors_allow_origins = tuple(
         origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()
@@ -409,6 +415,10 @@ def get_settings() -> Settings:
             "INGEST_AGGREGATE_WORKER_MAX_RETRIES",
             3,
             minimum=0,
+        ),
+        ingest_idempotency_ttl_hours=_env_int("INGEST_IDEMPOTENCY_TTL_HOURS", 24, minimum=1),
+        ingest_idempotency_stale_seconds=_env_int(
+            "INGEST_IDEMPOTENCY_STALE_SECONDS", 45, minimum=5
         ),
         ingest_require_https=_env_bool(
             "INGEST_REQUIRE_HTTPS",

@@ -16,6 +16,7 @@ export {
   LayoutDashboard,
   LayoutTemplate,
   ListChecks,
+  LogOut,
   PanelLeft,
   PanelLeftClose,
   Rocket,

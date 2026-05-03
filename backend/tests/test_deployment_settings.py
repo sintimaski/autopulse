@@ -99,3 +99,13 @@ def test_validate_deployment_settings_production_skips_dashboard_rules_when_auth
         dashboard_enforce_origin_for_mutations=False,
     )
     validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_rejects_magic_link_dev_token_in_production() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_magic_link_dev_expose_token=True,
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN"):
+        validate_deployment_settings(s)

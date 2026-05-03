@@ -189,6 +189,15 @@ export function DashboardPageBoundary({
           <p className="mt-2 text-xs text-rose-700/90 dark:text-rose-300/90">
             Verify dashboard sign-in, backend URL, adjust scope filters, or reload the page.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-rose-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-900 dark:bg-rose-200 dark:text-rose-950 dark:hover:bg-white"
+              onClick={() => d.setRefreshToken((t) => t + 1)}
+            >
+              Retry fetch
+            </button>
+          </div>
         </section>
       </div>
     );

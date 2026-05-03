@@ -162,7 +162,7 @@ def test_dashboard_magic_link_request_exposes_dev_token_when_enabled(
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
     monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
     monkeypatch.setenv(
-        "DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "http://localhost:8010/autopulse/ui/auth/magic-link"
+        "DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "http://localhost:8000/autopulse/ui/auth/magic-link"
     )
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))

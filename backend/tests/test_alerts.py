@@ -5,6 +5,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import pytest
 from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -18,6 +19,12 @@ from autopulse_backend.alerts import (
 )
 from autopulse_backend.config import get_settings
 from autopulse_backend.models import Event, Project
+
+
+@pytest.fixture(autouse=True)
+def _sqlite_event_store_for_alert_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests seed the SQL ``events`` table; DuckDB-backed reads would return zero counts."""
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "sqlite")
 
 
 def _seed_request_events(

@@ -49,6 +49,8 @@ monitor(app)
 
 By default, `monitor()` targets a remote AutoPulse project (set `AUTOPULSE_API_KEY` / `AUTOPULSE_INGEST_URL`). It uses bounded in-memory buffering, async background sending, and silent failure behavior so host apps stay healthy if AutoPulse is unavailable.
 
+If **either** variable is missing, the sender stays off: middleware still runs, but **no events are enqueued** (minimal overhead on headers/query capture). A **one-time `WARNING`** is emitted on process startup so misconfiguration is obvious without breaking the host app.
+
 ## Key runtime controls
 
 - `AUTOPULSE_API_KEY`

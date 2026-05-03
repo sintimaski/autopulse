@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     false,
     text,
@@ -501,3 +502,41 @@ class DashboardSession(Base):
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class IngestIdempotencyKey(Base):
+    """Optional HTTP Idempotency-Key dedupe for ``POST /ingest`` (per project)."""
+
+    __tablename__ = "ingest_idempotency_keys"
+    __table_args__ = (
+        UniqueConstraint("project_id", "key_hash", name="ux_ingest_idempotency_project_key"),
+        Index("ix_ingest_idempotency_project_reserved", "project_id", "reserved_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    accepted_events: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reserved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class IngestAggregateDeadLetter(Base):
+    """Persisted aggregate upserts that exhausted the async worker retry budget."""
+
+    __tablename__ = "ingest_aggregate_dead_letters"
+    __table_args__ = (Index("ix_ingest_agg_dl_created", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    replayed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

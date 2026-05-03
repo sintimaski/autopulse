@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { LogOut } from "../../../lib/icons";
 import type {
   DashboardMembershipItem,
   DashboardOrganizationListResponse,
@@ -114,6 +115,23 @@ export function SettingsContent() {
 
   return (
     <div className="space-y-6">
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Dashboard session</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          End your signed-in dashboard session. Ingest API keys for your app are unchanged.
+        </p>
+        <div className="mt-3">
+          <button
+            type="button"
+            className="ap-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium"
+            onClick={() => void d.signOutDashboard()}
+          >
+            <LogOut className="size-4 shrink-0" aria-hidden />
+            Sign out
+          </button>
+        </div>
+      </section>
+
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Retention policy</h2>
         {effectiveRetentionDraft ? (

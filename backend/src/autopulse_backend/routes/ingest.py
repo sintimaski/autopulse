@@ -10,9 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_project
+from autopulse_backend.commercial.plan_limits import effective_ingest_rate_limit_max
 from autopulse_backend.config import get_settings
 from autopulse_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
-from autopulse_backend.database import get_db_session
+from autopulse_backend.database import get_db_session, get_session_maker
 from autopulse_backend.ingestion.limits import ingest_rate_limiter
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.realtime import (
@@ -20,6 +21,7 @@ from autopulse_backend.realtime import (
     IngestBroadcastMessage,
     project_websocket_hub,
 )
+from autopulse_backend.repositories import ingest_reliability as ingest_reliability_repo
 from autopulse_backend.repositories.aggregates import (
     upsert_error_group_aggregates,
     upsert_metric_buckets,
@@ -90,6 +92,13 @@ async def ingest_events(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> IngestBatchResponse:
     settings = get_settings()
+    idem_raw = (
+        request.headers.get("Idempotency-Key") or request.headers.get("idempotency-key") or ""
+    ).strip()
+    idem_hash: str | None = None
+    if idem_raw and len(idem_raw) <= 256:
+        idem_hash = ingest_reliability_repo.hash_idempotency_key(idem_raw)
+    idem_reserved = False
     if settings.ingest_require_https and not _is_https_request(
         request,
         trust_forwarded_proto=settings.ingest_trust_forwarded_proto,
@@ -147,12 +156,51 @@ async def ingest_events(
             ),
         )
 
+    if idem_hash:
+        session_maker = get_session_maker(settings.database_url)
+        async with session_maker() as idem_session:
+            completed = await ingest_reliability_repo.get_completed_idempotency_accepted(
+                idem_session,
+                project_id=context.project_id,
+                key_hash=idem_hash,
+            )
+            if completed is not None:
+                return IngestBatchResponse(accepted=completed)
+            reservation = await ingest_reliability_repo.reserve_idempotency_key(
+                idem_session,
+                project_id=context.project_id,
+                key_hash=idem_hash,
+                ttl_hours=settings.ingest_idempotency_ttl_hours,
+                stale_seconds=settings.ingest_idempotency_stale_seconds,
+            )
+        if reservation == "conflict":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Duplicate ingest request in flight for this Idempotency-Key.",
+            )
+        if reservation == "duplicate":
+            async with session_maker() as idem_session2:
+                completed_again = await ingest_reliability_repo.get_completed_idempotency_accepted(
+                    idem_session2,
+                    project_id=context.project_id,
+                    key_hash=idem_hash,
+                )
+            if completed_again is not None:
+                return IngestBatchResponse(accepted=completed_again)
+        idem_reserved = reservation == "reserved"
+
+    effective_rate_limit = await effective_ingest_rate_limit_max(
+        session,
+        project_id=context.project_id,
+        base_max_requests=settings.ingest_rate_limit_requests_per_window,
+    )
+
     if settings.ingest_distributed_rate_limit_enabled:
         try:
             allowed = await allow_distributed_ingest_request(
                 session=session,
                 project_id=context.project_id,
-                max_requests=settings.ingest_rate_limit_requests_per_window,
+                max_requests=effective_rate_limit,
                 window_seconds=settings.ingest_rate_limit_window_seconds,
             )
         except Exception:
@@ -160,16 +208,24 @@ async def ingest_events(
             service_metrics.increment("ingest.rate_limit.distributed_fallback")
             allowed = ingest_rate_limiter.allow(
                 project_id=context.project_id,
-                max_requests=settings.ingest_rate_limit_requests_per_window,
+                max_requests=effective_rate_limit,
                 window_seconds=settings.ingest_rate_limit_window_seconds,
             )
     else:
         allowed = ingest_rate_limiter.allow(
             project_id=context.project_id,
-            max_requests=settings.ingest_rate_limit_requests_per_window,
+            max_requests=effective_rate_limit,
             window_seconds=settings.ingest_rate_limit_window_seconds,
         )
     if not allowed:
+        if idem_reserved and idem_hash:
+            session_maker = get_session_maker(settings.database_url)
+            async with session_maker() as idem_session:
+                await ingest_reliability_repo.release_idempotency_reservation(
+                    idem_session,
+                    project_id=context.project_id,
+                    key_hash=idem_hash,
+                )
         service_metrics.increment("ingest.rejected.rate_limited")
         logger.warning(
             "ingest_rejected rate_limited",
@@ -178,7 +234,7 @@ async def ingest_events(
                 "reason": "rate_limited",
                 "project_id": str(context.project_id),
                 "window_seconds": settings.ingest_rate_limit_window_seconds,
-                "max_requests": settings.ingest_rate_limit_requests_per_window,
+                "max_requests": effective_rate_limit,
             },
         )
         raise HTTPException(
@@ -191,13 +247,24 @@ async def ingest_events(
         )
 
     received_at = datetime.now(tz=UTC)
-    persist_result = await persist_ingest_batch(
-        session=session,
-        project_id=context.project_id,
-        batch=batch,
-        received_at=received_at,
-        persist_aggregates=not settings.ingest_async_aggregate_enabled,
-    )
+    try:
+        persist_result = await persist_ingest_batch(
+            session=session,
+            project_id=context.project_id,
+            batch=batch,
+            received_at=received_at,
+            persist_aggregates=not settings.ingest_async_aggregate_enabled,
+        )
+    except Exception:
+        if idem_reserved and idem_hash:
+            session_maker = get_session_maker(settings.database_url)
+            async with session_maker() as idem_session:
+                await ingest_reliability_repo.release_idempotency_reservation(
+                    idem_session,
+                    project_id=context.project_id,
+                    key_hash=idem_hash,
+                )
+        raise
     accepted = persist_result.accepted
     if settings.ingest_async_aggregate_enabled:
         enqueued = enqueue_ingest_aggregate_payload(
@@ -229,4 +296,13 @@ async def ingest_events(
             "accepted_events": accepted,
         },
     )
+    if idem_hash:
+        session_maker = get_session_maker(settings.database_url)
+        async with session_maker() as idem_session:
+            await ingest_reliability_repo.complete_idempotency_key(
+                idem_session,
+                project_id=context.project_id,
+                key_hash=idem_hash,
+                accepted_events=accepted,
+            )
     return IngestBatchResponse(accepted=accepted)

@@ -80,7 +80,7 @@ import {
   writeDashboardSnapshot,
 } from "./dashboardSnapshotCache";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
-import { toDashboardRoutePath } from "./dashboardRoutePath";
+import { dashboardMagicLinkHref, toDashboardRoutePath } from "./dashboardRoutePath";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
 import {
   buildOptionalGzipJsonRequest,
@@ -201,7 +201,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
-  const { hasSession: hasApiKey, authSessionResolved, sessionEmail, reloadSession: reloadDashboardAuthSession } =
+  const { hasSession: hasDashboardSession, authSessionResolved, sessionEmail, reloadSession: reloadDashboardAuthSession } =
     useDashboardAuthSession();
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
@@ -297,7 +297,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [
-    hasApiKey,
+    hasDashboardSession,
     dashboardRoutePath,
     absoluteWindow,
     windowMinutes,
@@ -324,7 +324,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   // Keep settings and capabilities in sync with the same refresh cadence as traffic data.
   useEffect(() => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return;
     }
     let cancelled = false;
@@ -371,10 +371,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       controller.abort();
     };
-  }, [hasApiKey, reloadDashboardAuthSession]);
+  }, [hasDashboardSession, reloadDashboardAuthSession]);
 
   useEffect(() => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return;
     }
     const controller = new AbortController();
@@ -628,7 +628,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       controller.abort();
     };
   }, [
-    hasApiKey,
+    hasDashboardSession,
     dashboardRoutePath,
     method,
     statusClass,
@@ -672,7 +672,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hasApiKey || !authSessionResolved) {
+    if (!hasDashboardSession || !authSessionResolved) {
       setLiveUpdatesConnected(false);
       liveWsHandshakeFailuresRef.current = 0;
       dashboardQueuedRefreshRef.current = false;
@@ -821,10 +821,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         liveSocketRef.current = null;
       }
     };
-  }, [hasApiKey, authSessionResolved, reloadDashboardAuthSession]);
+  }, [hasDashboardSession, authSessionResolved, reloadDashboardAuthSession]);
 
   useEffect(() => {
-    if (!hasApiKey || liveUpdatesConnected) {
+    if (!hasDashboardSession || liveUpdatesConnected) {
       if (liveFallbackRefreshTimer.current) {
         clearInterval(liveFallbackRefreshTimer.current);
         liveFallbackRefreshTimer.current = null;
@@ -847,10 +847,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         liveFallbackRefreshTimer.current = null;
       }
     };
-  }, [hasApiKey, liveUpdatesConnected]);
+  }, [hasDashboardSession, liveUpdatesConnected]);
 
   useEffect(() => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return;
     }
     const onVisibilityChange = () => {
@@ -863,7 +863,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [hasApiKey]);
+  }, [hasDashboardSession]);
 
   const rawItems = useMemo(
     () =>
@@ -1035,7 +1035,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const saveAlertSettings = useCallback(
     async (next: AlertSettings): Promise<boolean> => {
-      if (!hasApiKey) {
+      if (!hasDashboardSession) {
         return false;
       }
       setAlertSettingsSaving(true);
@@ -1063,7 +1063,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAlertSettingsSaving(false);
       }
     },
-    [hasApiKey],
+    [hasDashboardSession],
   );
 
   const updateAlertSettingsDraft = useCallback((next: AlertSettings) => {
@@ -1072,7 +1072,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const saveThemePreference = useCallback(
     async (next: ThemePreference): Promise<boolean> => {
-      if (!hasApiKey) {
+      if (!hasDashboardSession) {
         return false;
       }
       setThemeSettingsSaving(true);
@@ -1101,12 +1101,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setThemeSettingsSaving(false);
       }
     },
-    [excludeAutopulseTraffic, hasApiKey],
+    [excludeAutopulseTraffic, hasDashboardSession],
   );
 
   const saveExcludeAutopulseTraffic = useCallback(
     async (next: boolean): Promise<boolean> => {
-      if (!hasApiKey) {
+      if (!hasDashboardSession) {
         return false;
       }
       setThemeSettingsSaving(true);
@@ -1136,12 +1136,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setThemeSettingsSaving(false);
       }
     },
-    [hasApiKey, themePreference],
+    [hasDashboardSession, themePreference],
   );
 
   const saveRetentionSettings = useCallback(
     async (next: RetentionSettings): Promise<boolean> => {
-      if (!hasApiKey) {
+      if (!hasDashboardSession) {
         return false;
       }
       try {
@@ -1171,11 +1171,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return false;
       }
     },
-    [hasApiKey],
+    [hasDashboardSession],
   );
 
   const refreshApiKeys = useCallback(async (): Promise<void> => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       setApiKeys([]);
       return;
     }
@@ -1187,10 +1187,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
     const payload = (await response.json()) as DashboardApiKeyListResponse;
     setApiKeys(payload.items ?? []);
-  }, [hasApiKey]);
+  }, [hasDashboardSession]);
 
   const issueApiKey = useCallback(async (): Promise<boolean> => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return false;
     }
     const response = await fetch(buildApiUrl("/dashboard/auth/api-keys/issue"), {
@@ -1204,10 +1204,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setLastIssuedApiKey(payload.api_key);
     await refreshApiKeys();
     return true;
-  }, [hasApiKey, refreshApiKeys]);
+  }, [hasDashboardSession, refreshApiKeys]);
 
   const completeOnboarding = useCallback(async (): Promise<boolean> => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return false;
     }
     const response = await fetch(buildApiUrl("/dashboard/auth/onboarding-complete"), {
@@ -1220,11 +1220,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const payload = (await response.json()) as DashboardOnboardingStatusResponse;
     setOnboardingStatus(payload);
     return true;
-  }, [hasApiKey]);
+  }, [hasDashboardSession]);
 
   const rotateApiKey = useCallback(
     async (keyId: string): Promise<boolean> => {
-      if (!hasApiKey) {
+      if (!hasDashboardSession) {
         return false;
       }
       const response = await fetch(buildApiUrl("/dashboard/auth/api-keys/rotate"), {
@@ -1241,12 +1241,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       await refreshApiKeys();
       return true;
     },
-    [hasApiKey, refreshApiKeys],
+    [hasDashboardSession, refreshApiKeys],
   );
 
   const revokeApiKey = useCallback(
     async (keyId: string): Promise<boolean> => {
-      if (!hasApiKey) {
+      if (!hasDashboardSession) {
         return false;
       }
       const response = await fetch(buildApiUrl("/dashboard/auth/api-keys/revoke"), {
@@ -1261,8 +1261,24 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       await refreshApiKeys();
       return true;
     },
-    [hasApiKey, refreshApiKeys],
+    [hasDashboardSession, refreshApiKeys],
   );
+
+  const signOutDashboard = useCallback(async (): Promise<void> => {
+    try {
+      await fetch(buildApiUrl("/dashboard/auth/logout"), {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      await reloadDashboardAuthSession();
+      if (typeof window !== "undefined") {
+        window.location.assign(dashboardMagicLinkHref());
+      }
+    }
+  }, [reloadDashboardAuthSession]);
 
   const sqlFilterStorageKey = useMemo(
     () => `autopulse.sql-filter-presets.${(sessionEmail ?? "anonymous").toLowerCase()}`,
@@ -1384,7 +1400,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [savedSqlFilterPresets]);
 
   const validateSqlFilterDraft = useCallback(async (): Promise<LogQueryValidationResponse | null> => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return null;
     }
     const wrapped = wrapEventSqlWhereForValidate(sqlFilterDraft);
@@ -1421,7 +1437,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     } finally {
       setSqlFilterValidating(false);
     }
-  }, [hasApiKey, sqlFilterDraft]);
+  }, [hasDashboardSession, sqlFilterDraft]);
 
   const applySqlFilter = useCallback(async (): Promise<boolean> => {
     const result = await validateSqlFilterDraft();
@@ -1555,7 +1571,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [errorGroups]);
 
   useEffect(() => {
-    if (!hasApiKey) {
+    if (!hasDashboardSession) {
       return;
     }
     if (dashboardRoutePath !== "/diagnosis") {
@@ -1627,7 +1643,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       controller.abort();
     };
   }, [
-    hasApiKey,
+    hasDashboardSession,
     dashboardRoutePath,
     recentErrorsPreview,
     toIsoWindow,
@@ -1795,7 +1811,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     (): DashboardDataContextValue => ({
-      hasApiKey,
+      hasDashboardSession,
       sessionEmail,
       authSessionResolved,
       windowMinutes,
@@ -1877,6 +1893,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
       refreshApiKeys,
+      signOutDashboard,
       completeOnboarding,
       issueApiKey,
       rotateApiKey,
@@ -1921,7 +1938,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       M5_ALERT_DEFAULTS,
     }),
     [
-      hasApiKey,
+      hasDashboardSession,
       sessionEmail,
       authSessionResolved,
       windowMinutes,
@@ -1989,6 +2006,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
       refreshApiKeys,
+      signOutDashboard,
       completeOnboarding,
       issueApiKey,
       rotateApiKey,

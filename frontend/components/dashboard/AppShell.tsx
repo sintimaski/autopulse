@@ -10,6 +10,7 @@ import {
   LayoutTemplate,
   PanelLeft,
   PanelLeftClose,
+  Rocket,
   RotateCw,
   Settings,
   Stethoscope,
@@ -25,11 +26,12 @@ type NavItem = { href: string; label: string; Icon: LucideIcon };
 
 const BASE_NAV: readonly NavItem[] = [
   { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
-  { href: "/widgets-showcase", label: "Widget gallery", Icon: LayoutTemplate },
   { href: "/requests", label: "Requests", Icon: ScrollText },
   { href: "/alerts", label: "Alerts", Icon: Bell },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
+  { href: "/onboarding", label: "Onboarding", Icon: Rocket },
   { href: "/settings", label: "Settings", Icon: Settings },
+  { href: "/widgets-showcase", label: "Widget gallery", Icon: LayoutTemplate },
 ] as const;
 
 export function DashboardAppShell({
@@ -230,7 +232,7 @@ export function DashboardAppShell({
                 ping.
               </>
             ) : (
-              <>Events are scoped to your project API key.</>
+              <>Events are scoped to your project ingest API key.</>
             )}
           </footer>
         </div>

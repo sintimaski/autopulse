@@ -261,7 +261,7 @@ def _request_payload(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate synthetic traffic for the SDK test app.")
-    parser.add_argument("--base-url", default="http://localhost:8010")
+    parser.add_argument("--base-url", default="http://localhost:8000")
     parser.add_argument("--duration-seconds", type=int, default=90)
     parser.add_argument("--rps", type=int, default=6)
     parser.add_argument("--seed", type=int, default=42)

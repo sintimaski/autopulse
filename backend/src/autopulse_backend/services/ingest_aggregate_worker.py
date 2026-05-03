@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_session_maker
 from autopulse_backend.metrics import service_metrics
+from autopulse_backend.repositories import ingest_reliability as ingest_reliability_repo
 from autopulse_backend.repositories.aggregates import (
     ErrorGroupAggregateDelta,
     MetricBucketDelta,
@@ -91,6 +92,19 @@ async def _run_worker(
                 )
             else:
                 service_metrics.increment("ingest.aggregate_worker.dead_lettered")
+                try:
+                    async with session_maker() as dl_session:
+                        await ingest_reliability_repo.insert_aggregate_dead_letter(
+                            dl_session,
+                            metric_bucket_deltas=payload.metric_bucket_deltas,
+                            error_group_deltas=payload.error_group_deltas,
+                            last_error="ingest_aggregate_worker_max_retries",
+                        )
+                except Exception:
+                    logger.exception(
+                        "ingest_aggregate_dead_letter_persist_failed",
+                        extra={"event": "ingest_aggregate_dead_letter_persist_failed"},
+                    )
 
 
 def start_ingest_aggregate_worker(

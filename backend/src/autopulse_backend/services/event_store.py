@@ -141,6 +141,11 @@ class DuckDbEventStore:
             conn.execute(sql, params_list).fetchone(),
         )
 
+    def ping_sync(self) -> None:
+        """Synchronous health probe for readiness checks (uses the writer connection)."""
+        with self._write_lock:
+            self._write_conn.execute("SELECT 1")
+
     def _ensure_schema(self) -> None:
         self._write_conn.execute(
             """

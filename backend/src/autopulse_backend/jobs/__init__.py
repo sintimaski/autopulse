@@ -23,7 +23,13 @@ from autopulse_backend.maintenance.retention import (
 )
 from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
 from autopulse_backend.models import Base
+from autopulse_backend.repositories import ingest_reliability as ingest_reliability_repo
+from autopulse_backend.repositories.aggregates import (
+    upsert_error_group_aggregates,
+    upsert_metric_buckets,
+)
 from autopulse_backend.repositories.runtime_controls import acquire_scheduler_lease
+from autopulse_backend.services.aggregate_delta_codec import decode_aggregate_payload
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +95,35 @@ async def run_alerts_once(
     session_maker = get_session_maker(resolved_settings.database_url)
     async with session_maker() as session:
         return await evaluate_alerts_once(session, resolved_settings, sender=resolved_sender)
+
+
+async def run_replay_aggregate_dead_letters_once(
+    *, settings: Settings | None = None, limit: int = 50
+) -> int:
+    """Replay persisted aggregate dead letters (operator recovery)."""
+    resolved_settings = settings or get_settings()
+    await _ensure_sqlite_schema_from_models(resolved_settings.database_url)
+    session_maker = get_session_maker(resolved_settings.database_url)
+    replayed = 0
+    async with session_maker() as session:
+        rows = await ingest_reliability_repo.fetch_pending_dead_letters(session, limit=limit)
+        for row in rows:
+            try:
+                metrics, errors = decode_aggregate_payload(row.payload)
+                if not metrics and not errors:
+                    await ingest_reliability_repo.mark_dead_letter_replayed(session, row.id)
+                    replayed += 1
+                    continue
+                await upsert_metric_buckets(session, metrics)
+                await upsert_error_group_aggregates(session, errors)
+                await ingest_reliability_repo.mark_dead_letter_replayed(session, row.id)
+                replayed += 1
+            except Exception:
+                logger.exception(
+                    "replay_aggregate_dead_letter_failed",
+                    extra={"dead_letter_id": row.id},
+                )
+    return replayed
 
 
 async def run_retention_once(
@@ -431,7 +466,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run AutoPulse background jobs.")
     parser.add_argument(
         "command",
-        choices=("alerts-once", "retention-once"),
+        choices=("alerts-once", "retention-once", "replay-aggregate-dead-letters-once"),
         help="Which one-off job to run.",
     )
     return parser
@@ -444,6 +479,11 @@ async def _run_command(command: str) -> int:
         return await _record_job_execution(
             job_name="retention",
             operation=lambda: run_retention_once(dispose_engine_after=True),
+        )
+    if command == "replay-aggregate-dead-letters-once":
+        return await _record_job_execution(
+            job_name="replay_aggregate_dead_letters",
+            operation=run_replay_aggregate_dead_letters_once,
         )
     raise ValueError(f"Unsupported command: {command}")
 
