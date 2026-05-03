@@ -752,3 +752,29 @@ def test_dashboard_onboarding_complete_requires_event_then_persists(
         status = client.get("/dashboard/auth/onboarding-status")
         assert status.status_code == 200
         assert status.json()["onboarding_completed"] is True
+
+
+def test_dashboard_updates_websocket_subscribes_after_magic_link(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Authenticated dashboard WebSocket should receive ``subscribed`` after upgrade (HTTP 101)."""
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+        expected_project_id = verify_response.json()["project_id"]
+
+        with client.websocket_connect("/dashboard/updates") as ws:
+            first = ws.receive_json()
+            assert first["type"] == "subscribed"
+            assert first["project_id"] == expected_project_id

@@ -14,13 +14,14 @@ router = APIRouter()
 
 @router.websocket("/updates")
 async def dashboard_updates(websocket: WebSocket) -> None:
+    """Live dashboard ticks + ingest fan-out.
+
+    Authenticate **after** ``accept()`` so failed auth closes an established WebSocket
+    (HTTP 101 in access logs) instead of rejecting the upgrade (logged as HTTP 403 by
+    Uvicorn/Starlette when ``close`` is sent before ``accept``).
+    """
     settings = get_settings()
-    session_cookie = websocket.cookies.get(settings.dashboard_auth_session_cookie_name)
-    if not session_cookie:
-        await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION, reason="Missing dashboard session"
-        )
-        return
+    await websocket.accept()
     session_maker = get_session_maker()
     async with session_maker() as session:
         auth_session = await get_dashboard_auth_session(
@@ -28,12 +29,12 @@ async def dashboard_updates(websocket: WebSocket) -> None:
         )
         if auth_session is None:
             await websocket.close(
-                code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or expired dashboard session"
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="Missing or invalid dashboard session",
             )
             return
         context = ProjectContext(project_id=auth_session.project_id)
 
-    await websocket.accept()
     project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
     await websocket.send_text(
         json.dumps({"type": "subscribed", "project_id": str(context.project_id)}),
@@ -52,12 +53,7 @@ async def dashboard_updates(websocket: WebSocket) -> None:
 @router.websocket("/log-query/stream")
 async def dashboard_log_query_stream(websocket: WebSocket) -> None:
     settings = get_settings()
-    session_cookie = websocket.cookies.get(settings.dashboard_auth_session_cookie_name)
-    if not session_cookie:
-        await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION, reason="Missing dashboard session"
-        )
-        return
+    await websocket.accept()
     session_maker = get_session_maker()
     async with session_maker() as session:
         auth_session = await get_dashboard_auth_session(
@@ -66,11 +62,10 @@ async def dashboard_log_query_stream(websocket: WebSocket) -> None:
         if auth_session is None:
             await websocket.close(
                 code=status.WS_1008_POLICY_VIOLATION,
-                reason="Invalid or expired dashboard session",
+                reason="Missing or invalid dashboard session",
             )
             return
         context = ProjectContext(project_id=auth_session.project_id)
-    await websocket.accept()
     project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
     try:
         while True:

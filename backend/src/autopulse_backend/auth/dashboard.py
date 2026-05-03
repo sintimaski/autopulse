@@ -6,6 +6,7 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from http.cookies import CookieError, SimpleCookie
 from typing import Annotated
 from urllib.parse import urlencode
 from uuid import UUID
@@ -75,6 +76,35 @@ def _forbidden(message: str = "Email is not allowed for dashboard access") -> HT
 
 def _cookie_name(settings: Settings) -> str:
     return settings.dashboard_auth_session_cookie_name or "autopulse_dashboard_session"
+
+
+def _raw_dashboard_session_token_from_request(
+    request: HTTPConnection,
+    settings: Settings,
+) -> str | None:
+    """Resolve the dashboard session cookie value.
+
+    Starlette's ``request.cookies`` is normally enough; some WebSocket upgrade paths
+    expose the raw ``Cookie`` header more reliably than the parsed mapping, so we
+    fall back to parsing the header manually.
+    """
+
+    name = _cookie_name(settings)
+    raw = request.cookies.get(name)
+    if raw:
+        return raw
+    header = request.headers.get("cookie")
+    if not header:
+        return None
+    jar = SimpleCookie()
+    try:
+        jar.load(header)
+    except CookieError:
+        return None
+    morsel = jar.get(name)
+    if morsel is None:
+        return None
+    return morsel.value
 
 
 def _request_is_secure(request: HTTPConnection) -> bool:
@@ -504,7 +534,7 @@ async def get_dashboard_auth_session(
     settings: Settings,
     request: HTTPConnection,
 ) -> DashboardAuthSession | None:
-    raw_token = request.cookies.get(_cookie_name(settings))
+    raw_token = _raw_dashboard_session_token_from_request(request, settings)
     if not raw_token:
         return None
     now = _now()
@@ -589,7 +619,7 @@ async def revoke_current_dashboard_session(
     session: AsyncSession,
     settings: Settings,
 ) -> bool:
-    raw_token = request.cookies.get(_cookie_name(settings))
+    raw_token = _raw_dashboard_session_token_from_request(request, settings)
     if not raw_token:
         return False
     now = _now()

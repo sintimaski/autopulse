@@ -13,6 +13,10 @@ export const LIVE_REFRESH_BACKOFF_DURATION_MS = 20_000;
 /** Elapsed time above this after a successful response triggers WS refresh backoff. */
 export const LIVE_FETCH_SLOW_MS = 7000;
 export const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
+/** When the WS never reaches ``open`` (e.g. HTTP 403 on upgrade), avoid hammering the server every 2s. */
+export const DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS = 2_000;
+export const DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_CAP_MS = 60_000;
+export const DASHBOARD_WS_HANDSHAKE_FAIL_EXP_CAP = 5;
 export const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
   const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
   const parsedSeconds = Number(raw);

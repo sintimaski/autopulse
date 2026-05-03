@@ -86,6 +86,9 @@ import {
   buildOptionalGzipJsonRequest,
   DASHBOARD_FETCH_TIMEOUT_MS,
   DASHBOARD_REFRESH_INTERVAL_MS,
+  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS,
+  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_CAP_MS,
+  DASHBOARD_WS_HANDSHAKE_FAIL_EXP_CAP,
   DASHBOARD_WS_RECONNECT_DELAY_MS,
   fetchWithTimeout,
   LIVE_FETCH_SLOW_MS,
@@ -198,7 +201,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
-  const { hasSession: hasApiKey, authSessionResolved, sessionEmail } =
+  const { hasSession: hasApiKey, authSessionResolved, sessionEmail, reloadSession: reloadDashboardAuthSession } =
     useDashboardAuthSession();
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
@@ -217,6 +220,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const liveSocketRef = useRef<WebSocket | null>(null);
   const liveLastRefreshAtRef = useRef(0);
   const liveWsBackoffUntilRef = useRef(0);
+  const liveWsHandshakeFailuresRef = useRef(0);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
   const dashboardFetchInFlightRef = useRef(false);
@@ -333,6 +337,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           DASHBOARD_FETCH_TIMEOUT_MS,
           controller.signal,
         );
+        if (bootstrapResponse.status === 401) {
+          reloadDashboardAuthSession();
+        }
         const results = [{ endpoint: "overview", response: bootstrapResponse }] as DashboardFetchResult[];
 
         const fetchError = buildDashboardFetchError(results);
@@ -364,7 +371,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       controller.abort();
     };
-  }, [hasApiKey]);
+  }, [hasApiKey, reloadDashboardAuthSession]);
 
   useEffect(() => {
     if (!hasApiKey) {
@@ -505,6 +512,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           DASHBOARD_FETCH_TIMEOUT_MS,
           controller.signal,
         );
+        if (batchResponse.status === 401) {
+          reloadDashboardAuthSession();
+        }
         const elapsedMs = Date.now() - fetchStartedAt;
         if (!isCancelled()) {
           const status = batchResponse.status;
@@ -637,6 +647,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     serverServiceQuery,
     sqlFilterEnabled,
     sqlFilterApplied,
+    reloadDashboardAuthSession,
   ]);
 
   useEffect(() => {
@@ -661,8 +672,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!hasApiKey) {
+    if (!hasApiKey || !authSessionResolved) {
       setLiveUpdatesConnected(false);
+      liveWsHandshakeFailuresRef.current = 0;
       dashboardQueuedRefreshRef.current = false;
       if (liveReconnectTimer.current) {
         clearTimeout(liveReconnectTimer.current);
@@ -723,6 +735,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
+        let opened = false;
         const socket = new WebSocket(buildUpdatesWebsocketUrl());
         liveSocketRef.current = socket;
         socket.onopen = () => {
@@ -730,6 +743,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             socket.close();
             return;
           }
+          opened = true;
+          liveWsHandshakeFailuresRef.current = 0;
           setLiveUpdatesConnected(true);
         };
         socket.onmessage = (event) => {
@@ -750,7 +765,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           }
           scheduleLiveRefreshFromWebSocket();
         };
-        socket.onclose = () => {
+        socket.onclose = (event: CloseEvent) => {
           if (cancelled) {
             return;
           }
@@ -758,9 +773,28 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           if (liveReconnectTimer.current) {
             clearTimeout(liveReconnectTimer.current);
           }
+          // 1008: server policy close after accept (auth failure). Failed HTTP upgrade uses !opened.
+          const authRejected = !opened || event.code === 1008;
+          if (authRejected) {
+            liveWsHandshakeFailuresRef.current += 1;
+            if (liveWsHandshakeFailuresRef.current === 2) {
+              reloadDashboardAuthSession();
+            }
+          } else {
+            liveWsHandshakeFailuresRef.current = 0;
+          }
+          const failures = liveWsHandshakeFailuresRef.current;
+          const delayMs =
+            failures > 0
+              ? Math.min(
+                  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_CAP_MS,
+                  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS *
+                    2 ** Math.min(failures - 1, DASHBOARD_WS_HANDSHAKE_FAIL_EXP_CAP),
+                )
+              : DASHBOARD_WS_RECONNECT_DELAY_MS;
           liveReconnectTimer.current = setTimeout(() => {
             connect();
-          }, DASHBOARD_WS_RECONNECT_DELAY_MS);
+          }, delayMs);
         };
         socket.onerror = () => {
           // onclose handles reconnect/fallback.
@@ -787,7 +821,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         liveSocketRef.current = null;
       }
     };
-  }, [hasApiKey]);
+  }, [hasApiKey, authSessionResolved, reloadDashboardAuthSession]);
 
   useEffect(() => {
     if (!hasApiKey || liveUpdatesConnected) {
