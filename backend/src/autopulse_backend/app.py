@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from autopulse_backend.api.router import api_router
 from autopulse_backend.api.routes.health import router as health_router
@@ -11,6 +12,7 @@ from autopulse_backend.core.config import get_settings
 from autopulse_backend.ingestion.body_size import IngestBodySizeLimitMiddleware
 from autopulse_backend.lifespan import lifespan
 from autopulse_backend.middleware.dashboard_origin import DashboardOriginEnforcementMiddleware
+from autopulse_backend.middleware.gzip_request_body import GzipRequestBodyMiddleware
 
 
 def create_app() -> FastAPI:
@@ -28,6 +30,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Decode gzip-compressed request bodies (e.g. dashboard JSON) before ingest limits / routes.
+    app.add_middleware(GzipRequestBodyMiddleware)
+    # Compress JSON responses when the client accepts gzip (added last so it wraps the outer stack).
+    app.add_middleware(GZipMiddleware, minimum_size=512, compresslevel=5)
 
     app.include_router(health_router)
     app.include_router(api_router)

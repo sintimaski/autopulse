@@ -83,6 +83,7 @@ import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
 import {
+  buildOptionalGzipJsonRequest,
   DASHBOARD_FETCH_TIMEOUT_MS,
   DASHBOARD_REFRESH_INTERVAL_MS,
   DASHBOARD_WS_RECONNECT_DELAY_MS,
@@ -492,13 +493,14 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           error_groups: { limit: errorGroupsLimitForRoute, offset: errorGroupsOffsetForRoute },
           alert_dispatches: { limit: 25, offset: 0 },
         };
+        const queryBody = await buildOptionalGzipJsonRequest(scopeRequest);
         const batchResponse = await fetchWithTimeout(
           buildApiUrl("/dashboard/query"),
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: queryBody.headers,
             credentials: "include",
-            body: JSON.stringify(scopeRequest),
+            body: queryBody.body,
           },
           DASHBOARD_FETCH_TIMEOUT_MS,
           controller.signal,
@@ -1538,51 +1540,55 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const minLatency = Number(minLatencyMs);
     const maxLatency = Number(maxLatencyMs);
     const controller = new AbortController();
-    void fetchWithTimeout(
-      buildApiUrl("/dashboard/query"),
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          scope: {
-            from_timestamp: toIsoWindow?.from,
-            to_timestamp: toIsoWindow?.to,
-            window_minutes: windowMinutes,
-            method: method !== "ALL" ? method : undefined,
-            status_class: statusClass !== "ALL" ? Number(statusClass) : undefined,
-            path_contains: pathQuery.trim() || undefined,
-            environments: normalizeCommaSeparated(serverEnvironmentQuery) || undefined,
-            services: normalizeCommaSeparated(serverServiceQuery) || undefined,
-            min_latency_ms:
-              minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0
-                ? minLatency
-                : undefined,
-            max_latency_ms:
-              maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0
-                ? maxLatency
-                : undefined,
-            event_sql_filter:
-              sqlFilterEnabled && sqlFilterApplied.trim() ? sqlFilterApplied.trim() : undefined,
-          },
-          requests: { limit: 1, offset: 0 },
-          error_groups: { limit: 1, offset: 0 },
-          diagnosis_error_group_key: groupKey,
-          diagnosis_error_group_events: { limit: 20, offset: 0 },
-        } satisfies DashboardDataQueryRequest),
-      },
-      DASHBOARD_FETCH_TIMEOUT_MS,
-      controller.signal,
-    )
-      .then((response) => (response.ok ? (response.json() as Promise<DashboardDataQueryResponse>) : null))
-      .then((payload) => {
-        if (payload?.diagnosis_error_group_events) {
-          setDiagnosisErrorGroupEvents(payload.diagnosis_error_group_events);
-        }
-      })
-      .catch(() => {
-        setDiagnosisErrorGroupEvents(null);
-      });
+    void (async () => {
+      const diagnosisPayload = {
+        scope: {
+          from_timestamp: toIsoWindow?.from,
+          to_timestamp: toIsoWindow?.to,
+          window_minutes: windowMinutes,
+          method: method !== "ALL" ? method : undefined,
+          status_class: statusClass !== "ALL" ? Number(statusClass) : undefined,
+          path_contains: pathQuery.trim() || undefined,
+          environments: normalizeCommaSeparated(serverEnvironmentQuery) || undefined,
+          services: normalizeCommaSeparated(serverServiceQuery) || undefined,
+          min_latency_ms:
+            minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0
+              ? minLatency
+              : undefined,
+          max_latency_ms:
+            maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0
+              ? maxLatency
+              : undefined,
+          event_sql_filter:
+            sqlFilterEnabled && sqlFilterApplied.trim() ? sqlFilterApplied.trim() : undefined,
+        },
+        requests: { limit: 1, offset: 0 },
+        error_groups: { limit: 1, offset: 0 },
+        diagnosis_error_group_key: groupKey,
+        diagnosis_error_group_events: { limit: 20, offset: 0 },
+      } satisfies DashboardDataQueryRequest;
+      const { body, headers } = await buildOptionalGzipJsonRequest(diagnosisPayload);
+      void fetchWithTimeout(
+        buildApiUrl("/dashboard/query"),
+        {
+          method: "POST",
+          headers,
+          credentials: "include",
+          body,
+        },
+        DASHBOARD_FETCH_TIMEOUT_MS,
+        controller.signal,
+      )
+        .then((response) => (response.ok ? (response.json() as Promise<DashboardDataQueryResponse>) : null))
+        .then((payload) => {
+          if (payload?.diagnosis_error_group_events) {
+            setDiagnosisErrorGroupEvents(payload.diagnosis_error_group_events);
+          }
+        })
+        .catch(() => {
+          setDiagnosisErrorGroupEvents(null);
+        });
+    })();
     return () => {
       controller.abort();
     };

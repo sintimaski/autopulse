@@ -1,4 +1,6 @@
 import asyncio
+import gzip
+import json as json_std
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,6 +22,21 @@ from autopulse._monitor import (
     _stable_error_hash,
     monitor,
 )
+
+
+def _resolved_json_payload(
+    *,
+    json: dict[str, Any] | None,
+    content: bytes | None,
+    headers: dict[str, str],
+) -> dict[str, Any]:
+    if json is not None:
+        return json
+    if content is None:
+        return {}
+    enc = (headers or {}).get("Content-Encoding", "")
+    raw = gzip.decompress(content) if enc.lower().startswith("gzip") else content
+    return json_std.loads(raw.decode("utf-8"))
 
 
 def test_infrastructure_widget_payload_converts_network_bytes_to_mb() -> None:
@@ -117,15 +134,19 @@ class _FailingClient:
         self,
         url: str,
         *,
-        json: dict[str, Any],
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
         headers: dict[str, str],
+        **_: Any,
     ) -> httpx.Response:
         self.calls += 1
-        self.sent_payloads.append({"url": url, "json": json, "headers": headers})
+        payload = _resolved_json_payload(json=json, content=content, headers=headers)
+        self.sent_payloads.append({"url": url, "json": payload, "headers": headers})
         if self.calls <= self.failures_before_success:
             raise httpx.ConnectError("temporary failure")
         request = httpx.Request("POST", url)
-        return httpx.Response(200, request=request, json={"accepted": len(json.get("events", []))})
+        accepted = len(payload.get("events", []))
+        return httpx.Response(200, request=request, json={"accepted": accepted})
 
 
 @dataclass
@@ -136,8 +157,10 @@ class _AlwaysFailingClient:
         self,
         url: str,
         *,
-        json: dict[str, Any],
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
         headers: dict[str, str],
+        **_: Any,
     ) -> httpx.Response:
         self.calls += 1
         raise httpx.ConnectError("backend unavailable")
@@ -151,8 +174,10 @@ class _ErrorStatusClient:
         self,
         url: str,
         *,
-        json: dict[str, Any],
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
         headers: dict[str, str],
+        **_: Any,
     ) -> httpx.Response:
         self.calls += 1
         request = httpx.Request("POST", url)

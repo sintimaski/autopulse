@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import hashlib
+import json
 import os
 import re
 import sys
@@ -20,6 +22,9 @@ from starlette.responses import Response
 
 from autopulse._infrastructure import InfrastructureSampler
 from autopulse.widgets import BaseDashboardWidget, serialize_dashboard_widgets
+
+# Gzip ingest bodies at or above this UTF-8 JSON size to cut bandwidth (server decompresses).
+_INGEST_JSON_GZIP_MIN_BYTES = 2048
 
 DEFAULT_SCRUB_KEYS = frozenset(
     {
@@ -355,6 +360,15 @@ class _EventDispatcher:
             return
         headers = {"Authorization": f"Bearer {self._config.api_key}"}
         payload = {"events": batch, "sdk_version": _sdk_version()}
+        body_json = json.dumps(payload).encode("utf-8")
+        post_headers = dict(headers)
+        post_kwargs: dict[str, Any]
+        if len(body_json) >= _INGEST_JSON_GZIP_MIN_BYTES:
+            post_headers["Content-Type"] = "application/json"
+            post_headers["Content-Encoding"] = "gzip"
+            post_kwargs = {"content": gzip.compress(body_json, compresslevel=6)}
+        else:
+            post_kwargs = {"json": payload}
         for attempt in range(self._config.max_retries + 1):
             try:
                 _debug_log(
@@ -364,8 +378,8 @@ class _EventDispatcher:
                 )
                 response = await self._client.post(
                     self._config.ingest_url,
-                    json=payload,
-                    headers=headers,
+                    headers=post_headers,
+                    **post_kwargs,
                 )
                 response.raise_for_status()
                 _debug_log(

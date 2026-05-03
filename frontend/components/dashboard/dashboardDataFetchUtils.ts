@@ -1,5 +1,8 @@
 import type { DashboardWidgetsResponse } from "./dashboardTypes";
 
+/** Below this UTF-8 size, send uncompressed JSON (gzip framing often grows tiny payloads). */
+export const DASHBOARD_GZIP_JSON_MIN_BYTES = 2048;
+
 export const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
 export const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 export const MAX_WIDGET_POINTS_TOTAL = 2400;
@@ -18,6 +21,33 @@ export const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
   }
   return 5_000;
 })();
+
+/**
+ * Build a `fetch` body + headers for dashboard JSON POSTs. Uses gzip when
+ * `CompressionStream` is available and the JSON is large enough to benefit.
+ */
+export async function buildOptionalGzipJsonRequest(
+  value: unknown,
+): Promise<{ body: Blob | string; headers: Record<string, string> }> {
+  const json = JSON.stringify(value);
+  const utf8Bytes = new TextEncoder().encode(json).length;
+  const canGzip = typeof CompressionStream !== "undefined" && utf8Bytes >= DASHBOARD_GZIP_JSON_MIN_BYTES;
+  if (!canGzip) {
+    return { body: json, headers: { "Content-Type": "application/json" } };
+  }
+  const stream = new CompressionStream("gzip");
+  const writer = stream.writable.getWriter();
+  await writer.write(new TextEncoder().encode(json));
+  await writer.close();
+  const compressed = await new Response(stream.readable).arrayBuffer();
+  return {
+    body: new Blob([compressed]),
+    headers: {
+      "Content-Type": "application/json",
+      "Content-Encoding": "gzip",
+    },
+  };
+}
 
 export function fetchWithTimeout(
   input: string,
