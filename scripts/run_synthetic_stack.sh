@@ -4,14 +4,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "Building frontend..."
-npm --prefix frontend run build
-
-echo "Loading backend/.env and starting synthetic app..."
+echo "Loading backend/.env…"
 set -a
 # shellcheck disable=SC1091
 source backend/.env
 set +a
+
+if [ -f .env.autopulse ]; then
+  echo "Loading .env.autopulse (overrides NEXT_PUBLIC_* / embedded key from first SDK boot)…"
+  set -a
+  # shellcheck disable=SC1091
+  source .env.autopulse
+  set +a
+fi
+
+echo "Building frontend…"
+npm --prefix frontend run build
 
 # Force DuckDB for synthetic-stack runs so raw events/widget points never land in SQLite.
 export AUTOPULSE_EVENT_STORE="duckdb"

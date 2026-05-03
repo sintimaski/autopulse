@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shlex
 import subprocess  # nosec B404
@@ -15,10 +16,160 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 
+_LOG = logging.getLogger(__name__)
+
+# Public default for zero-config local demos. For anything beyond loopback-trusted
+# dev, set AUTOPULSE_EMBEDDED_API_KEY to a random ap_live_<key_id>_<secret> value
+# (same shape as issued keys) so ingest is not gated by a repo-known bearer token.
 DEFAULT_EMBEDDED_API_KEY = "ap_live_embeddedlocal_localdevsecret"
 DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./autopulse.db"
 DEFAULT_MOUNT_PREFIX = "/autopulse"
 DEFAULT_PROJECT_NAME = "AutoPulse Embedded Project"
+
+# Single hand-off file at repo cwd (gitignored): embedded bearer + Next public
+# keys for one `source`.
+DEFAULT_ENV_AUTOPULSE_PATH = Path(".env.autopulse")
+# Legacy single-line key (still read if present).
+LEGACY_EMBEDDED_KEY_FILE = Path(".autopulse") / "embedded-api-key"
+_DOTENV_APPLY_KEYS = frozenset(
+    {
+        "AUTOPULSE_EMBEDDED_API_KEY",
+        "NEXT_PUBLIC_AUTOPULSE_API_KEY",
+        "NEXT_PUBLIC_AUTOPULSE_API_BASE_URL",
+    }
+)
+
+
+def _embedded_startup_ingest_ping_enabled() -> bool:
+    raw = os.environ.get("AUTOPULSE_EMBEDDED_STARTUP_INGEST")
+    if raw is None:
+        return True
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_autopulse_path() -> Path:
+    raw = os.environ.get("AUTOPULSE_ENV_AUTOPULSE_FILE", "").strip()
+    return Path(raw).expanduser() if raw else DEFAULT_ENV_AUTOPULSE_PATH
+
+
+def _parse_dotenv_lines(content: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in content.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("export "):
+            s = s[7:].strip()
+        if "=" not in s:
+            continue
+        key, _, val = s.partition("=")
+        key = key.strip()
+        val = val.strip().strip('"').strip("'")
+        if key:
+            out[key] = val
+    return out
+
+
+def _apply_env_autopulse_file_defaults(path: Path) -> None:
+    """Load optional ``.env.autopulse`` into the process.
+
+    Uses ``setdefault`` only, so explicit runtime env still wins.
+    """
+    if not path.is_file():
+        return
+    try:
+        parsed = _parse_dotenv_lines(path.read_text(encoding="utf-8"))
+    except OSError:
+        return
+    for key in _DOTENV_APPLY_KEYS:
+        val = parsed.get(key, "").strip()
+        if val:
+            os.environ.setdefault(key, val)
+
+
+def _read_embedded_key_from_files(env_path: Path) -> str | None:
+    from autopulse_backend.auth import build_api_key_record
+
+    if env_path.is_file():
+        try:
+            parsed = _parse_dotenv_lines(env_path.read_text(encoding="utf-8"))
+        except OSError:
+            parsed = {}
+        candidate = parsed.get("AUTOPULSE_EMBEDDED_API_KEY", "").strip()
+        if candidate and build_api_key_record(candidate) is not None:
+            return candidate
+
+    legacy = LEGACY_EMBEDDED_KEY_FILE
+    raw = os.environ.get("AUTOPULSE_EMBEDDED_API_KEY_FILE", "").strip()
+    if raw:
+        legacy = Path(raw).expanduser()
+    if legacy.is_file():
+        try:
+            candidate = legacy.read_text(encoding="utf-8").splitlines()[0].strip()
+        except OSError:
+            candidate = ""
+        if candidate and build_api_key_record(candidate) is not None:
+            return candidate
+    return None
+
+
+def _write_generated_env_autopulse(*, path: Path, raw_key: str, mount_prefix: str) -> None:
+    base = mount_prefix.strip() or DEFAULT_MOUNT_PREFIX
+    content = (
+        "# AutoPulse — generated on first embedded monitor() boot.\n"
+        "# Source before static UI build: set -a && source .env.autopulse && set +a\n"
+        "# (scripts/run_synthetic_stack.sh sources this file automatically when present.)\n"
+        f"NEXT_PUBLIC_AUTOPULSE_API_BASE_URL={base}\n"
+        f"AUTOPULSE_EMBEDDED_API_KEY={raw_key}\n"
+        f"NEXT_PUBLIC_AUTOPULSE_API_KEY={raw_key}\n"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_text(content, encoding="utf-8")
+    with suppress(OSError):
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    _apply_env_autopulse_file_defaults(path)
+
+
+def _resolve_embedded_api_key(*, kwargs_api_key: str | None, mount_prefix: str) -> str:
+    """Resolve bearer material for embedded ingest + DB seeding.
+
+    Precedence: explicit ``api_key`` kwarg → ``AUTOPULSE_EMBEDDED_API_KEY`` env →
+    ``.env.autopulse`` (``AUTOPULSE_EMBEDDED_API_KEY``) or legacy single-line file →
+    generate a new key and write ``.env.autopulse`` (also seeds matching
+    ``NEXT_PUBLIC_*`` lines) → public default constant.
+    """
+    if kwargs_api_key is not None and str(kwargs_api_key).strip():
+        return str(kwargs_api_key).strip()
+    env_key = os.environ.get("AUTOPULSE_EMBEDDED_API_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    from autopulse_backend.auth import generate_api_key
+
+    env_path = _env_autopulse_path()
+    from_file = _read_embedded_key_from_files(env_path)
+    if from_file is not None:
+        return from_file
+
+    raw_key, _key_id, _salt, _hash = generate_api_key()
+    try:
+        _write_generated_env_autopulse(path=env_path, raw_key=raw_key, mount_prefix=mount_prefix)
+        _LOG.info(
+            "AutoPulse embedded wrote %s — source it before `npm run build` for static UI "
+            "(NEXT_PUBLIC_* + AUTOPULSE_EMBEDDED_API_KEY).",
+            env_path,
+        )
+        return raw_key
+    except OSError as exc:
+        _LOG.warning(
+            "AutoPulse embedded could not write %s (%s); "
+            "falling back to built-in localdev default.",
+            env_path,
+            exc,
+        )
+        return DEFAULT_EMBEDDED_API_KEY
 
 
 def _embedded_max_db_size_mb_for_settings() -> int | None:
@@ -249,9 +400,10 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
     prefix = _normalize_prefix(str(kwargs.get("mount_prefix", DEFAULT_MOUNT_PREFIX)))
     database_url = str(kwargs.get("database_url") or DEFAULT_EMBEDDED_DATABASE_URL)
     project_name = str(kwargs.get("embedded_project_name", DEFAULT_PROJECT_NAME))
-    api_key = str(
-        kwargs.get("api_key") or os.getenv("AUTOPULSE_EMBEDDED_API_KEY") or DEFAULT_EMBEDDED_API_KEY
-    )
+    _apply_env_autopulse_file_defaults(_env_autopulse_path())
+    raw_kw = kwargs.get("api_key")
+    kwargs_api_key = raw_kw.strip() if isinstance(raw_kw, str) and raw_kw.strip() else None
+    api_key = _resolve_embedded_api_key(kwargs_api_key=kwargs_api_key, mount_prefix=prefix)
     frontend_mode = str(kwargs.get("frontend_mode", "static")).strip().lower()
     probe_interval_ms = float(
         kwargs.get(
@@ -316,6 +468,7 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
         "api_key": api_key,
         "ingest_url": ingest_url,
         "infrastructure_probe_interval_ms": probe_interval_ms,
+        "embedded_startup_ingest_ping": _embedded_startup_ingest_ping_enabled(),
         "http_client": provided_http_client
         or httpx.AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False)),
         "owns_http_client": provided_http_client is None,

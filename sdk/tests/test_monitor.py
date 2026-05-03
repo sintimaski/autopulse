@@ -11,6 +11,7 @@ from client_lifespan import lifespan_test_client
 from fastapi import FastAPI
 
 from autopulse._embedded import DEFAULT_EMBEDDED_API_KEY
+from autopulse._infrastructure import InfrastructureSampler
 from autopulse._monitor import (
     _AutoPulseMiddleware,
     _build_infrastructure_widget_payload,
@@ -34,10 +35,42 @@ def test_infrastructure_widget_payload_converts_network_bytes_to_mb() -> None:
     assert by_widget["infra_network_sent_mb"] == pytest.approx(1.0)
 
 
+def test_infrastructure_sampler_permission_error_fails_soft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _PsutilPermissionErrorStub:
+        @staticmethod
+        def Process() -> object:
+            return object()
+
+        @staticmethod
+        def virtual_memory() -> object:
+            return object()
+
+        @staticmethod
+        def disk_usage(_path: str) -> object:
+            return object()
+
+        @staticmethod
+        def disk_io_counters() -> object:
+            return object()
+
+        @staticmethod
+        def net_io_counters() -> object:
+            raise PermissionError("sysctl denied")
+
+    monkeypatch.setattr("autopulse._infrastructure.psutil", _PsutilPermissionErrorStub)
+    sampler = InfrastructureSampler(ttl_seconds=0.0)
+    assert sampler.sample() == {}
+    # Repeated failures should remain non-fatal.
+    assert sampler.sample() == {}
+
+
 def _make_config(**overrides: Any) -> _MonitorConfig:
     values = {
         "api_key": "ap_test_key",
         "ingest_url": "https://example.test/ingest",
+        "embedded_startup_ingest_ping": False,
         "service_name": "test-api",
         "environment": "test",
         "queue_maxsize": 10,
@@ -443,7 +476,11 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # TestClient uses http://testserver; allow ingest without TLS like backend conftest.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
     monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
     monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-events.duckdb"))
     app = FastAPI()
     monitor(
@@ -477,3 +514,49 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
 
         overview_response = client.get("/autopulse/dashboard/overview", headers=headers)
         assert overview_response.status_code in {200, 401}
+
+
+def test_embedded_writes_api_key_file_when_unconfigured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env_file = tmp_path / ".env.autopulse"
+    monkeypatch.setenv("AUTOPULSE_ENV_AUTOPULSE_FILE", str(env_file))
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.delenv("AUTOPULSE_EMBEDDED_API_KEY", raising=False)
+    monkeypatch.delenv("AUTOPULSE_EMBEDDED_API_KEY_FILE", raising=False)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-file-key.duckdb"))
+    monkeypatch.chdir(tmp_path)
+
+    app = FastAPI()
+    monitor(
+        app,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded-file-key.db'}",
+    )
+    assert env_file.is_file()
+    key: str | None = None
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if line.startswith("AUTOPULSE_EMBEDDED_API_KEY="):
+            key = line.split("=", 1)[1].strip()
+            break
+    assert key is not None and key.startswith("ap_live_")
+
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "sdk-test",
+                "environment": "test",
+                "method": "GET",
+                "path": "/health",
+                "status_code": 200,
+                "latency_ms": 1.0,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {key}"}
+    with lifespan_test_client(app) as client:
+        assert client.post("/autopulse/ingest", json=payload, headers=headers).status_code == 200

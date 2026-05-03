@@ -24,6 +24,7 @@ import {
 } from "./dashboardQueryState";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { resetServerScope } from "./dashboardScopeReset";
+import { isEmbeddedRelativeDashboard } from "./dashboardTypes";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
@@ -56,7 +57,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   },
   "/onboarding": {
     title: "Onboarding",
-    subtitle: "Get your project from zero to first signal.",
+    subtitle: ".env.autopulse, first ingest, diagnosis.",
   },
 };
 
@@ -430,8 +431,12 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
   const showServerScope =
     pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
-  const hasIssuedApiKey = d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey);
-  const hasFirstEvent = (d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0;
+  const hasIssuedApiKey =
+    d.onboardingStatus?.ingest_key_ready ??
+    (d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey));
+  const hasFirstEvent =
+    d.onboardingStatus?.first_event_received ??
+    ((d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0);
   const onboardingComplete =
     d.onboardingStatus?.current_step === "completed" ||
     (d.onboardingStatus !== null &&
@@ -440,6 +445,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const showOnboardingNav = !onboardingComplete;
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
+  const embeddedStaticUi = isEmbeddedRelativeDashboard();
   const statusStrip = (
     <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
@@ -449,15 +455,31 @@ function ShellWithData({ children }: { children: ReactNode }) {
         </p>
       </div>
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
-        <p className="font-medium text-slate-700 dark:text-neutral-200">API key configured</p>
+        <p className="font-medium text-slate-700 dark:text-neutral-200">
+          {embeddedStaticUi ? "Ingest key" : "API key"}
+        </p>
         <p className={hasIssuedApiKey ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
-          {hasIssuedApiKey ? "Ready for ingest" : "Issue key in onboarding"}
+          {hasIssuedApiKey
+            ? embeddedStaticUi
+              ? "DB has a key"
+              : "Ready"
+            : embeddedStaticUi
+              ? "Issue or .env.autopulse"
+              : "Issue in onboarding"}
         </p>
       </div>
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
-        <p className="font-medium text-slate-700 dark:text-neutral-200">First event received</p>
+        <p className="font-medium text-slate-700 dark:text-neutral-200">
+          {embeddedStaticUi ? "Events" : "First event"}
+        </p>
         <p className={hasFirstEvent ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
-          {hasFirstEvent ? "Telemetry active" : "Waiting for first ingest"}
+          {hasFirstEvent
+            ? embeddedStaticUi
+              ? "Seen (startup ping counts)"
+              : "Active"
+            : embeddedStaticUi
+              ? "Restart / refresh"
+              : "Waiting"}
         </p>
       </div>
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">

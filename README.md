@@ -22,9 +22,13 @@ Single-app embedded flow (recommended for SDK + dashboard manual validation):
 ```bash
 uv sync --group dev
 npm --prefix frontend install
-npm --prefix frontend run build
+cp backend/.env.example backend/.env   # once; edit email etc.
+# First boot creates repo-root .env.autopulse (ingest + NEXT_PUBLIC_*). Then:
+npm --prefix frontend run build        # or use scripts/run_synthetic_stack.sh (sources .env.autopulse)
 uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8010
 ```
+
+First embedded `monitor()` boot writes **`.env.autopulse`** (gitignored) with `AUTOPULSE_EMBEDDED_API_KEY` and matching `NEXT_PUBLIC_*` for static UI. **`./scripts/run_synthetic_stack.sh`** sources `backend/.env` then **`.env.autopulse`** before `npm run build`, so the second run onward is mostly automatic. A one-shot startup ingest (`/.well-known/autopulse-onboarding`) runs unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`. Override path with `AUTOPULSE_ENV_AUTOPULSE_FILE`.
 
 Embedded mode depends on backend components. For standalone SDK installs, use:
 
@@ -60,6 +64,7 @@ Set frontend environment variables in `frontend/.env.local`:
 
 ```bash
 NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=/autopulse
+# Match repo-root .env.autopulse after first embedded boot, or set keys manually.
 NEXT_PUBLIC_AUTOPULSE_API_KEY=ap_live_embeddedlocal_localdevsecret
 ```
 

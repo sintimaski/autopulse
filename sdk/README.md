@@ -21,6 +21,8 @@ By default, the SDK uses bounded in-memory buffering, async background sending, 
 ## Key runtime controls
 
 - `AUTOPULSE_API_KEY`
+- `AUTOPULSE_EMBEDDED_API_KEY` (embedded only): bearer for ingest + DB seed. If unset, the SDK reads **`.env.autopulse`** (`AUTOPULSE_EMBEDDED_API_KEY` line), then the legacy **`.autopulse/embedded-api-key`** line file, then generates **`.env.autopulse`** with ingest + `NEXT_PUBLIC_*` keys (override path with `AUTOPULSE_ENV_AUTOPULSE_FILE`). Legacy-only path override: `AUTOPULSE_EMBEDDED_API_KEY_FILE`.
+- `AUTOPULSE_EMBEDDED_STARTUP_INGEST` (embedded only, default on): when truthy, enqueue one synthetic `GET /.well-known/autopulse-onboarding` request after the sender starts so onboarding can advance before real traffic.
 - `AUTOPULSE_INGEST_URL` (or `AUTOPULSE_ENDPOINT`)
 - `AUTOPULSE_FLUSH_INTERVAL_SECONDS`
 - `AUTOPULSE_BATCH_MAX_EVENTS`

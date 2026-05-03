@@ -335,6 +335,8 @@ export type DashboardMembershipListResponse = {
 export type DashboardMagicLinkRequestResponse = {
   accepted: boolean;
   expires_in_seconds: number;
+  dev_token?: string | null;
+  dev_magic_link_url?: string | null;
 };
 
 export type DashboardApiKeyItem = {
@@ -413,6 +415,12 @@ export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
 
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? EMBEDDED_DEFAULT_API_BASE_URL;
+
+/** True when the dashboard bundle calls the API on the same origin via a path prefix (embedded static UI). */
+export function isEmbeddedRelativeDashboard(): boolean {
+  const normalized = normalizeBasePath(apiBaseUrl);
+  return !normalized.startsWith("http://") && !normalized.startsWith("https://");
+}
 
 function normalizeBasePath(baseUrl: string): string {
   const trimmed = baseUrl.trim();

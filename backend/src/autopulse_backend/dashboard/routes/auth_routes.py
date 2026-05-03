@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
+from contextlib import suppress
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -46,6 +50,8 @@ from autopulse_backend.schemas import (
     DashboardOnboardingStatusResponse,
     DashboardSessionResponse,
 )
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
+from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
 
 OnboardingStep = Literal[
     "authenticate_session",
@@ -59,6 +65,28 @@ OnboardingStep = Literal[
 router = APIRouter()
 
 
+def _sync_embedded_env_autopulse_key(raw_api_key: str) -> None:
+    """Best-effort local helper: keep `.env.autopulse` in sync after key issue/rotate."""
+    path = Path(os.getenv("AUTOPULSE_ENV_AUTOPULSE_FILE", ".env.autopulse")).expanduser()
+    base = os.getenv("NEXT_PUBLIC_AUTOPULSE_API_BASE_URL", "/autopulse").strip() or "/autopulse"
+    content = (
+        "# AutoPulse — synced from dashboard API key lifecycle.\n"
+        "# Source before static UI build: set -a && source .env.autopulse && set +a\n"
+        f"NEXT_PUBLIC_AUTOPULSE_API_BASE_URL={base}\n"
+        f"AUTOPULSE_EMBEDDED_API_KEY={raw_api_key}\n"
+        f"NEXT_PUBLIC_AUTOPULSE_API_KEY={raw_api_key}\n"
+    )
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.tmp")
+        tmp.write_text(content, encoding="utf-8")
+        with suppress(OSError):
+            os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except OSError:
+        return
+
+
 @router.post("/auth/magic-link/request", response_model=DashboardMagicLinkRequestResponse)
 async def request_dashboard_magic_link(
     payload: DashboardMagicLinkRequest,
@@ -67,15 +95,25 @@ async def request_dashboard_magic_link(
 ) -> DashboardMagicLinkRequestResponse:
     settings = get_settings()
     derived_magic_link_base_url = _derive_magic_link_base_url(request, settings)
-    await create_magic_link_token(
+    raw_token = await create_magic_link_token(
         session=session,
         settings=settings,
         email=payload.email,
         magic_link_base_url=derived_magic_link_base_url,
     )
+    dev_magic_link_url: str | None = None
+    if settings.dashboard_auth_magic_link_dev_expose_token and raw_token:
+        base = (
+            derived_magic_link_base_url or settings.dashboard_auth_magic_link_base_url or ""
+        ).strip()
+        if base:
+            query = urlencode({"token": raw_token})
+            dev_magic_link_url = f"{base}?{query}" if "?" not in base else f"{base}&{query}"
     return DashboardMagicLinkRequestResponse(
         accepted=True,
         expires_in_seconds=max(60, settings.dashboard_auth_magic_link_ttl_minutes * 60),
+        dev_token=raw_token if settings.dashboard_auth_magic_link_dev_expose_token else None,
+        dev_magic_link_url=dev_magic_link_url,
     )
 
 
@@ -208,6 +246,7 @@ async def issue_dashboard_api_key(
         )
     )
     await session.commit()
+    _sync_embedded_env_autopulse_key(raw_api_key)
     return DashboardApiKeyIssueResponse(
         key_id=key_id,
         api_key=raw_api_key,
@@ -254,6 +293,7 @@ async def rotate_dashboard_api_key(
         )
     )
     await session.commit()
+    _sync_embedded_env_autopulse_key(raw_api_key)
     return DashboardApiKeyRotateResponse(
         revoked_key_id=payload.key_id,
         replacement_key_id=next_key_id,
@@ -337,9 +377,20 @@ async def get_dashboard_onboarding_status(
             )
         )
     )
-    has_first_event = await session.scalar(
-        select(exists().where(Event.project_id == auth_session.project_id))
+    has_first_event = bool(
+        await session.scalar(select(exists().where(Event.project_id == auth_session.project_id)))
     )
+    if not has_first_event:
+        settings = get_settings()
+        if event_store_enabled(settings):
+            store = try_get_duckdb_event_store()
+            if store is not None:
+                with suppress(Exception):
+                    duckdb_count = await run_duckdb_read_sync(
+                        store.count_events_for_project,
+                        auth_session.project_id,
+                    )
+                    has_first_event = duckdb_count > 0
     has_diagnostic_signal = await session.scalar(
         select(
             exists().where(

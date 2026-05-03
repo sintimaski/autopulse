@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { buildCurrentScopedState, buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
-import { formatTimestamp, GROUP_OPTIONS, statusTone, type GroupBy } from "../dashboardTypes";
+import {
+  formatTimestamp,
+  GROUP_OPTIONS,
+  isEmbeddedRelativeDashboard,
+  statusTone,
+  type GroupBy,
+} from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardLogsSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
@@ -85,8 +91,11 @@ export function LogsContent() {
           Requests are loading or missing
         </h2>
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-          No request-log slice is available right now. Adjust the scope filters, refresh, or send
-          a first event from the onboarding checklist.
+          No request-log slice is available right now. Adjust the scope filters, refresh, or finish{" "}
+          <Link href="/onboarding" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
+            Onboarding
+          </Link>
+          {isEmbeddedRelativeDashboard() ? " (embedded startup ping — refresh)." : " to send traffic."}
         </p>
       </section>
     );

@@ -52,6 +52,7 @@ out/
 .env
 .env.*
 !.env.example
+!.env.autopulse.example
 
 # Local SQLite (dev)
 *.db

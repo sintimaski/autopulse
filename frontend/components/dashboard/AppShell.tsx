@@ -18,6 +18,7 @@ import {
 } from "../../lib/icons";
 import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
+import { isEmbeddedRelativeDashboard } from "./dashboardTypes";
 
 const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
@@ -233,7 +234,14 @@ export function DashboardAppShell({
               POST /ingest
             </code>
             {" · "}
-            Events are scoped to your project API key.
+            {isEmbeddedRelativeDashboard() ? (
+              <>
+                Embedded: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">.env.autopulse</code> + startup ingest
+                ping.
+              </>
+            ) : (
+              <>Events are scoped to your project API key.</>
+            )}
           </footer>
         </div>
       </div>

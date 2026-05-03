@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { useDashboardData } from "../DashboardDataContext";
+import { isEmbeddedRelativeDashboard } from "../dashboardTypes";
 
 export function OnboardingContent() {
   const d = useDashboardData();
+  const embedded = isEmbeddedRelativeDashboard();
   const [message, setMessage] = useState<string | null>(null);
   const status = d.onboardingStatus;
   const hasIssuedApiKey = status?.ingest_key_ready ?? (d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey));
@@ -15,70 +17,57 @@ export function OnboardingContent() {
   const hasDiagnosisSignal = status?.first_diagnostic_signal_ready ?? false;
 
   const apiKeyPreview = useMemo(() => {
-    if (d.lastIssuedApiKey) {
-      return d.lastIssuedApiKey;
-    }
-    if (d.apiKeys[0]) {
-      return `${d.apiKeys[0].key_id} (existing key id)`;
-    }
+    if (d.lastIssuedApiKey) return d.lastIssuedApiKey;
+    if (d.apiKeys[0]) return `${d.apiKeys[0].key_id} (existing)`;
     return null;
   }, [d.apiKeys, d.lastIssuedApiKey]);
 
   return (
     <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div>
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Time-to-first-value setup</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">Follow these checkpoints to reach first diagnostic value.</p>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Onboarding</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          {embedded
+            ? "First SDK boot writes .env.autopulse (ingest + Next public keys). Source it before building static UI, then restart once."
+            : "Put the issued key in your app as AUTOPULSE_API_KEY and set AUTOPULSE_INGEST_URL to /ingest on your backend."}
+        </p>
       </div>
 
       <ol className="space-y-3">
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">1) Confirm dashboard session</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">
-            Dashboard access is session-based. You are signed in with the current magic-link session.
-          </p>
-          <span className="mt-3 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
-            Completed
+          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">1. Session</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">Signed in with magic link.</p>
+          <span className="mt-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+            Done
           </span>
         </li>
 
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">2) Issue an ingest API key</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">
-            Generate a project key, then add it to the{" "}
-            <span className="font-medium text-slate-700 dark:text-neutral-200">environment of your instrumented FastAPI app</span>{" "}
-            (the process that runs <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">monitor(app)</code>
-            )—for example a gitignored <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">.env</code>, a
-            shell export before you start the server, or your host&apos;s secret manager. Use the name{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">AUTOPULSE_API_KEY</code>. This is not{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">frontend/.env.local</code> (that is only for
-            the dashboard client).
+          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">2. Ingest key</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
+            {embedded
+              ? "Issue below only if you want a new token; dashboard auto-syncs .env.autopulse. Rebuild UI after key changes."
+              : "Issue, then copy into host env as AUTOPULSE_API_KEY."}
           </p>
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            Set{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">AUTOPULSE_INGEST_URL</code> (or{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">AUTOPULSE_ENDPOINT</code>) to your backend
-            ingest URL ending in <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">/ingest</code> as
-            well—for example <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">http://localhost:8000/ingest</code>{" "}
-            when the AutoPulse API runs locally. The SDK needs both values to send events.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={async () => {
                 const ok = await d.issueApiKey();
-                setMessage(ok ? "New API key issued. Copy it now." : "Failed to issue API key.");
+                setMessage(
+                  ok
+                    ? embedded
+                      ? "Issued — .env.autopulse synced automatically. Rebuild UI + restart host."
+                      : "Issued — copy into host env and restart app."
+                    : "Issue failed.",
+                );
               }}
               className="ap-btn-primary"
             >
               Issue key
             </button>
-            <button
-              type="button"
-              onClick={() => void d.refreshApiKeys()}
-              className="ap-btn"
-            >
-              Refresh keys
+            <button type="button" onClick={() => void d.refreshApiKeys()} className="ap-btn">
+              Refresh
             </button>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -87,7 +76,7 @@ export function OnboardingContent() {
                   : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
               }`}
             >
-              {hasIssuedApiKey ? "Completed" : "Pending"}
+              {hasIssuedApiKey ? "OK" : "…"}
             </span>
           </div>
           {apiKeyPreview ? (
@@ -98,17 +87,15 @@ export function OnboardingContent() {
         </li>
 
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">3) Send your first ingest event</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">
-            Trigger a request in your FastAPI app instrumented with the SDK, then refresh once.
+          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">3. First ingest</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
+            {embedded
+              ? "Embedded sends one startup request after boot (disable with AUTOPULSE_EMBEDDED_STARTUP_INGEST=0). Refresh here."
+              : "Send traffic through your instrumented app, then refresh."}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => d.setRefreshToken((token) => token + 1)}
-              className="ap-btn"
-            >
-              Refresh status
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => d.setRefreshToken((t) => t + 1)} className="ap-btn">
+              Refresh
             </button>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -117,38 +104,36 @@ export function OnboardingContent() {
                   : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
               }`}
             >
-              {hasFirstEvent ? "Completed" : "Waiting for first event"}
+              {hasFirstEvent ? "OK" : "…"}
             </span>
           </div>
         </li>
 
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">4) Validate diagnosis surfaces</p>
-          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">
-            Confirm signals are visible in dashboard cards and grouped failures in errors and diagnosis.
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">4. Errors</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">When traffic includes failures, open Diagnosis.</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-sm">
             <Link href="/dashboard" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
-              Open Dashboard
+              Overview
             </Link>
             <span className="text-slate-400">·</span>
             <Link href="/diagnosis" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
-              Open Errors & Diagnosis
+              Diagnosis
             </Link>
           </div>
           <span
-            className={`mt-3 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+            className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
               hasDiagnosisSignal
                 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
                 : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
             }`}
           >
-            {hasDiagnosisSignal ? "Completed" : "Waiting for grouped diagnostic signal"}
+            {hasDiagnosisSignal ? "OK" : "…"}
           </span>
         </li>
       </ol>
 
-      {message ? <p className="text-sm text-slate-600 dark:text-neutral-300">{message}</p> : null}
+      {message ? <p className="text-xs text-slate-600 dark:text-neutral-400">{message}</p> : null}
     </section>
   );
 }

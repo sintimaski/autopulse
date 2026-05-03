@@ -42,6 +42,7 @@ DEFAULT_SCRUB_KEYS = frozenset(
 class _MonitorConfig:
     api_key: str | None
     ingest_url: str | None
+    embedded_startup_ingest_ping: bool
     service_name: str
     environment: str
     queue_maxsize: int
@@ -284,6 +285,22 @@ class _EventDispatcher:
             f"batch_size={self._config.batch_size} "
             f"flush_interval_s={self._config.flush_interval_s}",
         )
+        if self._config.embedded_startup_ingest_ping:
+            # Synthetic request so dashboard onboarding can observe first ingest without
+            # waiting for application traffic. Path avoids is_autopulse_internal_path filters.
+            self.enqueue(
+                {
+                    "type": "request",
+                    "timestamp": _utc_now_iso(),
+                    "service_name": self._config.service_name,
+                    "environment": self._config.environment,
+                    "method": "GET",
+                    "path": "/.well-known/autopulse-onboarding",
+                    "status_code": 204,
+                    "latency_ms": 0.0,
+                    "request_id": None,
+                }
+            )
 
     async def stop(self) -> None:
         if self._task is None:
@@ -534,6 +551,9 @@ def monitor(app: Any, **kwargs: Any) -> None:
     config = _MonitorConfig(
         api_key=resolved_kwargs.get("api_key", env_api_key),
         ingest_url=resolved_kwargs.get("ingest_url", env_ingest_url),
+        embedded_startup_ingest_ping=bool(
+            resolved_kwargs.get("embedded_startup_ingest_ping", False)
+        ),
         service_name=resolved_kwargs.get("service_name", "api"),
         environment=resolved_kwargs.get("environment", "production"),
         queue_maxsize=int(

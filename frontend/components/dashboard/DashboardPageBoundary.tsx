@@ -5,7 +5,8 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 
 import { useDashboardData } from "./DashboardDataContext";
-import { buildApiUrl } from "./dashboardTypes";
+import type { DashboardMagicLinkRequestResponse } from "./dashboardTypes";
+import { buildApiUrl, isEmbeddedRelativeDashboard } from "./dashboardTypes";
 
 /** Shown while `/dashboard/auth/session` is in flight so we do not flash the sign-in screen on reload. */
 export function DashboardSessionRestoring() {
@@ -38,7 +39,14 @@ export function ApiKeyMissing() {
       if (!response.ok) {
         throw new Error("Request failed");
       }
-      setMessage("If the email is allowed, check your inbox for the sign-in link.");
+      const payload = (await response.json()) as DashboardMagicLinkRequestResponse;
+      if (payload.dev_magic_link_url) {
+        setMessage(`Dev link: ${payload.dev_magic_link_url}`);
+      } else if (payload.dev_token) {
+        setMessage(`Dev token: ${payload.dev_token}`);
+      } else {
+        setMessage("If the email is allowed, check your inbox for the sign-in link.");
+      }
     } catch {
       setMessage("Unable to send sign-in link. Check backend auth settings.");
     } finally {
@@ -52,7 +60,15 @@ export function ApiKeyMissing() {
         <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Enter your email to request a magic link. Dashboard access is session-first; ingest API keys are only for your app SDK.
+          Enter your email for a magic link. Session-first.
+          {isEmbeddedRelativeDashboard() ? (
+            <>
+              {" "}
+              Static UI reads <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.7rem]">.env.autopulse</code> (see onboarding).
+            </>
+          ) : (
+            <> SDK keys are for your app, not this screen.</>
+          )}
         </p>
         <div className="mt-5 space-y-3">
           <label className="block">
@@ -162,15 +178,16 @@ export function DashboardPageBoundary({
             No data for this view yet
           </h2>
           <p className="mt-2 text-sm">
-            This view requires recent traffic data that has not arrived yet. If you are onboarding,
-            finish the checklist in{" "}
+            This view requires recent traffic data that has not arrived yet. If you are onboarding, open{" "}
             <Link
               href="/onboarding"
               className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
             >
               Onboarding
-            </Link>{" "}
-            to send a first event, then refresh.
+            </Link>
+            {isEmbeddedRelativeDashboard()
+              ? " — embedded startup ping after host boot; refresh."
+              : " — send traffic, refresh."}
           </p>
         </section>
       </div>

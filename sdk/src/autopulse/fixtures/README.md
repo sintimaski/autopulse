@@ -32,6 +32,7 @@ uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8
 ## Environment Variables
 
 - `AUTOPULSE_MODE`: `embedded` (default) or `remote`.
+- `AUTOPULSE_EMBEDDED_API_KEY` (embedded only): bearer for ingest + DB. If unset, SDK reads **`.env.autopulse`** then legacy `.autopulse/embedded-api-key`, else generates **`.env.autopulse`** (includes `NEXT_PUBLIC_*` for UI builds). `scripts/run_synthetic_stack.sh` sources it before `npm run build`. Startup ingest ping unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`.
 - `AUTOPULSE_MOUNT_PREFIX`: embedded mount prefix (default `/autopulse`).
 - `AUTOPULSE_DATABASE_URL`: relational metadata DB URL (default `sqlite+aiosqlite:///./autopulse.db`).
 - `AUTOPULSE_EVENT_STORE`: raw log store backend (`duckdb` default, `sqlite` fallback).

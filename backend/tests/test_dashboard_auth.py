@@ -121,6 +121,36 @@ def _request_magic_link_token(client: TestClient, *, email: str, tmp_path) -> st
     return _extract_magic_link_token_from_outbox(tmp_path)
 
 
+def test_dashboard_magic_link_request_exposes_dev_token_when_enabled(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
+    monkeypatch.setenv(
+        "DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "http://localhost:8010/autopulse/ui/auth/magic-link"
+    )
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "owner@example.com"},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["accepted"] is True
+        assert isinstance(payload.get("dev_token"), str) and payload["dev_token"]
+        assert isinstance(payload.get("dev_magic_link_url"), str)
+        assert payload["dev_token"] in payload["dev_magic_link_url"]
+
+
 def test_dashboard_magic_link_session_flow(
     backend_test_database_url: str,
     monkeypatch,
@@ -401,6 +431,36 @@ def test_dashboard_api_key_lifecycle_owner_flow(
         assert revoke_response.status_code == 200
         assert revoke_response.json()["key_id"] == replacement
         assert revoke_response.json()["revoked_at"] is not None
+
+
+def test_dashboard_issue_key_syncs_env_autopulse_file(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    outbox = tmp_path / "outbox"
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(outbox))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    env_autopulse_path = tmp_path / ".env.autopulse"
+    monkeypatch.setenv("AUTOPULSE_ENV_AUTOPULSE_FILE", str(env_autopulse_path))
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=outbox)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        issue_response = client.post("/dashboard/auth/api-keys/issue")
+        assert issue_response.status_code == 200
+        issued = issue_response.json()["api_key"]
+
+    content = env_autopulse_path.read_text(encoding="utf-8")
+    assert f"AUTOPULSE_EMBEDDED_API_KEY={issued}" in content
+    assert f"NEXT_PUBLIC_AUTOPULSE_API_KEY={issued}" in content
 
 
 def test_dashboard_member_cannot_manage_api_keys(
