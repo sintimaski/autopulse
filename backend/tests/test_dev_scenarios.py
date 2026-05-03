@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from uuid import uuid4
 
+from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -48,25 +49,6 @@ def _count_events(database_url: str) -> int:
             await engine.dispose()
 
     return asyncio.run(run())
-
-
-def _truncate_tables(database_url: str) -> None:
-    async def run() -> None:
-        engine = create_async_engine(database_url, pool_pre_ping=True)
-        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
-        try:
-            async with session_maker() as session:
-                await session.execute(
-                    text(
-                        "TRUNCATE TABLE error_group_aggregates, metric_buckets, events, "
-                        "api_keys, projects RESTART IDENTITY CASCADE"
-                    )
-                )
-                await session.commit()
-        finally:
-            await engine.dispose()
-
-    asyncio.run(run())
 
 
 def test_dev_scenarios_router_is_disabled_by_default(backend_test_database_url: str) -> None:

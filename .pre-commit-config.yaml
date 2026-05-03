@@ -20,6 +20,12 @@ repos:
       - id: check-added-large-files
   - repo: local
     hooks:
+      - id: backend-alembic-verify
+        name: backend-alembic-verify
+        entry: bash scripts/pre_commit_alembic.sh
+        language: system
+        pass_filenames: false
+        files: ^backend/(alembic/|src/autopulse_backend/models/)
       - id: frontend-eslint
         name: frontend-eslint
         entry: npm --prefix frontend run lint

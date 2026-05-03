@@ -45,7 +45,22 @@ export function OnboardingContent() {
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">2) Issue an ingest API key</p>
           <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">
-            Generate a project key, then copy it into your app environment as `AUTOPULSE_API_KEY`.
+            Generate a project key, then add it to the{" "}
+            <span className="font-medium text-slate-700 dark:text-neutral-200">environment of your instrumented FastAPI app</span>{" "}
+            (the process that runs <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">monitor(app)</code>
+            )—for example a gitignored <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">.env</code>, a
+            shell export before you start the server, or your host&apos;s secret manager. Use the name{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">AUTOPULSE_API_KEY</code>. This is not{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">frontend/.env.local</code> (that is only for
+            the dashboard client).
+          </p>
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            Set{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">AUTOPULSE_INGEST_URL</code> (or{" "}
+            <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">AUTOPULSE_ENDPOINT</code>) to your backend
+            ingest URL ending in <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">/ingest</code> as
+            well—for example <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs dark:bg-neutral-950">http://localhost:8000/ingest</code>{" "}
+            when the AutoPulse API runs locally. The SDK needs both values to send events.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import email
 import re
 from datetime import UTC, datetime, timedelta
+from email import policy
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -12,6 +14,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from autopulse_backend.app import create_app
 from autopulse_backend.auth import generate_api_key
 from autopulse_backend.models import ApiKey, Project
+
+
+def _seed_singleton_embedded_bootstrap_project(database_url: str) -> str:
+    """Mimic SDK embedded startup: one project row, no org (ingest key optional)."""
+
+    async def run() -> str:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(name="AutoPulse Embedded Project")
+                session.add(project)
+                await session.commit()
+                await session.refresh(project)
+                return str(project.id)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
 
 
 def _seed_project_and_key(database_url: str) -> str:
@@ -80,10 +101,13 @@ def _truncate_tables(database_url: str) -> None:
 
 
 def _extract_magic_link_token_from_outbox(tmp_path) -> str:
+    """Decode MIME so quoted-printable outbox tokens are not truncated at ``=`` or soft breaks."""
     outbox_files = sorted(tmp_path.glob("*.eml"))
     assert outbox_files
-    outbox_content = outbox_files[-1].read_text()
-    match = re.search(r"token=([A-Za-z0-9_-]+)", outbox_content)
+    msg = email.message_from_bytes(outbox_files[-1].read_bytes(), policy=policy.default)
+    plaintext = msg.get_body(preferencelist=("plain",))
+    body = plaintext.get_content() if plaintext is not None else ""
+    match = re.search(r"token=([A-Za-z0-9_-]+)", body)
     assert match is not None
     return match.group(1)
 
@@ -226,6 +250,31 @@ def test_dashboard_organization_governance_flow(
         )
         assert promote_response.status_code == 200
         assert promote_response.json()["role"] == "owner"
+
+
+def test_dashboard_magic_link_adopts_singleton_embedded_project(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    embedded_project_id = _seed_singleton_embedded_bootstrap_project(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post(
+            "/dashboard/auth/magic-link/verify",
+            json={"token": token},
+        )
+        assert verify_response.status_code == 200
+        payload = verify_response.json()
+        assert payload["authenticated"] is True
+        assert payload["project_id"] == embedded_project_id
 
 
 def test_dashboard_magic_link_bootstraps_default_project_when_empty(

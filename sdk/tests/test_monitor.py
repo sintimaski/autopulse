@@ -1,7 +1,5 @@
 import asyncio
 import time
-from concurrent.futures import CancelledError
-from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,8 +7,8 @@ from typing import Any
 
 import httpx
 import pytest
+from client_lifespan import lifespan_test_client
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from autopulse._embedded import DEFAULT_EMBEDDED_API_KEY
 from autopulse._monitor import (
@@ -145,7 +143,7 @@ def test_middleware_records_wire_path_when_request_is_under_mount_prefix() -> No
     config = _make_config(mount_prefix="/autopulse")
     main.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
 
-    with TestClient(main) as client:
+    with lifespan_test_client(main) as client:
         response = client.get("/autopulse/dashboard/health")
 
     assert response.status_code == 200
@@ -163,7 +161,7 @@ def test_middleware_captures_request_event_with_route_template() -> None:
     async def read_item(item_id: int) -> dict[str, int]:
         return {"item_id": item_id}
 
-    with TestClient(app) as client:
+    with lifespan_test_client(app) as client:
         response = client.get(
             "/items/123?token=secret",
             headers={"x-request-id": "req-123", "authorization": "Bearer abc"},
@@ -189,7 +187,7 @@ def test_middleware_respects_capture_toggles() -> None:
     async def read_item(item_id: int) -> dict[str, int]:
         return {"item_id": item_id}
 
-    with TestClient(app) as client:
+    with lifespan_test_client(app) as client:
         response = client.get("/items/123?token=secret", headers={"authorization": "Bearer abc"})
 
     assert response.status_code == 200
@@ -217,7 +215,7 @@ def test_middleware_attaches_infrastructure_metrics_when_enabled() -> None:
     async def status() -> dict[str, bool]:
         return {"ok": True}
 
-    with TestClient(app) as client:
+    with lifespan_test_client(app) as client:
         response = client.get("/status")
 
     assert response.status_code == 200
@@ -290,7 +288,7 @@ def test_middleware_captures_error_and_reraises_original_exception() -> None:
         raise ValueError(f"bad item: {item_id}")
 
     with (
-        TestClient(app, raise_server_exceptions=True) as client,
+        lifespan_test_client(app, raise_server_exceptions=True) as client,
         pytest.raises(ValueError, match="bad item: 10"),
     ):
         client.get("/boom/10")
@@ -411,7 +409,7 @@ def test_monitor_request_path_remains_healthy_when_backend_is_down() -> None:
     async def health() -> dict[str, bool]:
         return {"ok": True}
 
-    with TestClient(app) as client:
+    with lifespan_test_client(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"ok": True}
@@ -470,11 +468,7 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
         ]
     }
     headers = {"Authorization": f"Bearer {DEFAULT_EMBEDDED_API_KEY}"}
-    # Starlette 1.x TestClient can raise CancelledError while tearing down the lifespan
-    # portal for embedded mounts + background jobs; assertions still validate behavior.
-    client = TestClient(app)
-    client.__enter__()
-    try:
+    with lifespan_test_client(app) as client:
         health_response = client.get("/autopulse/health")
         assert health_response.status_code == 200
 
@@ -483,6 +477,3 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
 
         overview_response = client.get("/autopulse/dashboard/overview", headers=headers)
         assert overview_response.status_code in {200, 401}
-    finally:
-        with suppress(CancelledError):
-            client.__exit__(None, None, None)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -15,9 +15,17 @@ from sqlalchemy import (
     String,
     Text,
     Uuid,
-    func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# SQLite has no now(); CURRENT_TIMESTAMP is valid on Postgres and SQLite for timestamptz columns.
+_TS_DEFAULT = text("CURRENT_TIMESTAMP")
+
+
+def _utc_now() -> datetime:
+    """ORM insert/update default so SQLite never evaluates legacy DDL ``now()`` on old files."""
+    return datetime.now(tz=UTC)
 
 
 class Base(DeclarativeBase):
@@ -30,7 +38,7 @@ class Organization(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
 
 
@@ -46,7 +54,7 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
 
 
@@ -61,7 +69,7 @@ class ApiKey(Base):
     key_salt: Mapped[bytes] = mapped_column(nullable=False)
     key_hash: Mapped[bytes] = mapped_column(nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -121,13 +129,14 @@ class MetricBucket(Base):
     count_4xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     count_5xx: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -156,13 +165,14 @@ class ErrorGroupAggregate(Base):
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -191,8 +201,9 @@ class DashboardWidgetDefinition(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -234,8 +245,9 @@ class IngestRateLimitWindow(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -253,8 +265,9 @@ class SchedulerJobLease(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -283,13 +296,14 @@ class ProjectAlertSettings(Base):
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -320,13 +334,14 @@ class ProjectUiSettings(Base):
         Integer, nullable=False, default=1440
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -394,13 +409,14 @@ class OrganizationMembership(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="member")
     invited_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 
@@ -420,7 +436,7 @@ class GovernanceAuditEvent(Base):
     target_id: Mapped[str] = mapped_column(String(64), nullable=False)
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
 
 
@@ -430,7 +446,7 @@ class DashboardUser(Base):
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     idp_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -449,7 +465,7 @@ class DashboardMagicLink(Base):
     token_hash: Mapped[bytes] = mapped_column(nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -474,7 +490,7 @@ class DashboardSession(Base):
     token_hash: Mapped[bytes] = mapped_column(nullable=False, unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

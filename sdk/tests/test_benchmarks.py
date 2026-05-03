@@ -3,8 +3,8 @@ from __future__ import annotations
 from statistics import median
 from time import perf_counter
 
+from client_lifespan import lifespan_test_client
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from autopulse import monitor
 
@@ -35,7 +35,7 @@ def _build_app(*, with_monitoring: bool) -> FastAPI:
 
 def _measure_request_latencies_ms(app: FastAPI) -> list[float]:
     latencies: list[float] = []
-    with TestClient(app) as client:
+    with lifespan_test_client(app) as client:
         for _ in range(_WARMUP_REQUESTS):
             warmup = client.get("/ping")
             assert warmup.status_code == 200

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -46,8 +47,8 @@ def _query_event_rows(database_url: str) -> list[dict[str, object]]:
             async with session_maker() as session:
                 result = await session.execute(
                     text(
-                        "SELECT project_id::text, sdk_version, type, status_code, request_id "
-                        "FROM events ORDER BY id"
+                        "SELECT CAST(project_id AS TEXT), sdk_version, type, status_code, "
+                        "request_id FROM events ORDER BY id"
                     )
                 )
                 return [dict(row) for row in result.mappings().all()]
@@ -69,25 +70,6 @@ def _count_events(database_url: str) -> int:
             await engine.dispose()
 
     return asyncio.run(run())
-
-
-def _truncate_tables(database_url: str) -> None:
-    async def run() -> None:
-        engine = create_async_engine(database_url, pool_pre_ping=True)
-        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
-        try:
-            async with session_maker() as session:
-                await session.execute(
-                    text(
-                        "TRUNCATE TABLE error_group_aggregates, metric_buckets, events, "
-                        "api_keys, projects RESTART IDENTITY CASCADE"
-                    )
-                )
-                await session.commit()
-        finally:
-            await engine.dispose()
-
-    asyncio.run(run())
 
 
 def _list_indexes(database_url: str) -> list[str]:

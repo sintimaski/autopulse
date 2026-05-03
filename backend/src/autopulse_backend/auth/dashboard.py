@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
@@ -27,6 +27,9 @@ from autopulse_backend.models import (
     Project,
 )
 from autopulse_backend.services.alert_service import AlertSignal, EmailAlertSender
+
+# Must match ``autopulse._embedded.DEFAULT_PROJECT_NAME`` (SDK embedded bootstrap project).
+_EMBEDDED_BOOTSTRAP_PROJECT_NAME = "AutoPulse Embedded Project"
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +131,43 @@ async def _resolve_default_project_id(session: AsyncSession) -> UUID:
     return project.id
 
 
+async def _try_adopt_singleton_embedded_project(
+    *,
+    session: AsyncSession,
+    user_id: UUID,
+    email: str,
+) -> tuple[UUID, UUID, str] | None:
+    """Bind the first dashboard login to the SDK embedded project when it is the only row.
+
+    Without this, magic-link bootstrap creates a separate ``Default Project`` while ingest
+    continues to use the embedded API key tied to ``AutoPulse Embedded Project``, so the UI
+    never sees events (onboarding stuck on "Waiting for first event").
+    """
+    total_projects = await session.scalar(select(func.count()).select_from(Project))
+    if total_projects != 1:
+        return None
+    project = await session.scalar(select(Project))
+    if (
+        project is None
+        or project.name != _EMBEDDED_BOOTSTRAP_PROJECT_NAME
+        or project.organization_id is not None
+    ):
+        return None
+    organization = Organization(name=f"{email}'s Organization")
+    session.add(organization)
+    await session.flush()
+    project.organization_id = organization.id
+    new_membership = OrganizationMembership(
+        organization_id=organization.id,
+        user_id=user_id,
+        role="owner",
+        invited_email=email,
+    )
+    session.add(new_membership)
+    await session.flush()
+    return project.id, organization.id, new_membership.role
+
+
 async def _resolve_project_for_user(
     *,
     session: AsyncSession,
@@ -163,7 +203,12 @@ async def _resolve_project_for_user(
             await session.flush()
         return project.id, organization_id, membership.role
 
-    any_project_exists = await session.scalar(select(Project.id).limit(1))
+    adopted = await _try_adopt_singleton_embedded_project(
+        session=session, user_id=user_id, email=email
+    )
+    if adopted is not None:
+        return adopted
+
     organization = Organization(name=f"{email}'s Organization")
     session.add(organization)
     await session.flush()
@@ -178,7 +223,6 @@ async def _resolve_project_for_user(
     )
     session.add(new_membership)
     await session.flush()
-    del any_project_exists
     return project.id, organization.id, new_membership.role
 
 
