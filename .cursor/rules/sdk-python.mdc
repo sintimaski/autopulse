@@ -6,6 +6,8 @@ alwaysApply: false
 
 # SDK (`sdk/`)
 
-- Public API surface stays small; prefer stable names (`monitor`, middleware) aligned with `DEVELOPMENT.md`.
-- Type hints on public functions; avoid heavy dependencies on the hot path.
-- Tests live under `sdk/tests/`; keep tests deterministic and offline by default.
+- Never break user applications if backend is misconfigured, unavailable, or slow.
+- Keep hot path async/non-blocking and dependency-light; preserve bounded queue/drop behavior.
+- Preserve silent-failure defaults (except explicit debug modes) and scrub sensitive data before send.
+- Keep public API stable and typed; align names and behavior with `DEVELOPMENT.md`.
+- Run deterministic targeted SDK tests under `sdk/tests/` for touched behavior.

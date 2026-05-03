@@ -1,0 +1,13 @@
+---
+description: Shell script safety and reproducibility conventions
+globs: scripts/**/*.sh
+alwaysApply: false
+---
+
+# Scripts (`scripts/`)
+
+- Keep scripts idempotent where practical and explicit about required env vars.
+- Use safe shell defaults where appropriate (`set -euo pipefail`) and quote variable expansions unless intentionally unquoted.
+- Prefer deterministic local paths under repo workspace; avoid hidden side effects outside project directories.
+- Document expected prerequisites inline in script comments when non-obvious.
+- After edits, run the script path or closest dry-run/check command when feasible.

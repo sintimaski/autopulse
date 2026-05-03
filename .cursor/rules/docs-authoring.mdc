@@ -1,0 +1,13 @@
+---
+description: Documentation authoring style and governance safeguards
+globs: {docs/**/*.md,agents/**/*.md,DEVELOPMENT.md,AGENTS.md}
+alwaysApply: false
+---
+
+# Documentation authoring
+
+- Keep docs aligned with current product behavior and MVP boundaries in `DEVELOPMENT.md`.
+- Prefer concise actionable guidance over long narrative; include concrete commands/examples when useful.
+- Preserve existing section structure unless there is a clear readability gain.
+- Flag governed-doc changes requiring maintainer approval before treating as final.
+- Avoid introducing implementation promises not already supported in code.

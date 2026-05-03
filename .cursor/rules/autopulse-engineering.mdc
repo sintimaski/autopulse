@@ -1,5 +1,5 @@
 ---
-description: AutoPulse engineering constraints for SDK and backend
+description: Non-negotiable engineering constraints (SDK/backend/security)
 alwaysApply: true
 ---
 
@@ -7,23 +7,22 @@ alwaysApply: true
 
 ## SDK (Python)
 
-- **Never** break the user's app if AutoPulse is misconfigured, down, or slow.
-- **Async, non-blocking** hot path; bounded in-memory queue (drop events when full — document behavior).
-- **Background batch sender** with batch size and time-based flush; retries with backoff and a **low max**; drop batch after exhaustion.
-- **Silent failure** by default (no noisy logs in user apps); optional debug mode for troubleshooting.
-- **Scrub sensitive data by default** before send; see DEVELOPMENT.md default scrub keys.
-- On exceptions in middleware: capture details, then **re-raise the original exception**.
+- Never break the user's app when AutoPulse is misconfigured/down/slow.
+- Keep hot path async/non-blocking with bounded queue; drop when full (document behavior).
+- Use background batching with bounded retries/backoff; drop exhausted batches.
+- Keep failure mode quiet by default; allow explicit debug mode.
+- Scrub sensitive data by default; on middleware exceptions capture data then re-raise original exception.
 
 ## Backend
 
-- Ingest endpoint (`POST /ingest`) must be **fast**; push expensive work to workers as the product grows.
-- **Authenticate** API keys; store keys **hashed**, not plaintext.
-- Validate and normalize events; attach server metadata (project id, received time, SDK version).
+- Keep ingest endpoint fast and resilient; move heavy processing off request path.
+- Authenticate API keys and store hashes only (never plaintext keys).
+- Validate/normalize events and attach server metadata (project id, receive time, SDK version).
 
 ## Security defaults
 
-HTTPS in production; conservative capture (no full bodies by default in MVP unless explicitly enabled).
+Use HTTPS in production and conservative capture defaults (no full request/response bodies unless explicitly enabled).
 
 ## Implementation style
 
-Prefer **small, focused changes**. Match existing naming and patterns. Do not expand scope beyond the task without explicit product approval.
+Prefer small focused diffs, keep naming consistent, and avoid scope expansion without explicit approval.

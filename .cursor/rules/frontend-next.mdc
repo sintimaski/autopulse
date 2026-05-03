@@ -1,12 +1,13 @@
 ---
-description: Dashboard UI (Next.js, TypeScript)
+description: Frontend dashboard standards (Next.js/TypeScript)
 globs: frontend/**/*.{ts,tsx,js,jsx}
 alwaysApply: false
 ---
 
 # Frontend
 
-- Optimize for **fast diagnosis** on the overview; avoid configurability that belongs in enterprise APM.
-- Accessible defaults: contrast, keyboard navigation, clear empty and error states.
-- Align visible fields with MVP tables and error grouping in `DEVELOPMENT.md`.
-- For live data refreshes, prefer **in-place state updates** over disruptive reload patterns: avoid replacing the full page with loading skeletons after first paint; keep prior data rendered and refresh components smoothly.
+- Optimize overview for fast diagnosis in ~5 seconds; avoid MVP scope creep into heavy configurability.
+- Keep loading/refresh behavior non-disruptive after first paint (preserve prior data while refreshing).
+- Prefer clear empty/error states and keyboard-accessible interactions.
+- Keep API payload assumptions aligned with backend contracts in `DEVELOPMENT.md`.
+- For frontend changes, run targeted checks (lint/tests/build path used by this repo) before final handoff.

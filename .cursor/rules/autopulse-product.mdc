@@ -1,34 +1,34 @@
 ---
-description: AutoPulse product context and MVP boundaries
+description: Product boundaries and MVP decision filter
 alwaysApply: true
 ---
 
 # AutoPulse product context
 
-AutoPulse is an opinionated, **FastAPI-native** observability product for solo developers and small backend teams (1–5). It is **not** a full Grafana/Datadog/Sentry replacement for the MVP.
+AutoPulse is an opinionated FastAPI-native observability product for solo developers and small backend teams (1-5). It is not a full Grafana/Datadog/Sentry replacement in MVP.
 
 ## Core promise
 
-Useful visibility into a FastAPI app in **~two minutes**, without learning observability infrastructure.
+Useful visibility into a FastAPI app in about two minutes, without observability-infra learning overhead.
 
 ## Product rule
 
-If a feature makes the user think like an **observability engineer**, it does **not** belong in the MVP.
+If a feature requires observability-engineering expertise to use, it does not belong in MVP.
 
 ## MVP must answer
 
-What broke, when did it break, and what requests led to it?
+What broke, when it broke, and what requests led to it.
 
 ## Explicit non-goals (MVP)
 
-Distributed tracing, custom dashboard builder, query language, complex alert rules, Kubernetes/multi-cloud integrations, log transformation pipelines, full APM agent behavior, enterprise permissions and audit logs.
+Distributed tracing, custom dashboard builder, query language, complex alerting, Kubernetes/multi-cloud integrations, log pipelines, full APM behavior, enterprise permissions/audit logs.
 
 ## Dashboard principle
 
-Optimize for **fast diagnosis**, not configurability. Target: understand what is broken in **~five seconds** on the overview.
+Optimize for fast diagnosis, not configurability. A user should understand the problem on overview in about five seconds.
 
 ## Positioning anchor
 
-The user **refuses to configure observability** — guide product, docs, dashboard, SDK defaults, and pricing simplicity accordingly.
+Assume users refuse to configure observability; prioritize sane defaults and low-friction onboarding.
 
 When scope is ambiguous, prefer **DEVELOPMENT.md** at the repo root as source of truth.

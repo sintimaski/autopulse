@@ -1,21 +1,21 @@
 ---
-description: Which docs to load; documentation change approval
+description: Documentation sources, scope checks, and governance
 alwaysApply: true
 ---
 
 # Documentation context and change policy
 
-## Read when relevant
+## Read first when task touches scope/security/conventions
 
-- **Product, MVP, architecture, events, security:** `DEVELOPMENT.md`
-- **Editing docs or playbooks:** `docs/DOCUMENTATION_GOVERNANCE.md`
-- **Cursor layout and workflow index:** `docs/cursor/CURSOR_DEVELOPMENT.md`, `docs/cursor/WORKFLOWS.md`
-- **Agent procedures:** `AGENTS.md`, `agents/README.md`, and the specific playbook under `agents/`
+- Product and architecture truth: `DEVELOPMENT.md`
+- Agent and workflow conventions: `AGENTS.md`, `agents/README.md`, relevant playbook under `agents/`
+- Documentation governance before doc edits: `docs/DOCUMENTATION_GOVERNANCE.md`
 
 ## Governed changes
 
 Material updates to governed documents (see `docs/DOCUMENTATION_GOVERNANCE.md`) require **explicit maintainer approval** before treating them as final. Do not rewrite canonical specs or rules on assumption.
 
-## Chat usage
+## Speed and scope discipline
 
-When the task touches scope, security, or repo conventions, the user should **attach** `@DEVELOPMENT.md` and the relevant `agents/*.md` file in Cursor so the session matches repository intent.
+- Prefer minimal doc reads needed for the task; avoid broad context gathering that does not inform implementation.
+- If request conflicts with documented scope/security constraints, call out the conflict before implementing.

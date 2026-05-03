@@ -1,0 +1,13 @@
+---
+description: Test-file editing standards and strict verification
+globs: **/tests/**/*.{py,ts,tsx,js,jsx}
+alwaysApply: false
+---
+
+# Tests and validation
+
+- Keep tests deterministic and isolated; avoid network/time randomness unless explicitly under test.
+- Prefer focused test updates that match behavior changes; do not rewrite broad fixtures unless required.
+- When fixing regressions, add or adjust at least one assertion that would fail before the fix.
+- Validate touched test suites with targeted commands first, then expand only if failures suggest cross-area impact.
+- In final handoff, include exact test commands run and outcomes (pass/fail/skip).

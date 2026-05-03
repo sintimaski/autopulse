@@ -1,35 +1,31 @@
 ---
-description: When investigating bugs or unexpected behavior, reproduce locally and gather evidence before guessing.
+description: Debug with reproducible evidence, not guesses
 alwaysApply: true
 ---
 
 # AutoPulse — evidence-based debugging
 
-When a report is vague (“doesn’t work”, “retention never runs”, UI wrong), **do not guess**. Prefer a short, reproducible path and observable signals.
+When a report is vague ("doesn't work", "retention never runs", UI wrong), do not guess. Build a short repro, gather runtime evidence, and only then patch.
 
-## Reproduction stack
+## Standard repro stack (default)
 
-- **Database:** Use **file-backed SQLite** (`DATABASE_URL` in `backend/.env`) unless the defect is clearly Postgres-only. Keeps setup fast and matches most solo-dev flows.
-- **Backend:** Run from `backend/` (e.g. `uv run uvicorn autopulse_backend.main:app --log-level info`). Confirm startup logs and `/health`, `/ready`, `/internal/metrics` when jobs, DB, or retention are involved.
-- **Frontend:** Run the Next.js app from `frontend/` when the issue involves dashboard, auth, ingest UI, or API calls from the browser.
+- Default DB: file-backed SQLite from `backend/.env` unless issue is clearly Postgres-only.
+- Backend from `backend/`; validate startup plus `/health`, `/ready`, and `/internal/metrics` when jobs or retention are involved.
+- Frontend from `frontend/` for dashboard/auth/browser API issues.
 
-## Browser and UX
+## Evidence checklist before code changes
 
-- Ask the **user** to reproduce in the **browser** when layout, redirects, cookies, or network timing matter; request **browser / MCP access** when the environment supports it and the user agrees.
-- Give **exact URLs**, clicks, and expected vs actual (status codes, JSON fields, visible text).
+- Exact repro steps: URL, action, expected, actual.
+- Observable signals: status codes, response JSON fields, log lines, and relevant metrics flags.
+- Search for swallowed exceptions (`suppress`, broad `except`) and add targeted logging where needed.
 
-## Logs and ad-hoc probes
+## Temporary instrumentation policy
 
-- Prefer **`logging`** on the `autopulse_backend` tree (see `lifespan` handler pattern) over permanent `print`.
-- **`print` or scratch code** is acceptable **only while investigating**; remove or revert before merge.
-- **Temporary helpers:** one-off `uv run python …` snippets, or files under `backend/scripts/` (or a clearly named scratch file); must not contain **secrets**; delete or exclude from commits when done.
+- Prefer `logging` in backend code; avoid permanent `print`.
+- Temporary probes/scratch scripts are allowed only during investigation and must be removed before final handoff.
+- Never log API keys, magic link tokens, or full PII.
 
-## What to check first (common)
+## Retry discipline
 
-- Env: `DATABASE_URL`, `JOBS_ENABLE_SCHEDULER`, `AUTOPULSE_*` retention vars, `CORS_*`.
-- SQLite: schema exists, path on disk, `/internal/metrics` (`scheduler_running`, `jobs`, pressure poll flags).
-- Exceptions swallowed earlier—search for `suppress`, broad `except`, and add **targeted logging** instead of leaving failures silent.
-
-## Product and security
-
-- Do not log API keys, magic link tokens, or full PII; follow `DEVELOPMENT.md` and `agents/security-privacy.md` for sensitive areas.
+- Do not repeat the same failed action without new evidence.
+- After 3 failed attempts, summarize blocker, evidence gathered, and best next action.

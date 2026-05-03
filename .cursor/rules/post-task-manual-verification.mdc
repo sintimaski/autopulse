@@ -1,5 +1,5 @@
 ---
-description: Always include manual verification steps after completion
+description: Final responses must include explicit verification steps
 alwaysApply: true
 ---
 
@@ -8,7 +8,7 @@ alwaysApply: true
 After reporting a completed implementation, include a `Manual verification steps` section.
 
 Requirements:
-- Provide copy-pasteable steps to verify the change end-to-end.
-- Cover backend and frontend checks when both were modified.
-- Include expected results for each step.
-- Keep steps concise and ordered.
+- Provide ordered, copy-pasteable steps with expected results per step.
+- Include both automated checks run and manual end-to-end checks.
+- If backend and frontend were both changed, include verification for both surfaces.
+- If any checks were not run, state exactly what was skipped and why.

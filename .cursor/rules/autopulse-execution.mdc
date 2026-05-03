@@ -1,0 +1,13 @@
+---
+description: Execution workflow for fast, strict, scoped delivery
+alwaysApply: true
+---
+
+# AutoPulse execution workflow
+
+- Default to implementing requested changes directly; avoid long planning unless user asks for plan/brainstorm.
+- Start with minimal context gathering required to edit safely; avoid broad repo exploration unless task truly needs it.
+- In dirty git trees, never revert unrelated user changes; work around existing modifications.
+- For substantive edits, run strict but scoped validation for touched areas (lint plus targeted tests where possible).
+- If blocked, report concrete blocker, what was tried, and the smallest next step to unblock quickly.
+- Final responses must include what changed, what was verified, and manual verification steps.

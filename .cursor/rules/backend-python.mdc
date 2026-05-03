@@ -1,11 +1,13 @@
 ---
-description: Backend API and workers (FastAPI, Postgres)
+description: Backend FastAPI and worker conventions
 globs: backend/**/*.py
 alwaysApply: false
 ---
 
 # Backend
 
-- Keep `POST /ingest` fast; defer heavy work to workers as the product grows.
-- Authenticate every ingest request; scope all reads and writes by project.
-- Validate payloads with Pydantic; normalize timestamps and attach server metadata per `DEVELOPMENT.md`.
+- Keep `POST /ingest` fast; move expensive work off request path.
+- Authenticate API keys and scope all data operations to project boundaries.
+- Validate and normalize payloads with Pydantic models; attach server metadata per `DEVELOPMENT.md`.
+- Prefer focused fixes over broad refactors; preserve existing naming/patterns unless task requires change.
+- Run targeted backend tests for touched behavior and report exact commands/results in final response.
