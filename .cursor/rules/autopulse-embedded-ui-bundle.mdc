@@ -1,0 +1,23 @@
+---
+description: Keep embedded dashboard static assets in sync with the Next app before deploy-related commits.
+globs:
+  - frontend/**/*
+  - scripts/bundle_embedded_dashboard_ui.sh
+  - sdk/src/autopulse/ui/**/*
+---
+
+# Embedded dashboard bundle (deployment readiness)
+
+When a change touches **`frontend/`** (or the bundle script) and the work is meant for **release / PyPI wheel / embedded `autopulse` consumers**, ensure the static export is copied into the SDK:
+
+```bash
+cd /Users/dd/quests/autopulse   # repo root
+pwd
+./scripts/bundle_embedded_dashboard_ui.sh
+```
+
+That runs **`npm run build`** in `frontend/` and rsyncs **`frontend/out/`** → **`sdk/src/autopulse/ui/`**. Commit the updated tree under `sdk/src/autopulse/ui/` with the frontend change.
+
+**If needed only:** skip the script when the commit does not ship UI (docs-only, backend-only with no dashboard contract change). For anything that changes dashboard behavior or assets, run it.
+
+**Pre-commit:** a hook runs this automatically when staged paths match `frontend/` or `scripts/bundle_embedded_dashboard_ui.sh` (uses `AUTOPULSE_BUNDLE_SKIP_NPM_CI=1` when `node_modules` exists for speed). If the hook fails, fix `npm run build` errors, re-run the script, then commit.

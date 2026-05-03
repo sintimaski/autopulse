@@ -4,11 +4,42 @@ AutoPulse SDK instruments a FastAPI app and sends request/error events to AutoPu
 
 ## Install
 
+**Remote ingest only** (no local backend on disk):
+
 ```bash
 pip install autopulse
 ```
 
-## Minimal integration
+**Embedded** (`autopulse(app)` — local ingest + API + bundled Next dashboard under `/autopulse/ui/`):
+
+- **Once `autopulse-backend` is on the same package index as `autopulse` (e.g. PyPI):**
+
+  ```bash
+  pip install "autopulse[embedded]"
+  ```
+
+- **Before that, or from a git checkout:** build both wheels and install in one go (requires **Python ≥ 3.11**):
+
+  ```bash
+  ./scripts/build_sdk_release_wheels.sh   # from repo root; writes dist/wheels/*.whl
+  pip install dist/wheels/autopulse_backend-*.whl dist/wheels/autopulse-*.whl
+  ```
+
+  The SDK wheel already includes static UI assets under `autopulse/ui/` (refresh with `scripts/bundle_embedded_dashboard_ui.sh` when the Next app changes). No Node/npm is needed at install time.
+
+## Embedded (local dashboard + ingest), one line
+
+```python
+from fastapi import FastAPI
+from autopulse import autopulse
+
+app = FastAPI()
+autopulse(app)
+```
+
+`autopulse()` defaults **`environment` to `development`** so request events match common dashboard server-scope filters. Use `autopulse(app, environment="production")` when you need production labels.
+
+## Remote-only integration
 
 ```python
 from autopulse import monitor
@@ -16,7 +47,7 @@ from autopulse import monitor
 monitor(app)
 ```
 
-By default, the SDK uses bounded in-memory buffering, async background sending, and silent failure behavior so host apps stay healthy if AutoPulse is unavailable.
+By default, `monitor()` targets a remote AutoPulse project (set `AUTOPULSE_API_KEY` / `AUTOPULSE_INGEST_URL`). It uses bounded in-memory buffering, async background sending, and silent failure behavior so host apps stay healthy if AutoPulse is unavailable.
 
 ## Key runtime controls
 

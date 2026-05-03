@@ -41,6 +41,8 @@ uv run pre-commit install
 uv run pre-commit run --all-files
 ```
 
+Pre-commit also runs **`sdk-embedded-ui-bundle`** when staged paths include **`frontend/`** (or `scripts/bundle_embedded_dashboard_ui.sh`): Next **`npm run build`** plus sync into **`sdk/src/autopulse/ui/`** for embedded wheels. Commit those generated files with the dashboard change. Cursor agents: see **`.cursor/rules/autopulse-embedded-ui-bundle.mdc`**.
+
 Execution policy:
 
 - Run targeted tests during implementation (`uv run pytest sdk/tests/...`) for speed.

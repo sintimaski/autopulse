@@ -17,6 +17,9 @@ def autopulse(app: object, **kwargs: object) -> None:
     """One-line setup for embedded local AutoPulse mode."""
     options = dict(kwargs)
     options.setdefault("mode", "embedded")
+    # Match typical local dashboard scope (many users filter ``environment=development`` in the UI).
+    # Remote ``monitor()`` still defaults to ``production`` unless overridden.
+    options.setdefault("environment", "development")
     monitor(app, **options)
 
 

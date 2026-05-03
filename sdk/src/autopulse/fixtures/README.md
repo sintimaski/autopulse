@@ -39,7 +39,7 @@ uv run python -m autopulse.fixtures.synthetic_load --base-url http://localhost:8
 - `AUTOPULSE_DUCKDB_PATH`: embedded DuckDB event file path (default `./.autopulse/events.duckdb`).
 - `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`: max on-disk SQLite file size in MB (default `512` in embedded mode). Retention deletes oldest events across all projects until the file is under this cap. Set to `0` to turn off this global ceiling (dashboard per-project caps may still apply).
 - `AUTOPULSE_FRONTEND_MODE`: embedded frontend mode (`static` default, `sidecar` optional).
-- `AUTOPULSE_MODE=embedded` requires backend dependencies (`pip install "autopulse[embedded]"` outside this monorepo).
+- `AUTOPULSE_MODE=embedded` needs `autopulse-backend` (`pip install "autopulse[embedded]"` when both are on your index, or install both wheels from `./scripts/build_sdk_release_wheels.sh`).
 - `AUTOPULSE_API_KEY`: project API key (`ap_live_...`) for remote ingest mode.
 - `AUTOPULSE_INGEST_URL`: remote ingest URL (default `http://localhost:8000/ingest`).
 - `AUTOPULSE_SERVICE_NAME`: service label (default `synthetic-test-api`).

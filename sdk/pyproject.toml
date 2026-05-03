@@ -11,6 +11,7 @@ dependencies = [
 
 [project.optional-dependencies]
 embedded = [
+    # Local dashboard + ingest; requires ``autopulse-backend`` on your index (e.g. PyPI) or install both wheels from the repo (see ``scripts/build_sdk_release_wheels.sh``).
     "autopulse-backend>=0.1.0",
 ]
 

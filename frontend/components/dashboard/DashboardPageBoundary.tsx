@@ -36,19 +36,50 @@ export function ApiKeyMissing() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      if (!response.ok) {
-        throw new Error("Request failed");
+      const raw = await response.text();
+      let parsed: unknown = null;
+      try {
+        parsed = raw ? JSON.parse(raw) : null;
+      } catch {
+        parsed = null;
       }
-      const payload = (await response.json()) as DashboardMagicLinkRequestResponse;
-      if (payload.dev_magic_link_url) {
-        setMessage(`Dev link: ${payload.dev_magic_link_url}`);
-      } else if (payload.dev_token) {
-        setMessage(`Dev token: ${payload.dev_token}`);
+      if (!response.ok) {
+        const detail =
+          parsed &&
+          typeof parsed === "object" &&
+          parsed !== null &&
+          "detail" in parsed
+            ? String((parsed as { detail: unknown }).detail)
+            : raw.slice(0, 240);
+        setMessage(
+          `Request failed (${response.status}). ${detail || "See browser Network tab and backend logs."} ` +
+            "Typical fixes: set DASHBOARD_AUTH_ALLOWED_EMAIL to this address (or use dev allowlist), " +
+            "ensure ALERT_EMAIL_PROVIDER + keys/outbox for delivery, add your UI origin to CORS_ALLOW_ORIGINS " +
+            "if the API is on another host/port, and set NEXT_PUBLIC_AUTOPULSE_API_BASE_URL to a path " +
+            "(e.g. /autopulse) when UI and API share one origin.",
+        );
+        return;
+      }
+      if (!parsed || typeof parsed !== "object" || parsed === null || !("accepted" in parsed)) {
+        setMessage("Unexpected response from server (not JSON). Check API base URL and backend logs.");
+        return;
+      }
+      const okPayload = parsed as DashboardMagicLinkRequestResponse;
+      if (okPayload.dev_magic_link_url) {
+        setMessage(`Dev link: ${okPayload.dev_magic_link_url}`);
+      } else if (okPayload.dev_token) {
+        setMessage(`Dev token: ${okPayload.dev_token}`);
       } else {
         setMessage("If the email is allowed, check your inbox for the sign-in link.");
       }
-    } catch {
-      setMessage("Unable to send sign-in link. Check backend auth settings.");
+    } catch (err) {
+      const hint =
+        err instanceof TypeError
+          ? "Network error (wrong API URL, CORS, or server down). For embedded UI use NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=/autopulse unless API is on another origin."
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      setMessage(`Unable to reach sign-in API. ${hint}`);
     } finally {
       setLoading(false);
     }

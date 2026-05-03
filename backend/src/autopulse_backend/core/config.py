@@ -5,6 +5,45 @@ from os import getenv
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+_RUNTIME_DOTENV_LOADED = False
+
+
+def _candidate_backend_dotenv_files() -> list[Path]:
+    """Best-effort dotenv paths so ``backend/.env`` loads for embedded and uvicorn."""
+    paths: list[Path] = []
+    raw = getenv("AUTOPULSE_BACKEND_DOTENV")
+    if raw and raw.strip():
+        paths.append(Path(raw).expanduser())
+    cwd = Path.cwd()
+    paths.extend([cwd / ".env", cwd / "backend" / ".env"])
+    # Monorepo layout: …/backend/src/autopulse_backend/core/config.py → backend/.env
+    maybe_backend_root = Path(__file__).resolve().parents[3]
+    if (maybe_backend_root / "pyproject.toml").is_file():
+        paths.append(maybe_backend_root / ".env")
+    return paths
+
+
+def _load_runtime_dotenv_once() -> None:
+    global _RUNTIME_DOTENV_LOADED
+    if _RUNTIME_DOTENV_LOADED:
+        return
+    _RUNTIME_DOTENV_LOADED = True
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    seen: set[Path] = set()
+    for path in _candidate_backend_dotenv_files():
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if path.is_file():
+            load_dotenv(path, override=False)
+
 
 def _env_bool(name: str, default: bool) -> bool:
     raw = getenv(name)
@@ -246,9 +285,12 @@ def _is_autopulse_embedded_default_sqlite_file(normalized_database_url: str) -> 
 
 
 def get_settings() -> Settings:
+    _load_runtime_dotenv_once()
     raw_cors_origins = getenv(
         "CORS_ALLOW_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000",
+        "http://localhost:3000,http://127.0.0.1:3000,"
+        "http://localhost:8000,http://127.0.0.1:8000,"
+        "http://localhost:8010,http://127.0.0.1:8010",
     )
     cors_allow_origins = tuple(
         origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()
@@ -256,6 +298,12 @@ def get_settings() -> Settings:
     database_url = normalize_database_url(
         getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
     )
+    embedded_runtime = getenv("AUTOPULSE_RUNTIME_EMBEDDED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     embedded_cap_raw = getenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
     embedded_sqlite_max_db_file_mb = _env_optional_positive_int("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
     if (
@@ -362,7 +410,10 @@ def get_settings() -> Settings:
             3,
             minimum=0,
         ),
-        ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", True),
+        ingest_require_https=_env_bool(
+            "INGEST_REQUIRE_HTTPS",
+            not embedded_runtime,
+        ),
         ingest_trust_forwarded_proto=_env_bool("INGEST_TRUST_FORWARDED_PROTO", True),
         ingest_drop_autopulse_traffic_from_db=_env_bool(
             "INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB",

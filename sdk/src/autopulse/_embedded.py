@@ -8,13 +8,16 @@ import subprocess  # nosec B404
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import httpx
 from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from starlette.responses import RedirectResponse
+from starlette.exceptions import HTTPException
+from starlette.responses import RedirectResponse, Response
 from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 _LOG = logging.getLogger(__name__)
 
@@ -193,8 +196,31 @@ def _normalize_prefix(raw_prefix: str) -> str:
     return prefix
 
 
+def _cwd_host_sqlite_file_database_url(database_url: str) -> str:
+    """Resolve relative SQLite file URLs against the embedded host process cwd.
+
+    ``normalize_database_url`` in the backend anchors ``./`` paths to the backend package
+    tree for standalone servers. Embedded hosts (starter apps) must keep ``./autopulse.db``
+    next to the user's project so ``_ensure_embedded_project_and_key`` and
+    ``get_db_session``/ingest share the same SQLite file.
+    """
+    raw = database_url.strip()
+    parsed = urlparse(raw)
+    if parsed.scheme not in {"sqlite", "sqlite+aiosqlite"}:
+        return database_url
+    path = unquote(parsed.path or "")
+    if raw.endswith(":memory:") or path in {":memory:", ""}:
+        return database_url
+    if path.startswith("/./") or path.startswith("/../"):
+        rel = Path(path[1:])
+        resolved = (Path.cwd() / rel).resolve()
+        return f"{parsed.scheme}:///{resolved.as_posix()}"
+    return database_url
+
+
 def _apply_backend_environment(*, database_url: str) -> None:
-    os.environ["DATABASE_URL"] = database_url
+    os.environ["DATABASE_URL"] = _cwd_host_sqlite_file_database_url(database_url)
+    os.environ.setdefault("AUTOPULSE_RUNTIME_EMBEDDED", "1")
     # Embedded mode must run retention housekeeping; otherwise local DB caps are never enforced.
     # Do not use setdefault: a repo `.env` often sets JOBS_ENABLE_SCHEDULER=false, which would win.
     os.environ["JOBS_ENABLE_SCHEDULER"] = "1"
@@ -318,6 +344,51 @@ def _start_embedded_background_jobs(app: Any) -> None:
             app.state._autopulse_retention_pressure_poll = None
 
 
+_EMBEDDED_UI_ASSET_SUFFIXES: frozenset[str] = frozenset(
+    {
+        ".css",
+        ".eot",
+        ".gif",
+        ".ico",
+        ".jpeg",
+        ".jpg",
+        ".js",
+        ".json",
+        ".map",
+        ".mjs",
+        ".png",
+        ".svg",
+        ".ttf",
+        ".txt",
+        ".webp",
+        ".woff",
+        ".woff2",
+    }
+)
+
+
+def _embedded_ui_path_looks_like_static_asset(path: str) -> bool:
+    """Avoid SPA fallback for real static requests (Next ``_next/``, images, fonts, …)."""
+    tail = path.rstrip("/").rsplit("/", 1)[-1].lower()
+    if "." not in tail:
+        return False
+    return any(tail.endswith(suffix) for suffix in _EMBEDDED_UI_ASSET_SUFFIXES)
+
+
+class _EmbeddedDashboardStaticFiles(StaticFiles):
+    """Next static export under ``/ui``; fall back to ``index.html`` for client routes."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as exc:
+            if exc.status_code != 404 or not self.html:
+                raise
+            if _embedded_ui_path_looks_like_static_asset(path):
+                raise
+            return await super().get_response("index.html", scope)
+
+
 async def _stop_embedded_background_jobs(app: Any) -> None:
     from autopulse_backend.jobs import RetentionPressurePollHandle, SchedulerHandle
 
@@ -352,7 +423,7 @@ def _mount_embedded_ui(backend_app: Any, *, static_dir: str | None = None) -> No
         return
     backend_app.mount(
         "/ui",
-        StaticFiles(directory=str(resolved_dir), html=True),
+        _EmbeddedDashboardStaticFiles(directory=str(resolved_dir), html=True),
         name="autopulse-ui",
     )
 

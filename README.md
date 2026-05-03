@@ -30,11 +30,20 @@ uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8
 
 First embedded `monitor()` boot writes **`.env.autopulse`** (gitignored) with `AUTOPULSE_EMBEDDED_API_KEY` and matching `NEXT_PUBLIC_*` for static UI. **`./scripts/run_synthetic_stack.sh`** sources `backend/.env` then **`.env.autopulse`** before `npm run build`, so the second run onward is mostly automatic. A one-shot startup ingest (`/.well-known/autopulse-onboarding`) runs unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`. Override path with `AUTOPULSE_ENV_AUTOPULSE_FILE`.
 
-Embedded mode depends on backend components. For standalone SDK installs, use:
+Embedded mode needs the **`autopulse-backend`** distribution (not yet a separate PyPI install for every workflow). Use either:
 
 ```bash
 pip install "autopulse[embedded]"
 ```
+
+…when your index has **both** packages (e.g. after they are published), **or** from a clone build both wheels then:
+
+```bash
+./scripts/build_sdk_release_wheels.sh
+pip install dist/wheels/autopulse_backend-*.whl dist/wheels/autopulse-*.whl
+```
+
+Remote-only ingest works with **`pip install autopulse`** alone.
 
 Then generate fixture traffic:
 

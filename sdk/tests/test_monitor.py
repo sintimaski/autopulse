@@ -497,6 +497,54 @@ def test_stable_error_hash_differs_by_path() -> None:
     assert h_a != h_b
 
 
+def test_embedded_default_sqlite_path_allows_http_ingest_without_https_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: ASGI ingest uses http://; keys must live in the same SQLite as get_settings."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("INGEST_REQUIRE_HTTPS", raising=False)
+    monkeypatch.delenv("AUTOPULSE_RUNTIME_EMBEDDED", raising=False)
+    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
+    duck_path = tmp_path / "events-default-sqlite.duckdb"
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(duck_path))
+
+    app = FastAPI()
+    monitor(app, mode="embedded", mount_prefix="/autopulse")
+
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "sdk-test",
+                "environment": "test",
+                "method": "GET",
+                "path": "/health",
+                "status_code": 200,
+                "latency_ms": 12.3,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {DEFAULT_EMBEDDED_API_KEY}"}
+    with lifespan_test_client(app) as client:
+        assert client.post("/autopulse/ingest", json=payload, headers=headers).status_code == 200
+
+    from autopulse_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
+
+    import duckdb
+
+    con = duckdb.connect(str(duck_path), read_only=True)
+    try:
+        count = int(con.execute("select count(*) from events").fetchone()[0])
+    finally:
+        con.close()
+    assert count >= 1
+
+
 def test_embedded_mode_mounts_backend_and_accepts_events(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -539,6 +587,14 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
 
         overview_response = client.get("/autopulse/dashboard/overview", headers=headers)
         assert overview_response.status_code in {200, 401}
+
+        ui_deep = client.get("/autopulse/ui/dashboard/?window_minutes=60")
+        assert ui_deep.status_code == 200
+        assert "text/html" in (ui_deep.headers.get("content-type") or "")
+        assert "AutoPulse Dashboard" in ui_deep.text
+
+        missing_asset = client.get("/autopulse/ui/not-a-real-asset-xyz123.js")
+        assert missing_asset.status_code == 404
 
 
 def test_embedded_writes_api_key_file_when_unconfigured(
