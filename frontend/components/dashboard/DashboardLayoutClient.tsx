@@ -419,6 +419,53 @@ function ShellWithData({ children }: { children: ReactNode }) {
     searchKey,
   ]);
 
+  const hasIssuedApiKey = useMemo(
+    () =>
+      Boolean(
+        d.onboardingStatus?.ingest_key_ready ??
+          (d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey)),
+      ),
+    [d.apiKeys.length, d.lastIssuedApiKey, d.onboardingStatus?.ingest_key_ready],
+  );
+
+  const hasFirstEvent = useMemo(
+    () =>
+      Boolean(
+        d.onboardingStatus?.first_event_received ??
+          ((d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0),
+      ),
+    [
+      d.onboardingStatus?.first_event_received,
+      d.overview?.request_count,
+      d.requests?.total,
+    ],
+  );
+
+  const onboardingStatusKnown = d.onboardingStatus !== null;
+  const onboardingCompleted = Boolean(d.onboardingStatus?.onboarding_completed);
+
+  useEffect(() => {
+    if (!d.authSessionResolved || !d.hasApiKey) {
+      return;
+    }
+    if (!onboardingStatusKnown) {
+      return;
+    }
+    if (onboardingCompleted) {
+      return;
+    }
+    if (pathname !== "/onboarding") {
+      router.replace("/onboarding");
+    }
+  }, [
+    d.authSessionResolved,
+    d.hasApiKey,
+    onboardingCompleted,
+    onboardingStatusKnown,
+    pathname,
+    router,
+  ]);
+
   if (!d.authSessionResolved) {
     return <DashboardSessionRestoring />;
   }
@@ -431,18 +478,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
   const showServerScope =
     pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
-  const hasIssuedApiKey =
-    d.onboardingStatus?.ingest_key_ready ??
-    (d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey));
-  const hasFirstEvent =
-    d.onboardingStatus?.first_event_received ??
-    ((d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0);
-  const onboardingComplete =
-    d.onboardingStatus?.current_step === "completed" ||
-    (d.onboardingStatus !== null &&
-      d.onboardingStatus.first_diagnostic_signal_ready &&
-      d.onboardingStatus.first_event_received);
-  const showOnboardingNav = !onboardingComplete;
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const embeddedStaticUi = isEmbeddedRelativeDashboard();
@@ -542,7 +577,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
       isDark={isDark}
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}
-      showOnboardingNav={showOnboardingNav}
       filterToolbarAutoCollapse={showServerScope}
       filterToolbarCompactLabel={
         pathname === "/diagnosis"

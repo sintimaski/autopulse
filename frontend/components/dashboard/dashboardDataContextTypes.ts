@@ -128,6 +128,8 @@ export type DashboardDataContextValue = {
   saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
   saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
   refreshApiKeys: () => Promise<void>;
+  /** Persists project onboarding completion after first ingest (server-validated). */
+  completeOnboarding: () => Promise<boolean>;
   issueApiKey: () => Promise<boolean>;
   rotateApiKey: (keyId: string) => Promise<boolean>;
   revokeApiKey: (keyId: string) => Promise<boolean>;

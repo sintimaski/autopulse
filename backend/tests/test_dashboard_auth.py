@@ -5,7 +5,7 @@ import email
 import re
 from datetime import UTC, datetime, timedelta
 from email import policy
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from autopulse_backend.app import create_app
 from autopulse_backend.auth import generate_api_key
-from autopulse_backend.models import ApiKey, Project
+from autopulse_backend.models import ApiKey, Event, Project
 
 
 def _seed_singleton_embedded_bootstrap_project(database_url: str) -> str:
@@ -57,6 +57,37 @@ def _seed_project_and_key(database_url: str) -> str:
             await engine.dispose()
 
     return asyncio.run(run())
+
+
+def _insert_one_request_event(database_url: str, *, project_id: UUID) -> None:
+    async def run() -> None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                now = datetime.now(tz=UTC)
+                session.add(
+                    Event(
+                        project_id=project_id,
+                        timestamp=now,
+                        received_at=now,
+                        sdk_version="0.1.0",
+                        type="request",
+                        service_name="api",
+                        environment="test",
+                        method="GET",
+                        path="/",
+                        status_code=200,
+                        latency_ms=1.0,
+                        payload={"type": "request"},
+                        request_id="req-onboarding-complete",
+                    )
+                )
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
 
 
 def _truncate_tables(database_url: str) -> None:
@@ -677,6 +708,7 @@ def test_dashboard_onboarding_status_and_alert_capabilities(
         assert payload["session_authenticated"] is True
         assert payload["project_ready"] is True
         assert payload["ingest_key_ready"] is True
+        assert payload["onboarding_completed"] is False
         assert payload["current_step"] in {
             "send_first_event",
             "open_diagnosis",
@@ -688,3 +720,35 @@ def test_dashboard_onboarding_status_and_alert_capabilities(
         channels = {item["channel"]: item for item in capabilities.json()["channels"]}
         assert channels["email"]["status"] in {"active", "unavailable"}
         assert channels["slack"]["status"] == "planned"
+
+
+def test_dashboard_onboarding_complete_requires_event_then_persists(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+        project_id = UUID(verify_response.json()["project_id"])
+
+        denied = client.post("/dashboard/auth/onboarding-complete")
+        assert denied.status_code == 400
+
+        _insert_one_request_event(backend_test_database_url, project_id=project_id)
+        ok = client.post("/dashboard/auth/onboarding-complete")
+        assert ok.status_code == 200
+        assert ok.json()["onboarding_completed"] is True
+
+        status = client.get("/dashboard/auth/onboarding-status")
+        assert status.status_code == 200
+        assert status.json()["onboarding_completed"] is True

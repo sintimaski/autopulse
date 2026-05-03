@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from os import getenv
 from pathlib import Path
-from threading import Lock
+from threading import Lock, local
 from typing import Any, cast
 from uuid import UUID
 
@@ -66,8 +66,13 @@ class DuckDbEventStore:
         self._path = Path(db_path).expanduser().resolve()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         _cfg = _duckdb_connect_config()
+        self._connect_config = _cfg
         self._write_conn = self._open_connection(str(self._path), _cfg)
         self._write_lock = Lock()
+        self._read_local = local()
+        self._read_conn_init_lock = Lock()
+        self._read_connections: list[Any] = []
+        self._read_connections_lock = Lock()
         self._ensure_schema()
 
     def _open_connection(self, path: str, config: dict[str, Any]) -> Any:
@@ -92,25 +97,49 @@ class DuckDbEventStore:
         assert last is not None
         raise last
 
+    def _get_thread_read_connection(self) -> Any:
+        """Return a dedicated connection for SELECTs on the executor pool.
+
+        Uses the same connect config as the writer. SELECTs skip ``_write_lock``
+        so parallel dashboard reads are not serialized on the ingest connection.
+        """
+        existing = getattr(self._read_local, "conn", None)
+        if existing is not None:
+            return existing
+        with self._read_conn_init_lock:
+            existing = getattr(self._read_local, "conn", None)
+            if existing is not None:
+                return existing
+            conn = self._open_connection(str(self._path), self._connect_config)
+            self._read_local.conn = conn
+            with self._read_connections_lock:
+                self._read_connections.append(conn)
+            return conn
+
     def close(self) -> None:
         with self._write_lock, suppress(Exception):
             self._write_conn.close()
+        with self._read_connections_lock:
+            for read_conn in self._read_connections:
+                with suppress(Exception):
+                    read_conn.close()
+            self._read_connections.clear()
 
     def _fetchall_read(self, sql: str, params: list[Any] | None = None) -> list[tuple[Any, ...]]:
         params_list = params or []
-        with self._write_lock:
-            return cast(
-                list[tuple[Any, ...]],
-                self._write_conn.execute(sql, params_list).fetchall(),
-            )
+        conn = self._get_thread_read_connection()
+        return cast(
+            list[tuple[Any, ...]],
+            conn.execute(sql, params_list).fetchall(),
+        )
 
     def _fetchone_read(self, sql: str, params: list[Any] | None = None) -> tuple[Any, ...] | None:
         params_list = params or []
-        with self._write_lock:
-            return cast(
-                tuple[Any, ...] | None,
-                self._write_conn.execute(sql, params_list).fetchone(),
-            )
+        conn = self._get_thread_read_connection()
+        return cast(
+            tuple[Any, ...] | None,
+            conn.execute(sql, params_list).fetchone(),
+        )
 
     def _ensure_schema(self) -> None:
         self._write_conn.execute(

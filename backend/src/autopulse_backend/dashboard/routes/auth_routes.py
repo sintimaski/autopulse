@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlencode
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -63,6 +64,29 @@ OnboardingStep = Literal[
 ]
 
 router = APIRouter()
+
+
+async def _project_has_received_any_event(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    settings: Settings,
+) -> bool:
+    """True when SQL ``events`` or DuckDB has at least one row for the project."""
+    has_sql_event = bool(
+        await session.scalar(select(exists().where(Event.project_id == project_id)))
+    )
+    if has_sql_event:
+        return True
+    if not event_store_enabled(settings):
+        return False
+    store = try_get_duckdb_event_store()
+    if store is None:
+        return False
+    with suppress(Exception):
+        duckdb_count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
+        return bool(duckdb_count > 0)
+    return False
 
 
 def _sync_embedded_env_autopulse_key(raw_api_key: str) -> None:
@@ -367,6 +391,9 @@ async def get_dashboard_onboarding_status(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardOnboardingStatusResponse:
+    settings = get_settings()
+    project = await session.get(Project, auth_session.project_id)
+    onboarding_completed = project.onboarding_completed if project is not None else False
     project_exists = await session.scalar(
         select(exists().where(Project.id == auth_session.project_id))
     )
@@ -377,20 +404,9 @@ async def get_dashboard_onboarding_status(
             )
         )
     )
-    has_first_event = bool(
-        await session.scalar(select(exists().where(Event.project_id == auth_session.project_id)))
+    has_first_event = await _project_has_received_any_event(
+        session, project_id=auth_session.project_id, settings=settings
     )
-    if not has_first_event:
-        settings = get_settings()
-        if event_store_enabled(settings):
-            store = try_get_duckdb_event_store()
-            if store is not None:
-                with suppress(Exception):
-                    duckdb_count = await run_duckdb_read_sync(
-                        store.count_events_for_project,
-                        auth_session.project_id,
-                    )
-                    has_first_event = duckdb_count > 0
     has_diagnostic_signal = await session.scalar(
         select(
             exists().where(
@@ -399,8 +415,10 @@ async def get_dashboard_onboarding_status(
             )
         )
     )
-    if has_diagnostic_signal:
+    if onboarding_completed:
         current_step: OnboardingStep = "completed"
+    elif has_diagnostic_signal:
+        current_step = "completed"
     elif has_first_event:
         current_step = "open_diagnosis"
     elif has_ingest_key:
@@ -425,9 +443,33 @@ async def get_dashboard_onboarding_status(
         ingest_key_ready=bool(has_ingest_key),
         first_event_received=bool(has_first_event),
         first_diagnostic_signal_ready=bool(has_diagnostic_signal),
+        onboarding_completed=onboarding_completed,
         current_step=current_step,
         next_recommended_action=hints.get(current_step, "Continue onboarding."),
     )
+
+
+@router.post("/auth/onboarding-complete", response_model=DashboardOnboardingStatusResponse)
+async def post_dashboard_onboarding_complete(
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardOnboardingStatusResponse:
+    settings = get_settings()
+    project = await session.get(Project, auth_session.project_id)
+    if project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Project not found")
+    has_first_event = await _project_has_received_any_event(
+        session, project_id=auth_session.project_id, settings=settings
+    )
+    if not has_first_event:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="At least one ingested event is required before completing onboarding.",
+        )
+    project.onboarding_completed = True
+    await session.commit()
+    await session.refresh(project)
+    return await get_dashboard_onboarding_status(auth_session=auth_session, session=session)
 
 
 @router.post("/auth/logout", response_model=DashboardSessionResponse)

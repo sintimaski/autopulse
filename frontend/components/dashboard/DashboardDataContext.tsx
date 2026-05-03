@@ -1170,6 +1170,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     return true;
   }, [hasApiKey, refreshApiKeys]);
 
+  const completeOnboarding = useCallback(async (): Promise<boolean> => {
+    if (!hasApiKey) {
+      return false;
+    }
+    const response = await fetch(buildApiUrl("/dashboard/auth/onboarding-complete"), {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      return false;
+    }
+    const payload = (await response.json()) as DashboardOnboardingStatusResponse;
+    setOnboardingStatus(payload);
+    return true;
+  }, [hasApiKey]);
+
   const rotateApiKey = useCallback(
     async (keyId: string): Promise<boolean> => {
       if (!hasApiKey) {
@@ -1821,6 +1837,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
       refreshApiKeys,
+      completeOnboarding,
       issueApiKey,
       rotateApiKey,
       revokeApiKey,
@@ -1932,6 +1949,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
       refreshApiKeys,
+      completeOnboarding,
       issueApiKey,
       rotateApiKey,
       revokeApiKey,

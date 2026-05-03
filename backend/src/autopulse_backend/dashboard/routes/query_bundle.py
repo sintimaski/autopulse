@@ -99,14 +99,31 @@ _bundle_inflight_lock = asyncio.Lock()
 _bundle_light_concurrency = asyncio.Semaphore(
     _env_int("AUTOPULSE_DASHBOARD_QUERY_LIGHT_CONCURRENCY", 8, minimum=1, maximum=64)
 )
-_bundle_heavy_concurrency = asyncio.Semaphore(
-    _env_int(
-        "AUTOPULSE_DASHBOARD_QUERY_PRESSURE_INFLIGHT_THRESHOLD",
-        2,
-        minimum=1,
-        maximum=32,
-    )
-)
+
+
+def _resolve_dashboard_heavy_query_concurrency() -> int:
+    """Cap concurrent heavy `/dashboard/query` bundles (extended/widgets/diagnosis slices).
+
+    Heavy work fans out several DuckDB reads; starving this semaphore queues requests
+    until clients abort. Prefer ``AUTOPULSE_DASHBOARD_QUERY_HEAVY_CONCURRENCY``; the
+    legacy ``AUTOPULSE_DASHBOARD_QUERY_PRESSURE_INFLIGHT_THRESHOLD`` is still honored
+    when the new name is unset.
+    """
+    heavy = os.getenv("AUTOPULSE_DASHBOARD_QUERY_HEAVY_CONCURRENCY")
+    if heavy is not None and str(heavy).strip():
+        return _env_int("AUTOPULSE_DASHBOARD_QUERY_HEAVY_CONCURRENCY", 8, minimum=1, maximum=32)
+    legacy = os.getenv("AUTOPULSE_DASHBOARD_QUERY_PRESSURE_INFLIGHT_THRESHOLD")
+    if legacy is not None and str(legacy).strip():
+        return _env_int(
+            "AUTOPULSE_DASHBOARD_QUERY_PRESSURE_INFLIGHT_THRESHOLD",
+            2,
+            minimum=1,
+            maximum=32,
+        )
+    return 8
+
+
+_bundle_heavy_concurrency = asyncio.Semaphore(_resolve_dashboard_heavy_query_concurrency())
 _bundle_version_meta_lock = asyncio.Lock()
 _bundle_project_version_locks: dict[str, asyncio.Lock] = {}
 _bundle_project_versions: dict[str, int] = {}

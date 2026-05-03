@@ -1,20 +1,21 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useDashboardData } from "../DashboardDataContext";
 import { isEmbeddedRelativeDashboard } from "../dashboardTypes";
 
 export function OnboardingContent() {
+  const router = useRouter();
   const d = useDashboardData();
   const embedded = isEmbeddedRelativeDashboard();
   const [message, setMessage] = useState<string | null>(null);
+  const [continueBusy, setContinueBusy] = useState(false);
   const status = d.onboardingStatus;
   const hasIssuedApiKey = status?.ingest_key_ready ?? (d.apiKeys.length > 0 || Boolean(d.lastIssuedApiKey));
   const hasFirstEvent =
     status?.first_event_received ?? ((d.requests?.total ?? 0) > 0 || (d.overview?.request_count ?? 0) > 0);
-  const hasDiagnosisSignal = status?.first_diagnostic_signal_ready ?? false;
 
   const apiKeyPreview = useMemo(() => {
     if (d.lastIssuedApiKey) return d.lastIssuedApiKey;
@@ -108,30 +109,33 @@ export function OnboardingContent() {
             </span>
           </div>
         </li>
-
-        <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">4. Errors</p>
-          <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">When traffic includes failures, open Diagnosis.</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-sm">
-            <Link href="/dashboard" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
-              Overview
-            </Link>
-            <span className="text-slate-400">·</span>
-            <Link href="/diagnosis" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
-              Diagnosis
-            </Link>
-          </div>
-          <span
-            className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-              hasDiagnosisSignal
-                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-                : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-            }`}
-          >
-            {hasDiagnosisSignal ? "OK" : "…"}
-          </span>
-        </li>
       </ol>
+
+      <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 dark:border-neutral-700">
+        <p className="text-xs text-slate-600 dark:text-neutral-400">
+          After the first event is visible above, you can open the rest of the console.
+        </p>
+        <button
+          type="button"
+          disabled={!hasFirstEvent || continueBusy}
+          onClick={async () => {
+            setContinueBusy(true);
+            try {
+              const ok = await d.completeOnboarding();
+              if (ok) {
+                router.push("/dashboard");
+              } else {
+                setMessage("Could not save onboarding completion. Try refresh, then Continue again.");
+              }
+            } finally {
+              setContinueBusy(false);
+            }
+          }}
+          className="ap-btn-primary w-fit disabled:pointer-events-none disabled:opacity-40"
+        >
+          {continueBusy ? "Saving…" : "Continue to app"}
+        </button>
+      </div>
 
       {message ? <p className="text-xs text-slate-600 dark:text-neutral-400">{message}</p> : null}
     </section>

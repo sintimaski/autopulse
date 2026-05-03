@@ -41,9 +41,10 @@ export function MagicLinkVerifyClient() {
           });
           if (onboardingResponse.ok) {
             const onboardingPayload = (await onboardingResponse.json()) as {
-              current_step?: "completed" | string;
+              first_event_received?: boolean;
+              onboarding_completed?: boolean;
             };
-            if (onboardingPayload.current_step && onboardingPayload.current_step !== "completed") {
+            if (onboardingPayload.onboarding_completed !== true) {
               destination = "/onboarding";
             }
           }

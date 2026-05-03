@@ -497,6 +497,7 @@ class DashboardOnboardingStatusResponse(BaseModel):
     ingest_key_ready: bool
     first_event_received: bool
     first_diagnostic_signal_ready: bool
+    onboarding_completed: bool
     next_recommended_action: str = ""
     current_step: Literal[
         "authenticate_session",

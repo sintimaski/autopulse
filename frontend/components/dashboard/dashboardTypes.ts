@@ -291,6 +291,8 @@ export type DashboardOnboardingStatusResponse = {
   ingest_key_ready: boolean;
   first_event_received: boolean;
   first_diagnostic_signal_ready: boolean;
+  /** Persisted on project when user completes onboarding (dashboard gate). */
+  onboarding_completed: boolean;
   /** Short hint for the dashboard onboarding checklist. */
   next_recommended_action: string;
   current_step:
