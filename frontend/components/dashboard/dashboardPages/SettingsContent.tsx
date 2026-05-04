@@ -10,7 +10,7 @@ import type {
   DashboardOrganizationSummary,
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
-import { buildApiUrl, isEmbeddedRelativeDashboard } from "../dashboardTypes";
+import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -251,11 +251,15 @@ export function SettingsContent() {
               </label>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Optional rotation caps apply to the active embedded log store (DuckDB or SQLite). Embedded installs also honor{" "}
+              Optional rotation caps apply to the active log store (DuckDB or SQLite). The backend also honors{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
+                AUTOPULSE_SQLITE_MAX_DB_FILE_MB
+              </code>{" "}
+              (deprecated alias{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
                 AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB
-              </code>{" "}
-              as a whole-file ceiling (default 512 unless overridden).
+              </code>
+              ) as a whole-file ceiling (default 512 on dev SQLite filenames unless overridden).
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
               Archive status: {effectiveRetentionDraft.archival_status}
@@ -428,7 +432,7 @@ export function SettingsContent() {
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Issue, rotate, and revoke ingest keys. These actions are owner-only and audited.
         </p>
-        {isEmbeddedRelativeDashboard() ? (
+        {isApiSubpathDashboard() ? (
           <p className="mt-2 text-xs text-slate-600 dark:text-neutral-400">
             First boot writes <code className="rounded bg-slate-100 px-1 font-mono dark:bg-neutral-950">.env.autopulse</code> — source before{" "}
             <code className="rounded bg-slate-100 px-1 font-mono dark:bg-neutral-950">npm run build</code>. New keys here: paste both API_KEY lines there, rebuild, restart.
@@ -575,7 +579,7 @@ export function SettingsContent() {
           </label>
           <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
             Applies to dashboard, diagnosis, request logs, SQL log queries, and alert evaluations so
-            embedded UI, dashboard API, and ingest calls do not skew counts.
+            static UI, dashboard API, and ingest calls do not skew counts.
           </p>
         </div>
       </section>

@@ -1,4 +1,4 @@
-"""Serve the Next static export from the API process (embedded-style dashboard)."""
+"""Serve the Next static export from the API process (dashboard UI mount)."""
 
 from __future__ import annotations
 
@@ -67,14 +67,8 @@ def _resolve_dashboard_static_dir(_settings: Settings) -> Path | None:
         if p.is_dir() and (p / "index.html").is_file():
             return p
         return None
-    # Prefer the workspace Next export (`npm run build` in `frontend/`) over the SDK bundle
-    # tree so local rebuilds are not shadowed by a stale `sdk/src/autopulse/ui/` from an older
-    # `./scripts/bundle_embedded_dashboard_ui.sh` run. Wheel-only installs typically have no
-    # `frontend/out/` and still resolve the bundled path.
-    candidates = (
-        Path.cwd() / "frontend" / "out",
-        Path.cwd() / "sdk" / "src" / "autopulse" / "ui",
-    )
+    # Prefer the workspace Next export (`npm run build` in `frontend/`).
+    candidates = (Path.cwd() / "frontend" / "out",)
     for raw in candidates:
         p = raw.resolve()
         if p.is_dir() and (p / "index.html").is_file():

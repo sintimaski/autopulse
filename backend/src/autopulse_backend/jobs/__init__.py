@@ -147,8 +147,8 @@ async def run_retention_once(
     size_after_cleanup = 0
     size_after_vacuum = 0
     cap_bytes = (
-        int(resolved_settings.embedded_sqlite_max_db_file_mb) * 1024 * 1024
-        if resolved_settings.embedded_sqlite_max_db_file_mb is not None
+        int(resolved_settings.sqlite_max_db_file_mb) * 1024 * 1024
+        if resolved_settings.sqlite_max_db_file_mb is not None
         else None
     )
     logger.info("Retention run start: database_url=%s", redact_database_url_for_log(url))
@@ -163,7 +163,7 @@ async def run_retention_once(
 
         if url.startswith("sqlite"):
             db_path = _resolve_sqlite_db_path(url)
-            cap_mb = resolved_settings.embedded_sqlite_max_db_file_mb
+            cap_mb = resolved_settings.sqlite_max_db_file_mb
             if db_path is not None:
                 try:
                     size_before = _sqlite_db_disk_footprint_bytes(db_path)

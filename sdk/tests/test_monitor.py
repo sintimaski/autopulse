@@ -1,21 +1,17 @@
 import asyncio
 import gzip
 import json as json_std
-import os
-import sqlite3
+import logging
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import httpx
 import pytest
 from client_lifespan import lifespan_test_client
 from fastapi import FastAPI
 
-from autopulse._embedded import DEFAULT_EMBEDDED_API_KEY
 from autopulse._infrastructure import InfrastructureSampler
 from autopulse._monitor import (
     _AutoPulseMiddleware,
@@ -90,7 +86,7 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
     values = {
         "api_key": "ap_test_key",
         "ingest_url": "https://example.test/ingest",
-        "embedded_startup_ingest_ping": False,
+        "startup_ingest_ping": False,
         "service_name": "test-api",
         "environment": "test",
         "queue_maxsize": 10,
@@ -529,300 +525,11 @@ def test_stable_error_hash_differs_by_path() -> None:
     assert h_a != h_b
 
 
-def test_embedded_default_sqlite_path_allows_http_ingest_without_https_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_monitor_warns_and_ignores_deprecated_embedded_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Regression: ASGI ingest uses http://; keys must live in the same SQLite as get_settings."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("INGEST_REQUIRE_HTTPS", raising=False)
-    monkeypatch.delenv("AUTOPULSE_RUNTIME_EMBEDDED", raising=False)
-    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    duck_path = tmp_path / "events-default-sqlite.duckdb"
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(duck_path))
-
     app = FastAPI()
-    monitor(app, mode="embedded", mount_prefix="/autopulse")
-
-    payload = {
-        "events": [
-            {
-                "type": "request",
-                "timestamp": datetime.now(tz=UTC).isoformat(),
-                "service_name": "sdk-test",
-                "environment": "test",
-                "method": "GET",
-                "path": "/health",
-                "status_code": 200,
-                "latency_ms": 12.3,
-            }
-        ]
-    }
-    headers = {"Authorization": f"Bearer {DEFAULT_EMBEDDED_API_KEY}"}
-    with lifespan_test_client(app) as client:
-        assert client.post("/autopulse/ingest", json=payload, headers=headers).status_code == 200
-
-    from autopulse_backend.services.event_store import shutdown_duckdb_event_store
-
-    shutdown_duckdb_event_store()
-
-    import duckdb
-
-    con = duckdb.connect(str(duck_path), read_only=True)
-    try:
-        count = int(con.execute("select count(*) from events").fetchone()[0])
-    finally:
-        con.close()
-    assert count >= 1
-
-
-def test_embedded_mode_mounts_backend_and_accepts_events(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # TestClient uses http://testserver; allow ingest without TLS like backend conftest.
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
-    monkeypatch.delenv("AUTOPULSE_FRONTEND_MODE", raising=False)
-    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-events.duckdb"))
-    app = FastAPI()
-    monitor(
-        app,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded.db'}",
-    )
-
-    payload = {
-        "events": [
-            {
-                "type": "request",
-                "timestamp": datetime.now(tz=UTC).isoformat(),
-                "service_name": "sdk-test",
-                "environment": "test",
-                "method": "GET",
-                "path": "/health",
-                "status_code": 200,
-                "latency_ms": 12.3,
-            }
-        ]
-    }
-    headers = {"Authorization": f"Bearer {DEFAULT_EMBEDDED_API_KEY}"}
-    with lifespan_test_client(app) as client:
-        health_response = client.get("/autopulse/health")
-        assert health_response.status_code == 200
-
-        ingest_response = client.post("/autopulse/ingest", json=payload, headers=headers)
-        assert ingest_response.status_code == 200
-
-        overview_response = client.get("/autopulse/dashboard/overview", headers=headers)
-        assert overview_response.status_code in {200, 401}
-
-        ui_deep = client.get("/autopulse/ui/dashboard/?window_minutes=60")
-        assert ui_deep.status_code == 200
-        assert "text/html" in (ui_deep.headers.get("content-type") or "")
-        assert "AutoPulse Dashboard" in ui_deep.text
-
-        missing_asset = client.get("/autopulse/ui/not-a-real-asset-xyz123.js")
-        assert missing_asset.status_code == 404
-
-
-def test_embedded_sidecar_default_spawns_npm_dev(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
-    monkeypatch.delenv("AUTOPULSE_FRONTEND_SIDECAR_COMMAND", raising=False)
-    monkeypatch.delenv("AUTOPULSE_FRONTEND_DIR", raising=False)
-    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "sidecar-events.duckdb"))
-    monkeypatch.setenv("AUTOPULSE_FRONTEND_MODE", "sidecar")
-    fe = tmp_path / "frontend"
-    fe.mkdir()
-    (fe / "package.json").write_text("{}\n", encoding="utf-8")
-
-    recorded: dict[str, Any] = {}
-
-    def fake_popen(*args: Any, **kwargs: Any) -> MagicMock:
-        recorded["args"] = args
-        recorded["kwargs"] = kwargs
-        proc = MagicMock()
-        proc.pid = 42_001
-        proc.poll.return_value = None
-        proc.terminate = MagicMock()
-        return proc
-
-    monkeypatch.setattr("autopulse._embedded.subprocess.Popen", fake_popen)
-
-    app = FastAPI()
-    monitor(
-        app,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'sidecar.db'}",
-    )
-
-    with lifespan_test_client(app) as client:
-        assert client.get("/autopulse/health").status_code == 200
-
-    assert recorded.get("args") == (["npm", "run", "dev"],)
-    kw = recorded.get("kwargs") or {}
-    assert kw.get("cwd") == str(fe.resolve())
-    env = kw.get("env") or {}
-    assert env.get("AUTOPULSE_FRONTEND_MODE") == "sidecar"
-
-    from autopulse_backend.services.event_store import shutdown_duckdb_event_store
-
-    shutdown_duckdb_event_store()
-
-
-def test_embedded_writes_api_key_file_when_unconfigured(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    env_file = tmp_path / ".env.autopulse"
-    monkeypatch.setenv("AUTOPULSE_ENV_AUTOPULSE_FILE", str(env_file))
-    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_API_KEY", raising=False)
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_API_KEY_FILE", raising=False)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-file-key.duckdb"))
-    monkeypatch.chdir(tmp_path)
-
-    app = FastAPI()
-    monitor(
-        app,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded-file-key.db'}",
-    )
-    assert env_file.is_file()
-    key: str | None = None
-    for line in env_file.read_text(encoding="utf-8").splitlines():
-        if line.startswith("AUTOPULSE_EMBEDDED_API_KEY="):
-            key = line.split("=", 1)[1].strip()
-            break
-    assert key is not None and key.startswith("ap_live_")
-
-    payload = {
-        "events": [
-            {
-                "type": "request",
-                "timestamp": datetime.now(tz=UTC).isoformat(),
-                "service_name": "sdk-test",
-                "environment": "test",
-                "method": "GET",
-                "path": "/health",
-                "status_code": 200,
-                "latency_ms": 1.0,
-            }
-        ]
-    }
-    headers = {"Authorization": f"Bearer {key}"}
-    with lifespan_test_client(app) as client:
-        assert client.post("/autopulse/ingest", json=payload, headers=headers).status_code == 200
-
-
-def test_embedded_updates_persisted_retention_cap_when_env_changes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    db_path = tmp_path / "embedded-retention-cap.db"
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
-    monkeypatch.delenv("AUTOPULSE_FRONTEND_MODE", raising=False)
-    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-retention-cap.duckdb"))
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "200")
-
-    app_first = FastAPI()
-    monitor(
-        app_first,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{db_path}",
-    )
-    with lifespan_test_client(app_first):
-        pass
-
-    con = sqlite3.connect(db_path)
-    try:
-        cap_first = con.execute(
-            "select retention_max_db_size_mb from project_ui_settings limit 1"
-        ).fetchone()[0]
-    finally:
-        con.close()
-    assert cap_first == 200
-
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "0")
-    app_second = FastAPI()
-    monitor(
-        app_second,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{db_path}",
-    )
-    with lifespan_test_client(app_second):
-        pass
-
-    con = sqlite3.connect(db_path)
-    try:
-        cap_second = con.execute(
-            "select retention_max_db_size_mb from project_ui_settings limit 1"
-        ).fetchone()[0]
-    finally:
-        con.close()
-    assert cap_second is None
-
-
-def test_embedded_respects_existing_jobs_enable_scheduler_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
-    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-scheduler.duckdb"))
-    monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "false")
-
-    app = FastAPI()
-    monitor(
-        app,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded-scheduler.db'}",
-    )
-
-    assert os.environ.get("JOBS_ENABLE_SCHEDULER") == "false"
-
-
-def test_embedded_does_not_run_startup_retention_by_default(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_STARTUP_RETENTION", raising=False)
-    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
-    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
-    monkeypatch.setenv(
-        "AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-no-startup-retention.duckdb")
-    )
-
-    app = FastAPI()
-    monitor(
-        app,
-        mode="embedded",
-        mount_prefix="/autopulse",
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded-no-startup-retention.db'}",
-    )
-    with lifespan_test_client(app):
-        pass
-
-    assert getattr(app.state, "_autopulse_startup_retention_task", None) is None
+    with caplog.at_level(logging.WARNING):
+        monitor(app, mode="embedded", api_key="k", ingest_url="http://127.0.0.1:8000/ingest")
+    assert any("mode='embedded' is no longer supported" in r.message for r in caplog.records)

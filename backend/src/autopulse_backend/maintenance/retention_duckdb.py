@@ -135,8 +135,8 @@ async def _apply_duckdb_retention(
             )
 
     duckdb_file_cap_candidates: list[int] = []
-    if settings.embedded_sqlite_max_db_file_mb is not None:
-        duckdb_file_cap_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
+    if settings.sqlite_max_db_file_mb is not None:
+        duckdb_file_cap_candidates.append(int(settings.sqlite_max_db_file_mb))
     min_ui_mb_result = await session.execute(
         select(func.min(ProjectUiSettings.retention_max_db_size_mb)).where(
             ProjectUiSettings.retention_max_db_size_mb.is_not(None)

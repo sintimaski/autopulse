@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Frontend
 
-- Canonical dashboard delivery is the **static export** (`npm run build` → `frontend/out/`); see **`.cursor/rules/dashboard-static-export.mdc`** for backend mount / embedded bundle expectations (avoid relying on `next start` for full-stack validation unless the task is Next-only).
+- Canonical dashboard delivery is the **static export** (`npm run build` → `frontend/out/`); see **`.cursor/rules/dashboard-static-export.mdc`** for backend mount expectations (avoid relying on `next start` for full-stack validation unless the task is Next-only).
 - Optimize overview for fast diagnosis in ~5 seconds; avoid MVP scope creep into heavy configurability.
 - Keep loading/refresh behavior non-disruptive after first paint (preserve prior data while refreshing).
 - Prefer clear empty/error states and keyboard-accessible interactions.

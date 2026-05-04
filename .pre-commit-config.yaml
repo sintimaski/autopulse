@@ -15,9 +15,7 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^sdk/src/autopulse/ui/
       - id: end-of-file-fixer
-        exclude: ^sdk/src/autopulse/ui/
       - id: check-yaml
       - id: check-added-large-files
   - repo: local
@@ -40,10 +38,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^frontend/
-      # Next build + copy export into sdk/src/autopulse/ui for embedded wheels (replaces standalone frontend-build).
-      - id: sdk-embedded-ui-bundle
-        name: sdk-embedded-ui-bundle
-        entry: bash -c 'AUTOPULSE_BUNDLE_SKIP_NPM_CI=1 exec bash scripts/bundle_embedded_dashboard_ui.sh'
+      - id: frontend-build
+        name: frontend-build
+        entry: npm --prefix frontend run build
         language: system
         pass_filenames: false
-        files: ^frontend/|^scripts/bundle_embedded_dashboard_ui\.sh$
+        files: ^frontend/

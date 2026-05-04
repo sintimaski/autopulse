@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _reset_duckdb_event_store_after_test() -> Generator[None, None, None]:
-    """Reset process-global DuckDB store after each test (embedded loopback + synthetic)."""
+    """Reset process-global DuckDB store after each test."""
     yield
     try:
         from autopulse_backend.services.event_store import shutdown_duckdb_event_store

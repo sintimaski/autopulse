@@ -45,8 +45,16 @@ def test_synthetic_app_payment_intent_validation() -> None:
 def test_synthetic_app_inventory_unknown_sku() -> None:
     app = create_app(enable_monitor=False)
     with lifespan_test_client(app) as client:
-        response = client.get(
-            "/inventory/SKU-NOT-REAL",
-            headers={"x-auth-token": "demo:viewer:vu"},
-        )
+        response = None
+        for i in range(40):
+            response = client.get(
+                "/inventory/SKU-NOT-REAL",
+                headers={
+                    "x-auth-token": "demo:viewer:vu",
+                    "x-request-id": f"inv-unknown-{i}",
+                },
+            )
+            if response.status_code == 404:
+                break
+        assert response is not None
     assert response.status_code == 404

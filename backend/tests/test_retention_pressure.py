@@ -63,7 +63,7 @@ def test_sqlite_retention_pressure_pending_true_when_events_exceed_row_cap(
             settings = replace(
                 get_settings(),
                 database_url=database_url,
-                embedded_sqlite_max_db_file_mb=None,
+                sqlite_max_db_file_mb=None,
             )
             async with session_maker() as session:
                 return await sqlite_retention_pressure_pending(session, settings)
@@ -119,7 +119,7 @@ def test_sqlite_retention_pressure_pending_false_when_within_row_cap(
             settings = replace(
                 get_settings(),
                 database_url=database_url,
-                embedded_sqlite_max_db_file_mb=None,
+                sqlite_max_db_file_mb=None,
             )
             async with session_maker() as session:
                 return await sqlite_retention_pressure_pending(session, settings)

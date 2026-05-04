@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -51,7 +52,7 @@ from autopulse_backend.schemas import (
     DashboardOnboardingStatusResponse,
     DashboardSessionResponse,
 )
-from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
+from autopulse_backend.services.duckdb_async import run_duckdb_read_sync, run_duckdb_write_sync
 from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
 
 OnboardingStep = Literal[
@@ -64,6 +65,7 @@ OnboardingStep = Literal[
 ]
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _project_has_received_any_event(
@@ -89,15 +91,60 @@ async def _project_has_received_any_event(
     return False
 
 
-def _sync_embedded_env_autopulse_key(raw_api_key: str) -> None:
+async def _maybe_align_singleton_duckdb_project(
+    *,
+    session: AsyncSession,
+    project_id: UUID,
+    settings: Settings,
+) -> None:
+    """Local/dev guard: merge orphaned DuckDB singleton project ids into active tenant."""
+    if not event_store_enabled(settings):
+        return
+    store = try_get_duckdb_event_store()
+    if store is None:
+        return
+    sql_project_ids = (await session.execute(select(Project.id))).scalars().all()
+    if len(sql_project_ids) != 1 or sql_project_ids[0] != project_id:
+        return
+    with suppress(Exception):
+        duckdb_project_ids = await run_duckdb_read_sync(store.list_project_ids)
+        if not duckdb_project_ids:
+            return
+        target = str(project_id)
+        stale_ids = [raw for raw in duckdb_project_ids if str(raw).strip() and str(raw) != target]
+        if not stale_ids:
+            return
+        moved_events = 0
+        moved_widgets = 0
+        for stale in stale_ids:
+            events_count, widgets_count = await run_duckdb_write_sync(
+                store.reassign_project_id,
+                from_project_id=str(stale),
+                to_project_id=project_id,
+            )
+            moved_events += int(events_count)
+            moved_widgets += int(widgets_count)
+        if moved_events > 0 or moved_widgets > 0:
+            logger.warning(
+                "duckdb_project_alignment_applied target_project=%s stale_project_ids=%s "
+                "moved_events=%s moved_widget_points=%s",
+                target,
+                ",".join(stale_ids),
+                moved_events,
+                moved_widgets,
+            )
+
+
+def _sync_env_autopulse_key_bundle(raw_api_key: str) -> None:
     """Best-effort local helper: keep `.env.autopulse` in sync after key issue/rotate."""
     path = Path(os.getenv("AUTOPULSE_ENV_AUTOPULSE_FILE", ".env.autopulse")).expanduser()
-    base = os.getenv("NEXT_PUBLIC_AUTOPULSE_API_BASE_URL", "/autopulse").strip() or "/autopulse"
+    # Standalone: ``/dashboard`` and ``/ingest`` — not under ``/autopulse`` unless client sets base.
+    base = (os.getenv("NEXT_PUBLIC_AUTOPULSE_API_BASE_URL") or "").strip()
     content = (
         "# AutoPulse — synced from dashboard API key lifecycle.\n"
         "# Source before static UI build: set -a && source .env.autopulse && set +a\n"
         f"NEXT_PUBLIC_AUTOPULSE_API_BASE_URL={base}\n"
-        f"AUTOPULSE_EMBEDDED_API_KEY={raw_api_key}\n"
+        f"AUTOPULSE_API_KEY={raw_api_key}\n"
         f"NEXT_PUBLIC_AUTOPULSE_API_KEY={raw_api_key}\n"
     )
     try:
@@ -167,6 +214,11 @@ async def verify_dashboard_magic_link(
         settings=settings,
         token=payload.token,
         request=request,
+    )
+    await _maybe_align_singleton_duckdb_project(
+        session=session,
+        project_id=auth_session.project_id,
+        settings=settings,
     )
     return DashboardSessionResponse(
         authenticated=True,
@@ -270,7 +322,7 @@ async def issue_dashboard_api_key(
         )
     )
     await session.commit()
-    _sync_embedded_env_autopulse_key(raw_api_key)
+    _sync_env_autopulse_key_bundle(raw_api_key)
     return DashboardApiKeyIssueResponse(
         key_id=key_id,
         api_key=raw_api_key,
@@ -317,7 +369,7 @@ async def rotate_dashboard_api_key(
         )
     )
     await session.commit()
-    _sync_embedded_env_autopulse_key(raw_api_key)
+    _sync_env_autopulse_key_bundle(raw_api_key)
     return DashboardApiKeyRotateResponse(
         revoked_key_id=payload.key_id,
         replacement_key_id=next_key_id,

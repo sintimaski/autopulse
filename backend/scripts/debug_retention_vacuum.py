@@ -45,7 +45,7 @@ async def _run(iterations: int, sleep_seconds: float, dispose_engine_after: bool
     session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
     print(f"db={db_path}")
     print(
-        f"cap_mb={settings.embedded_sqlite_max_db_file_mb} "
+        f"cap_mb={settings.sqlite_max_db_file_mb} "
         f"interval={settings.jobs_retention_interval_seconds} "
         f"pressure_poll={settings.retention_pressure_poll_seconds}"
     )

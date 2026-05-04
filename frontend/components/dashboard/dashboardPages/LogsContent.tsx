@@ -7,7 +7,7 @@ import { buildCurrentScopedState, buildDiagnosisPageHref, type DashboardScopedQu
 import {
   formatTimestamp,
   GROUP_OPTIONS,
-  isEmbeddedRelativeDashboard,
+  isApiSubpathDashboard,
   statusTone,
   type GroupBy,
 } from "../dashboardTypes";
@@ -95,7 +95,7 @@ export function LogsContent() {
           <Link href="/onboarding" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
             Onboarding
           </Link>
-          {isEmbeddedRelativeDashboard() ? " (embedded startup ping — refresh)." : " to send traffic."}
+          {isApiSubpathDashboard() ? " (startup ping may appear — refresh)." : " to send traffic."}
         </p>
       </section>
     );

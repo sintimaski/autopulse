@@ -204,7 +204,7 @@ async def _apply_project_rotation_limits(
     return deleted_total
 
 
-async def _apply_embedded_sqlite_global_file_cap(
+async def _apply_sqlite_global_file_cap(
     *,
     session: AsyncSession,
     settings: Settings,

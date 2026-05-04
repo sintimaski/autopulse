@@ -15,7 +15,6 @@ Current strengths:
 - Retry with bounded attempts and exponential backoff.
 - Silent-failure default behavior; optional debug logs.
 - Sensitive-field scrubbing with default redact keys aligned to `DEVELOPMENT.md`.
-- Embedded mode support in `sdk/src/autopulse/_embedded.py`.
 
 Current limitations:
 - Default capture posture keeps headers and query strings off unless opted in (`capture_headers` / `capture_query_params` default to false via env in `sdk/src/autopulse/_monitor.py`).

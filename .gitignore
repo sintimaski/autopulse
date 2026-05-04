@@ -61,8 +61,3 @@ out/
 *.log
 
 .autopulse/
-
-# Embedded Next export (built locally or by the SDK wheel hatch hook; see
-# sdk/src/autopulse/ui/README.md). Only the README is tracked.
-sdk/src/autopulse/ui/**
-!sdk/src/autopulse/ui/README.md

@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 
 from autopulse_backend.core.config import (
-    _is_autopulse_embedded_default_sqlite_file,
+    _is_workspace_default_dev_sqlite_file,
     get_settings,
     redact_database_url_for_log,
     resolve_autopulse_data_root,
@@ -94,7 +94,7 @@ def _log_grouped_startup_settings() -> None:
         "alert_interval_seconds=%.2f retention_interval_seconds=%.2f "
         "retention_pressure_poll_seconds=%.2f "
         "retention_pressure_min_interval_seconds=%.2f retention_raw_events_days=%d "
-        "embedded_sqlite_max_db_file_mb=%s",
+        "sqlite_max_db_file_mb=%s",
         settings.jobs_enable_scheduler,
         settings.jobs_scheduler_lease_enabled,
         settings.jobs_scheduler_lease_ttl_seconds,
@@ -103,7 +103,7 @@ def _log_grouped_startup_settings() -> None:
         settings.retention_pressure_poll_seconds,
         settings.retention_pressure_min_interval_seconds,
         settings.retention_raw_events_days,
-        settings.embedded_sqlite_max_db_file_mb,
+        settings.sqlite_max_db_file_mb,
     )
     log.info(
         "Startup settings [dashboard_auth]: enabled=%s allowed_email=%s "
@@ -173,7 +173,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "Background scheduler started (alerts + retention, retention every %.0fs)",
             settings.jobs_retention_interval_seconds,
         )
-    elif _is_autopulse_embedded_default_sqlite_file(settings.database_url):
+    elif _is_workspace_default_dev_sqlite_file(settings.database_url):
         app.state._autopulse_scheduler = start_retention_only_scheduler(settings=settings)
         logger.info(
             "Retention-only scheduler started (JOBS_ENABLE_SCHEDULER=false; interval %.0fs)",

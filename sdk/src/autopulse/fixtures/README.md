@@ -4,46 +4,40 @@ This fixture provides a local FastAPI app and a deterministic traffic driver for
 
 ## Components
 
-- `synthetic_autopulse_config.py`: typed presets for how AutoPulse attaches (`SyntheticAutopulseFixture.one_line_embedded()`, `.separate_backend()`, `.from_env()`).
+- `synthetic_autopulse_config.py`: typed presets for how AutoPulse attaches (`SyntheticAutopulseFixture.separate_backend()`, `.from_env()`).
 - `synthetic_test_app.py`: FastAPI app with 10 endpoints and controlled failure modes.
 - `synthetic_load.py`: weighted request generator with periodic spikes and error bursts.
 
 ## Run
 
-From repository root:
+**Recommended:** from repository root, `./scripts/run_synthetic_stack.sh` starts the backend on :8000 and the synthetic app on :8001 (see script output for dashboard URLs).
+
+Manual two-process setup:
 
 ```bash
-uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000
+# Terminal A — backend
+uv run python -m autopulse_backend.main
+
+# Terminal B — synthetic app (set AUTOPULSE_API_KEY to your project ingest key)
+export AUTOPULSE_INGEST_URL="http://127.0.0.1:8000/autopulse/ingest"
+export AUTOPULSE_API_KEY="<project API key>"
+uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001
 ```
 
-Embedded mode also exposes local AutoPulse endpoints at:
-
-- `http://127.0.0.1:8000/autopulse/ingest`
-- `http://127.0.0.1:8000/autopulse/dashboard/*`
-- `ws://127.0.0.1:8000/autopulse/dashboard/updates?token=…` (sends `subscribed` + `pong` to client `ping`; **`ingest` broadcasts only after batches hit this same server’s `/ingest`**)
-- `http://127.0.0.1:8000/autopulse/ui/` (static assets when available)
-
-In another terminal:
+Load generator (point at the synthetic app port you use):
 
 ```bash
-uv run python -m autopulse.fixtures.synthetic_load --base-url http://127.0.0.1:8000 --duration-seconds 120 --rps 8 --role-mode mixed
+uv run python -m autopulse.fixtures.synthetic_load --base-url http://127.0.0.1:8001 --duration-seconds 120 --rps 8 --role-mode mixed
 ```
 
 ## Environment Variables
 
-- `AUTOPULSE_MODE`: `embedded` (default) or `remote`.
-- `AUTOPULSE_EMBEDDED_API_KEY` (embedded only): bearer for ingest + DB. If unset, SDK reads **`.env.autopulse`** then legacy `.autopulse/embedded-api-key`, else generates **`.env.autopulse`** (includes `NEXT_PUBLIC_*` for UI builds). `scripts/run_synthetic_stack.sh` sources it before starting uvicorn (and before `npm run build` when `AUTOPULSE_FRONTEND_MODE=static`). Startup ingest ping unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`.
-- `AUTOPULSE_MOUNT_PREFIX`: embedded mount prefix (default `/autopulse`).
-- `AUTOPULSE_DATABASE_URL`: relational metadata DB URL (default `sqlite+aiosqlite:///./.autopulse/autopulse.db`).
+- `AUTOPULSE_INGEST_URL`: ingest URL (default `http://127.0.0.1:8000/ingest` for standalone ``autopulse_backend``).
+- `AUTOPULSE_API_KEY`: project API key (`ap_live_...`) for remote ingest.
 - `AUTOPULSE_EVENT_STORE`: raw log store backend (`duckdb` default, `sqlite` fallback).
 - `AUTOPULSE_DUCKDB_PATH`: DuckDB event file path. Relative values resolve under **`AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT`**, else the monorepo checkout root (parent of `backend/`), not the shell cwd—see backend `resolve_autopulse_data_root` / `normalize_event_store_duckdb_path`. Prefer an **absolute** path or set `AUTOPULSE_DATA_DIR` in scripts so operators never open the wrong file.
-- `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`: max on-disk SQLite file size in MB (default `512` in embedded mode). Retention deletes oldest events across all projects until the file is under this cap. Set to `0` to turn off this global ceiling (dashboard per-project caps may still apply).
-- `AUTOPULSE_FRONTEND_MODE`: embedded dashboard delivery — `static` (serve export from the API process) or `sidecar` (spawn Next `npm run dev`; default for `scripts/run_synthetic_stack.sh`). With sidecar, set `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` to an absolute API URL (see `AUTOPULSE_SIDECAR_API_BASE_URL` in that script).
-- `AUTOPULSE_FRONTEND_DIR`: directory containing the Next `package.json` for the default sidecar command.
-- `AUTOPULSE_FRONTEND_SIDECAR_COMMAND`: override the sidecar argv (shell string); otherwise defaults to `npm run dev` in `AUTOPULSE_FRONTEND_DIR` or `./frontend`.
-- `AUTOPULSE_MODE=embedded` needs `autopulse-backend` (`pip install "autopulse[embedded]"` when both are on your index, or install both wheels from `./scripts/build_sdk_release_wheels.sh`).
-- `AUTOPULSE_API_KEY`: project API key (`ap_live_...`) for remote ingest mode.
-- `AUTOPULSE_INGEST_URL`: remote ingest URL (default `http://127.0.0.1:8000/ingest`).
+- `AUTOPULSE_SQLITE_MAX_DB_FILE_MB`: max on-disk SQLite file size in MB for the backend (deprecated alias `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`). Retention deletes oldest events across all projects until the file is under this cap. Set to `0` to turn off this global ceiling (dashboard per-project caps may still apply).
+- `AUTOPULSE_FRONTEND_MODE`: `static` (serve export from the backend) or `sidecar` (Next `npm run dev`; default for `scripts/run_synthetic_stack.sh`). With sidecar, set `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` to an absolute API URL (see `AUTOPULSE_SIDECAR_API_BASE_URL` in that script).
 - `AUTOPULSE_SERVICE_NAME`: service label (default `synthetic-test-api`).
 - `AUTOPULSE_ENVIRONMENT`: environment label (default `dev`).
 - `AUTOPULSE_BATCH_SIZE`: SDK batch size override.

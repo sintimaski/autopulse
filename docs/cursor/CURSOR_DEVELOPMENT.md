@@ -38,7 +38,7 @@ These files use `alwaysApply: true` in Cursor:
 | `post-task-manual-verification.mdc` | Final responses include manual verification steps |
 | `post-task-code-review.mdc` | Pre-handoff review gate |
 
-Other `.mdc` files are **path-scoped** (`globs`) for `sdk/`, `backend/`, `frontend/`, `scripts/`, tests, docs, synthetic stack, embedded bundle, etc. See the `.cursor/rules/` directory for the authoritative list.
+Other `.mdc` files are **path-scoped** (`globs`) for `sdk/`, `backend/`, `frontend/`, `scripts/`, tests, docs, synthetic stack, etc. See the `.cursor/rules/` directory for the authoritative list.
 
 ## Automatic context
 

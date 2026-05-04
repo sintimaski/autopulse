@@ -29,8 +29,8 @@ from autopulse_backend.models import (
 )
 from autopulse_backend.services.alert_service import AlertSignal, EmailAlertSender
 
-# Must match ``autopulse._embedded.DEFAULT_PROJECT_NAME`` (SDK embedded bootstrap project).
-_EMBEDDED_BOOTSTRAP_PROJECT_NAME = "AutoPulse Embedded Project"
+# Legacy default project name from older local bootstrap flows (keep for DB adoption).
+_LEGACY_SINGLETON_BOOTSTRAP_PROJECT_NAME = "AutoPulse Embedded Project"
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,17 +161,16 @@ async def _resolve_default_project_id(session: AsyncSession) -> UUID:
     return project.id
 
 
-async def _try_adopt_singleton_embedded_project(
+async def _try_adopt_singleton_legacy_bootstrap_project(
     *,
     session: AsyncSession,
     user_id: UUID,
     email: str,
 ) -> tuple[UUID, UUID, str] | None:
-    """Bind the first dashboard login to the SDK embedded project when it is the only row.
+    """Bind the first dashboard login to a lone legacy bootstrap project row.
 
     Without this, magic-link bootstrap creates a separate ``Default Project`` while ingest
-    continues to use the embedded API key tied to ``AutoPulse Embedded Project``, so the UI
-    never sees events (onboarding stuck on "Waiting for first event").
+    continues to use an API key tied to the singleton project, so the UI never sees events.
     """
     total_projects = await session.scalar(select(func.count()).select_from(Project))
     if total_projects != 1:
@@ -179,7 +178,7 @@ async def _try_adopt_singleton_embedded_project(
     project = await session.scalar(select(Project))
     if (
         project is None
-        or project.name != _EMBEDDED_BOOTSTRAP_PROJECT_NAME
+        or project.name != _LEGACY_SINGLETON_BOOTSTRAP_PROJECT_NAME
         or project.organization_id is not None
     ):
         return None
@@ -233,7 +232,7 @@ async def _resolve_project_for_user(
             await session.flush()
         return project.id, organization_id, membership.role
 
-    adopted = await _try_adopt_singleton_embedded_project(
+    adopted = await _try_adopt_singleton_legacy_bootstrap_project(
         session=session, user_id=user_id, email=email
     )
     if adopted is not None:

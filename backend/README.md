@@ -42,10 +42,8 @@ Backend defaults to `http://localhost:8000`.
 - `JOBS_RETENTION_INTERVAL_SECONDS` (minimum **5**; periodic `run_retention_cleanup_once` when scheduler or retention-only loop runs)
 - `JOBS_SCHEDULER_LEASE_ENABLED` (prevents duplicate periodic job execution across instances)
 - `JOBS_SCHEDULER_LEASE_TTL_SECONDS`
-- `AUTOPULSE_EMBEDDED_API_KEY` / `AUTOPULSE_ENV_AUTOPULSE_FILE` (repo-root **`.env.autopulse`** bundle for embedded ingest + `NEXT_PUBLIC_*`; legacy `AUTOPULSE_EMBEDDED_API_KEY_FILE` points at single-line key file)
-- `AUTOPULSE_EMBEDDED_STARTUP_INGEST` (embedded: one-shot onboarding ingest ping after sender starts; default on, set `0` to disable)
-- `AUTOPULSE_ENV_AUTOPULSE_FILE` (optional path to the `.env.autopulse` bundle; default `./.env.autopulse` at process cwd)
-- `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB` (max embedded log-store file size in MB; applies to DuckDB or SQLite embedded mode. For SQLite it includes main + `-wal` + `-shm`; default **512** in embedded defaults)
+- `AUTOPULSE_ENV_AUTOPULSE_FILE` (optional path to the `.env.autopulse` bundle for local static UI builds; default `./.env.autopulse` at process cwd)
+- `AUTOPULSE_SQLITE_MAX_DB_FILE_MB` (max SQLite log-store file size in MB; applies to DuckDB or SQLite when capped. For SQLite it includes main + `-wal` + `-shm`; deprecated alias `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`; default **512** on dev default SQLite filenames when unset)
 - `AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS` / `AUTOPULSE_RETENTION_PRESSURE_MIN_INTERVAL_SECONDS` (SQLite pressure poll; see `core/config.py`)
 
 See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.
@@ -64,7 +62,7 @@ For **Linux production** or **Django** (no FastAPI event loop), prefer **cron** 
 
 ## Event store migration helpers
 
-- Backfill SQL `events` rows into the embedded DuckDB store:
+- Backfill SQL `events` rows into the DuckDB event store:
 
 ```bash
 cd backend

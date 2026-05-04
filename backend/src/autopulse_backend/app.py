@@ -38,6 +38,8 @@ def create_app(*, for_submount: bool = False) -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(api_router)
+    # Legacy path layout (embedded-era clients / stale bundles): mirror API under ``/autopulse``.
+    app.include_router(api_router, prefix="/autopulse")
     env = (settings.autopulse_env or "development").strip().lower()
     if settings.dev_scenarios_enabled and env != "production":
         from autopulse_backend.routes.dev_scenarios import router as dev_scenarios_router

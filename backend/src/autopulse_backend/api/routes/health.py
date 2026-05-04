@@ -92,7 +92,7 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         store = try_get_duckdb_event_store()
         if store is not None:
             size_bytes = int(store.file_size_bytes())
-            cap_mb = settings.embedded_sqlite_max_db_file_mb
+            cap_mb = settings.sqlite_max_db_file_mb
             duckdb_metrics = {
                 "path": settings.event_store_duckdb_path,
                 "file_size_bytes": size_bytes,

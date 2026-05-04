@@ -9,7 +9,7 @@ alwaysApply: true
 - Start with minimal context gathering required to edit safely; avoid broad repo exploration unless task truly needs it.
 - In dirty git trees, never revert unrelated user changes; work around existing modifications.
 - For substantive edits, run strict but scoped validation for touched areas (lint plus targeted tests where possible).
-- **Frontend completion:** When work touches `frontend/` (or otherwise changes dashboard UI that ships as the static export), before handoff run **`npm run build`** in `frontend/` so the static export succeeds. For embedded/wheel parity, also run **`./scripts/bundle_embedded_dashboard_ui.sh`** when validating the SDK bundle (see **`.cursor/rules/autopulse-embedded-ui-bundle.mdc`**). State what ran in verification; skip only when the task scope explicitly excludes UI.
+- **Frontend completion:** When work touches `frontend/` (or otherwise changes dashboard UI that ships as the static export), before handoff run **`npm run build`** in `frontend/` so the static export succeeds. State what ran in verification; skip only when the task scope explicitly excludes UI.
 - If blocked, report concrete blocker, what was tried, and the smallest next step to unblock quickly.
 - Final responses must include what changed, what was verified, and manual verification steps.
 

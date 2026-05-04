@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useDashboardData } from "../DashboardDataContext";
-import { isEmbeddedRelativeDashboard } from "../dashboardTypes";
+import { isApiSubpathDashboard } from "../dashboardTypes";
 
 export function OnboardingContent() {
   const router = useRouter();
   const d = useDashboardData();
-  const embedded = isEmbeddedRelativeDashboard();
+  const subpathUi = isApiSubpathDashboard();
   const [message, setMessage] = useState<string | null>(null);
   const [continueBusy, setContinueBusy] = useState(false);
   const status = d.onboardingStatus;
@@ -28,9 +28,21 @@ export function OnboardingContent() {
       <div>
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Onboarding</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          {embedded
-            ? "First SDK boot writes .env.autopulse (ingest + Next public keys). Source it before building static UI, then restart once."
-            : "Put the issued key in your app as AUTOPULSE_API_KEY and set AUTOPULSE_INGEST_URL to /ingest on your backend."}
+          {subpathUi ? (
+            <>
+              Static UI on the API host uses a repo-root{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-950">
+                .env.autopulse
+              </code>{" "}
+              file for ingest + Next public keys. Source it before{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-950">
+                npm run build
+              </code>
+              , then restart the backend if needed.
+            </>
+          ) : (
+            "Put the issued key in your app as AUTOPULSE_API_KEY and set AUTOPULSE_INGEST_URL to /ingest on your backend."
+          )}
         </p>
       </div>
 
@@ -46,7 +58,7 @@ export function OnboardingContent() {
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">2. Ingest key</p>
           <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
-            {embedded
+            {subpathUi
               ? "Issue below only if you want a new token; dashboard auto-syncs .env.autopulse. Rebuild UI after key changes."
               : "Issue, then copy into host env as AUTOPULSE_API_KEY."}
           </p>
@@ -57,7 +69,7 @@ export function OnboardingContent() {
                 const ok = await d.issueApiKey();
                 setMessage(
                   ok
-                    ? embedded
+                    ? subpathUi
                       ? "Issued — .env.autopulse synced automatically. Rebuild UI + restart host."
                       : "Issued — copy into host env and restart app."
                     : "Issue failed.",
@@ -90,8 +102,8 @@ export function OnboardingContent() {
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">3. First ingest</p>
           <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
-            {embedded
-              ? "Embedded sends one startup request after boot (disable with AUTOPULSE_EMBEDDED_STARTUP_INGEST=0). Refresh here."
+            {subpathUi
+              ? "After the SDK sends its first batch, counts update here — refresh if you just deployed."
               : "Send traffic through your instrumented app, then refresh."}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">

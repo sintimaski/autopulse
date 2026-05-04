@@ -6,8 +6,7 @@ This document is the **single entry point** for shipping AutoPulse to production
 
 | Mode | When to use | Primary docs |
 |------|----------------|--------------|
-| **Embedded** (`autopulse[embedded]`, SDK `mode="embedded"`) | Solo dev, single process, fastest DX; SQLite + optional DuckDB event store next to the app. | [README.md](../../README.md), [sdk/README.md](../../sdk/README.md) |
-| **Split stack** (SDK → remote `POST /ingest`, dashboard API + Next.js UI) | Hosted or self-managed API + UI, Postgres metadata, optional DuckDB for events. | [backend/.env.example](../../backend/.env.example), [README.md](../../README.md) |
+| **Split stack** (SDK → remote `POST /ingest`, dashboard API + Next.js UI) | Default: hosted or self-managed API + UI, Postgres metadata, optional DuckDB for events. | [backend/.env.example](../../backend/.env.example), [README.md](../../README.md) |
 | **Multi-instance API** | Horizontal scale behind a load balancer. | [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md) |
 
 **Storage note:** Metadata (projects, API key hashes, aggregates, sessions) lives in the **SQL database** (`DATABASE_URL`). Raw request/error events for the MVP stack typically use **DuckDB** when enabled (`AUTOPULSE_DUCKDB_*`), not “Postgres-only raw rows” unless you operate a custom deployment. Set **`AUTOPULSE_DATA_DIR`** (or an absolute `AUTOPULSE_DUCKDB_PATH`) in production so every process agrees on the DuckDB file regardless of cwd. Align backup procedures with both stores ([BACKUP_RESTORE.md](./BACKUP_RESTORE.md)).
@@ -34,7 +33,7 @@ This document is the **single entry point** for shipping AutoPulse to production
 
 ## 5. Jobs, retention, and aggregation
 
-- Enable `JOBS_ENABLE_SCHEDULER=true` where you need scheduled alerts + retention (or use embedded defaults that start retention appropriately).
+- Enable `JOBS_ENABLE_SCHEDULER=true` where you need scheduled alerts + retention (local SQLite dev filenames may auto-enable the scheduler when unset—see `core/config.py`).
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
 
 ## 6. Observability (golden signals)

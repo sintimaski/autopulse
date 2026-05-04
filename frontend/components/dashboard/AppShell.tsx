@@ -16,7 +16,7 @@ import {
 } from "../../lib/icons";
 import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
-import { isEmbeddedRelativeDashboard } from "./dashboardTypes";
+import { isApiSubpathDashboard } from "./dashboardTypes";
 
 const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
@@ -222,9 +222,9 @@ export function DashboardAppShell({
               POST /ingest
             </code>
             {" · "}
-            {isEmbeddedRelativeDashboard() ? (
+            {isApiSubpathDashboard() ? (
               <>
-                Embedded: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">.env.autopulse</code> + startup ingest
+                Local UI bundle: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">.env.autopulse</code>
                 ping.
               </>
             ) : (

@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { DashboardDataContext, useDashboardData } from "./DashboardDataContext";
 import type { DashboardMagicLinkRequestResponse } from "./dashboardTypes";
-import { buildApiUrl, isAbsoluteOriginOnlyApiBase, isEmbeddedRelativeDashboard } from "./dashboardTypes";
+import { buildApiUrl, isAbsoluteOriginOnlyApiBase, isApiSubpathDashboard } from "./dashboardTypes";
 
 /** Shown while `/dashboard/auth/session` is in flight so we do not flash the sign-in screen on reload. */
 export function DashboardSessionRestoring({
@@ -71,10 +71,10 @@ export function ApiKeyMissing() {
           `Request failed (${response.status}). ${detail || "See browser Network tab and backend logs."} ` +
             "Typical fixes: set DASHBOARD_AUTH_ALLOWED_EMAIL to this address (or use dev allowlist), " +
             "ensure ALERT_EMAIL_PROVIDER + keys/outbox for delivery, add your UI origin to CORS_ALLOW_ORIGINS " +
-            "if the API is on another host/port, and set NEXT_PUBLIC_AUTOPULSE_API_BASE_URL to a path " +
-            "(e.g. /autopulse) when UI and API share one origin." +
+            "if the API is on another host/port, and set NEXT_PUBLIC_AUTOPULSE_API_BASE_URL to the API origin " +
+            "(e.g. http://127.0.0.1:8000 for standalone backend; leave unset for same-origin /dashboard paths)." +
             (response.status === 404 && isAbsoluteOriginOnlyApiBase()
-              ? " 404 often means the API base is missing the embedded mount path: use e.g. http://127.0.0.1:8000/autopulse (not just …:8000)."
+              ? " 404 here often means an extra path segment (e.g. …/autopulse/dashboard/…): use http://127.0.0.1:8000 with no /autopulse prefix for the default backend."
               : ""),
         );
         return;
@@ -94,7 +94,7 @@ export function ApiKeyMissing() {
     } catch (err) {
       const hint =
         err instanceof TypeError
-          ? "Network error (wrong API URL, CORS, or server down). For embedded UI use NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=/autopulse unless API is on another origin."
+          ? "Network error (wrong API URL, CORS, or server down). For static UI on the API host use NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=http://127.0.0.1:8000 (origin only) or leave unset for same-origin /dashboard calls."
           : err instanceof Error
             ? err.message
             : String(err);
@@ -111,7 +111,7 @@ export function ApiKeyMissing() {
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
           Enter your email for a magic link. Session-first.
-          {isEmbeddedRelativeDashboard() ? (
+          {isApiSubpathDashboard() ? (
             <>
               {" "}
               Static UI reads <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.7rem]">.env.autopulse</code> (see onboarding).
@@ -263,8 +263,8 @@ export function DashboardPageBoundary({
             >
               Onboarding
             </Link>
-            {isEmbeddedRelativeDashboard()
-              ? " — embedded startup ping after host boot; refresh."
+            {isApiSubpathDashboard()
+              ? " — startup ping may appear after deploy; refresh."
               : " — send traffic, refresh."}
           </p>
         </section>

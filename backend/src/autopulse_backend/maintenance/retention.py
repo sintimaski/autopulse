@@ -13,8 +13,8 @@ from autopulse_backend.maintenance.retention_deletes import (
 )
 from autopulse_backend.maintenance.retention_duckdb import _apply_duckdb_retention
 from autopulse_backend.maintenance.retention_sqlite import (
-    _apply_embedded_sqlite_global_file_cap,
     _apply_project_rotation_limits,
+    _apply_sqlite_global_file_cap,
     _resolve_sqlite_db_path,
     _sqlite_db_disk_footprint_bytes,
     _vacuum_sqlite_db_file,
@@ -127,8 +127,8 @@ async def run_retention_cleanup_once(
     stale_count += await _apply_project_rotation_limits(session=session, settings=settings)
 
     sqlite_file_cap_candidates: list[int] = []
-    if settings.embedded_sqlite_max_db_file_mb is not None:
-        sqlite_file_cap_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
+    if settings.sqlite_max_db_file_mb is not None:
+        sqlite_file_cap_candidates.append(int(settings.sqlite_max_db_file_mb))
     min_ui_mb_result = await session.execute(
         select(func.min(ProjectUiSettings.retention_max_db_size_mb)).where(
             ProjectUiSettings.retention_max_db_size_mb.is_not(None)
@@ -141,7 +141,7 @@ async def run_retention_cleanup_once(
         min(sqlite_file_cap_candidates) if sqlite_file_cap_candidates else None
     )
     if effective_sqlite_file_cap_mb is not None:
-        stale_count += await _apply_embedded_sqlite_global_file_cap(
+        stale_count += await _apply_sqlite_global_file_cap(
             session=session,
             settings=settings,
             cap_mb=int(effective_sqlite_file_cap_mb),
@@ -164,8 +164,8 @@ async def sqlite_retention_pressure_pending(
         return False
 
     file_cap_mb_candidates: list[int] = []
-    if settings.embedded_sqlite_max_db_file_mb is not None:
-        file_cap_mb_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
+    if settings.sqlite_max_db_file_mb is not None:
+        file_cap_mb_candidates.append(int(settings.sqlite_max_db_file_mb))
     all_ui_mb = await session.execute(
         select(ProjectUiSettings.retention_max_db_size_mb).where(
             ProjectUiSettings.retention_max_db_size_mb.is_not(None)
@@ -200,8 +200,8 @@ async def retention_pressure_pending(
             with suppress(Exception):
                 await run_duckdb_write_sync(store.checkpoint)
             file_cap_mb_candidates: list[int] = []
-            if settings.embedded_sqlite_max_db_file_mb is not None:
-                file_cap_mb_candidates.append(int(settings.embedded_sqlite_max_db_file_mb))
+            if settings.sqlite_max_db_file_mb is not None:
+                file_cap_mb_candidates.append(int(settings.sqlite_max_db_file_mb))
             all_ui_mb = await session.execute(
                 select(ProjectUiSettings.retention_max_db_size_mb).where(
                     ProjectUiSettings.retention_max_db_size_mb.is_not(None)

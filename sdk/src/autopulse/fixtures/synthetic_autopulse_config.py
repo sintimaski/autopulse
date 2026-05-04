@@ -2,18 +2,10 @@
 
 Use this instead of ad-hoc ``os.getenv`` blocks in ``synthetic_test_app``.
 
-**Deployment shapes**
+**Deployment**
 
-- **Embedded (one process):** backend + ingest on the same app — the default
-  ``one_line_embedded()`` preset. Dashboard UI is either a **static export** under
-  ``/autopulse/ui`` (``frontend_mode="static"``) or a **Next dev sidecar** child
-  process (``frontend_mode="sidecar"``, env ``AUTOPULSE_FRONTEND_MODE``).
-- **Remote (separate server):** SDK sends to an external AutoPulse ingest URL —
-  ``separate_backend()`` preset.
-- **Embedded + sidecar UI:** set ``frontend_mode="sidecar"`` (or env); the SDK
-  starts ``npm run dev`` in ``frontend/`` by default (see ``AUTOPULSE_FRONTEND_DIR`` /
-  ``AUTOPULSE_FRONTEND_SIDECAR_COMMAND``). ``scripts/run_synthetic_stack.sh`` defaults
-  to sidecar so one command matches split-stack dashboard responsiveness.
+Events go to a standalone AutoPulse backend (typical local ``uvicorn`` on :8000).
+See ``scripts/run_synthetic_stack.sh`` and ``scripts/run_remote_stack.sh``.
 
 Environment loading mirrors the variables documented in ``fixtures/README.md``.
 """
@@ -23,11 +15,9 @@ from __future__ import annotations
 import os
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, assert_never
+from typing import Any
 
 from autopulse.widgets import BaseDashboardWidget
-
-SyntheticFrontendMode = Literal["static", "sidecar"]
 
 
 def _env_bool(name: str, *, default: bool = False) -> bool:
@@ -57,29 +47,15 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-def _env_frontend_mode() -> SyntheticFrontendMode:
-    raw = os.getenv("AUTOPULSE_FRONTEND_MODE", "static").strip().lower()
-    return "sidecar" if raw == "sidecar" else "static"
-
-
 @dataclass(frozen=True, slots=True)
 class SyntheticAutopulseCommon:
-    """Fields shared by embedded and remote monitoring."""
+    """Fields shared by monitoring presets."""
 
     service_name: str = "synthetic-test-api"
     environment: str = "dev"
     batch_size: int = 20
     flush_interval_s: float = 1.0
     debug: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class SyntheticEmbeddedDeployment:
-    """AutoPulse runs in-process (mount, DB, optional sidecar frontend)."""
-
-    mount_prefix: str = "/autopulse"
-    database_url: str = "sqlite+aiosqlite:///./.autopulse/autopulse.db"
-    frontend_mode: SyntheticFrontendMode = "static"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,28 +66,12 @@ class SyntheticRemoteDeployment:
     api_key: str | None = None
 
 
-SyntheticAutopulseDeployment = SyntheticEmbeddedDeployment | SyntheticRemoteDeployment
-
-
 @dataclass(frozen=True, slots=True)
 class SyntheticAutopulseFixture:
     """Complete monitor options for ``synthetic_test_app`` (factories or ``from_env``)."""
 
     common: SyntheticAutopulseCommon
-    deployment: SyntheticAutopulseDeployment
-
-    @classmethod
-    def one_line_embedded(
-        cls,
-        *,
-        common: SyntheticAutopulseCommon | None = None,
-        embedded: SyntheticEmbeddedDeployment | None = None,
-    ) -> SyntheticAutopulseFixture:
-        """Default local demo: embedded AutoPulse on this app (minimal moving parts)."""
-        return cls(
-            common=common or SyntheticAutopulseCommon(),
-            deployment=embedded or SyntheticEmbeddedDeployment(),
-        )
+    deployment: SyntheticRemoteDeployment
 
     @classmethod
     def separate_backend(
@@ -129,8 +89,7 @@ class SyntheticAutopulseFixture:
 
     @classmethod
     def from_env(cls) -> SyntheticAutopulseFixture:
-        """Parse ``AUTOPULSE_*`` variables (same defaults as the former inline block)."""
-        mode = os.getenv("AUTOPULSE_MODE", "embedded").strip().lower()
+        """Parse ``AUTOPULSE_*`` variables (remote ingest defaults)."""
         common = SyntheticAutopulseCommon(
             service_name=os.getenv("AUTOPULSE_SERVICE_NAME", "synthetic-test-api"),
             environment=os.getenv("AUTOPULSE_ENVIRONMENT", "dev"),
@@ -138,47 +97,23 @@ class SyntheticAutopulseFixture:
             flush_interval_s=_env_float("AUTOPULSE_FLUSH_INTERVAL_S", 1.0),
             debug=_env_bool("AUTOPULSE_DEBUG"),
         )
-        if mode == "remote":
-            deployment: SyntheticAutopulseDeployment = SyntheticRemoteDeployment(
-                ingest_url=os.getenv("AUTOPULSE_INGEST_URL", "http://127.0.0.1:8000/ingest"),
-                api_key=os.getenv("AUTOPULSE_API_KEY"),
-            )
-        else:
-            # Any non-remote ``AUTOPULSE_MODE`` value is treated as embedded (same as before).
-            deployment = SyntheticEmbeddedDeployment(
-                mount_prefix=os.getenv("AUTOPULSE_MOUNT_PREFIX", "/autopulse"),
-                database_url=os.getenv(
-                    "AUTOPULSE_DATABASE_URL",
-                    "sqlite+aiosqlite:///./.autopulse/autopulse.db",
-                ),
-                frontend_mode=_env_frontend_mode(),
-            )
+        deployment = SyntheticRemoteDeployment(
+            ingest_url=os.getenv("AUTOPULSE_INGEST_URL", "http://127.0.0.1:8000/ingest"),
+            api_key=os.getenv("AUTOPULSE_API_KEY"),
+        )
         return cls(common=common, deployment=deployment)
 
     def monitor_kwargs(self, *, dashboard_widgets: Sequence[BaseDashboardWidget]) -> dict[str, Any]:
         """Keyword arguments for :func:`autopulse.monitor` (or ``autopulse`` helper)."""
-        base: dict[str, Any] = {
+        dep = self.deployment
+        return {
             "service_name": self.common.service_name,
             "environment": self.common.environment,
             "batch_size": self.common.batch_size,
             "flush_interval_s": self.common.flush_interval_s,
             "debug": self.common.debug,
             "dashboard_widgets": list(dashboard_widgets),
+            "mode": "remote",
+            "ingest_url": dep.ingest_url,
+            "api_key": dep.api_key,
         }
-        dep = self.deployment
-        if isinstance(dep, SyntheticEmbeddedDeployment):
-            base.update(
-                mode="embedded",
-                mount_prefix=dep.mount_prefix,
-                database_url=dep.database_url,
-                frontend_mode=dep.frontend_mode,
-            )
-        elif isinstance(dep, SyntheticRemoteDeployment):
-            base.update(
-                mode="remote",
-                ingest_url=dep.ingest_url,
-                api_key=dep.api_key,
-            )
-        else:
-            assert_never(dep)
-        return base

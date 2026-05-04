@@ -24,7 +24,7 @@ import {
 } from "./dashboardQueryState";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { resetServerScope } from "./dashboardScopeReset";
-import { isEmbeddedRelativeDashboard } from "./dashboardTypes";
+import { isApiSubpathDashboard } from "./dashboardTypes";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
@@ -515,7 +515,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
-  const embeddedStaticUi = isEmbeddedRelativeDashboard();
+  const subpathStaticUi = isApiSubpathDashboard();
   const statusStrip = (
     <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
@@ -526,28 +526,28 @@ function ShellWithData({ children }: { children: ReactNode }) {
       </div>
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
         <p className="font-medium text-slate-700 dark:text-neutral-200">
-          {embeddedStaticUi ? "Ingest key" : "Project ingest key"}
+          {subpathStaticUi ? "Ingest key" : "Project ingest key"}
         </p>
         <p className={hasIssuedApiKey ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
           {hasIssuedApiKey
-            ? embeddedStaticUi
+            ? subpathStaticUi
               ? "DB has a key"
               : "Ready"
-            : embeddedStaticUi
+            : subpathStaticUi
               ? "Issue or .env.autopulse"
               : "Issue in onboarding"}
         </p>
       </div>
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
         <p className="font-medium text-slate-700 dark:text-neutral-200">
-          {embeddedStaticUi ? "Events" : "First event"}
+          {subpathStaticUi ? "Events" : "First event"}
         </p>
         <p className={hasFirstEvent ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
           {hasFirstEvent
-            ? embeddedStaticUi
+            ? subpathStaticUi
               ? "Seen (startup ping counts)"
               : "Active"
-            : embeddedStaticUi
+            : subpathStaticUi
               ? "Restart / refresh"
               : "Waiting"}
         </p>

@@ -509,6 +509,39 @@ class DuckDbEventStore:
         rows = self._fetchall_read("SELECT DISTINCT project_id FROM events ORDER BY project_id ASC")
         return [str(row[0]) for row in rows if row and row[0] is not None]
 
+    def reassign_project_id(self, *, from_project_id: str, to_project_id: UUID) -> tuple[int, int]:
+        """Move all rows from one project id to another.
+
+        Local/dev recoverability helper for legacy databases where SQL metadata
+        and DuckDB event rows drifted to different singleton project ids.
+        """
+        source = str(from_project_id).strip()
+        target = str(to_project_id)
+        if not source or source == target:
+            return 0, 0
+        with self._write_lock:
+            events_row = self._write_conn.execute(
+                "SELECT COUNT(*) FROM events WHERE project_id = ?",
+                [source],
+            ).fetchone()
+            widgets_row = self._write_conn.execute(
+                "SELECT COUNT(*) FROM dashboard_widget_points WHERE project_id = ?",
+                [source],
+            ).fetchone()
+            events_count = int(events_row[0] if events_row else 0)
+            widgets_count = int(widgets_row[0] if widgets_row else 0)
+            if events_count > 0:
+                self._write_conn.execute(
+                    "UPDATE events SET project_id = ? WHERE project_id = ?",
+                    [target, source],
+                )
+            if widgets_count > 0:
+                self._write_conn.execute(
+                    "UPDATE dashboard_widget_points SET project_id = ? WHERE project_id = ?",
+                    [target, source],
+                )
+        return events_count, widgets_count
+
     def count_events_for_project(self, project_id: UUID | None = None) -> int:
         if project_id is None:
             row = self._fetchone_read("SELECT COUNT(*) FROM events")

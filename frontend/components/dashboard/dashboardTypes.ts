@@ -413,16 +413,21 @@ export type DashboardDataQueryResponse = {
   alert_dispatches: AlertDispatchesResponse | null;
 };
 
-export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
+/**
+ * Default API base when unset: same-origin root (``/dashboard/...``, ``/ingest`` on the backend).
+ * Static UI lives under ``/autopulse/ui`` only; the API is not prefixed with ``/autopulse`` for
+ * standalone ``autopulse_backend`` (see ``app.include_router(api_router)`` with no mount prefix).
+ */
+export const DEFAULT_MOUNTED_API_BASE = "";
 
 export const apiBaseUrl =
-  process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? EMBEDDED_DEFAULT_API_BASE_URL;
+  process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? DEFAULT_MOUNTED_API_BASE;
 
 const _isNextSidecarDev: boolean =
   process.env.NEXT_PUBLIC_AUTOPULSE_FRONTEND_MODE === "sidecar";
 
-/** True when the dashboard bundle calls the API on the same origin via a path prefix (embedded static UI). */
-export function isEmbeddedRelativeDashboard(): boolean {
+/** True when the dashboard calls the API on the same origin via a path prefix (static UI on the API host). */
+export function isApiSubpathDashboard(): boolean {
   if (_isNextSidecarDev) {
     return false;
   }
@@ -433,12 +438,12 @@ export function isEmbeddedRelativeDashboard(): boolean {
 function normalizeBasePath(baseUrl: string): string {
   const trimmed = baseUrl.trim();
   if (!trimmed) {
-    return EMBEDDED_DEFAULT_API_BASE_URL;
+    return "";
   }
   return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
 }
 
-/** Sidecar: Next runs on :3000 while API is on another origin; relative ``/autopulse`` would hit Next and 404. */
+/** Sidecar: Next runs on :3000 while API is on another origin; relative paths must be resolved to that origin. */
 function resolveApiBaseForRequests(): string {
   const base = normalizeBasePath(apiBaseUrl);
   const relative = !base.startsWith("http://") && !base.startsWith("https://");
@@ -446,32 +451,31 @@ function resolveApiBaseForRequests(): string {
     const origin = (
       process.env.NEXT_PUBLIC_AUTOPULSE_DEV_API_ORIGIN ?? "http://127.0.0.1:8000"
     ).replace(/\/+$/, "");
+    if (!base) {
+      return origin;
+    }
     return `${origin}${base.startsWith("/") ? base : `/${base}`}`;
   }
-  // Embedded static export is served under ``/autopulse/ui`` on the API host. If the public API
-  // base is mistakenly set to the bare origin (``http://host:port``), requests would hit ``/dashboard``
-  // instead of ``/autopulse/dashboard`` and return 404.
-  //
-  // Next may keep ``pathname`` relative to ``basePath`` (e.g. ``/dashboard/``) while the address bar
-  // still shows ``/autopulse/ui/...`` — use ``href`` and loaded script URLs as signals.
+  // Static export is served under ``/autopulse/ui`` on the API host; API routes are on the same
+  // origin at ``/dashboard/...`` (no ``/autopulse`` API prefix for standalone backend).
   if (typeof window !== "undefined") {
     const href = window.location.href || "";
     const locPath = window.location.pathname || "";
-    let looksLikeEmbeddedUi =
+    let looksLikeMountedStaticUi =
       href.includes("/autopulse/ui") ||
       locPath === "/autopulse/ui" ||
       locPath.startsWith("/autopulse/ui/");
-    if (!looksLikeEmbeddedUi && typeof document !== "undefined") {
+    if (!looksLikeMountedStaticUi && typeof document !== "undefined") {
       const scripts = document.getElementsByTagName("script");
       for (let i = 0; i < scripts.length; i++) {
         const src = scripts[i]?.getAttribute("src") ?? "";
         if (src.includes("/autopulse/ui/_next/")) {
-          looksLikeEmbeddedUi = true;
+          looksLikeMountedStaticUi = true;
           break;
         }
       }
     }
-    if (looksLikeEmbeddedUi) {
+    if (looksLikeMountedStaticUi) {
       const abs = base.startsWith("http://") || base.startsWith("https://");
       if (abs && /^https?:\/\/[^/]+\/?$/i.test(base)) {
         try {
@@ -479,7 +483,7 @@ function resolveApiBaseForRequests(): string {
           const baseParsed = new URL(base);
           const pageParsed = new URL(pageOrigin);
           if (baseParsed.host === pageParsed.host && baseParsed.protocol === pageParsed.protocol) {
-            return `${pageParsed.origin}${EMBEDDED_DEFAULT_API_BASE_URL}`;
+            return pageParsed.origin;
           }
         } catch {
           /* ignore */
@@ -490,7 +494,7 @@ function resolveApiBaseForRequests(): string {
   return base;
 }
 
-/** True when API base is an absolute URL with no path (e.g. ``http://127.0.0.1:8000``) — wrong for embedded mount. */
+/** True when API base is an absolute URL with no path (e.g. ``http://127.0.0.1:8000``) — usually correct for standalone backend + static UI. */
 export function isAbsoluteOriginOnlyApiBase(): boolean {
   const normalized = resolveApiBaseForRequests();
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {

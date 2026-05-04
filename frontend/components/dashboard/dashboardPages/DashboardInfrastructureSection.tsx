@@ -612,7 +612,7 @@ export function DashboardInfrastructureSection({
     return Math.min(effectiveHostChartBucketPick, effectiveHostChartWindowMinutes);
   }, [effectiveHostChartBucketPick, effectiveHostChartWindowMinutes]);
 
-  /** Clip chart data to widget API window (aligned with embedded points); fall back to overview when missing. */
+  /** Clip chart data to widget API window (aligned with infra probe points); fall back to overview when missing. */
   const overviewFrom = overviewExtended.from_timestamp;
   const overviewTo = overviewExtended.to_timestamp;
   const chartClipFrom = dashboardWidgets?.from_timestamp || overviewFrom;

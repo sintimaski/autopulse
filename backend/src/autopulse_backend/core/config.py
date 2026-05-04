@@ -10,7 +10,7 @@ _RUNTIME_DOTENV_LOADED = False
 
 
 def _candidate_backend_dotenv_files() -> list[Path]:
-    """Best-effort dotenv paths so ``backend/.env`` loads for embedded and uvicorn."""
+    """Best-effort dotenv paths so ``backend/.env`` loads for local runs and uvicorn."""
     paths: list[Path] = []
     raw = getenv("AUTOPULSE_BACKEND_DOTENV")
     if raw and raw.strip():
@@ -124,9 +124,9 @@ class Settings:
     alert_outage_window_minutes: int = 5
     alert_cooldown_minutes: int = 15
     retention_raw_events_days: int = 14
-    # Global SQLite on-disk ceiling in MB
-    # (``AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB``); counts main + WAL + SHM.
-    embedded_sqlite_max_db_file_mb: int | None = None
+    # Global SQLite on-disk ceiling in MB (``AUTOPULSE_SQLITE_MAX_DB_FILE_MB``;
+    # deprecated alias ``AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB``); counts main + WAL + SHM.
+    sqlite_max_db_file_mb: int | None = None
     # If true with SQLite + file cap, keep newest data by size
     # (oldest-first trim) and skip age pruning.
     sqlite_size_retention_only: bool = False
@@ -348,8 +348,8 @@ def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
     return (data_root / raw_path).resolve()
 
 
-def _is_autopulse_embedded_default_sqlite_file(normalized_database_url: str) -> bool:
-    """True for known workspace-local SQLite files that ship as dev/embedded defaults.
+def _is_workspace_default_dev_sqlite_file(normalized_database_url: str) -> bool:
+    """True for known workspace-local SQLite files used as local dev defaults.
 
     When ``JOBS_ENABLE_SCHEDULER`` is unset, ``get_settings()`` enables the full scheduler
     for these files. If it is set to ``false``, the API uses a retention-only loop instead
@@ -373,25 +373,23 @@ def get_settings() -> Settings:
     database_url = normalize_database_url(
         getenv("DATABASE_URL", "sqlite+aiosqlite:///./.autopulse/autopulse.db")
     )
-    embedded_runtime = getenv("AUTOPULSE_RUNTIME_EMBEDDED", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    embedded_cap_raw = getenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
-    embedded_sqlite_max_db_file_mb = _env_optional_positive_int("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
+    sqlite_cap_raw = getenv("AUTOPULSE_SQLITE_MAX_DB_FILE_MB")
+    if sqlite_cap_raw is None or sqlite_cap_raw.strip() == "":
+        sqlite_cap_raw = getenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
+    sqlite_max_db_file_mb = _env_optional_positive_int("AUTOPULSE_SQLITE_MAX_DB_FILE_MB")
+    if sqlite_max_db_file_mb is None:
+        sqlite_max_db_file_mb = _env_optional_positive_int("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB")
     if (
-        embedded_sqlite_max_db_file_mb is None
-        and _is_autopulse_embedded_default_sqlite_file(database_url)
-        and (embedded_cap_raw is None or embedded_cap_raw.strip() == "")
+        sqlite_max_db_file_mb is None
+        and _is_workspace_default_dev_sqlite_file(database_url)
+        and (sqlite_cap_raw is None or sqlite_cap_raw.strip() == "")
     ):
-        embedded_sqlite_max_db_file_mb = 512
+        sqlite_max_db_file_mb = 512
     jobs_scheduler_raw = getenv("JOBS_ENABLE_SCHEDULER")
     jobs_enable_scheduler = _env_bool("JOBS_ENABLE_SCHEDULER", False)
     if (
         jobs_scheduler_raw is None or jobs_scheduler_raw.strip() == ""
-    ) and _is_autopulse_embedded_default_sqlite_file(database_url):
+    ) and _is_workspace_default_dev_sqlite_file(database_url):
         jobs_enable_scheduler = True
     jobs_retention_interval_seconds = _env_float(
         "JOBS_RETENTION_INTERVAL_SECONDS",
@@ -399,14 +397,14 @@ def get_settings() -> Settings:
         minimum=5.0,
     )
     env_retention = getenv("JOBS_RETENTION_INTERVAL_SECONDS")
-    if _is_autopulse_embedded_default_sqlite_file(database_url) and (
+    if _is_workspace_default_dev_sqlite_file(database_url) and (
         env_retention is None or env_retention.strip() == ""
     ):
         jobs_retention_interval_seconds = min(float(jobs_retention_interval_seconds), 300.0)
     poll_raw = getenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS")
     if poll_raw is None or poll_raw.strip() == "":
         retention_pressure_poll_seconds = (
-            1.0 if _is_autopulse_embedded_default_sqlite_file(database_url) else 0.0
+            1.0 if _is_workspace_default_dev_sqlite_file(database_url) else 0.0
         )
     else:
         retention_pressure_poll_seconds = _env_float(
@@ -491,10 +489,7 @@ def get_settings() -> Settings:
         ingest_idempotency_stale_seconds=_env_int(
             "INGEST_IDEMPOTENCY_STALE_SECONDS", 45, minimum=5
         ),
-        ingest_require_https=_env_bool(
-            "INGEST_REQUIRE_HTTPS",
-            not embedded_runtime,
-        ),
+        ingest_require_https=_env_bool("INGEST_REQUIRE_HTTPS", True),
         ingest_trust_forwarded_proto=_env_bool("INGEST_TRUST_FORWARDED_PROTO", True),
         ingest_drop_autopulse_traffic_from_db=_env_bool(
             "INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB",
@@ -529,10 +524,10 @@ def get_settings() -> Settings:
         ),
         alert_cooldown_minutes=_env_int("ALERT_COOLDOWN_MINUTES", 15, minimum=1),
         retention_raw_events_days=_env_int("RETENTION_RAW_EVENTS_DAYS", 14, minimum=1),
-        embedded_sqlite_max_db_file_mb=embedded_sqlite_max_db_file_mb,
+        sqlite_max_db_file_mb=sqlite_max_db_file_mb,
         sqlite_size_retention_only=_env_bool(
             "AUTOPULSE_SQLITE_SIZE_RETENTION_ONLY",
-            bool(database_url.startswith("sqlite") and embedded_sqlite_max_db_file_mb is not None),
+            bool(database_url.startswith("sqlite") and sqlite_max_db_file_mb is not None),
         ),
         logs_query_max_window_minutes=_env_int("LOGS_QUERY_MAX_WINDOW_MINUTES", 1440, minimum=1),
         jobs_enable_scheduler=jobs_enable_scheduler,

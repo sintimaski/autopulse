@@ -51,7 +51,7 @@ DEFAULT_SCRUB_KEYS = frozenset(
 class _MonitorConfig:
     api_key: str | None
     ingest_url: str | None
-    embedded_startup_ingest_ping: bool
+    startup_ingest_ping: bool
     service_name: str
     environment: str
     queue_maxsize: int
@@ -61,7 +61,7 @@ class _MonitorConfig:
     retry_backoff_s: float
     debug: bool
     # When set (e.g. "/autopulse"), requests under this prefix use request.url.path so DB
-    # "exclude internal traffic" filters match embedded dashboard/ingest routes.
+    # "exclude internal traffic" filters match submounted dashboard/ingest routes.
     mount_prefix: str | None
     capture_headers: bool
     capture_query_params: bool
@@ -302,7 +302,7 @@ class _EventDispatcher:
             f"batch_size={self._config.batch_size} "
             f"flush_interval_s={self._config.flush_interval_s}",
         )
-        if self._config.embedded_startup_ingest_ping:
+        if self._config.startup_ingest_ping:
             # Synthetic request so dashboard onboarding can observe first ingest without
             # waiting for application traffic. Path avoids is_autopulse_internal_path filters.
             self.enqueue(
@@ -567,20 +567,12 @@ def monitor(app: Any, **kwargs: Any) -> None:
     env_ingest_url = os.getenv("AUTOPULSE_INGEST_URL") or os.getenv("AUTOPULSE_ENDPOINT")
     mode = str(kwargs.get("mode", "remote")).strip().lower()
     if mode == "embedded":
-        try:
-            from autopulse._embedded import configure_embedded
-
-            resolved_kwargs.update(configure_embedded(app, kwargs=kwargs))
-        except ModuleNotFoundError as exc:
-            if exc.name and exc.name.startswith("autopulse_backend"):
-                _debug_log(
-                    bool(kwargs.get("debug", False)),
-                    "embedded mode unavailable: install the backend package or use mode='remote'",
-                )
-            else:
-                _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
-        except Exception as exc:
-            _debug_log(bool(kwargs.get("debug", False)), f"embedded setup failed: {exc}")
+        logger.warning(
+            "autopulse.monitor: mode='embedded' is no longer supported; "
+            "run the backend separately and use remote ingest (AUTOPULSE_INGEST_URL + "
+            "AUTOPULSE_API_KEY)."
+        )
+        mode = "remote"
     extra_scrub = resolved_kwargs.get("scrub_keys", ())
     scrub_keys = frozenset(
         {
@@ -599,8 +591,11 @@ def monitor(app: Any, **kwargs: Any) -> None:
     config = _MonitorConfig(
         api_key=resolved_kwargs.get("api_key", env_api_key),
         ingest_url=resolved_kwargs.get("ingest_url", env_ingest_url),
-        embedded_startup_ingest_ping=bool(
-            resolved_kwargs.get("embedded_startup_ingest_ping", False)
+        startup_ingest_ping=bool(
+            resolved_kwargs.get(
+                "startup_ingest_ping",
+                resolved_kwargs.get("embedded_startup_ingest_ping", False),
+            )
         ),
         service_name=resolved_kwargs.get("service_name", "api"),
         environment=resolved_kwargs.get("environment", "production"),
@@ -670,7 +665,7 @@ def monitor(app: Any, **kwargs: Any) -> None:
         client=resolved_kwargs.get("http_client"),
         owns_client=resolved_kwargs.get("owns_http_client"),
     )
-    if mode != "embedded" and not dispatcher._send_enabled:
+    if not dispatcher._send_enabled:
         logger.warning(
             "autopulse.monitor: remote ingest is disabled because AUTOPULSE_INGEST_URL and "
             "AUTOPULSE_API_KEY are not both set; middleware is attached but events will not "

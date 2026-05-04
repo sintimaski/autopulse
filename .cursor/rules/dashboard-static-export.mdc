@@ -1,5 +1,5 @@
 ---
-description: Next static export, /autopulse/ui base path, embedded vs standalone backend UI
+description: Next static export, /autopulse/ui base path, backend-mounted dashboard UI
 globs:
   - frontend/**/*.{ts,tsx,js,jsx}
   - backend/**/*.py
@@ -9,9 +9,8 @@ alwaysApply: false
 
 # Dashboard static export
 
-- The dashboard is built as a **Next.js static export** (`npm run build` → `frontend/out/`) with **`basePath` `/autopulse/ui`** so routes and `_next/static` assets align with embedded and API-submount layouts.
-- **Embedded SDK / PyPI wheel:** UI files are produced under `sdk/src/autopulse/ui/` (ignored in git) from `frontend/out/` via `scripts/bundle_embedded_dashboard_ui.sh`, and automatically during `uv build --package autopulse --wheel` via `sdk/hatch_build.py` (details in `.cursor/rules/autopulse-embedded-ui-bundle.mdc`).
-- **Standalone FastAPI backend:** when serving the export from the API process, env **`AUTOPULSE_FRONTEND_STATIC_DIR`** should point at the export root and the app should mount it under **`/autopulse/ui/`**. The integration hook is `maybe_mount_dashboard_static_export` in `backend/src/autopulse_backend/dashboard/static_export_mount.py` (mounts when `index.html` is found—keep this rule and that module in sync when behavior changes).
+- The dashboard is built as a **Next.js static export** (`npm run build` → `frontend/out/`) with **`basePath` `/autopulse/ui`** so routes and `_next/static` assets align with API-submount layouts.
+- **FastAPI backend:** when serving the export from the API process, env **`AUTOPULSE_FRONTEND_STATIC_DIR`** should point at the export root and the app should mount it under **`/autopulse/ui/`**. The integration hook is `maybe_mount_dashboard_static_export` in `backend/src/autopulse_backend/dashboard/static_export_mount.py` (mounts when `index.html` is found—keep this rule and that module in sync when behavior changes).
 - Prefer **static export + backend** for default full-stack checks; do not assume a separate **`next start`** unless the task is Next-only (see `.cursor/rules/frontend-next.mdc`).
 
 ## Rule self-review

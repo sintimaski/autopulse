@@ -23,10 +23,7 @@ from autopulse import (
     StackedAreaWidget,
     monitor,
 )
-from autopulse.fixtures.synthetic_autopulse_config import (
-    SyntheticAutopulseFixture,
-    SyntheticRemoteDeployment,
-)
+from autopulse.fixtures.synthetic_autopulse_config import SyntheticAutopulseFixture
 
 logger = logging.getLogger("autopulse.synthetic_test_app")
 
@@ -360,16 +357,12 @@ def create_app(
         elif not (cfg.api_key and (cfg.ingest_url or "").strip()):
             logger.warning(
                 "synthetic_test_app: AutoPulse is not sending events "
-                "(missing api_key or ingest_url). For embedded mode install autopulse-backend; "
-                "for remote set AUTOPULSE_MODE=remote plus AUTOPULSE_INGEST_URL and "
-                "AUTOPULSE_API_KEY. Generate traffic with synthetic_load."
+                "(missing api_key or ingest_url). Set AUTOPULSE_INGEST_URL and AUTOPULSE_API_KEY "
+                "(see scripts/run_synthetic_stack.sh). Generate traffic with synthetic_load."
             )
         else:
-            dep = fixture.deployment
-            mode = "remote" if isinstance(dep, SyntheticRemoteDeployment) else "embedded"
             logger.info(
-                "synthetic_test_app: AutoPulse active (%s), service=%s environment=%s",
-                mode,
+                "synthetic_test_app: AutoPulse active (remote), service=%s environment=%s",
                 cfg.service_name,
                 cfg.environment,
             )

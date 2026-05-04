@@ -53,13 +53,13 @@ class InfrastructureMetricsSampler:
             store = try_get_duckdb_event_store()
             if store is not None:
                 size_bytes = float(store.file_size_bytes())
-                sample["embedded_log_store_size_bytes"] = size_bytes
-                sample["embedded_log_store_size_mb"] = size_bytes / (1024 * 1024)
-                if settings.embedded_sqlite_max_db_file_mb is not None:
-                    cap_mb = float(settings.embedded_sqlite_max_db_file_mb)
-                    sample["embedded_log_store_cap_mb"] = cap_mb
+                sample["log_store_size_bytes"] = size_bytes
+                sample["log_store_size_mb"] = size_bytes / (1024 * 1024)
+                if settings.sqlite_max_db_file_mb is not None:
+                    cap_mb = float(settings.sqlite_max_db_file_mb)
+                    sample["log_store_cap_mb"] = cap_mb
                     if cap_mb > 0:
-                        sample["embedded_log_store_usage_percent"] = (
+                        sample["log_store_usage_percent"] = (
                             (size_bytes / (1024 * 1024)) / cap_mb
                         ) * 100.0
         return sample
@@ -94,16 +94,16 @@ def to_widget_payload(metrics: dict[str, Any]) -> tuple[list[dict[str, Any]], li
         ("network_bytes_recv", "infra_network_received_mb", "Network received", "MB", 560),
         ("network_bytes_sent", "infra_network_sent_mb", "Network sent", "MB", 570),
         (
-            "embedded_log_store_size_mb",
-            "infra_embedded_log_store_size_mb",
-            "Embedded log store size",
+            "log_store_size_mb",
+            "infra_log_store_size_mb",
+            "Log store size",
             "MB",
             580,
         ),
         (
-            "embedded_log_store_usage_percent",
-            "infra_embedded_log_store_usage_percent",
-            "Embedded log store usage",
+            "log_store_usage_percent",
+            "infra_log_store_usage_percent",
+            "Log store usage",
             "%",
             581,
         ),

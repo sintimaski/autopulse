@@ -41,7 +41,7 @@ uv run pre-commit install
 uv run pre-commit run --all-files
 ```
 
-Pre-commit also runs **`sdk-embedded-ui-bundle`** when staged paths include **`frontend/`** (or `scripts/bundle_embedded_dashboard_ui.sh`): Next **`npm run build`** plus sync into **`sdk/src/autopulse/ui/`** for local/CI checks. Generated assets are **gitignored**; **`uv build --package autopulse --wheel`** bundles UI via **`sdk/hatch_build.py`**. Cursor agents: see **`.cursor/rules/autopulse-embedded-ui-bundle.mdc`**.
+Pre-commit runs **`frontend-build`** when staged paths include **`frontend/`**: Next **`npm run build`** so the static export stays valid.
 
 Execution policy:
 
@@ -377,12 +377,12 @@ npm --prefix frontend run build
 
 Then perform the manual MVP scenario:
 
-1. Start a one-line embedded FastAPI sample (`autopulse(app)`) and confirm routes under `/autopulse/*`.
+1. Start `./scripts/run_synthetic_stack.sh` (or backend + synthetic app separately) and confirm the dashboard under `/autopulse/ui/` and ingest on the backend.
 2. Generate normal and failing traffic.
 3. Capture evidence for first-value time, grouped errors, and overview metrics.
 4. Simulate backend outage and verify host app continuity.
 5. Validate scrubbed payload output and alert dispatch behavior.
-6. (Optional split-mode check) run separate backend/frontend processes to verify compatibility with non-embedded installs.
+6. (Optional) run `./scripts/run_remote_stack.sh` hints with separate backend/frontend terminals.
 
 ### 7.3 MVP sign-off requirement
 

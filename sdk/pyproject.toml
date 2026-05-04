@@ -9,40 +9,9 @@ dependencies = [
     "psutil>=6.0.0",
 ]
 
-[project.optional-dependencies]
-embedded = [
-    # Local dashboard + ingest; requires ``autopulse-backend`` on your index (e.g. PyPI) or install both wheels from the repo (see ``scripts/build_sdk_release_wheels.sh``).
-    "autopulse-backend>=0.1.0",
-]
-
 [build-system]
 requires = ["hatchling>=1.26.0"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.hooks.custom]
-path = "hatch_build.py"
-
-# Wheel builds from sdist must still be able to run ``npm run build`` and the bundle script.
-# Ship only Next source + lockfile (never local ``.env.local``, ``.next/``, ``node_modules/``, …).
-[tool.hatch.build.targets.sdist.force-include]
-"../frontend/app" = "frontend/app"
-"../frontend/components" = "frontend/components"
-"../frontend/lib" = "frontend/lib"
-"../frontend/utils" = "frontend/utils"
-"../frontend/package.json" = "frontend/package.json"
-"../frontend/package-lock.json" = "frontend/package-lock.json"
-"../frontend/next.config.ts" = "frontend/next.config.ts"
-"../frontend/tsconfig.json" = "frontend/tsconfig.json"
-"../frontend/postcss.config.mjs" = "frontend/postcss.config.mjs"
-"../frontend/eslint.config.mjs" = "frontend/eslint.config.mjs"
-"../frontend/next-env.d.ts" = "frontend/next-env.d.ts"
-"../frontend/vitest.config.ts" = "frontend/vitest.config.ts"
-"../frontend/README.md" = "frontend/README.md"
-"../frontend/.env.example" = "frontend/.env.example"
-"../scripts/bundle_embedded_dashboard_ui.sh" = "scripts/bundle_embedded_dashboard_ui.sh"
-
 [tool.hatch.build.targets.wheel]
 packages = ["src/autopulse"]
-artifacts = [
-  "src/autopulse/ui/**",
-]

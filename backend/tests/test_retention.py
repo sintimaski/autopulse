@@ -273,7 +273,7 @@ def test_retention_cleanup_enforces_project_log_row_cap_for_sqlite(
     assert remaining == 2
 
 
-def test_embedded_sqlite_global_file_cap_deletes_oldest_when_file_over_limit(
+def test_sqlite_global_file_cap_deletes_oldest_when_file_over_limit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -342,7 +342,7 @@ def test_embedded_sqlite_global_file_cap_deletes_oldest_when_file_over_limit(
                     get_settings(),
                     database_url=database_url,
                     retention_raw_events_days=10_000,
-                    embedded_sqlite_max_db_file_mb=50,
+                    sqlite_max_db_file_mb=50,
                 )
                 result = await run_retention_cleanup_once(
                     session, settings, now=datetime.now(tz=UTC)
@@ -361,7 +361,7 @@ def test_embedded_sqlite_global_file_cap_deletes_oldest_when_file_over_limit(
     assert deleted >= 3
 
 
-def test_embedded_sqlite_global_file_cap_uses_min_ui_when_embedded_cap_unset(
+def test_sqlite_global_file_cap_uses_min_ui_when_sqlite_cap_unset(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -438,7 +438,7 @@ def test_embedded_sqlite_global_file_cap_uses_min_ui_when_embedded_cap_unset(
                     get_settings(),
                     database_url=database_url,
                     retention_raw_events_days=10_000,
-                    embedded_sqlite_max_db_file_mb=None,
+                    sqlite_max_db_file_mb=None,
                 )
                 result = await run_retention_cleanup_once(
                     session, settings, now=datetime.now(tz=UTC)

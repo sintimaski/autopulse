@@ -13,11 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from autopulse_backend.app import create_app
 from autopulse_backend.auth import generate_api_key
+from autopulse_backend.dashboard.routes import auth_routes as auth_routes_module
 from autopulse_backend.models import ApiKey, Event, Project
 
 
-def _seed_singleton_embedded_bootstrap_project(database_url: str) -> str:
-    """Mimic SDK embedded startup: one project row, no org (ingest key optional)."""
+def _seed_singleton_bootstrap_project(database_url: str) -> str:
+    """Mimic local dev bootstrap: one project row, no org (ingest key optional)."""
 
     async def run() -> str:
         engine = create_async_engine(database_url, pool_pre_ping=True)
@@ -238,6 +239,52 @@ def test_dashboard_magic_link_session_flow(
         assert post_logout_session.json()["authenticated"] is False
 
 
+def test_dashboard_magic_link_verify_aligns_singleton_duckdb_project_ids(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_singleton_bootstrap_project(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+
+    stale_project_id = "06d85246-d7aa-4391-91ac-03b7da5b7b58"
+    reassign_calls: list[tuple[str, UUID]] = []
+
+    class _FakeStore:
+        def list_project_ids(self) -> list[str]:
+            return [stale_project_id]
+
+        def reassign_project_id(
+            self, *, from_project_id: str, to_project_id: UUID
+        ) -> tuple[int, int]:
+            reassign_calls.append((from_project_id, to_project_id))
+            return (12, 4)
+
+    async def _run_sync_passthrough(fn, /, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(auth_routes_module, "event_store_enabled", lambda _settings: True)
+    monkeypatch.setattr(auth_routes_module, "try_get_duckdb_event_store", lambda: _FakeStore())
+    monkeypatch.setattr(auth_routes_module, "run_duckdb_read_sync", _run_sync_passthrough)
+    monkeypatch.setattr(auth_routes_module, "run_duckdb_write_sync", _run_sync_passthrough)
+
+    app = create_app()
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post(
+            "/dashboard/auth/magic-link/verify",
+            json={"token": token},
+        )
+        assert verify_response.status_code == 200
+        project_id = UUID(verify_response.json()["project_id"])
+
+    assert reassign_calls == [(stale_project_id, project_id)]
+
+
 def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
     backend_test_database_url: str,
     monkeypatch,
@@ -313,13 +360,13 @@ def test_dashboard_organization_governance_flow(
         assert promote_response.json()["role"] == "owner"
 
 
-def test_dashboard_magic_link_adopts_singleton_embedded_project(
+def test_dashboard_magic_link_adopts_singleton_bootstrap_project(
     backend_test_database_url: str,
     monkeypatch,
     tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
-    embedded_project_id = _seed_singleton_embedded_bootstrap_project(backend_test_database_url)
+    embedded_project_id = _seed_singleton_bootstrap_project(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
@@ -490,7 +537,7 @@ def test_dashboard_issue_key_syncs_env_autopulse_file(
         issued = issue_response.json()["api_key"]
 
     content = env_autopulse_path.read_text(encoding="utf-8")
-    assert f"AUTOPULSE_EMBEDDED_API_KEY={issued}" in content
+    assert f"AUTOPULSE_API_KEY={issued}" in content
     assert f"NEXT_PUBLIC_AUTOPULSE_API_KEY={issued}" in content
 
 
