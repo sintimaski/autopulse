@@ -924,17 +924,6 @@ export function SettingsContent() {
         {themeMessage ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{themeMessage}</p>
         ) : null}
-        <p className="mt-3 text-sm text-slate-600 dark:text-neutral-400">
-          Chart and SDK widget previews live under{" "}
-          <span className="font-medium text-slate-700 dark:text-neutral-200">Developers</span> in the sidebar (
-          <Link
-            href="/widgets-showcase"
-            className="font-medium text-sky-600 underline decoration-sky-600/30 underline-offset-2 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
-          >
-            Widgets
-          </Link>
-          ) — live data from your scope plus a mock preview.
-        </p>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -942,9 +931,6 @@ export function SettingsContent() {
           Session
         </p>
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Dashboard sign-out</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Signs you out of this browser. Ingest keys and app config are unchanged.
-        </p>
         <div className="mt-4">
           <button
             type="button"
