@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play } from "../../lib/icons";
+import { Pause, Play, Undo2 } from "../../lib/icons";
 import { DashboardScopeFacetShell } from "./DashboardScopeFacetShell";
 import { useDashboardData } from "./DashboardDataContext";
 
@@ -37,6 +37,7 @@ function formatFilterHint(d: ReturnType<typeof useDashboardData>): string {
 export function DiagnosisRequestsStickyScopeBar() {
   const d = useDashboardData();
   const paused = d.liveDataPaused;
+  const dropTitle = `Drop custom window and use last ${d.windowMinutes} minutes`;
 
   return (
     <DashboardScopeFacetShell className="sticky top-0 z-30 mb-4">
@@ -45,15 +46,28 @@ export function DiagnosisRequestsStickyScopeBar() {
           <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">{formatWindowSummary(d)}</p>
           <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-400">{formatFilterHint(d)}</p>
         </div>
-        <button
-          type="button"
-          onClick={() => d.toggleLiveDataPaused()}
-          title={paused ? "Resume live updates" : "Pause live updates"}
-          aria-label={paused ? "Resume live updates" : "Pause live updates"}
-          className="ap-btn shrink-0 p-2"
-        >
-          {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
-        </button>
+        {d.isAbsoluteWindow ? (
+          <button
+            type="button"
+            onClick={() => d.clearAbsoluteWindow()}
+            title={dropTitle}
+            aria-label={dropTitle}
+            className="ap-btn flex max-w-full min-w-0 shrink-0 items-center gap-1.5 px-2 py-1.5 text-xs"
+          >
+            <Undo2 className="size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">Last {d.windowMinutes}m</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => d.toggleLiveDataPaused()}
+            title={paused ? "Resume live updates" : "Pause live updates"}
+            aria-label={paused ? "Resume live updates" : "Pause live updates"}
+            className="ap-btn shrink-0 p-2"
+          >
+            {paused ? <Play className="size-4" aria-hidden /> : <Pause className="size-4" aria-hidden />}
+          </button>
+        )}
       </div>
     </DashboardScopeFacetShell>
   );
