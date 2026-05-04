@@ -546,6 +546,16 @@ export function SettingsContent() {
         {themeMessage ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{themeMessage}</p>
         ) : null}
+        <p className="mt-3 text-sm text-slate-600 dark:text-neutral-400">
+          <Link
+            href="/widgets-showroom"
+            className="font-medium text-sky-600 underline decoration-sky-600/30 underline-offset-2 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
+          >
+            Widget showroom
+          </Link>
+          {" — "}
+          preview every dashboard chart and SDK widget layout with live-updating mock data (no ingest required).
+        </p>
         <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
             <input

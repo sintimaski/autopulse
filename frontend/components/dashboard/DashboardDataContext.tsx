@@ -389,7 +389,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const run = async () => {
       const fetchStartedAt = Date.now();
       const routePath = dashboardRoutePath;
-      if (routePath === "/settings") {
+      if (routePath === "/settings" || routePath === "/widgets-showroom") {
         return;
       }
 

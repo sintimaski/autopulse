@@ -35,6 +35,10 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Widget gallery",
     subtitle: "SDK dashboard widgets and every chart type in one place.",
   },
+  "/widgets-showroom": {
+    title: "Widget showroom",
+    subtitle: "Mock metrics on a timer — preview layouts without backend traffic.",
+  },
   "/requests": {
     title: "Requests",
     subtitle: "Request-level evidence with shared investigation scope.",
