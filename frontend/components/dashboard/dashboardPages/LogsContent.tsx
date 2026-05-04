@@ -13,6 +13,7 @@ import {
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardLogsSlice } from "../data/useDashboardSlices";
+import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { TagSelector } from "../TagSelector";
 
@@ -81,6 +82,9 @@ export function LogsContent() {
   }, [logsSlice.filteredSorted]);
   const requests = logsSlice.requests;
   if (!requests) {
+    if (d.loading && !d.errorMessage) {
+      return <InlineDataSpinner label="Loading requests…" className="rounded-2xl" />;
+    }
     return (
       <section
         className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
@@ -88,14 +92,23 @@ export function LogsContent() {
         aria-live="polite"
       >
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
-          Requests are loading or missing
+          No request data for this view
         </h2>
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-          No request-log slice is available right now. Adjust the scope filters, refresh, or finish{" "}
-          <Link href="/onboarding" className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
-            Onboarding
-          </Link>
-          {isApiSubpathDashboard() ? " (startup ping may appear — refresh)." : " to send traffic."}
+          {d.errorMessage ? (
+            d.errorMessage
+          ) : (
+            <>
+              Adjust the scope filters, refresh, or finish{" "}
+              <Link
+                href="/onboarding"
+                className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+              >
+                Onboarding
+              </Link>
+              {isApiSubpathDashboard() ? " (startup ping may appear — refresh)." : " to send traffic."}
+            </>
+          )}
         </p>
       </section>
     );

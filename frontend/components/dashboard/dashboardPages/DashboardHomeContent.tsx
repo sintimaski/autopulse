@@ -26,6 +26,7 @@ import {
   type ScatterPlotPoint,
   type StackedAreaSeries,
 } from "../charts";
+import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
@@ -48,9 +49,13 @@ export function DashboardHomeContent() {
         <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
-          {d.errorMessage ?? "Loading dashboard metrics..."}
-        </div>
+        {d.loading && !d.errorMessage ? (
+          <InlineDataSpinner label="Loading dashboard metrics…" />
+        ) : (
+          <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+            {d.errorMessage ?? "No metrics for this scope yet. Adjust filters or send traffic."}
+          </div>
+        )}
       </section>
     );
   }

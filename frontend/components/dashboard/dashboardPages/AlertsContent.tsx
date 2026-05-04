@@ -8,6 +8,7 @@ import type { AlertSettings } from "../dashboardTypes";
 import { buildApiUrl } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildScopedQuery } from "../dashboardQueryState";
+import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { useDashboardAlertsSlice } from "../data/useDashboardSlices";
 
 type AlertTestResult = {
@@ -334,9 +335,13 @@ export function AlertsContent() {
                 ) : null}
               </div>
             </>
+          ) : d.loading && !d.errorMessage ? (
+            <div className="mt-4">
+              <InlineDataSpinner label="Loading alert settings…" />
+            </div>
           ) : (
             <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
-              Loading alert settings...
+              {d.errorMessage ?? "Alert settings are not available for this scope."}
             </p>
           )}
         </div>

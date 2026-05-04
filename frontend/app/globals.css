@@ -27,11 +27,16 @@
 }
 
 html {
-  background-color: #0b0d10;
+  --ap-canvas: #f1f5f9;
+  background-color: var(--ap-canvas);
+}
+
+html.dark {
+  --ap-canvas: #09090b;
 }
 
 body {
-  background-color: #0b0d10;
+  background-color: var(--ap-canvas);
 }
 
 .ap-scope-facet-shell {
@@ -81,4 +86,24 @@ body {
 
 .ap-select {
   @apply w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2;
+}
+
+/* Design tokens (Tailwind v4 @theme) — surfaces reference AutoPulse console chrome */
+@theme {
+  --color-ap-canvas: #f1f5f9;
+  --radius-ap-card: 1rem;
+  --shadow-ap-card:
+    0 1px 2px rgb(15 23 42 / 0.06),
+    0 1px 3px rgb(15 23 42 / 0.04);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

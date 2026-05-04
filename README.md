@@ -68,7 +68,7 @@ monitor(
 
 API details: `sdk/src/autopulse/widgets.py`. Full fixture example: `sdk/src/autopulse/fixtures/synthetic_test_app.py` (`_build_demo_dashboard_widgets`).
 
-**UI:** mock gallery `/autopulse/ui/widgets-showroom` · live project `/autopulse/ui/widgets-showcase` (paths follow the static export `basePath`; adjust if you host the UI elsewhere).
+**UI:** widgets page `/autopulse/ui/widgets-showcase` (live scope + mock preview; legacy `/widgets-showroom` redirects here; paths follow the static export `basePath`; adjust if you host the UI elsewhere).
 
 ---
 

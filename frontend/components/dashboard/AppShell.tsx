@@ -7,6 +7,7 @@ import {
   Activity,
   Bell,
   LayoutDashboard,
+  LayoutGrid,
   PanelLeft,
   PanelLeftClose,
   RotateCw,
@@ -22,12 +23,17 @@ const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
 type NavItem = { href: string; label: string; Icon: LucideIcon };
 
+/** Primary console IA: diagnose failures first, then evidence, then alerts and configuration. */
 const BASE_NAV: readonly NavItem[] = [
   { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
+  { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/requests", label: "Requests", Icon: ScrollText },
   { href: "/alerts", label: "Alerts", Icon: Bell },
-  { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/settings", label: "Settings", Icon: Settings },
+] as const;
+
+const DEV_NAV: readonly { href: string; label: string; Icon: LucideIcon }[] = [
+  { href: "/widgets-showcase", label: "Widgets", Icon: LayoutGrid },
 ] as const;
 
 export function DashboardAppShell({
@@ -41,6 +47,8 @@ export function DashboardAppShell({
   title,
   subtitle,
   statusStrip,
+  /** Non-blocking alert (e.g. bootstrap retry) shown under the page title. */
+  topBanner,
   isDark,
   diagnosisNavQuery = "",
   logsNavQuery = "",
@@ -56,6 +64,7 @@ export function DashboardAppShell({
   title: string;
   subtitle: string;
   statusStrip?: ReactNode;
+  topBanner?: ReactNode;
   isDark: boolean;
   /** Last persisted or live `/diagnosis` server-scope query string (without `?`). */
   diagnosisNavQuery?: string;
@@ -76,6 +85,16 @@ export function DashboardAppShell({
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.classList.toggle("dark", isDark);
+    return () => {
+      document.documentElement.classList.remove("dark");
+    };
+  }, [isDark]);
+
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
       const next = !prev;
@@ -92,6 +111,12 @@ export function DashboardAppShell({
 
   return (
     <div suppressHydrationWarning className={isDark ? "dark" : ""}>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-sky-600 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:outline-none focus:ring-2 focus:ring-sky-400/80"
+      >
+        Skip to main content
+      </a>
       <div
         className="flex min-h-screen bg-gradient-to-b from-slate-100 via-slate-100 to-slate-200/70 text-slate-900 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900 dark:text-neutral-100"
         style={{ ["--dashboard-sidebar-width" as string]: sidebarWidth }}
@@ -168,6 +193,39 @@ export function DashboardAppShell({
               );
             })}
           </nav>
+          <div className="mt-auto border-t border-white/10 px-2 py-3">
+            {!sidebarCollapsed ? (
+              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                Developers
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-0.5">
+              {DEV_NAV.map((item) => {
+                const active = pathname === item.href;
+                const Icon = item.Icon;
+                return (
+                  <Link
+                    key={item.href}
+                    prefetch={false}
+                    href={item.href}
+                    title={sidebarCollapsed ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
+                    aria-label={sidebarCollapsed ? item.label : undefined}
+                    className={`flex items-center gap-2 rounded-lg text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                      sidebarCollapsed ? "justify-center px-2 py-2" : "px-3 py-1.5"
+                    } ${
+                      active
+                        ? "bg-white/10 font-medium text-white"
+                        : "text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
+                    }`}
+                  >
+                    <Icon className="size-3.5 shrink-0 opacity-90" aria-hidden />
+                    {!sidebarCollapsed ? <span>{item.label}</span> : null}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
           {!sidebarCollapsed ? (
             <div className="border-t border-white/10 px-4 py-3 text-xs leading-snug text-neutral-500">
               FastAPI-native visibility. Tune scope, then inspect evidence.
@@ -180,11 +238,12 @@ export function DashboardAppShell({
         <div className="flex min-w-0 flex-1 flex-col transition-[margin] duration-200">
           <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/85">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
-              <div>
+              <div className="min-w-0 flex-1">
                 <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-neutral-100 sm:text-2xl">
                   {title}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">{subtitle}</p>
+                {topBanner ? <div className="mt-3">{topBanner}</div> : null}
               </div>
               {onRefresh ? (
                 <div className="flex items-center gap-2">
@@ -212,7 +271,9 @@ export function DashboardAppShell({
             ) : null}
           </header>
 
-          <main className="flex-1 px-4 py-6 sm:px-6">{children}</main>
+          <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6">
+            {children}
+          </main>
 
           <footer className="border-t border-slate-200/80 bg-white/85 px-4 py-4 text-center text-sm text-slate-500 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-6">
             <span className="text-slate-600 dark:text-neutral-300">AutoPulse</span>

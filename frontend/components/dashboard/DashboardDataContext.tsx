@@ -80,6 +80,7 @@ import {
   writeDashboardSnapshot,
 } from "./dashboardSnapshotCache";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
+import { createBootstrapFailureOnboardingFallback } from "./dashboardBootstrapFallback";
 import { dashboardMagicLinkHref, toDashboardRoutePath } from "./dashboardRoutePath";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
 import {
@@ -194,6 +195,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
   const [alertCapabilities, setAlertCapabilities] = useState<AlertChannelCapability[]>([]);
   const [onboardingStatus, setOnboardingStatus] = useState<DashboardOnboardingStatusResponse | null>(null);
+  const [workspaceBootstrapError, setWorkspaceBootstrapError] = useState<string | null>(null);
+  const [bootstrapRetryToken, setBootstrapRetryToken] = useState(0);
   const [retentionSettings, setRetentionSettings] = useState<RetentionSettings | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [excludeAutopulseTraffic, setExcludeAutopulseTraffic] = useState(true);
@@ -327,6 +330,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     serviceTags,
   ]);
 
+  const retryWorkspaceBootstrap = useCallback(() => {
+    setWorkspaceBootstrapError(null);
+    setOnboardingStatus(null);
+    setBootstrapRetryToken((t) => t + 1);
+  }, []);
+
   // Keep settings and capabilities in sync with the same refresh cadence as traffic data.
   useEffect(() => {
     if (!hasDashboardSession) {
@@ -356,6 +365,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (cancelled) {
           return;
         }
+        setWorkspaceBootstrapError(null);
         setRetentionSettings(bootstrapData.retention_settings);
         setAlertSettings(bootstrapData.alert_settings);
         setThemePreference(bootstrapData.theme_settings.theme_preference);
@@ -367,7 +377,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
           return;
         }
-        setErrorMessage((prev) => prev ?? buildDashboardNetworkError(error));
+        setOnboardingStatus(createBootstrapFailureOnboardingFallback());
+        setWorkspaceBootstrapError(buildDashboardNetworkError(error));
       }
     };
 
@@ -376,7 +387,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       controller.abort();
     };
-  }, [hasDashboardSession, reloadDashboardAuthSession]);
+  }, [hasDashboardSession, reloadDashboardAuthSession, bootstrapRetryToken]);
 
   useEffect(() => {
     if (!hasDashboardSession) {
@@ -389,7 +400,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const run = async () => {
       const fetchStartedAt = Date.now();
       const routePath = dashboardRoutePath;
-      if (routePath === "/settings" || routePath === "/widgets-showroom") {
+      if (routePath === "/settings") {
         return;
       }
 
@@ -678,7 +689,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!hasDashboardSession || !authSessionResolved) {
-      setLiveUpdatesConnected(false);
+      queueMicrotask(() => {
+        setLiveUpdatesConnected(false);
+      });
       liveWsHandshakeFailuresRef.current = 0;
       dashboardQueuedRefreshRef.current = false;
       if (liveReconnectTimer.current) {
@@ -951,11 +964,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       );
     }
     const { logsClient } = parsed;
-    setGroupBy(logsClient.groupBy);
-    setSortKey(logsClient.sortKey);
-    setSortDir(logsClient.sortDir);
-    setEnvTags(new Set(logsClient.envTags));
-    setServiceTags(new Set(logsClient.serviceTags));
+    queueMicrotask(() => {
+      setGroupBy(logsClient.groupBy);
+      setSortKey(logsClient.sortKey);
+      setSortDir(logsClient.sortDir);
+      setEnvTags(new Set(logsClient.envTags));
+      setServiceTags(new Set(logsClient.serviceTags));
+    });
     hasHydratedPersistedScope.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time hydration; setters stable
   }, []);
@@ -1297,12 +1312,16 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     try {
       const raw = window.localStorage.getItem(sqlFilterStorageKey);
       if (!raw) {
-        setSavedSqlFilterPresets([]);
+        queueMicrotask(() => {
+          setSavedSqlFilterPresets([]);
+        });
         return;
       }
       const parsed = JSON.parse(raw) as unknown;
       if (!Array.isArray(parsed)) {
-        setSavedSqlFilterPresets([]);
+        queueMicrotask(() => {
+          setSavedSqlFilterPresets([]);
+        });
         return;
       }
       const normalized: SavedSqlFilterPreset[] = parsed
@@ -1329,9 +1348,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           };
         })
         .filter((item): item is SavedSqlFilterPreset => item !== null);
-      setSavedSqlFilterPresets(normalized);
+      queueMicrotask(() => {
+        setSavedSqlFilterPresets(normalized);
+      });
     } catch {
-      setSavedSqlFilterPresets([]);
+      queueMicrotask(() => {
+        setSavedSqlFilterPresets([]);
+      });
     }
   }, [sqlFilterStorageKey]);
 
@@ -1858,6 +1881,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertDispatches,
       alertCapabilities,
       onboardingStatus,
+      workspaceBootstrapError,
+      retryWorkspaceBootstrap,
       retentionSettings,
       themePreference,
       excludeAutopulseTraffic,
@@ -1984,6 +2009,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertDispatches,
       alertCapabilities,
       onboardingStatus,
+      workspaceBootstrapError,
+      retryWorkspaceBootstrap,
       retentionSettings,
       themePreference,
       excludeAutopulseTraffic,

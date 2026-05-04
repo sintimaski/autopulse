@@ -14,6 +14,7 @@ export {
   FilterX,
   History,
   LayoutDashboard,
+  LayoutGrid,
   LayoutTemplate,
   ListChecks,
   LogOut,

@@ -13,6 +13,7 @@ import { formatTimestamp } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardDiagnosisSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
+import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { MetricCard } from "../MetricCard";
 
@@ -79,6 +80,9 @@ export function DiagnosisContent() {
   }, [pathname]);
 
   if (!requests || !errorGroups || !timeline || !failures) {
+    if (d.loading && !d.errorMessage) {
+      return <InlineDataSpinner label="Loading diagnosis…" className="rounded-2xl" />;
+    }
     const missing = [
       !requests ? "requests" : null,
       !errorGroups ? "errorGroups" : null,
@@ -92,14 +96,18 @@ export function DiagnosisContent() {
         aria-live="polite"
       >
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
-          Diagnosis is waiting for data
+          Diagnosis needs data for this scope
         </h2>
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-          The diagnosis view needs recent traffic to rank incidents. Missing slices:{" "}
-          <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">
-            {missing.join(", ")}
-          </code>
-          .
+          {d.errorMessage ?? (
+            <>
+              The diagnosis view needs recent traffic to rank incidents. Missing slices:{" "}
+              <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">
+                {missing.join(", ")}
+              </code>
+              .
+            </>
+          )}
         </p>
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
           Once your app sends events, this view will populate automatically. You can also{" "}

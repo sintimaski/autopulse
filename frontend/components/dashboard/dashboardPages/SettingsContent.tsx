@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { LogOut } from "../../../lib/icons";
 import type {
   DashboardMembershipItem,
@@ -11,6 +12,13 @@ import type {
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
+
+/** This account must not be assigned the member role (product guardrail). */
+const PROTECTED_OWNER_EMAIL = "owner@example.com";
+
+function isProtectedOwnerEmail(email: string): boolean {
+  return email.trim().toLowerCase() === PROTECTED_OWNER_EMAIL;
+}
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -29,15 +37,34 @@ export function SettingsContent() {
     archival_last_error: string | null;
   } | null>(null);
   const [organizations, setOrganizations] = useState<DashboardOrganizationSummary[]>([]);
+  const [organizationsLoadState, setOrganizationsLoadState] = useState<"loading" | "ready" | "error">(
+    "loading",
+  );
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
   const [members, setMembers] = useState<DashboardMembershipItem[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"owner" | "member">("member");
   const [orgMessage, setOrgMessage] = useState<string | null>(null);
+  const [membersLoadState, setMembersLoadState] = useState<"idle" | "loading" | "ready">("idle");
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
+  const [memberBulkRole, setMemberBulkRole] = useState<"" | "owner" | "member">("");
+  const [selectedKeyIds, setSelectedKeyIds] = useState<Set<string>>(new Set());
+  const [keyBulkAction, setKeyBulkAction] = useState<"" | "rotate" | "revoke">("");
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
 
   const selectedOrganization = organizations.find((organization) => organization.organization_id === selectedOrganizationId);
+
+  const primaryActiveKeyId = useMemo(() => {
+    const active = d.apiKeys.filter((k) => !k.revoked_at);
+    if (active.length === 0) {
+      return null;
+    }
+    const sorted = [...active].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    return sorted[0]?.key_id ?? null;
+  }, [d.apiKeys]);
 
   const loadMembers = async (organizationId: string) => {
     try {
@@ -58,11 +85,16 @@ export function SettingsContent() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      setOrganizationsLoadState("loading");
       try {
         const response = await fetch(buildApiUrl("/dashboard/organizations"), {
           credentials: "include",
         });
-        if (!response.ok || cancelled) {
+        if (cancelled) {
+          return;
+        }
+        if (!response.ok) {
+          setOrganizationsLoadState("error");
           return;
         }
         const payload = (await response.json()) as DashboardOrganizationListResponse;
@@ -73,8 +105,11 @@ export function SettingsContent() {
         if (payload.organizations[0]) {
           setSelectedOrganizationId((prev) => prev ?? payload.organizations[0].organization_id);
         }
+        setOrganizationsLoadState("ready");
       } catch {
-        // no-op
+        if (!cancelled) {
+          setOrganizationsLoadState("error");
+        }
       }
     })();
     return () => {
@@ -85,6 +120,9 @@ export function SettingsContent() {
   useEffect(() => {
     let cancelled = false;
     if (selectedOrganizationId) {
+      queueMicrotask(() => {
+        setMembersLoadState("loading");
+      });
       void (async () => {
         try {
           const response = await fetch(
@@ -95,43 +133,186 @@ export function SettingsContent() {
           );
           if (!response.ok || cancelled) {
             setMembers([]);
+            if (!cancelled) {
+              setMembersLoadState("ready");
+            }
             return;
           }
           const payload = (await response.json()) as { members: DashboardMembershipItem[] };
           if (!cancelled) {
             setMembers(payload.members);
+            setMembersLoadState("ready");
           }
         } catch {
           if (!cancelled) {
             setMembers([]);
+            setMembersLoadState("ready");
           }
         }
       })();
+    } else {
+      queueMicrotask(() => {
+        setMembersLoadState("idle");
+      });
     }
     return () => {
       cancelled = true;
     };
   }, [selectedOrganizationId]);
 
+  const toggleMemberSelected = (userId: string) => {
+    setSelectedMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const allMemberIdsSelectable = members.map((m) => m.user_id);
+  const allMembersSelected =
+    allMemberIdsSelectable.length > 0 && allMemberIdsSelectable.every((id) => selectedMemberIds.has(id));
+
+  const applyMemberBulk = async () => {
+    if (!selectedOrganizationId || !memberBulkRole || selectedMemberIds.size === 0) {
+      return;
+    }
+    const label = memberBulkRole === "owner" ? "Promote to owner" : "Demote to member";
+    if (!window.confirm(`${label} for ${selectedMemberIds.size} selected member(s)?`)) {
+      return;
+    }
+    let ok = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (const userId of selectedMemberIds) {
+      const member = members.find((m) => m.user_id === userId);
+      if (!member) {
+        continue;
+      }
+      if (memberBulkRole === "member" && isProtectedOwnerEmail(member.email)) {
+        skipped += 1;
+        continue;
+      }
+      if (member.role === memberBulkRole) {
+        continue;
+      }
+      try {
+        const response = await fetch(
+          buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/${userId}/role`),
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ role: memberBulkRole }),
+          },
+        );
+        if (response.ok) {
+          ok += 1;
+        } else {
+          failed += 1;
+        }
+      } catch {
+        failed += 1;
+      }
+    }
+    await loadMembers(selectedOrganizationId);
+    setSelectedMemberIds(new Set());
+    setMemberBulkRole("");
+    const parts = [];
+    if (ok) {
+      parts.push(`Updated ${ok}.`);
+    }
+    if (skipped) {
+      parts.push(`Skipped ${skipped} (protected address).`);
+    }
+    if (failed) {
+      parts.push(`${failed} failed.`);
+    }
+    setOrgMessage(parts.join(" ") || "No changes applied.");
+  };
+
+  const toggleKeySelected = (keyId: string) => {
+    setSelectedKeyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(keyId)) {
+        next.delete(keyId);
+      } else {
+        next.add(keyId);
+      }
+      return next;
+    });
+  };
+
+  const activeKeyIds = d.apiKeys.filter((k) => !k.revoked_at).map((k) => k.key_id);
+  const allKeysSelected = activeKeyIds.length > 0 && activeKeyIds.every((id) => selectedKeyIds.has(id));
+
+  const applyKeyBulk = async () => {
+    if (!keyBulkAction || selectedKeyIds.size === 0) {
+      return;
+    }
+    const activeKeys = d.apiKeys.filter((k) => !k.revoked_at);
+    const activeIdSet = new Set(activeKeys.map((k) => k.key_id));
+    let targetIds = [...selectedKeyIds].filter((id) => activeIdSet.has(id));
+
+    if (keyBulkAction === "revoke") {
+      if (activeKeys.length === 1) {
+        setApiKeyMessage("Cannot revoke your only active ingest key.");
+        return;
+      }
+      if (activeKeys.length > 1 && primaryActiveKeyId) {
+        targetIds = targetIds.filter((id) => id !== primaryActiveKeyId);
+      }
+      if (targetIds.length === 0) {
+        setApiKeyMessage(
+          "Primary (oldest) active key cannot be bulk-revoked. Deselect it or revoke other keys first.",
+        );
+        return;
+      }
+      if (activeKeys.length - targetIds.length < 1) {
+        setApiKeyMessage("Leave at least one active key. Deselect some keys.");
+        return;
+      }
+    }
+
+    const label = keyBulkAction === "rotate" ? "Rotate" : "Revoke";
+    if (!window.confirm(`${label} ${targetIds.length} key(s)?`)) {
+      return;
+    }
+
+    let ok = 0;
+    let failed = 0;
+    for (const keyId of targetIds) {
+      if (keyBulkAction === "rotate") {
+        const success = await d.rotateApiKey(keyId);
+        if (success) {
+          ok += 1;
+        } else {
+          failed += 1;
+        }
+      } else {
+        const success = await d.revokeApiKey(keyId);
+        if (success) {
+          ok += 1;
+        } else {
+          failed += 1;
+        }
+      }
+    }
+    await d.refreshApiKeys();
+    setSelectedKeyIds(new Set());
+    setKeyBulkAction("");
+    setApiKeyMessage(
+      ok || failed ? `${ok} succeeded${failed ? `, ${failed} failed` : ""}.` : "No changes applied.",
+    );
+  };
+
+  const orgOwnerAccess = selectedOrganization?.role === "owner";
+
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Dashboard session</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          End your signed-in dashboard session. Ingest API keys for your app are unchanged.
-        </p>
-        <div className="mt-3">
-          <button
-            type="button"
-            className="ap-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium"
-            onClick={() => void d.signOutDashboard()}
-          >
-            <LogOut className="size-4 shrink-0" aria-hidden />
-            Sign out
-          </button>
-        </div>
-      </section>
-
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Retention policy</h2>
         {effectiveRetentionDraft ? (
@@ -139,8 +320,8 @@ export function SettingsContent() {
             <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Configure how long raw events are retained and the max query window for SQL logs.
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
+            <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              <label className="block min-w-0 max-w-md text-sm text-slate-700 dark:text-neutral-200">
                 Raw events retention (days)
                 <input
                   type="number"
@@ -164,7 +345,7 @@ export function SettingsContent() {
                   className="ap-input mt-1"
                 />
               </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
+              <label className="block min-w-0 max-w-md text-sm text-slate-700 dark:text-neutral-200">
                 Max SQL query window (minutes)
                 <input
                   type="number"
@@ -187,7 +368,7 @@ export function SettingsContent() {
                   className="ap-input mt-1"
                 />
               </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
+              <label className="block min-w-0 max-w-md text-sm text-slate-700 dark:text-neutral-200">
                 Embedded logs max DB size (MB)
                 <input
                   type="number"
@@ -203,7 +384,7 @@ export function SettingsContent() {
                   className="ap-input mt-1"
                 />
               </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
+              <label className="block min-w-0 max-w-md text-sm text-slate-700 dark:text-neutral-200">
                 Max logs retained (rows)
                 <input
                   type="number"
@@ -219,7 +400,9 @@ export function SettingsContent() {
                   className="ap-input mt-1"
                 />
               </label>
-              <label className="text-sm text-slate-700 dark:text-neutral-200">
+            </div>
+            <div className="mt-4 flex flex-wrap items-end gap-6 border-t border-slate-200/80 pt-4 dark:border-neutral-800">
+              <label className="block w-full max-w-xs text-sm text-slate-700 dark:text-neutral-200">
                 Retention tier
                 <select
                   value={effectiveRetentionDraft.retention_plan}
@@ -229,14 +412,14 @@ export function SettingsContent() {
                       retention_plan: event.target.value as "starter" | "standard" | "extended",
                     })
                   }
-                  className="ap-input mt-1"
+                  className="ap-select mt-1 w-full"
                 >
                   <option value="starter">Starter</option>
                   <option value="standard">Standard</option>
                   <option value="extended">Extended</option>
                 </select>
               </label>
-              <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
+              <label className="flex max-w-md flex-1 items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
                 <input
                   type="checkbox"
                   checked={effectiveRetentionDraft.archival_enabled}
@@ -287,143 +470,298 @@ export function SettingsContent() {
               <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{retentionMessage}</p>
             ) : null}
           </>
+        ) : d.loading && !d.errorMessage ? (
+          <div className="mt-4">
+            <InlineDataSpinner label="Loading retention settings…" />
+          </div>
         ) : (
-          <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">Loading retention settings...</p>
+          <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
+            {d.errorMessage ?? "Retention settings are not available."}
+          </p>
         )}
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Organization governance</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Manage small-team membership with owner/member roles.
+      <section className="rounded-2xl border-2 border-sky-400/50 bg-gradient-to-br from-sky-50 to-white p-5 shadow-md dark:border-sky-600/40 dark:from-sky-950/40 dark:to-neutral-900">
+        <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-neutral-50">
+          Exclude AutoPulse internal traffic
+        </h2>
+        <p className="mt-2 text-sm font-medium text-slate-700 dark:text-neutral-200">
+          When enabled, requests to <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/autopulse/*</code>,{" "}
+          <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/dashboard/*</code>, and{" "}
+          <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/ingest</code> are omitted from analytics,
+          logs, SQL queries, and alert evaluation so console and ingest noise does not skew your app metrics.
         </p>
-        {organizations.length === 0 ? (
-          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">No organizations available for this account.</p>
+        <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-sky-200/80 bg-white/90 p-4 dark:border-sky-900/50 dark:bg-neutral-950/50">
+          <input
+            type="checkbox"
+            className="mt-1 size-4 shrink-0 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+            checked={d.excludeAutopulseTraffic}
+            disabled={d.themeSettingsSaving}
+            onChange={async (event) => {
+              const ok = await d.saveExcludeAutopulseTraffic(event.target.checked);
+              setThemeMessage(
+                ok ? "Saved." : "Could not save. Try again.",
+              );
+            }}
+          />
+          <span>
+            <span className="text-base font-bold text-slate-900 dark:text-neutral-100">Hide internal AutoPulse traffic</span>
+            <span className="mt-1 block text-sm font-normal text-slate-600 dark:text-neutral-400">
+              Recommended for production projects. Toggle off only when debugging the dashboard itself.
+            </span>
+          </span>
+        </label>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex flex-col gap-1 border-b border-slate-200/80 pb-4 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+              Access control
+            </p>
+            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Organizations &amp; members</h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-neutral-400">
+              Owners: select members, choose an action, confirm, then apply.{" "}
+              <span className="font-medium text-slate-800 dark:text-neutral-200">{PROTECTED_OWNER_EMAIL}</span> cannot be
+              assigned the member role.
+            </p>
+          </div>
+        </div>
+        {organizationsLoadState === "loading" ? (
+          <div className="mt-6">
+            <InlineDataSpinner label="Loading organizations…" />
+          </div>
+        ) : organizationsLoadState === "error" ? (
+          <p className="mt-6 text-sm text-rose-700 dark:text-rose-300">
+            Could not load organizations. Check your connection and dashboard API availability, then reload this page.
+          </p>
+        ) : organizations.length === 0 ? (
+          <p className="mt-6 text-sm text-slate-600 dark:text-neutral-300">
+            No organizations are linked to this account yet.
+          </p>
         ) : (
-          <>
-            <label className="mt-3 block text-sm text-slate-700 dark:text-neutral-200">
-              Organization
-              <select
-                value={selectedOrganizationId ?? ""}
-                onChange={(event) => {
-                  setSelectedOrganizationId(event.target.value);
-                  void loadMembers(event.target.value);
-                }}
-                className="ap-select mt-1"
-              >
-                {organizations.map((organization) => (
-                  <option key={organization.organization_id} value={organization.organization_id}>
-                    {organization.organization_name} ({organization.role})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-              <table className="min-w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Email</th>
-                    <th className="px-3 py-2 font-semibold">Role</th>
-                    <th className="px-3 py-2 font-semibold">Joined</th>
-                    <th className="px-3 py-2 font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
-                  {members.map((member) => (
-                    <tr key={member.user_id}>
-                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{member.email}</td>
-                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{member.role}</td>
-                      <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                        {new Date(member.created_at).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2">
-                        {selectedOrganization?.role === "owner" ? (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (!selectedOrganizationId) {
-                                return;
-                              }
-                              const nextRole = member.role === "owner" ? "member" : "owner";
-                              const response = await fetch(
-                                buildApiUrl(
-                                  `/dashboard/organizations/${selectedOrganizationId}/members/${member.user_id}/role`,
-                                ),
-                                {
-                                  method: "PUT",
-                                  headers: { "Content-Type": "application/json" },
-                                  credentials: "include",
-                                  body: JSON.stringify({ role: nextRole }),
-                                },
-                              );
-                              if (response.ok) {
-                                setOrgMessage("Member role updated.");
-                                void loadMembers(selectedOrganizationId);
-                              } else {
-                                setOrgMessage("Failed to update member role.");
-                              }
-                            }}
-                            className="ap-btn-primary px-2 py-1 text-xs"
-                          >
-                            Set {member.role === "owner" ? "member" : "owner"}
-                          </button>
-                        ) : (
-                          <span className="text-xs text-slate-500 dark:text-neutral-400">Owner only</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {selectedOrganization?.role === "owner" ? (
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  placeholder="new-member@example.com"
-                  onChange={(event) => setInviteEmail(event.target.value)}
-                  className="ap-input"
-                />
+          <div className="mt-6 space-y-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <label className="block w-full max-w-md text-sm font-medium text-slate-700 dark:text-neutral-200">
+                Active organization
                 <select
-                  value={inviteRole}
-                  onChange={(event) => setInviteRole(event.target.value as "owner" | "member")}
-                  className="ap-select"
-                >
-                  <option value="member">Member</option>
-                  <option value="owner">Owner</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!selectedOrganizationId) {
-                      return;
-                    }
-                    const response = await fetch(
-                      buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        credentials: "include",
-                        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
-                      },
-                    );
-                    if (response.ok) {
-                      setInviteEmail("");
-                      setOrgMessage("Member invited.");
-                      void loadMembers(selectedOrganizationId);
-                    } else {
-                      setOrgMessage("Failed to invite member.");
-                    }
+                  value={selectedOrganizationId ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedMemberIds(new Set());
+                    setMemberBulkRole("");
+                    setSelectedOrganizationId(value);
                   }}
-                  className="ap-btn-primary"
+                  className="ap-select mt-1.5 w-full"
                 >
-                  Invite member
-                </button>
+                  {organizations.map((organization) => (
+                    <option key={organization.organization_id} value={organization.organization_id}>
+                      {organization.organization_name} — {organization.role}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedOrganization ? (
+                <span
+                  className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    selectedOrganization.role === "owner"
+                      ? "bg-sky-100 text-sky-900 dark:bg-sky-950/60 dark:text-sky-100"
+                      : "bg-slate-100 text-slate-700 dark:bg-neutral-800 dark:text-neutral-200"
+                  }`}
+                >
+                  Your role: {selectedOrganization.role}
+                </span>
+              ) : null}
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-neutral-700">
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-neutral-700 dark:bg-neutral-800/80">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
+                  Members ({members.length})
+                </h3>
+              </div>
+              {orgOwnerAccess ? (
+                <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800/60">
+                  <label className="block min-w-[12rem] text-sm font-medium text-slate-700 dark:text-neutral-200">
+                    Action
+                    <select
+                      value={memberBulkRole}
+                      onChange={(event) => setMemberBulkRole(event.target.value as "" | "owner" | "member")}
+                      className="ap-select mt-1 w-full"
+                      aria-label="Bulk member action"
+                    >
+                      <option value="">Choose action…</option>
+                      <option value="owner">Promote to owner</option>
+                      <option value="member">Demote to member</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!memberBulkRole || selectedMemberIds.size === 0}
+                    onClick={() => void applyMemberBulk()}
+                    className="ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Apply
+                  </button>
+                  <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
+                    Select rows with the checkboxes, pick an action, then Apply (you will confirm).{" "}
+                    {PROTECTED_OWNER_EMAIL} is never demoted to member.
+                  </p>
+                </div>
+              ) : null}
+              {membersLoadState === "loading" ? (
+                <div className="p-6">
+                  <InlineDataSpinner label="Loading members…" />
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-white text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+                      <tr>
+                        {orgOwnerAccess ? (
+                          <th className="w-12 px-3 py-3">
+                            <input
+                              type="checkbox"
+                              className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                              checked={allMembersSelected}
+                              onChange={() => {
+                                if (allMembersSelected) {
+                                  setSelectedMemberIds(new Set());
+                                } else {
+                                  setSelectedMemberIds(new Set(members.map((m) => m.user_id)));
+                                }
+                              }}
+                              aria-label="Select all members"
+                            />
+                          </th>
+                        ) : null}
+                        <th className="px-4 py-3">Member</th>
+                        <th className="px-4 py-3">Role</th>
+                        <th className="px-4 py-3">Joined</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-950/40">
+                      {members.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={orgOwnerAccess ? 4 : 3}
+                            className="px-4 py-8 text-center text-sm text-slate-500 dark:text-neutral-400"
+                          >
+                            No members returned for this organization.
+                          </td>
+                        </tr>
+                      ) : (
+                        members.map((member) => (
+                          <tr key={member.user_id} className="hover:bg-slate-50/80 dark:hover:bg-neutral-900/60">
+                            {orgOwnerAccess ? (
+                              <td className="px-3 py-3 align-middle">
+                                <input
+                                  type="checkbox"
+                                  className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                                  checked={selectedMemberIds.has(member.user_id)}
+                                  onChange={() => toggleMemberSelected(member.user_id)}
+                                  aria-label={`Select ${member.email}`}
+                                />
+                              </td>
+                            ) : null}
+                            <td className="px-4 py-3 font-medium text-slate-800 dark:text-neutral-100">
+                              {member.email}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${
+                                  member.role === "owner"
+                                    ? "bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-200"
+                                    : "bg-slate-100 text-slate-700 dark:bg-neutral-800 dark:text-neutral-200"
+                                }`}
+                              >
+                                {member.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 dark:text-neutral-300">
+                              {new Date(member.created_at).toLocaleString()}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {orgOwnerAccess ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-900/50">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Invite member</h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+                  Invitation email must be allowed by your auth policy.
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                  <label className="block min-w-[220px] flex-1 text-sm text-slate-700 dark:text-neutral-200">
+                    Email
+                    <input
+                      type="email"
+                      id="org-invite-email"
+                      autoComplete="email"
+                      value={inviteEmail}
+                      placeholder="colleague@company.com"
+                      onChange={(event) => setInviteEmail(event.target.value)}
+                      className="ap-input mt-1"
+                    />
+                  </label>
+                  <label className="block w-full max-w-[10rem] text-sm text-slate-700 dark:text-neutral-200">
+                    Role
+                    <select
+                      value={inviteRole}
+                      onChange={(event) => setInviteRole(event.target.value as "owner" | "member")}
+                      className="ap-select mt-1 w-full"
+                      aria-label="Invite role"
+                    >
+                      <option value="member">Member</option>
+                      <option value="owner">Owner</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!selectedOrganizationId) {
+                        return;
+                      }
+                      const email = inviteEmail.trim();
+                      if (inviteRole === "member" && isProtectedOwnerEmail(email)) {
+                        setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
+                        return;
+                      }
+                      const response = await fetch(
+                        buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
+                        {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          credentials: "include",
+                          body: JSON.stringify({ email, role: inviteRole }),
+                        },
+                      );
+                      if (response.ok) {
+                        setInviteEmail("");
+                        setOrgMessage("Invitation sent.");
+                        void loadMembers(selectedOrganizationId);
+                      } else {
+                        setOrgMessage("Failed to invite member.");
+                      }
+                    }}
+                    className="ap-btn-primary w-full sm:w-auto"
+                  >
+                    Send invite
+                  </button>
+                </div>
               </div>
             ) : null}
-            {orgMessage ? <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{orgMessage}</p> : null}
-          </>
+            {orgMessage ? (
+              <p className="text-sm text-slate-600 dark:text-neutral-300" role="status">
+                {orgMessage}
+              </p>
+            ) : null}
+          </div>
         )}
       </section>
 
@@ -466,53 +804,87 @@ export function SettingsContent() {
             <code className="mt-1 block break-all">{d.lastIssuedApiKey}</code>
           </div>
         ) : null}
+        {activeKeyIds.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800/60">
+            <label className="block min-w-[12rem] text-sm font-medium text-slate-700 dark:text-neutral-200">
+              Action
+              <select
+                value={keyBulkAction}
+                onChange={(event) => setKeyBulkAction(event.target.value as "" | "rotate" | "revoke")}
+                className="ap-select mt-1 w-full"
+                aria-label="Bulk API key action"
+              >
+                <option value="">Choose action…</option>
+                <option value="rotate">Rotate selected</option>
+                <option value="revoke">Revoke selected</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              disabled={!keyBulkAction || selectedKeyIds.size === 0}
+              onClick={() => void applyKeyBulk()}
+              className={
+                keyBulkAction === "revoke"
+                  ? "ap-btn-danger disabled:cursor-not-allowed disabled:opacity-50"
+                  : "ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+              }
+            >
+              Apply
+            </button>
+            <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
+              Select active keys, choose an action, Apply, then confirm. With multiple active keys, the oldest active key
+              cannot be bulk-revoked.
+            </p>
+          </div>
+        ) : null}
         <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
               <tr>
+                <th className="w-10 px-2 py-2">
+                  {activeKeyIds.length > 0 ? (
+                    <input
+                      type="checkbox"
+                      className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                      checked={allKeysSelected}
+                      onChange={() => {
+                        if (allKeysSelected) {
+                          setSelectedKeyIds(new Set());
+                        } else {
+                          setSelectedKeyIds(new Set(activeKeyIds));
+                        }
+                      }}
+                      aria-label="Select all active API keys"
+                    />
+                  ) : null}
+                </th>
                 <th className="px-3 py-2 font-semibold">Key ID</th>
                 <th className="px-3 py-2 font-semibold">Created</th>
                 <th className="px-3 py-2 font-semibold">Revoked</th>
-                <th className="px-3 py-2 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
               {d.apiKeys.map((item) => (
                 <tr key={item.key_id}>
+                  <td className="px-2 py-2 align-middle">
+                    {!item.revoked_at ? (
+                      <input
+                        type="checkbox"
+                        className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                        checked={selectedKeyIds.has(item.key_id)}
+                        onChange={() => toggleKeySelected(item.key_id)}
+                        aria-label={`Select key ${item.key_id}`}
+                      />
+                    ) : (
+                      <span className="inline-block w-4" aria-hidden />
+                    )}
+                  </td>
                   <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-200">{item.key_id}</td>
                   <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
                     {new Date(item.created_at).toLocaleString()}
                   </td>
                   <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
                     {item.revoked_at ? new Date(item.revoked_at).toLocaleString() : "active"}
-                  </td>
-                  <td className="px-3 py-2">
-                    {item.revoked_at ? (
-                      <span className="text-xs text-slate-500 dark:text-neutral-400">No actions</span>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const ok = await d.rotateApiKey(item.key_id);
-                            setApiKeyMessage(ok ? "API key rotated." : "Failed to rotate API key.");
-                          }}
-                          className="ap-btn-primary px-2 py-1 text-xs"
-                        >
-                          Rotate
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const ok = await d.revokeApiKey(item.key_id);
-                            setApiKeyMessage(ok ? "API key revoked." : "Failed to revoke API key.");
-                          }}
-                          className="ap-btn-danger px-2 py-1 text-xs"
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    )}
                   </td>
                 </tr>
               ))}
@@ -527,11 +899,13 @@ export function SettingsContent() {
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Theme preference is now a project setting stored in the backend.
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Dashboard theme">
           {(["system", "light", "dark"] as const).map((theme) => (
             <button
               key={theme}
               type="button"
+              role="radio"
+              aria-checked={d.themePreference === theme}
               onClick={async () => {
                 const ok = await d.saveThemePreference(theme);
                 setThemeMessage(ok ? "Theme saved." : "Failed to save theme.");
@@ -551,127 +925,35 @@ export function SettingsContent() {
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{themeMessage}</p>
         ) : null}
         <p className="mt-3 text-sm text-slate-600 dark:text-neutral-400">
+          Chart and SDK widget previews live under{" "}
+          <span className="font-medium text-slate-700 dark:text-neutral-200">Developers</span> in the sidebar (
           <Link
-            href="/widgets-showroom"
+            href="/widgets-showcase"
             className="font-medium text-sky-600 underline decoration-sky-600/30 underline-offset-2 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
           >
-            Widget showroom
+            Widgets
           </Link>
-          {" — "}
-          preview every dashboard chart and SDK widget layout with live-updating mock data (no ingest required).
+          ) — live data from your scope plus a mock preview.
         </p>
-        <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
-          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
-            <input
-              type="checkbox"
-              checked={d.excludeAutopulseTraffic}
-              disabled={d.themeSettingsSaving}
-              onChange={async (event) => {
-                const ok = await d.saveExcludeAutopulseTraffic(event.target.checked);
-                setThemeMessage(
-                  ok
-                    ? "Traffic filter preference saved."
-                    : "Failed to save traffic filter preference.",
-                );
-              }}
-            />
-            Exclude AutoPulse internal traffic (`/autopulse/*`, `/dashboard/*`, `/ingest`) from analytics
-          </label>
-          <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-            Applies to dashboard, diagnosis, request logs, SQL log queries, and alert evaluations so
-            static UI, dashboard API, and ingest calls do not skew counts.
-          </p>
-        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Settings model (MVP)</h2>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+          Session
+        </p>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Dashboard sign-out</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          This page defines project-level defaults used across Dashboard, Diagnosis, Logs, and Alerts.
+          Signs you out of this browser. Ingest keys and app config are unchanged.
         </p>
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
-              <tr>
-                <th className="px-3 py-2 font-semibold">Setting group</th>
-                <th className="px-3 py-2 font-semibold">Parameters</th>
-                <th className="px-3 py-2 font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
-              <tr>
-                <td className="px-3 py-2 font-medium text-slate-800 dark:text-neutral-100">Server scope defaults</td>
-                <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                  Time window, method/status/path/env/service filters, latency bounds, grouped-error sort.
-                </td>
-                <td className="px-3 py-2 text-emerald-700 dark:text-emerald-400">Active</td>
-              </tr>
-              <tr>
-                <td className="px-3 py-2 font-medium text-slate-800 dark:text-neutral-100">Alert policy</td>
-                <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                  Enable flag, destination email, spike/outage thresholds, cooldown.
-                </td>
-                <td className="px-3 py-2 text-emerald-700 dark:text-emerald-400">Active</td>
-              </tr>
-              <tr>
-                <td className="px-3 py-2 font-medium text-slate-800 dark:text-neutral-100">Delivery channels</td>
-                <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                  Email dispatch is active. Additional channels are explicitly marked as planned until implemented.
-                </td>
-                <td className="px-3 py-2 text-amber-700 dark:text-amber-400">Capability-driven</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Alert policy</h2>
-        <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
-          Alert policy editing is centralized in the Alerts page to avoid drift between two separate forms.
-        </p>
-        <Link
-          href="/alerts"
-          className="ap-btn-primary mt-3"
-        >
-          Open Alerts policy editor
-        </Link>
-        <Link
-          href="/onboarding"
-          className="ap-btn mt-3 ml-2"
-        >
-          Open onboarding checklist
-        </Link>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Delivery channels</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Channel availability is sourced from backend capabilities.
-        </p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {d.alertCapabilities.map((capability) => (
-            <div
-              key={capability.channel}
-              className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-neutral-700 dark:bg-neutral-800/70"
-            >
-              <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">
-                {capability.channel.toUpperCase()}
-              </p>
-              <p
-                className={`mt-1 text-xs font-medium ${
-                  capability.status === "active"
-                    ? "text-emerald-700 dark:text-emerald-300"
-                    : capability.status === "planned"
-                      ? "text-amber-700 dark:text-amber-300"
-                      : "text-rose-700 dark:text-rose-300"
-                }`}
-              >
-                {capability.status === "active" ? "Active" : capability.status === "planned" ? "Planned" : "Unavailable"}
-              </p>
-              <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">{capability.reason}</p>
-            </div>
-          ))}
+        <div className="mt-4">
+          <button
+            type="button"
+            className="ap-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium"
+            onClick={() => void d.signOutDashboard()}
+          >
+            <LogOut className="size-4 shrink-0" aria-hidden />
+            Sign out
+          </button>
         </div>
       </section>
     </div>

@@ -1,16 +1,26 @@
 import type { Metadata } from "next";
-
-import { DashboardPageBoundary } from "../../../components/dashboard/DashboardPageBoundary";
-import { WidgetsShowroomContent } from "../../../components/dashboard/dashboardPages/WidgetsShowroomContent";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Widget showroom",
+  title: "Widgets (redirect)",
 };
 
-export default function WidgetsShowroomPage() {
-  return (
-    <DashboardPageBoundary dataReady="settings-only">
-      <WidgetsShowroomContent />
-    </DashboardPageBoundary>
-  );
+/** Legacy URL — merged into `/widgets-showcase`. */
+export default function WidgetsShowroomRedirectPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        params.append(key, item);
+      }
+    } else if (typeof value === "string") {
+      params.set(key, value);
+    }
+  }
+  const qs = params.toString();
+  redirect(qs ? `/widgets-showcase?${qs}` : "/widgets-showcase");
 }

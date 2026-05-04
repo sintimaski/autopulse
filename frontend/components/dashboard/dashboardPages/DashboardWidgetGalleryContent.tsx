@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { useDashboardData } from "../DashboardDataContext";
 import { DashboardChartShowcaseGrid } from "./DashboardChartShowcaseGrid";
 import { DashboardCustomWidgetCharts } from "./DashboardCustomWidgetCharts";
+import { WidgetsMockPreviewSection } from "./WidgetsMockPreviewSection";
 import { useDashboardHomeSlice } from "../data/useDashboardSlices";
 import type { ScatterPlotPoint, StackedAreaSeries } from "../charts";
 import { resolveSparklineSeries, type OverviewBucket } from "../../../utils/dashboardData";
@@ -59,15 +60,31 @@ export function DashboardWidgetGalleryContent() {
   const homeSlice = useDashboardHomeSlice();
   const overview = homeSlice.overview;
   const requests = homeSlice.requests;
-  if (!overview || !requests) {
-    return (
-      <section className="rounded-xl border border-white/10 bg-slate-950/30 p-4 text-sm text-slate-300">
-        {d.errorMessage ?? "Loading widget gallery…"}
-      </section>
-    );
-  }
+
   return (
-    <DashboardWidgetGalleryBody d={d} homeSlice={homeSlice} overview={overview} requests={requests} />
+    <section className="space-y-8">
+      <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h1 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Widgets</h1>
+        <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
+          Live charts and SDK widgets from your current overview scope, plus a timer-driven mock preview below for
+          layout checks without traffic. Uses the same time window and filters as the rest of the console.
+        </p>
+      </div>
+
+      {overview && requests ? (
+        <DashboardWidgetGalleryBody d={d} homeSlice={homeSlice} overview={overview} requests={requests} />
+      ) : (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-50/90 p-4 text-sm text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="font-medium">Live gallery waiting for data</p>
+          <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
+            {d.errorMessage ??
+              "Loading overview and request sample for this scope. Scroll down for the mock preview, which works immediately."}
+          </p>
+        </div>
+      )}
+
+      <WidgetsMockPreviewSection />
+    </section>
   );
 }
 
@@ -180,12 +197,11 @@ function DashboardWidgetGalleryBody({
   const showcaseScatterPoints: ScatterPlotPoint[] = routeRiskScatter.slice(0, 8);
 
   return (
-    <section className="space-y-8">
+    <div className="space-y-8">
       <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Backend widget gallery</h1>
+        <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-50">Live gallery</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
-          Every chart type the dashboard can render from SDK widgets, plus sample charts built from the current
-          overview scope. Uses the same window and filters as the rest of the app.
+          Charts built from the current overview scope and request sample.
         </p>
       </div>
 
@@ -213,6 +229,6 @@ function DashboardWidgetGalleryBody({
         stackedLabels={statusClassLabels}
         stackedSeries={outcomeStackedSeries}
       />
-    </section>
+    </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { DashboardChartShowcaseGrid } from "./DashboardChartShowcaseGrid";
@@ -13,7 +12,10 @@ import {
 
 const REFRESH_MS = 2000;
 
-export function WidgetsShowroomContent() {
+/**
+ * Timer-driven mock widgets + chart grid — same layouts as live gallery, no backend traffic required.
+ */
+export function WidgetsMockPreviewSection() {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -28,22 +30,12 @@ export function WidgetsShowroomContent() {
   const chartShowcase = useMemo(() => buildShowroomChartShowcaseMock(tick), [tick]);
 
   return (
-    <section className="space-y-8">
+    <div className="space-y-8 border-t border-slate-200/80 pt-8 dark:border-neutral-800">
       <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Widget showroom</h1>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Mock preview</h2>
         <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
-          Frontend-only mock metrics on a {REFRESH_MS / 1000}s cadence: the same SDK widget types and the same six chart
-          panels as the backend widget gallery, without ingest or live overview data. Values drift with smooth noise, like a
-          live stream.
-        </p>
-        <p className="mt-3 text-sm text-slate-600 dark:text-neutral-400">
-          <Link
-            href="/widgets-showcase"
-            className="font-medium text-sky-600 underline decoration-sky-600/30 underline-offset-2 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300"
-          >
-            Widget gallery
-          </Link>{" "}
-          uses your project&apos;s real overview scope and optional SDK widget payloads.
+          Synthetic metrics on a {REFRESH_MS / 1000}s cadence: the same SDK widget types and six chart panels as above,
+          without ingest. Use this to validate layouts when the project has little or no traffic.
         </p>
       </div>
 
@@ -65,9 +57,9 @@ export function WidgetsShowroomContent() {
         scatterPoints={chartShowcase.scatterPoints}
         stackedLabels={chartShowcase.stackedLabels}
         stackedSeries={chartShowcase.stackedSeries}
-        title="Mock chart options showcase"
-        description="Same layout as the backend gallery: line, bar, donut, histogram, scatter, and stacked area — driven here by synthetic series."
+        title="Mock chart showcase"
+        description="Line, bar, donut, histogram, scatter, and stacked area — same grid as the live section, driven by synthetic series."
       />
-    </section>
+    </div>
   );
 }

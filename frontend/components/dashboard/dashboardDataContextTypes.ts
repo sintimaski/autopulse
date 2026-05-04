@@ -90,6 +90,12 @@ export type DashboardDataContextValue = {
   alertDispatches: AlertDispatchesResponse | null;
   alertCapabilities: AlertChannelCapability[];
   onboardingStatus: DashboardOnboardingStatusResponse | null;
+  /**
+   * Set when `/dashboard/bootstrap` fails while signed in. UI should show a non-blocking banner with
+   * {@link retryWorkspaceBootstrap}; does not replace per-request `errorMessage` from traffic fetches.
+   */
+  workspaceBootstrapError: string | null;
+  retryWorkspaceBootstrap: () => void;
   retentionSettings: RetentionSettings | null;
   themePreference: ThemePreference;
   excludeAutopulseTraffic: boolean;

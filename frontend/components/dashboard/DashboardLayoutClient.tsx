@@ -29,23 +29,23 @@ import { isApiSubpathDashboard } from "./dashboardTypes";
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
     title: "Overview",
-    subtitle: "What broke, when it changed, and where to drill down next.",
+    subtitle: "Health snapshot — scope time range, then jump to errors or request evidence.",
   },
   "/widgets-showcase": {
-    title: "Widget gallery",
-    subtitle: "SDK dashboard widgets and every chart type in one place.",
+    title: "Widgets",
+    subtitle: "Live SDK charts from your scope plus a timer-driven mock preview.",
   },
   "/widgets-showroom": {
-    title: "Widget showroom",
-    subtitle: "Mock metrics on a timer — preview layouts without backend traffic.",
+    title: "Widgets",
+    subtitle: "This URL forwards to the unified widgets page.",
   },
   "/requests": {
     title: "Requests",
-    subtitle: "Request-level evidence with shared investigation scope.",
+    subtitle: "Request-level evidence — same investigation scope as Overview and Diagnosis.",
   },
   "/diagnosis": {
     title: "Errors & Diagnosis",
-    subtitle: "Grouped failures, evidence, and error signals.",
+    subtitle: "Grouped failures and signals — start here when something breaks.",
   },
   "/alerts": {
     title: "Alerts",
@@ -57,7 +57,7 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   },
   "/logs": {
     title: "Requests",
-    subtitle: "Legacy /logs URL — same request-level evidence as Requests.",
+    subtitle: "This URL forwards to Requests — bookmark /requests for clarity.",
   },
   "/onboarding": {
     title: "Onboarding",
@@ -516,6 +516,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const subpathStaticUi = isApiSubpathDashboard();
+  const statusStripAllHealthy =
+    d.hasDashboardSession && hasIssuedApiKey && hasFirstEvent && alertDeliveryHealthy;
   const statusStrip = (
     <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
@@ -603,12 +605,30 @@ function ShellWithData({ children }: { children: ReactNode }) {
       variant,
     );
 
+  const workspaceBootstrapBanner =
+    d.workspaceBootstrapError !== null ? (
+      <div
+        role="alert"
+        className="flex flex-col gap-2 rounded-lg border border-amber-500/45 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-950/45 dark:text-amber-50 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <p className="min-w-0 flex-1 leading-snug">{d.workspaceBootstrapError}</p>
+        <button
+          type="button"
+          className="ap-btn shrink-0 self-start text-xs sm:self-auto"
+          onClick={() => d.retryWorkspaceBootstrap()}
+        >
+          Retry workspace load
+        </button>
+      </div>
+    ) : null;
+
   return (
     <DashboardAppShell
       pathname={pathname}
       title={meta.title}
       subtitle={meta.subtitle}
-      statusStrip={statusStrip}
+      statusStrip={statusStripAllHealthy ? undefined : statusStrip}
+      topBanner={workspaceBootstrapBanner}
       isDark={isDark}
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}

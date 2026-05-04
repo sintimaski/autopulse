@@ -4,7 +4,7 @@ import { DashboardPageBoundary } from "../../../components/dashboard/DashboardPa
 import { DashboardWidgetGalleryContent } from "../../../components/dashboard/dashboardPages/DashboardWidgetGalleryContent";
 
 export const metadata: Metadata = {
-  title: "Widget gallery",
+  title: "Widgets",
 };
 
 export default function WidgetsShowcasePage() {

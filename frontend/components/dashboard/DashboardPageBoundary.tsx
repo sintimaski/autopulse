@@ -84,9 +84,10 @@ export function ApiKeyMissing() {
         return;
       }
       const okPayload = parsed as DashboardMagicLinkRequestResponse;
-      if (okPayload.dev_magic_link_url) {
+      const showDevAuthHints = process.env.NODE_ENV === "development";
+      if (okPayload.dev_magic_link_url && showDevAuthHints) {
         setMessage(`Dev link: ${okPayload.dev_magic_link_url}`);
-      } else if (okPayload.dev_token) {
+      } else if (okPayload.dev_token && showDevAuthHints) {
         setMessage(`Dev token: ${okPayload.dev_token}`);
       } else {
         setMessage("If the email is allowed, check your inbox for the sign-in link.");
@@ -200,11 +201,11 @@ export function DashboardPageBoundary({
           ? true
           : Boolean(d.alertSettings && d.retentionSettings);
 
-  if (d.loading) {
+  if (d.loading && !hasRenderableData) {
     return (
       <div className="mx-auto max-w-[88rem]">
         <section className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
-          <p className="text-sm font-medium">Loading dashboard data...</p>
+          <p className="text-sm font-medium">Loading dashboard data…</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-neutral-800" />
             <div className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-neutral-800" />
