@@ -24,7 +24,7 @@ Backend defaults to `http://localhost:8000`.
 
 ## Key environment variables
 
-- `DATABASE_URL`
+- `DATABASE_URL` (default SQLite file: `.autopulse/autopulse.db` under the repo root—same directory tree as DuckDB; see `normalize_database_url` in `core/config.py`)
 - `AUTOPULSE_EVENT_STORE` (`duckdb` default; set `sqlite` to force legacy SQL event reads)
 - `AUTOPULSE_DUCKDB_PATH` (DuckDB event store file; relative values anchor under `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT`, else monorepo root—see `normalize_event_store_duckdb_path` / `resolve_autopulse_data_root` in `core/config.py`; use absolute paths in production if you prefer)
 - `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT` (optional; pins the root for relative DuckDB paths and keeps ingest/dashboard/CLI on one file regardless of shell cwd)

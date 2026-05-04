@@ -75,7 +75,7 @@ class SyntheticEmbeddedDeployment:
     """AutoPulse runs in-process (mount, DB, optional sidecar frontend)."""
 
     mount_prefix: str = "/autopulse"
-    database_url: str = "sqlite+aiosqlite:///./autopulse.db"
+    database_url: str = "sqlite+aiosqlite:///./.autopulse/autopulse.db"
     frontend_mode: SyntheticFrontendMode = "static"
 
 
@@ -146,7 +146,7 @@ class SyntheticAutopulseFixture:
                 mount_prefix=os.getenv("AUTOPULSE_MOUNT_PREFIX", "/autopulse"),
                 database_url=os.getenv(
                     "AUTOPULSE_DATABASE_URL",
-                    "sqlite+aiosqlite:///./autopulse.db",
+                    "sqlite+aiosqlite:///./.autopulse/autopulse.db",
                 ),
                 frontend_mode=_env_frontend_mode(),
             )

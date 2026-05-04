@@ -24,7 +24,7 @@ _LOG = logging.getLogger(__name__)
 # Example key for local ``.env`` / docs only. Never used as an automatic runtime fallback
 # (generated keys are used when ``.env.autopulse`` cannot be written).
 DEFAULT_EMBEDDED_API_KEY = "ap_live_embeddedlocal_localdevsecret"
-DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./autopulse.db"
+DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./.autopulse/autopulse.db"
 DEFAULT_MOUNT_PREFIX = "/autopulse"
 DEFAULT_PROJECT_NAME = "AutoPulse Embedded Project"
 
@@ -201,9 +201,9 @@ def _cwd_host_sqlite_file_database_url(database_url: str) -> str:
     """Resolve relative SQLite file URLs against the embedded host process cwd.
 
     ``normalize_database_url`` in the backend anchors ``./`` paths to the backend package
-    tree for standalone servers. Embedded hosts (starter apps) must keep ``./autopulse.db``
-    next to the user's project so ``_ensure_embedded_project_and_key`` and
-    ``get_db_session``/ingest share the same SQLite file.
+    tree for standalone servers. Embedded hosts (starter apps) resolve relative SQLite URLs
+    (default ``./.autopulse/autopulse.db``) under the host cwd so
+    ``_ensure_embedded_project_and_key`` and ``get_db_session``/ingest share the same SQLite file.
     """
     raw = database_url.strip()
     parsed = urlparse(raw)
@@ -215,6 +215,8 @@ def _cwd_host_sqlite_file_database_url(database_url: str) -> str:
     if path.startswith("/./") or path.startswith("/../"):
         rel = Path(path[1:])
         resolved = (Path.cwd() / rel).resolve()
+        with suppress(OSError):
+            resolved.parent.mkdir(parents=True, exist_ok=True)
         return f"{parsed.scheme}:///{resolved.as_posix()}"
     return database_url
 

@@ -6,6 +6,21 @@ from pathlib import Path
 
 import pytest
 
+import autopulse_backend.core.config as _config
+
+
+@pytest.fixture(autouse=True)
+def _disable_runtime_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Do not load ``backend/.env`` here; local developer env would override test env vars."""
+
+    def _noop_load_runtime_dotenv() -> None:
+        if _config._RUNTIME_DOTENV_LOADED:
+            return
+        _config._RUNTIME_DOTENV_LOADED = True
+
+    monkeypatch.setattr(_config, "_load_runtime_dotenv_once", _noop_load_runtime_dotenv)
+    monkeypatch.setattr(_config, "_RUNTIME_DOTENV_LOADED", False)
+
 
 def test_autopulse_db_url_enables_retention_scheduler_and_default_file_cap(
     monkeypatch: pytest.MonkeyPatch,

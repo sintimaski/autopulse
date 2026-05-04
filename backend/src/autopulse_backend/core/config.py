@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from os import getenv
 from pathlib import Path
@@ -241,21 +242,25 @@ def normalize_database_url(database_url: str) -> str:
         return normalized
     if not raw_path:
         return normalized
-    # Keep a single project-root DB path regardless of caller cwd.
-    project_root = Path(__file__).resolve().parents[4]
+    # Anchor relative SQLite paths to the same data root as DuckDB (AUTOPULSE_DATA_DIR / …).
+    data_root = resolve_autopulse_data_root()
     if (
         raw_path.startswith("/./")
         or raw_path.startswith("/../")
         or raw_path.startswith("/")
         and not parsed.netloc
     ):
-        resolved = (project_root / raw_path[1:]).resolve()
+        resolved = (data_root / raw_path[1:]).resolve()
     elif raw_path.startswith("/") and parsed.netloc:
         resolved = Path(raw_path).resolve()
     else:
-        resolved = (project_root / raw_path).resolve()
+        resolved = (data_root / raw_path).resolve()
     normalized_path = str(resolved).replace("\\", "/")
-    return f"{parsed.scheme}:///{normalized_path}"
+    out = f"{parsed.scheme}:///{normalized_path}"
+    # SQLite does not create parents; nested defaults live under `.autopulse/` like DuckDB.
+    with suppress(OSError):
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+    return out
 
 
 def redact_database_url_for_log(database_url: str) -> str:
@@ -330,17 +335,17 @@ def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
     raw_path = unquote(parsed.path or "")
     if normalized_sqlite_url.endswith(":memory:") or raw_path == ":memory:" or not raw_path:
         return None
-    project_root = Path(__file__).resolve().parents[4]
+    data_root = resolve_autopulse_data_root()
     # Keep rules aligned with ``maintenance.retention._resolve_sqlite_db_path``.
     if raw_path.startswith("//"):
         return Path(raw_path[1:]).resolve()
     if raw_path.startswith("/./") or raw_path.startswith("/../"):
-        return (project_root / raw_path[1:]).resolve()
+        return (data_root / raw_path[1:]).resolve()
     if raw_path.startswith("/") and parsed.netloc:
         return Path(raw_path).resolve()
     if raw_path.startswith("/") and not parsed.netloc:
         return Path(raw_path).resolve()
-    return (project_root / raw_path).resolve()
+    return (data_root / raw_path).resolve()
 
 
 def _is_autopulse_embedded_default_sqlite_file(normalized_database_url: str) -> bool:
@@ -366,7 +371,7 @@ def get_settings() -> Settings:
         origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()
     )
     database_url = normalize_database_url(
-        getenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+        getenv("DATABASE_URL", "sqlite+aiosqlite:///./.autopulse/autopulse.db")
     )
     embedded_runtime = getenv("AUTOPULSE_RUNTIME_EMBEDDED", "").strip().lower() in {
         "1",
