@@ -11,7 +11,7 @@ alwaysApply: false
 - Keep loading/refresh behavior non-disruptive after first paint (preserve prior data while refreshing).
 - Prefer clear empty/error states and keyboard-accessible interactions.
 - Keep API payload assumptions aligned with backend contracts in `DEVELOPMENT.md`.
-- For frontend changes, run targeted checks (lint/tests/build path used by this repo) before final handoff.
+- For frontend changes, run targeted checks (lint, tests, and `npm run build` in `frontend/` for the static export) before final handoff; mention the build in the task verification section.
 
 ## Rule self-review
 

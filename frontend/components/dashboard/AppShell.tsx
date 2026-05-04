@@ -7,10 +7,8 @@ import {
   Activity,
   Bell,
   LayoutDashboard,
-  LayoutTemplate,
   PanelLeft,
   PanelLeftClose,
-  Rocket,
   RotateCw,
   Settings,
   Stethoscope,
@@ -29,9 +27,7 @@ const BASE_NAV: readonly NavItem[] = [
   { href: "/requests", label: "Requests", Icon: ScrollText },
   { href: "/alerts", label: "Alerts", Icon: Bell },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
-  { href: "/onboarding", label: "Onboarding", Icon: Rocket },
   { href: "/settings", label: "Settings", Icon: Settings },
-  { href: "/widgets-showcase", label: "Widget gallery", Icon: LayoutTemplate },
 ] as const;
 
 export function DashboardAppShell({

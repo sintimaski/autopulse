@@ -969,15 +969,6 @@ export function DashboardHomeContent() {
           dashboardWidgets={d.dashboardWidgets}
           globalWindowMinutes={d.windowMinutes}
         />
-        <p className="text-center text-sm text-slate-500 dark:text-neutral-400">
-          <Link
-            href="/widgets-showcase"
-            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
-          >
-            Widget gallery
-          </Link>{" "}
-          — every chart type and custom widget renderer in one page.
-        </p>
       </div>
 
       <DashboardScopeFacetShell className="sticky top-0 z-30">

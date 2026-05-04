@@ -466,6 +466,28 @@ function ShellWithData({ children }: { children: ReactNode }) {
     router,
   ]);
 
+  useEffect(() => {
+    if (!d.authSessionResolved || !d.hasDashboardSession) {
+      return;
+    }
+    if (!onboardingStatusKnown) {
+      return;
+    }
+    if (!onboardingCompleted) {
+      return;
+    }
+    if (pathname === "/onboarding") {
+      router.replace("/dashboard");
+    }
+  }, [
+    d.authSessionResolved,
+    d.hasDashboardSession,
+    onboardingCompleted,
+    onboardingStatusKnown,
+    pathname,
+    router,
+  ]);
+
   if (!d.authSessionResolved) {
     return <DashboardSessionRestoring />;
   }

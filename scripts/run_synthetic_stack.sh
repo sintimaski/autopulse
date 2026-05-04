@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-line embedded synthetic stack: FastAPI app + DuckDB event store + Next dev sidecar
 # (same UX as remote split stack, still a single `exec` from this script).
+# Always runs `npm --prefix frontend run build` first (static export → frontend/out/).
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -27,18 +28,20 @@ if [[ ! -f "$FRONTEND_DIR/node_modules/next/dist/bin/next" ]]; then
   exit 1
 fi
 
+echo "Building frontend (Next static export → frontend/out/; validates dashboard and refreshes embedded /ui assets)…"
+npm --prefix frontend run build
+
 FRONTEND_MODE="${AUTOPULSE_FRONTEND_MODE:-sidecar}"
 export AUTOPULSE_FRONTEND_MODE="$FRONTEND_MODE"
 
 if [[ "$FRONTEND_MODE" == "static" ]]; then
-  echo "Building frontend (static export for embedded /ui)…"
-  npm --prefix frontend run build
+  echo "AUTOPULSE_FRONTEND_MODE=static: use backend-mounted export under …/ui/ (see dashboard static export docs)."
 else
-  echo "Frontend: Next dev sidecar (AUTOPULSE_FRONTEND_MODE=$FRONTEND_MODE); skipping static export build."
+  echo "Frontend: Next dev sidecar (AUTOPULSE_FRONTEND_MODE=$FRONTEND_MODE); static export was built above for …/ui/ when the API serves it."
   _ap_mount="${AUTOPULSE_MOUNT_PREFIX:-/autopulse}"
   echo "  Dashboard UI (Next):  http://localhost:3000/"
-  echo "  API (FastAPI):        http://127.0.0.1:8000${_ap_mount}/  (dashboard also works at http://127.0.0.1:8000${_ap_mount}/ui/ after static build)"
-  echo "  Tip: UI on port 8000 only → run with AUTOPULSE_FRONTEND_MODE=static (script runs npm build) then open …/ui/"
+  echo "  API (FastAPI):        http://127.0.0.1:8000${_ap_mount}/  (dashboard at http://127.0.0.1:8000${_ap_mount}/ui/ when the API serves the export from frontend/out/)"
+  echo "  Tip: UI on port 8000 only → AUTOPULSE_FRONTEND_MODE=static and open …/ui/ (export is already built at script start)."
   # Cross-origin browser fetches require an absolute API origin (not same-origin /autopulse on :3000).
   # If AUTOPULSE_SIDECAR_API_BASE_URL is set to an origin only (e.g. http://127.0.0.1:8000), append the
   # embedded mount prefix so paths like /dashboard/* resolve (they live under /autopulse/dashboard/*).
