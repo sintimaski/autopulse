@@ -8,6 +8,7 @@ import {
   parseDashboardInstantUtcMs,
   resolveSparklineSeries,
   trimSeriesToLastMinutes,
+  type OverviewBucket,
 } from "./dashboardData";
 
 describe("resolveSparklineSeries", () => {
@@ -39,6 +40,24 @@ describe("resolveSparklineSeries", () => {
       error_count: 0,
       avg_latency_ms: 0,
     });
+  });
+
+  it("gap-fills to overview window when sparse series omits leading quiet minutes", () => {
+    const overview = {
+      from_timestamp: "2026-04-26T09:55:00Z",
+      to_timestamp: "2026-04-26T10:05:00Z",
+      series: [
+        { minute: "2026-04-26T10:00:00.000Z", request_count: 1, error_count: 0, avg_latency_ms: 5 },
+        { minute: "2026-04-26T10:03:00.000Z", request_count: 2, error_count: 0, avg_latency_ms: 6 },
+      ],
+    };
+    const out = resolveSparklineSeries(overview, null);
+    expect(out).toHaveLength(11);
+    expect(out[0].minute).toBe("2026-04-26T09:55:00.000Z");
+    expect(out[0].request_count).toBe(0);
+    expect(out[5].minute).toBe("2026-04-26T10:00:00.000Z");
+    expect(out[5].request_count).toBe(1);
+    expect(out[10].minute).toBe("2026-04-26T10:05:00.000Z");
   });
 
   it("treats zone-less overview minutes as UTC when filling gaps", () => {
@@ -156,6 +175,22 @@ describe("trimSeriesToLastMinutes", () => {
     expect(trimmed).toHaveLength(1);
     expect(trimmed[0].minute).toBe("2026-04-26T10:00:00");
     expect(trimmed[0].request_count).toBe(2);
+  });
+
+  it("extends rolling trim end to clip when series includes trailing quiet minutes", () => {
+    const series: OverviewBucket[] = [];
+    for (let m = 16; m <= 30; m += 1) {
+      series.push({
+        minute: `2026-04-26T10:${String(m).padStart(2, "0")}:00.000Z`,
+        request_count: m === 18 ? 3 : 0,
+        error_count: 0,
+        avg_latency_ms: 0,
+      });
+    }
+    const trimmed = trimSeriesToLastMinutes(series, 10, "2026-04-26T10:35:00Z");
+    expect(trimmed[0].minute).toBe("2026-04-26T10:25:00.000Z");
+    expect(trimmed[trimmed.length - 1].minute).toBe("2026-04-26T10:30:00.000Z");
+    expect(trimmed).toHaveLength(6);
   });
 });
 

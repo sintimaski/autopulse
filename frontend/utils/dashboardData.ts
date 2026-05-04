@@ -15,6 +15,9 @@ export type OverviewBucket = {
 
 export type OverviewForSparkline = {
   series?: OverviewBucket[];
+  /** When set with `to_timestamp`, gap-fill spans the full dashboard window (not only buckets present). */
+  from_timestamp?: string;
+  to_timestamp?: string;
 } | null;
 
 export type RequestItemForSparkline = {
@@ -80,7 +83,23 @@ function normalizeMinuteIso(minute: string): string {
   return truncateUtcToMinuteWall(parsedMs);
 }
 
-function fillMinuteBucketGaps(series: OverviewBucket[]): OverviewBucket[] {
+function parseUtcMsFlooredToMinuteWall(iso: string): number | null {
+  const raw = iso.trim();
+  if (!raw) {
+    return null;
+  }
+  const ms = parseDashboardInstantUtcMs(raw);
+  if (!Number.isFinite(ms)) {
+    return null;
+  }
+  return Math.floor(ms / 60_000) * 60_000;
+}
+
+function fillMinuteBucketGaps(
+  series: OverviewBucket[],
+  windowFromIso?: string,
+  windowToIso?: string,
+): OverviewBucket[] {
   if (!series.length) {
     return [];
   }
@@ -90,14 +109,26 @@ function fillMinuteBucketGaps(series: OverviewBucket[]): OverviewBucket[] {
   }));
   const sorted = normalized.sort((a, b) => a.minute.localeCompare(b.minute));
   const byMinute = new Map(sorted.map((bucket) => [bucket.minute, bucket]));
-  const start = parseDashboardInstantUtcMs(sorted[0].minute);
-  const end = parseDashboardInstantUtcMs(sorted[sorted.length - 1].minute);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) {
+  let startMs = parseDashboardInstantUtcMs(sorted[0].minute);
+  let endMs = parseDashboardInstantUtcMs(sorted[sorted.length - 1].minute);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    return sorted;
+  }
+
+  const winStart = windowFromIso ? parseUtcMsFlooredToMinuteWall(windowFromIso) : null;
+  const winEnd = windowToIso ? parseUtcMsFlooredToMinuteWall(windowToIso) : null;
+  if (winStart !== null) {
+    startMs = winStart;
+  }
+  if (winEnd !== null) {
+    endMs = winEnd;
+  }
+  if (startMs > endMs) {
     return sorted;
   }
 
   const out: OverviewBucket[] = [];
-  for (let ts = start; ts <= end; ts += 60_000) {
+  for (let ts = startMs; ts <= endMs; ts += 60_000) {
     const minute = new Date(ts).toISOString();
     out.push(byMinute.get(minute) ?? emptyBucket(minute));
   }
@@ -111,7 +142,11 @@ export function resolveSparklineSeries(
 ): OverviewBucket[] {
   const preferRequests = options?.preferRequests ?? false;
   if (!preferRequests && overview?.series?.length) {
-    return fillMinuteBucketGaps(overview.series);
+    return fillMinuteBucketGaps(
+      overview.series,
+      overview.from_timestamp,
+      overview.to_timestamp,
+    );
   }
   if (!requests?.items?.length) {
     return overview?.series?.length ? overview.series : [];
@@ -153,7 +188,11 @@ export function resolveSparklineSeries(
       count_5xx: statusClass === 5 ? 1 : 0,
     });
   }
-  return fillMinuteBucketGaps([...buckets.values()]);
+  return fillMinuteBucketGaps(
+    [...buckets.values()],
+    overview?.from_timestamp,
+    overview?.to_timestamp,
+  );
 }
 
 export function maxBucketRequestCount(series: OverviewBucket[]): number {
@@ -163,23 +202,32 @@ export function maxBucketRequestCount(series: OverviewBucket[]): number {
   return Math.max(...series.map((b) => Number(b.request_count || 0)));
 }
 
-/** Keep only buckets whose minute falls in the last `lastMinutes` of the series span. */
+/**
+ * Keep buckets in the last `lastMinutes` **ending** at the latest minute in `series`,
+ * or — when `clipEndIso` is set — ending at that instant (floored to UTC minute), whichever is later.
+ * Aligns sub-charts with the dashboard API window when sparse points would otherwise anchor on last traffic only.
+ */
 export function trimSeriesToLastMinutes(
   series: OverviewBucket[],
   lastMinutes: number,
+  clipEndIso?: string,
 ): OverviewBucket[] {
   if (!series.length || lastMinutes <= 0) {
     return series;
   }
   const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
-  const lastTs = parseDashboardInstantUtcMs(sorted[sorted.length - 1].minute);
-  if (!Number.isFinite(lastTs)) {
+  let endAnchorMs = parseDashboardInstantUtcMs(sorted[sorted.length - 1].minute);
+  if (!Number.isFinite(endAnchorMs)) {
     return sorted;
   }
-  const cutoff = lastTs - lastMinutes * 60 * 1000;
+  const clipFloor = clipEndIso?.trim() ? parseUtcMsFlooredToMinuteWall(clipEndIso) : null;
+  if (clipFloor !== null) {
+    endAnchorMs = Math.max(endAnchorMs, clipFloor);
+  }
+  const cutoff = endAnchorMs - lastMinutes * 60 * 1000;
   return sorted.filter((b) => {
     const t = parseDashboardInstantUtcMs(b.minute);
-    return Number.isFinite(t) && t >= cutoff;
+    return Number.isFinite(t) && t >= cutoff && t <= endAnchorMs;
   });
 }
 

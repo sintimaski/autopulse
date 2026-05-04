@@ -268,7 +268,7 @@ function trimSparklineForHostChart(
 ): OverviewBucket[] {
   const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
   if (lastMinutes > 0) {
-    return trimSeriesToLastMinutes(sorted, lastMinutes);
+    return trimSeriesToLastMinutes(sorted, lastMinutes, bounds.toTimestamp);
   }
   const fromMs = parseDashboardInstantMs(bounds.fromTimestamp);
   const toMs = parseDashboardInstantMs(bounds.toTimestamp);
@@ -284,19 +284,27 @@ function trimSparklineForHostChart(
 function trimWidgetPointsLastMinutes(
   points: DashboardWidgetPoint[],
   lastMinutes: number,
+  clipEndIso?: string,
 ): DashboardWidgetPoint[] {
   if (lastMinutes <= 0 || !points.length) {
     return points;
   }
   const sorted = [...points].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const lastTs = parseDashboardInstantMs(sorted[sorted.length - 1]?.timestamp ?? "");
-  if (!Number.isFinite(lastTs)) {
+  let endAnchorMs = parseDashboardInstantMs(sorted[sorted.length - 1]?.timestamp ?? "");
+  if (!Number.isFinite(endAnchorMs)) {
     return sorted;
   }
-  const cutoff = lastTs - lastMinutes * 60 * 1000;
+  if (clipEndIso?.trim()) {
+    const w = parseDashboardInstantMs(clipEndIso);
+    if (Number.isFinite(w)) {
+      const floored = Math.floor(w / 60_000) * 60_000;
+      endAnchorMs = Math.max(endAnchorMs, floored);
+    }
+  }
+  const cutoff = endAnchorMs - lastMinutes * 60 * 1000;
   return sorted.filter((p) => {
     const t = parseDashboardInstantMs(p.timestamp);
-    return Number.isFinite(t) && t >= cutoff;
+    return Number.isFinite(t) && t >= cutoff && t <= endAnchorMs;
   });
 }
 
@@ -626,7 +634,7 @@ export function DashboardInfrastructureSection({
     if (effectiveHostChartWindowMinutes <= 0) {
       return mergeMissingHostResourceWidgetPoints(raw, raw, windowSalvageOk);
     }
-    const rolling = trimWidgetPointsLastMinutes(raw, effectiveHostChartWindowMinutes);
+    const rolling = trimWidgetPointsLastMinutes(raw, effectiveHostChartWindowMinutes, chartClipTo);
     const rb = rollingWindowBoundsFromPoints(rolling);
     const rollingSalvageOk =
       rb !== null

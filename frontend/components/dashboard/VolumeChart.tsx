@@ -100,9 +100,9 @@ export function VolumeChart({
     const trimmed =
       effectiveChartSpanMinutes <= 0
         ? [...series].sort((a, b) => a.minute.localeCompare(b.minute))
-        : trimSeriesToLastMinutes(series, effectiveChartSpanMinutes);
+        : trimSeriesToLastMinutes(series, effectiveChartSpanMinutes, toTimestamp);
     return aggregateSeriesByStep(trimmed, effectiveStepMinutes);
-  }, [series, effectiveChartSpanMinutes, effectiveStepMinutes]);
+  }, [series, effectiveChartSpanMinutes, effectiveStepMinutes, toTimestamp]);
 
   const max = maxBucketRequestCount(displayed);
   const displayedRef = useRef(displayed);

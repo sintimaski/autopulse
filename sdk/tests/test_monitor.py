@@ -1,6 +1,8 @@
 import asyncio
 import gzip
 import json as json_std
+import os
+import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -723,3 +725,104 @@ def test_embedded_writes_api_key_file_when_unconfigured(
     headers = {"Authorization": f"Bearer {key}"}
     with lifespan_test_client(app) as client:
         assert client.post("/autopulse/ingest", json=payload, headers=headers).status_code == 200
+
+
+def test_embedded_updates_persisted_retention_cap_when_env_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "embedded-retention-cap.db"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
+    monkeypatch.delenv("AUTOPULSE_FRONTEND_MODE", raising=False)
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-retention-cap.duckdb"))
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "200")
+
+    app_first = FastAPI()
+    monitor(
+        app_first,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+    )
+    with lifespan_test_client(app_first):
+        pass
+
+    con = sqlite3.connect(db_path)
+    try:
+        cap_first = con.execute(
+            "select retention_max_db_size_mb from project_ui_settings limit 1"
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert cap_first == 200
+
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "0")
+    app_second = FastAPI()
+    monitor(
+        app_second,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{db_path}",
+    )
+    with lifespan_test_client(app_second):
+        pass
+
+    con = sqlite3.connect(db_path)
+    try:
+        cap_second = con.execute(
+            "select retention_max_db_size_mb from project_ui_settings limit 1"
+        ).fetchone()[0]
+    finally:
+        con.close()
+    assert cap_second is None
+
+
+def test_embedded_respects_existing_jobs_enable_scheduler_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-scheduler.duckdb"))
+    monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "false")
+
+    app = FastAPI()
+    monitor(
+        app,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded-scheduler.db'}",
+    )
+
+    assert os.environ.get("JOBS_ENABLE_SCHEDULER") == "false"
+
+
+def test_embedded_does_not_run_startup_retention_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
+    monkeypatch.delenv("AUTOPULSE_EMBEDDED_STARTUP_RETENTION", raising=False)
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
+    monkeypatch.setenv(
+        "AUTOPULSE_DUCKDB_PATH", str(tmp_path / "embedded-no-startup-retention.duckdb")
+    )
+
+    app = FastAPI()
+    monitor(
+        app,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'embedded-no-startup-retention.db'}",
+    )
+    with lifespan_test_client(app):
+        pass
+
+    assert getattr(app.state, "_autopulse_startup_retention_task", None) is None

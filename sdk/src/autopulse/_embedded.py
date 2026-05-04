@@ -12,7 +12,6 @@ from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
 
 import httpx
 from httpx import ASGITransport
@@ -34,9 +33,6 @@ DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./.autopulse/autopulse.db"
 DEFAULT_MOUNT_PREFIX = "/autopulse"
 DEFAULT_PROJECT_NAME = "AutoPulse Embedded Project"
 
-# Single hand-off file at repo cwd (gitignored): embedded bearer + Next public
-# keys for one `source`.
-DEFAULT_ENV_AUTOPULSE_PATH = Path(".env.autopulse")
 # Legacy single-line key (still read if present).
 LEGACY_EMBEDDED_KEY_FILE = Path(".autopulse") / "embedded-api-key"
 _DOTENV_APPLY_KEYS = frozenset(
@@ -55,9 +51,31 @@ def _embedded_startup_ingest_ping_enabled() -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _embedded_startup_retention_enabled() -> bool:
+    raw = os.environ.get("AUTOPULSE_EMBEDDED_STARTUP_RETENTION")
+    if raw is None:
+        return False
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_embedded_data_root() -> Path:
+    """Stable root for embedded defaults (env bundle + relative SQLite paths)."""
+    for key in ("AUTOPULSE_DATA_DIR", "AUTOPULSE_PROJECT_ROOT"):
+        raw = os.environ.get(key, "").strip()
+        if raw:
+            return Path(raw).expanduser().resolve()
+    with suppress(Exception):
+        from autopulse_backend.core.config import resolve_autopulse_data_root
+
+        return resolve_autopulse_data_root()
+    return Path.cwd().resolve()
+
+
 def _env_autopulse_path() -> Path:
     raw = os.environ.get("AUTOPULSE_ENV_AUTOPULSE_FILE", "").strip()
-    return Path(raw).expanduser() if raw else DEFAULT_ENV_AUTOPULSE_PATH
+    if raw:
+        return Path(raw).expanduser()
+    return _resolve_embedded_data_root() / ".env.autopulse"
 
 
 def _parse_dotenv_lines(content: str) -> dict[str, str]:
@@ -203,36 +221,24 @@ def _normalize_prefix(raw_prefix: str) -> str:
     return prefix
 
 
-def _cwd_host_sqlite_file_database_url(database_url: str) -> str:
-    """Resolve relative SQLite file URLs against the embedded host process cwd.
+def _normalize_embedded_database_url(database_url: str) -> str:
+    """Normalize embedded DB URL against AutoPulse data-root semantics.
 
-    ``normalize_database_url`` in the backend anchors ``./`` paths to the backend package
-    tree for standalone servers. Embedded hosts (starter apps) resolve relative SQLite URLs
-    (default ``./.autopulse/autopulse.db``) under the host cwd so
-    ``_ensure_embedded_project_and_key`` and ``get_db_session``/ingest share the same SQLite file.
+    This keeps embedded project/key metadata stable across restarts even when the
+    process current working directory changes.
     """
-    raw = database_url.strip()
-    parsed = urlparse(raw)
-    if parsed.scheme not in {"sqlite", "sqlite+aiosqlite"}:
-        return database_url
-    path = unquote(parsed.path or "")
-    if raw.endswith(":memory:") or path in {":memory:", ""}:
-        return database_url
-    if path.startswith("/./") or path.startswith("/../"):
-        rel = Path(path[1:])
-        resolved = (Path.cwd() / rel).resolve()
-        with suppress(OSError):
-            resolved.parent.mkdir(parents=True, exist_ok=True)
-        return f"{parsed.scheme}:///{resolved.as_posix()}"
+    with suppress(Exception):
+        from autopulse_backend.core.config import normalize_database_url
+
+        return normalize_database_url(database_url)
     return database_url
 
 
 def _apply_backend_environment(*, database_url: str) -> None:
-    os.environ["DATABASE_URL"] = _cwd_host_sqlite_file_database_url(database_url)
+    os.environ["DATABASE_URL"] = database_url
     os.environ.setdefault("AUTOPULSE_RUNTIME_EMBEDDED", "1")
-    # Embedded mode must run retention housekeeping; otherwise local DB caps are never enforced.
-    # Do not use setdefault: a repo `.env` often sets JOBS_ENABLE_SCHEDULER=false, which would win.
-    os.environ["JOBS_ENABLE_SCHEDULER"] = "1"
+    # Respect backend/.env or explicit runtime JOBS_ENABLE_SCHEDULER choices.
+    # If unset, backend defaults still enable scheduler for embedded default SQLite paths.
     os.environ.setdefault("JOBS_RETENTION_INTERVAL_SECONDS", "300")
     # Global SQLite file ceiling (oldest events across all projects). Set to 0 to disable.
     os.environ.setdefault("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", "512")
@@ -287,7 +293,9 @@ async def _ensure_embedded_project_and_key(
                         )
                     )
                     await session.commit()
-                elif cap_mb is not None and ui_settings.retention_max_db_size_mb is None:
+                elif ui_settings.retention_max_db_size_mb != cap_mb:
+                    # Keep persisted per-project retention cap aligned with current embedded env.
+                    # This also allows clearing an old cap when env changes to disabled (None).
                     ui_settings.retention_max_db_size_mb = cap_mb
                     await session.commit()
             return
@@ -307,6 +315,8 @@ async def _ensure_embedded_project_and_key(
                     retention_max_db_size_mb=cap_mb,
                 )
             )
+        elif ui_settings.retention_max_db_size_mb != cap_mb:
+            ui_settings.retention_max_db_size_mb = cap_mb
         session.add(
             ApiKey(
                 project_id=project.id,
@@ -571,7 +581,9 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
     if mode != "embedded":
         return {}
     prefix = _normalize_prefix(str(kwargs.get("mount_prefix", DEFAULT_MOUNT_PREFIX)))
-    database_url = str(kwargs.get("database_url") or DEFAULT_EMBEDDED_DATABASE_URL)
+    database_url = _normalize_embedded_database_url(
+        str(kwargs.get("database_url") or DEFAULT_EMBEDDED_DATABASE_URL)
+    )
     project_name = str(kwargs.get("embedded_project_name", DEFAULT_PROJECT_NAME))
     _apply_env_autopulse_file_defaults(_env_autopulse_path())
     raw_kw = kwargs.get("api_key")
@@ -629,12 +641,16 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
                     api_key=api_key,
                 )
 
-                async def _run_retention_background() -> None:
-                    with suppress(Exception):
-                        await run_retention_once(settings=get_settings())
+                if _embedded_startup_retention_enabled():
 
-                task = asyncio.create_task(_run_retention_background())
-                app.state._autopulse_startup_retention_task = task
+                    async def _run_retention_background() -> None:
+                        with suppress(Exception):
+                            await run_retention_once(settings=get_settings())
+
+                    task = asyncio.create_task(_run_retention_background())
+                    app.state._autopulse_startup_retention_task = task
+                else:
+                    app.state._autopulse_startup_retention_task = None
 
             async def stop_embedded_stack() -> None:
                 task = getattr(app.state, "_autopulse_startup_retention_task", None)
@@ -681,12 +697,16 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
                     api_key=api_key,
                 )
 
-                async def _run_retention_background() -> None:
-                    with suppress(Exception):
-                        await run_retention_once(settings=get_settings())
+                if _embedded_startup_retention_enabled():
 
-                task = asyncio.create_task(_run_retention_background())
-                app.state._autopulse_startup_retention_task = task
+                    async def _run_retention_background() -> None:
+                        with suppress(Exception):
+                            await run_retention_once(settings=get_settings())
+
+                    task = asyncio.create_task(_run_retention_background())
+                    app.state._autopulse_startup_retention_task = task
+                else:
+                    app.state._autopulse_startup_retention_task = None
                 _start_embedded_background_jobs(app)
 
             async def stop_startup_retention_task() -> None:
