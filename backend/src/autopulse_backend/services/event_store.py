@@ -569,12 +569,12 @@ class DuckDbEventStore:
         if project_id is None:
             count_sql = (
                 "SELECT COUNT(*) FROM ("
-                "SELECT id FROM events ORDER BY received_at ASC, id ASC LIMIT ?"
+                "SELECT id FROM events ORDER BY timestamp ASC, received_at ASC, id ASC LIMIT ?"
                 ")"
             )
             delete_sql = (
                 "DELETE FROM events WHERE id IN ("
-                "SELECT id FROM events ORDER BY received_at ASC, id ASC LIMIT ?"
+                "SELECT id FROM events ORDER BY timestamp ASC, received_at ASC, id ASC LIMIT ?"
                 ")"
             )
             params = [rows_to_delete]
@@ -582,13 +582,13 @@ class DuckDbEventStore:
             count_sql = (
                 "SELECT COUNT(*) FROM ("
                 "SELECT id FROM events WHERE project_id = ? "
-                "ORDER BY received_at ASC, id ASC LIMIT ?"
+                "ORDER BY timestamp ASC, received_at ASC, id ASC LIMIT ?"
                 ")"
             )
             delete_sql = (
                 "DELETE FROM events WHERE id IN ("
                 "SELECT id FROM events WHERE project_id = ? "
-                "ORDER BY received_at ASC, id ASC LIMIT ?"
+                "ORDER BY timestamp ASC, received_at ASC, id ASC LIMIT ?"
                 ")"
             )
             params = [str(project_id), rows_to_delete]

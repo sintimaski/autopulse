@@ -133,3 +133,57 @@ def test_duckdb_widget_point_rotation_helpers(tmp_path) -> None:
     deleted = store.delete_oldest_widget_points(rows_to_delete=2, project_id=project_id)
     assert deleted == 2
     assert store.count_widget_points_for_project(project_id) == 1
+
+
+def test_duckdb_event_rotation_deletes_eldest_by_event_timestamp(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events4.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    # The first inserted row has an old event timestamp but recent received_at,
+    # mirroring backfill/late-ingest behavior.
+    store.insert_rows(
+        [
+            {
+                "project_id": project_id,
+                "timestamp": now - timedelta(days=10),
+                "received_at": now - timedelta(minutes=1),
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/old-event",
+                "status_code": 200,
+                "latency_ms": 10.0,
+                "payload": {"message": "old"},
+                "request_id": "r-old",
+            },
+            {
+                "project_id": project_id,
+                "timestamp": now - timedelta(minutes=5),
+                "received_at": now - timedelta(days=2),
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/newer-event",
+                "status_code": 200,
+                "latency_ms": 12.0,
+                "payload": {"message": "newer"},
+                "request_id": "r-newer",
+            },
+        ]
+    )
+
+    deleted = store.delete_oldest_events(rows_to_delete=1, project_id=project_id)
+    assert deleted == 1
+
+    filters = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(days=30),
+        to_timestamp=now,
+    )
+    remaining = store.fetch_events(filters, order_by="timestamp ASC, id ASC")
+    assert len(remaining) == 1
+    assert remaining[0][3] == "/newer-event"
