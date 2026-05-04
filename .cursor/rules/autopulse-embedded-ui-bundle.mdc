@@ -10,19 +10,20 @@ globs:
 
 For **standalone backend** serving the same export from disk (no wheel), see **`.cursor/rules/dashboard-static-export.mdc`** (`AUTOPULSE_FRONTEND_STATIC_DIR`).
 
-When a change touches **`frontend/`** (or the bundle script) and the work is meant for **release / PyPI wheel / embedded `autopulse` consumers**, ensure the static export is copied into the SDK:
+When a change touches **`frontend/`** (or the bundle script) and the work is meant for **release / PyPI wheel / embedded `autopulse` consumers**, ensure the static export **builds cleanly** (the wheel build runs the same steps automatically):
 
 ```bash
-cd /Users/dd/quests/autopulse   # repo root
-pwd
+# repository root
 ./scripts/bundle_embedded_dashboard_ui.sh
 ```
 
-That runs **`npm run build`** in `frontend/` and rsyncs **`frontend/out/`** → **`sdk/src/autopulse/ui/`**. Commit the updated tree under `sdk/src/autopulse/ui/` with the frontend change.
+That runs **`npm run build`** in `frontend/` and rsyncs **`frontend/out/`** → **`sdk/src/autopulse/ui/`** (gitignored except `sdk/src/autopulse/ui/README.md`). **Do not commit** generated HTML/JS/CSS chunks; **`uv build --package autopulse --wheel`** materializes them via **`sdk/hatch_build.py`**.
 
-**If needed only:** skip the script when the commit does not ship UI (docs-only, backend-only with no dashboard contract change). For anything that changes dashboard behavior or assets, run it.
+**Local dev / pytest:** run the script above (or rely on pre-commit) so `sdk/src/autopulse/ui/index.html` exists before SDK embedded tests.
 
-**Pre-commit:** a hook runs this automatically when staged paths match `frontend/` or `scripts/bundle_embedded_dashboard_ui.sh` (uses `AUTOPULSE_BUNDLE_SKIP_NPM_CI=1` when `node_modules` exists for speed). If the hook fails, fix `npm run build` errors, re-run the script, then commit.
+**If needed only:** skip the script when the commit does not ship UI (docs-only, backend-only with no dashboard contract change). For anything that changes dashboard behavior or assets, run it before merging so CI and peers get a clean `npm run build`.
+
+**Pre-commit:** a hook runs this automatically when staged paths match `frontend/` or `scripts/bundle_embedded_dashboard_ui.sh` (uses `AUTOPULSE_BUNDLE_SKIP_NPM_CI=1` when `node_modules` exists for speed). If the hook fails, fix `npm run build` errors, re-run the script, then commit (only source changes, not the ignored bundle tree).
 
 ## Rule self-review
 

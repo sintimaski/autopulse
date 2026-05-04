@@ -11,7 +11,7 @@ from autopulse_backend.auth import (
     ensure_dashboard_admin_or_owner,
     ensure_dashboard_not_viewer,
 )
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.repositories.project_ui import get_or_create_project_ui_settings
 from autopulse_backend.dashboard.serializers import (
     serialize_retention_settings,

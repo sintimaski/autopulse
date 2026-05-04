@@ -62,6 +62,7 @@ out/
 
 .autopulse/
 
-# Next.js static export route metadata copied into the SDK bundle (not used by
-# standalone StaticFiles serving; keeps the embedded tree smaller).
-sdk/src/autopulse/ui/**/*.txt
+# Embedded Next export (built locally or by the SDK wheel hatch hook; see
+# sdk/src/autopulse/ui/README.md). Only the README is tracked.
+sdk/src/autopulse/ui/**
+!sdk/src/autopulse/ui/README.md

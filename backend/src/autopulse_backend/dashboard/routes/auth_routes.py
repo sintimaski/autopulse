@@ -27,7 +27,7 @@ from autopulse_backend.auth import (
     revoke_current_dashboard_session,
     verify_magic_link_and_create_session,
 )
-from autopulse_backend.config import Settings, get_settings
+from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
 from autopulse_backend.models import (
     ApiKey,

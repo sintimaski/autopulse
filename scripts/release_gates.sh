@@ -15,6 +15,7 @@ npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run test
 npm --prefix frontend run build
+AUTOPULSE_BUNDLE_SKIP_NPM_CI=1 bash scripts/bundle_embedded_dashboard_ui.sh
 
 echo "[release-gates] phase5 smoke checks"
 uv run python -m autopulse_backend.jobs alerts-once >/dev/null

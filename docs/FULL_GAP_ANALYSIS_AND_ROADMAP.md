@@ -18,7 +18,7 @@ Current strengths:
 - Embedded mode support in `sdk/src/autopulse/_embedded.py`.
 
 Current limitations:
-- Default capture posture is still broad (`capture_headers=True`, `capture_query_params=True`).
+- Default capture posture keeps headers and query strings off unless opted in (`capture_headers` / `capture_query_params` default to false via env in `sdk/src/autopulse/_monitor.py`).
 - Retry path treats all failures as retryable (including likely permanent 4xx classes).
 - No built-in SDK diagnostics surface for queue drop rate and sender health.
 

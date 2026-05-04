@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.error_grouping import (
     derived_error_group_key,
     error_group_labels,

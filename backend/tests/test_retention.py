@@ -12,8 +12,7 @@ from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.config import get_settings
-from autopulse_backend.core.config import normalize_database_url
+from autopulse_backend.core.config import get_settings, normalize_database_url
 from autopulse_backend.maintenance import retention as retention_mod
 from autopulse_backend.maintenance import run_retention_cleanup_once
 from autopulse_backend.models import Base, Event, Project, ProjectUiSettings

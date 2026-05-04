@@ -21,7 +21,7 @@ from autopulse_backend.auth.dashboard import (
     _email_matches_allowed_domains,
     issue_dashboard_session_for_user,
 )
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_db_session
 
 logger = logging.getLogger(__name__)

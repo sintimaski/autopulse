@@ -1,11 +1,11 @@
 /** Matches `basePath` in `frontend/next.config.ts`. */
-export const DASHBOARD_UI_BASE_PATH = "/autopulse/ui";
+const DASHBOARD_UI_BASE_PATH = "/autopulse/ui";
 
 /**
  * UI prefix for same-origin navigation (static export under ``/autopulse/ui``, or ``""`` when
  * ``AUTOPULSE_FRONTEND_MODE=sidecar`` with no basePath).
  */
-export function resolveDashboardUiPrefix(): string {
+function resolveDashboardUiPrefix(): string {
   if (typeof window === "undefined") {
     return DASHBOARD_UI_BASE_PATH;
   }

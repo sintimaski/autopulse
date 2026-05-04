@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.duckdb_queries import build_filters
 from autopulse_backend.dashboard.log_query import (
     LOG_QUERY_MAX_LIMIT,

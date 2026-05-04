@@ -13,7 +13,7 @@ from autopulse_backend.auth import (
     ensure_dashboard_admin_or_owner,
     ensure_dashboard_not_viewer,
 )
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.params import (
     FROM_TIMESTAMP_QUERY,
     LIMIT_QUERY,

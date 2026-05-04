@@ -27,6 +27,7 @@ import {
   type StackedAreaSeries,
 } from "../charts";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
+import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
 import { buildScopedQuery } from "../dashboardQueryState";
 import {
@@ -461,7 +462,6 @@ export function DashboardHomeContent() {
     }
     return { cells, xLabels, yLabels: topRoutes };
   })();
-  const apdexThresholdMs = { satisfied: 300, tolerated: 1200 };
   const apdexByMinute = (() => {
     const minuteStats = new Map<string, { total: number; satisfied: number; tolerated: number }>();
     for (const item of d.rawItems) {
@@ -470,9 +470,9 @@ export function DashboardHomeContent() {
       const key = minute.toISOString();
       const current = minuteStats.get(key) ?? { total: 0, satisfied: 0, tolerated: 0 };
       current.total += 1;
-      if (item.latency_ms <= apdexThresholdMs.satisfied) {
+      if (item.latency_ms <= APDEX_THRESHOLDS_MS.satisfied) {
         current.satisfied += 1;
-      } else if (item.latency_ms <= apdexThresholdMs.tolerated) {
+      } else if (item.latency_ms <= APDEX_THRESHOLDS_MS.tolerated) {
         current.tolerated += 1;
       }
       minuteStats.set(key, current);
@@ -788,7 +788,7 @@ export function DashboardHomeContent() {
                 }
                 if (card.label.includes("Apdex")) {
                   pushRequestsWithScope({
-                    max_latency_ms: String(apdexThresholdMs.tolerated),
+                    max_latency_ms: String(APDEX_THRESHOLDS_MS.tolerated),
                   });
                   return;
                 }
@@ -1054,7 +1054,7 @@ export function DashboardHomeContent() {
       <section className="grid gap-4 xl:grid-cols-3">
         <ChartPanel
           title="Apdex trend"
-          description={`Current score ${overviewExtended.apdex_score.toFixed(3)} (satisfied <=${apdexThresholdMs.satisfied}ms)`}
+          description={`Current score ${overviewExtended.apdex_score.toFixed(3)} (satisfied <=${APDEX_THRESHOLDS_MS.satisfied}ms)`}
         >
           {apdexTrendValues.length ? (
             <TimeSeriesLineChart

@@ -25,6 +25,18 @@ jobs:
       - name: Sync environment
         run: uv sync --group dev
 
+      - name: Setup Node.js (embedded UI for SDK tests)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Bundle embedded dashboard UI
+        run: |
+          npm --prefix frontend ci
+          AUTOPULSE_BUNDLE_SKIP_NPM_CI=1 bash scripts/bundle_embedded_dashboard_ui.sh
+
       - name: Ruff check
         run: uv run ruff check .
 

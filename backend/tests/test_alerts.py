@@ -17,7 +17,7 @@ from autopulse_backend.alerts import (
     StubAlertSender,
     evaluate_alerts_once,
 )
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.models import Event, Project
 
 

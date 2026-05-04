@@ -98,7 +98,7 @@ def maybe_mount_dashboard_static_export(
     )
     if not for_submount:
 
-        @app.get("/", include_in_schema=False)  # type: ignore[misc]
+        @app.get("/", include_in_schema=False)  # type: ignore[untyped-decorator]
         async def _dashboard_root_redirect() -> RedirectResponse:
             return RedirectResponse(url="/autopulse/ui/")
 

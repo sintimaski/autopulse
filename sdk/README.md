@@ -25,7 +25,7 @@ pip install autopulse
   pip install dist/wheels/autopulse_backend-*.whl dist/wheels/autopulse-*.whl
   ```
 
-  The SDK wheel already includes static UI assets under `autopulse/ui/` (refresh with `scripts/bundle_embedded_dashboard_ui.sh` when the Next app changes). No Node/npm is needed at install time.
+  The SDK wheel includes static UI assets under `autopulse/ui/` (built during `uv build --package autopulse --wheel` from `frontend/`; for local work use `scripts/bundle_embedded_dashboard_ui.sh`). No Node/npm is needed at **install** time.
 
 ## Embedded (local dashboard + ingest), one line
 

@@ -1,5 +1,7 @@
 import type { OverviewExtendedResponse, OverviewResponse, RequestItem, RequestsResponse } from "../components/dashboard/dashboardTypes";
 
+import { apdexScoreFromLatenciesMs } from "./apdex";
+
 function quantileSorted(sorted: number[], q: number): number {
   if (!sorted.length) {
     return 0;
@@ -12,21 +14,6 @@ function quantileSorted(sorted: number[], q: number): number {
   const hi = Math.ceil(pos);
   const h = pos - lo;
   return sorted[lo]! * (1 - h) + sorted[hi]! * h;
-}
-
-function apdexFromLatencies(latencies: number[]): number {
-  if (!latencies.length) {
-    return 1;
-  }
-  let sum = 0;
-  for (const ms of latencies) {
-    if (ms <= 300) {
-      sum += 1;
-    } else if (ms <= 1200) {
-      sum += 0.5;
-    }
-  }
-  return sum / latencies.length;
 }
 
 /**
@@ -103,7 +90,7 @@ export function resolveOverviewExtendedForHome(
           p50_latency_ms: quantileSorted(latencies, 0.5),
           p95_latency_ms: quantileSorted(latencies, 0.95),
           p99_latency_ms: quantileSorted(latencies, 0.99),
-          apdex_score: apdexFromLatencies(latencies),
+          apdex_score: apdexScoreFromLatenciesMs(latencies),
         }
       : {}),
     ...(items.length > 0

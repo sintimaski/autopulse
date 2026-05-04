@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.config import Settings
+from autopulse_backend.core.config import Settings
 from autopulse_backend.models import Project
 from autopulse_backend.repositories.alert_dispatches import record_alert_dispatch
 from autopulse_backend.repositories.alert_settings import get_or_create_project_alert_settings

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any
 
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
 
 psutil: Any

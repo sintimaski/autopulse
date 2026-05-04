@@ -62,7 +62,7 @@ async def ensure_dashboard_not_viewer(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> None:
     from autopulse_backend.auth.dashboard import get_dashboard_auth_session
-    from autopulse_backend.config import get_settings
+    from autopulse_backend.core.config import get_settings
 
     settings = get_settings()
     auth_session = await get_dashboard_auth_session(
@@ -78,7 +78,7 @@ async def ensure_dashboard_admin_or_owner(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> None:
     from autopulse_backend.auth.dashboard import get_dashboard_auth_session
-    from autopulse_backend.config import get_settings
+    from autopulse_backend.core.config import get_settings
 
     settings = get_settings()
     auth_session = await get_dashboard_auth_session(

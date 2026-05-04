@@ -1,10 +1,7 @@
 export { BreakdownBarChart } from "./BreakdownBarChart";
-export type { BreakdownBarDatum } from "./BreakdownBarChart";
 export { ChartPanel } from "./ChartPanel";
 export { DonutChart } from "./DonutChart";
-export type { DonutDatum } from "./DonutChart";
 export { HeatmapGrid } from "./HeatmapGrid";
-export type { HeatmapCell } from "./HeatmapGrid";
 export { HistogramChart } from "./HistogramChart";
 export type { HistogramBucket } from "./HistogramChart";
 export { MultiSeriesLineChart } from "./MultiSeriesLineChart";

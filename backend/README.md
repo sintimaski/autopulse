@@ -17,7 +17,7 @@ From repository root:
 ```bash
 uv sync --group dev
 # Loads backend/.env so retention/cap settings are actually applied.
-uv run uvicorn autopulse_backend.main:app --env-file .env --log-level info
+uv run uvicorn autopulse_backend.main:app --env-file backend/.env --log-level info
 ```
 
 Backend defaults to `http://localhost:8000`.

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_project
 from autopulse_backend.commercial.plan_limits import effective_ingest_rate_limit_max
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
 from autopulse_backend.database import get_db_session, get_session_maker
 from autopulse_backend.ingestion.limits import ingest_rate_limiter

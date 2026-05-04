@@ -1,8 +1,8 @@
 # P1 scale hardening plan — pagination consistency and durable aggregate pipeline
 
-Status: plan only (not yet implemented). Source of this plan: the P1 "scale hardening" slice in the [AutoPulse Full Analysis Improvement Plan](/Users/dd/.cursor/plans/autopulse-full-audit-roadmap_7fe699db.plan.md).
+Status: plan only (not yet implemented). Source: P1 "scale hardening" slice from the internal Cursor planning notes (not committed); see also [AutoPulse Full Gap Analysis and Roadmap](./FULL_GAP_ANALYSIS_AND_ROADMAP.md).
 
-This document is not under documentation governance (see [docs/DOCUMENTATION_GOVERNANCE.md](/Users/dd/quests/autopulse/docs/DOCUMENTATION_GOVERNANCE.md)); it is a working plan for a follow-up sprint. Scope stays inside MVP guardrails from [DEVELOPMENT.md](/Users/dd/quests/autopulse/DEVELOPMENT.md) (diagnosis-first, small-team observability).
+This document is not under documentation governance (see [DOCUMENTATION_GOVERNANCE.md](./DOCUMENTATION_GOVERNANCE.md)); it is a working plan for a follow-up sprint. Scope stays inside MVP guardrails from [DEVELOPMENT.md](../DEVELOPMENT.md) (diagnosis-first, small-team observability).
 
 ## Goals
 
@@ -18,16 +18,16 @@ This document is not under documentation governance (see [docs/DOCUMENTATION_GOV
 
 ## Current state (evidence)
 
-- Request listing: [`backend/src/autopulse_backend/dashboard/routes/requests_routes.py`](/Users/dd/quests/autopulse/backend/src/autopulse_backend/dashboard/routes/requests_routes.py) uses offset/limit and a separate `COUNT(*)` against `Event` / DuckDB. Acceptable today, quadratic-ish as `offset` grows on large windows.
-- Log queries: [`backend/src/autopulse_backend/dashboard/routes/log_query_routes.py`](/Users/dd/quests/autopulse/backend/src/autopulse_backend/dashboard/routes/log_query_routes.py) already uses a stable `(timestamp, id)` cursor via `encode_log_cursor`. This is the pattern to generalise.
+- Request listing: [`backend/src/autopulse_backend/dashboard/routes/requests_routes.py`](../backend/src/autopulse_backend/dashboard/routes/requests_routes.py) uses offset/limit and a separate `COUNT(*)` against `Event` / DuckDB. Acceptable today, quadratic-ish as `offset` grows on large windows.
+- Log queries: [`backend/src/autopulse_backend/dashboard/routes/log_query_routes.py`](../backend/src/autopulse_backend/dashboard/routes/log_query_routes.py) already uses a stable `(timestamp, id)` cursor via `encode_log_cursor`. This is the pattern to generalise.
 - Error groups and alert dispatches: offset-based; fine for UI limits today but not for deep-scroll or export paths.
-- Query bundle: [`backend/src/autopulse_backend/schemas/dashboard.py`](/Users/dd/quests/autopulse/backend/src/autopulse_backend/schemas/dashboard.py) clamps `limit`/`offset`; bundle response size grows with largest section.
-- Aggregate pipeline: [`backend/src/autopulse_backend/services/ingest_aggregate_worker.py`](/Users/dd/quests/autopulse/backend/src/autopulse_backend/services/ingest_aggregate_worker.py) uses an in-process `asyncio.Queue` fed from [`backend/src/autopulse_backend/routes/ingest.py`](/Users/dd/quests/autopulse/backend/src/autopulse_backend/routes/ingest.py). On enqueue failure there is a sync fallback (`ingest.aggregate_worker.sync_fallback`). On worker death mid-payload, the payload is lost and only a counter (`ingest.aggregate_worker.failed`) + log line remain — raw events are still persisted, but metric buckets and error group aggregates for that payload are not.
+- Query bundle: [`backend/src/autopulse_backend/schemas/dashboard.py`](../backend/src/autopulse_backend/schemas/dashboard.py) clamps `limit`/`offset`; bundle response size grows with largest section.
+- Aggregate pipeline: [`backend/src/autopulse_backend/services/ingest_aggregate_worker.py`](../backend/src/autopulse_backend/services/ingest_aggregate_worker.py) uses an in-process `asyncio.Queue` fed from [`backend/src/autopulse_backend/routes/ingest.py`](../backend/src/autopulse_backend/routes/ingest.py). On enqueue failure there is a sync fallback (`ingest.aggregate_worker.sync_fallback`). On worker death mid-payload, the payload is lost and only a counter (`ingest.aggregate_worker.failed`) + log line remain — raw events are still persisted, but metric buckets and error group aggregates for that payload are not.
 
 ## Risks the plan addresses
 
 - **Pagination drift**: offset-based paging over a moving event stream shows duplicates/gaps when new events arrive between pages. Users cannot trust "page 3 of errors" during an active incident.
-- **Hot filters**: large windows combined with high-cardinality `path_contains` can materialise millions of rows pre-LIMIT even with the current `WITH filtered AS MATERIALIZED` optimisation in [`event_store.py`](/Users/dd/quests/autopulse/backend/src/autopulse_backend/services/event_store.py).
+- **Hot filters**: large windows combined with high-cardinality `path_contains` can materialise millions of rows pre-LIMIT even with the current `WITH filtered AS MATERIALIZED` optimisation in [`event_store.py`](../backend/src/autopulse_backend/services/event_store.py).
 - **Aggregate loss on crash**: in-memory queue empties on SIGTERM/OOM; the window around the crash has correct raw events but wrong dashboard aggregates until retention/backfill.
 - **Backpressure blindness**: `/internal/metrics` now exposes `ingest_pressure` (P0 work), but we still lack a "stuck worker" signal — a consumer that is alive but falling behind.
 

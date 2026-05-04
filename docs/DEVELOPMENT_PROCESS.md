@@ -41,7 +41,7 @@ uv run pre-commit install
 uv run pre-commit run --all-files
 ```
 
-Pre-commit also runs **`sdk-embedded-ui-bundle`** when staged paths include **`frontend/`** (or `scripts/bundle_embedded_dashboard_ui.sh`): Next **`npm run build`** plus sync into **`sdk/src/autopulse/ui/`** for embedded wheels. Commit those generated files with the dashboard change. Cursor agents: see **`.cursor/rules/autopulse-embedded-ui-bundle.mdc`**.
+Pre-commit also runs **`sdk-embedded-ui-bundle`** when staged paths include **`frontend/`** (or `scripts/bundle_embedded_dashboard_ui.sh`): Next **`npm run build`** plus sync into **`sdk/src/autopulse/ui/`** for local/CI checks. Generated assets are **gitignored**; **`uv build --package autopulse --wheel`** bundles UI via **`sdk/hatch_build.py`**. Cursor agents: see **`.cursor/rules/autopulse-embedded-ui-bundle.mdc`**.
 
 Execution policy:
 

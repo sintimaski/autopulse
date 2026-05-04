@@ -13,7 +13,7 @@ from uuid import UUID
 
 import duckdb
 
-from autopulse_backend.config import Settings, get_settings
+from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.dashboard.log_query import parse_log_query
 from autopulse_backend.dashboard.payload_limits import MAX_DASHBOARD_WIDGET_POINTS_RETURNED
 from autopulse_backend.services.duckdb_async import run_duckdb_write_sync

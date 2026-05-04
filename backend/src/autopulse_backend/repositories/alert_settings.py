@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.config import Settings
+from autopulse_backend.core.config import Settings
 from autopulse_backend.models import ProjectAlertSettings
 
 

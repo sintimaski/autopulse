@@ -14,7 +14,7 @@ Canonical product scope: **[DEVELOPMENT.md](./DEVELOPMENT.md)** · Contributor e
 | **Backend** | `autopulse_backend` (`backend/`) | `POST /ingest`, dashboard JSON API, magic-link auth, alerts & retention jobs |
 | **Relational DB** | SQLite by default (`DATABASE_URL`) | Projects, API keys, sessions, aggregates metadata |
 | **Event store** | DuckDB file (`AUTOPULSE_DUCKDB_PATH`) | Raw HTTP events at scale (default in dev stacks) |
-| **Dashboard UI** | `frontend/` → static export in `sdk/src/autopulse/ui/` | Overview, requests, diagnosis, alerts |
+| **Dashboard UI** | `frontend/` → static export in `sdk/src/autopulse/ui/` (built locally / in wheel; not tracked) | Overview, requests, diagnosis, alerts |
 
 ---
 

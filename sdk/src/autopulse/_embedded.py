@@ -632,7 +632,7 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
             )
 
             async def ensure_project_key() -> None:
-                from autopulse_backend.config import get_settings
+                from autopulse_backend.core.config import get_settings
                 from autopulse_backend.jobs import run_retention_once
 
                 await _ensure_embedded_project_and_key(
@@ -688,7 +688,7 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
             backend_app = mount_on_app(app, prefix=prefix)
 
             async def ensure_project_key() -> None:
-                from autopulse_backend.config import get_settings
+                from autopulse_backend.core.config import get_settings
                 from autopulse_backend.jobs import run_retention_once
 
                 await _ensure_embedded_project_and_key(

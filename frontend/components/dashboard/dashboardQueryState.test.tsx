@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDiagnosisPageHref,
-  buildLogsPageHref,
+  buildRequestsPageHref,
   buildScopedQuery,
   parseScopedQuery,
   scopedQueryStringsEqual,
@@ -134,10 +134,10 @@ describe("dashboardQueryState", () => {
     sqlFilterEnabled: false,
   };
 
-  it("buildLogsPageHref preserves scope and applies path patch", () => {
-    const href = buildLogsPageHref(baseScope, { pathQuery: "/api/orders", statusClass: "5" });
-    expect(href.startsWith("/logs?")).toBe(true);
-    const q = new URLSearchParams(href.slice("/logs?".length));
+  it("buildRequestsPageHref preserves scope and applies path patch", () => {
+    const href = buildRequestsPageHref(baseScope, { pathQuery: "/api/orders", statusClass: "5" });
+    expect(href.startsWith("/requests?")).toBe(true);
+    const q = new URLSearchParams(href.slice("/requests?".length));
     expect(q.get("window_minutes")).toBe("60");
     expect(q.get("path_contains")).toBe("/api/orders");
     expect(q.get("status_class")).toBe("5");

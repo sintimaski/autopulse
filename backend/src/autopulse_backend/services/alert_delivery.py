@@ -14,7 +14,7 @@ from uuid import UUID
 
 import httpx
 
-from autopulse_backend.config import Settings
+from autopulse_backend.core.config import Settings
 
 
 @dataclass(slots=True)

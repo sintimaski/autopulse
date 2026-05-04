@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from autopulse_backend.auth import ProjectContext, get_dashboard_auth_session
-from autopulse_backend.config import get_settings
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_session_maker
 from autopulse_backend.realtime import project_websocket_hub
 
