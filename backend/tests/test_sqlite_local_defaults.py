@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import pytest
 
@@ -20,6 +21,18 @@ def _disable_runtime_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(_config, "_load_runtime_dotenv_once", _noop_load_runtime_dotenv)
     monkeypatch.setattr(_config, "_RUNTIME_DOTENV_LOADED", False)
+
+
+def test_legacy_data_root_autopulse_db_normalizes_under_dot_autopulse(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
+    from autopulse_backend.core.config import normalize_database_url
+
+    for name in ("autopulse.db", "autopulse_embedded.db"):
+        out = normalize_database_url(f"sqlite+aiosqlite:///./{name}")
+        parsed = urlparse(out)
+        assert unquote(parsed.path or "").endswith(f"/.autopulse/{name}")
 
 
 def test_autopulse_db_url_enables_retention_scheduler_and_default_file_cap(

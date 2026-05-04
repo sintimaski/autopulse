@@ -255,6 +255,12 @@ def normalize_database_url(database_url: str) -> str:
         resolved = Path(raw_path).resolve()
     else:
         resolved = (data_root / raw_path).resolve()
+    # Workspace default filenames used to live at the data root; keep them under
+    # ``.autopulse/`` with DuckDB and the email outbox.
+    _legacy_root_sqlite = frozenset({"autopulse.db", "autopulse_embedded.db"})
+    data_root_resolved = data_root.resolve()
+    if resolved.name in _legacy_root_sqlite and resolved.parent.resolve() == data_root_resolved:
+        resolved = (data_root_resolved / ".autopulse" / resolved.name).resolve()
     normalized_path = str(resolved).replace("\\", "/")
     out = f"{parsed.scheme}:///{normalized_path}"
     # SQLite does not create parents; nested defaults live under `.autopulse/` like DuckDB.

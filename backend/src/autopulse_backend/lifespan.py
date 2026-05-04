@@ -187,8 +187,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         else:
             logger.info(
                 "No background scheduler (set JOBS_ENABLE_SCHEDULER=true or use default "
-                "SQLite: .autopulse/autopulse.db, legacy repo-root autopulse.db, or "
-                "autopulse_embedded.db for automatic retention)"
+                "SQLite under .autopulse/ (autopulse.db or autopulse_embedded.db) for "
+                "automatic retention)"
             )
     if settings.ingest_async_aggregate_enabled:
         app.state._autopulse_ingest_aggregate_worker = start_ingest_aggregate_worker(settings)
