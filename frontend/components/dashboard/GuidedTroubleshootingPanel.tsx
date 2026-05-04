@@ -76,7 +76,7 @@ export function GuidedTroubleshootingPanel() {
         id: "high-5xx-route",
         title: "High 5xx route concentration",
         reason: `Top failing route currently reports ${d.topFailingRoutes[0][1]} server errors.`,
-        next_step: "Open logs scoped to that route and compare request-id level traces.",
+        next_step: "Open requests scoped to that route and compare request IDs plus error payload patterns.",
         href: `/requests?${query}`,
       });
       continue;

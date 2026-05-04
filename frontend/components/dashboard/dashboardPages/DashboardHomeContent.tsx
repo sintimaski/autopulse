@@ -60,6 +60,32 @@ export function DashboardHomeContent() {
     );
   }
   const overviewExtended = resolveOverviewExtendedForHome(overview, requests, homeSlice.overviewExtended);
+  const diagnosisParams = buildScopedQuery({
+    isAbsoluteWindow: d.isAbsoluteWindow,
+    windowMinutes: d.windowMinutes,
+    windowFromTimestamp: d.windowFromTimestamp,
+    windowToTimestamp: d.windowToTimestamp,
+    method: d.method,
+    statusClass: d.statusClass,
+    minLatencyMs: d.minLatencyMs,
+    maxLatencyMs: d.maxLatencyMs,
+    pathQuery: d.pathQuery,
+    serverEnvironmentQuery: d.serverEnvironmentQuery,
+    serverServiceQuery: d.serverServiceQuery,
+    requestLimit: d.requestLimit,
+    requestPage: 0,
+    errorGroupLimit: d.errorGroupLimit,
+    errorGroupPage: 0,
+    errorGroupSort: d.errorGroupSort,
+    sqlFilterApplied: d.sqlFilterApplied,
+    sqlFilterEnabled: d.sqlFilterEnabled,
+  });
+  const diagnosisBaseHref = `/diagnosis?${diagnosisParams.toString()}`;
+  const diagnosisGroupedHref = `/diagnosis?${(() => {
+    const params = new URLSearchParams(diagnosisParams.toString());
+    params.set("error_group_sort", "count");
+    return params.toString();
+  })()}#grouped-errors`;
   const phasedLiteDashboard = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
   if (phasedLiteDashboard) {
     const totalRequests = homeSlice.sparklineSeries.reduce(
@@ -247,7 +273,7 @@ export function DashboardHomeContent() {
                 Recent errors
               </h3>
               <Link
-                href="/diagnosis#grouped-errors"
+                href={diagnosisGroupedHref}
                 className="shrink-0 text-[11px] font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
               >
                 Open diagnosis
@@ -307,32 +333,6 @@ export function DashboardHomeContent() {
     : overview.avg_latency_ms;
   const displayRequestsPerMinute = displayRequestCount / Math.max(d.windowMinutes, 1);
   const usingFilteredSeries = d.method !== "ALL" || d.statusClass !== "ALL";
-  const diagnosisParams = buildScopedQuery({
-    isAbsoluteWindow: d.isAbsoluteWindow,
-    windowMinutes: d.windowMinutes,
-    windowFromTimestamp: d.windowFromTimestamp,
-    windowToTimestamp: d.windowToTimestamp,
-    method: d.method,
-    statusClass: d.statusClass,
-    minLatencyMs: d.minLatencyMs,
-    maxLatencyMs: d.maxLatencyMs,
-    pathQuery: d.pathQuery,
-    serverEnvironmentQuery: d.serverEnvironmentQuery,
-    serverServiceQuery: d.serverServiceQuery,
-    requestLimit: d.requestLimit,
-    requestPage: 0,
-    errorGroupLimit: d.errorGroupLimit,
-    errorGroupPage: 0,
-    errorGroupSort: d.errorGroupSort,
-    sqlFilterApplied: d.sqlFilterApplied,
-    sqlFilterEnabled: d.sqlFilterEnabled,
-  });
-  const diagnosisBaseHref = `/diagnosis?${diagnosisParams.toString()}`;
-  const diagnosisGroupedHref = `/diagnosis?${(() => {
-    const params = new URLSearchParams(diagnosisParams.toString());
-    params.set("error_group_sort", "count");
-    return params.toString();
-  })()}#grouped-errors`;
   const errorTrendValues = d.sparklineSeries.map((bucket) => bucket.error_count);
   const latencyTrendValues = d.sparklineSeries.map((bucket) => bucket.avg_latency_ms);
   const serviceBreakdownByVolume = [...overviewExtended.service_breakdown]

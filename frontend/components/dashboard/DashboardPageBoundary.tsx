@@ -192,6 +192,12 @@ export function DashboardPageBoundary({
   dataReady?: DashboardPageDataReady;
 }) {
   const d = useDashboardData();
+  const onboarding = d.onboardingStatus;
+  const bootstrapIssue = d.workspaceBootstrapError;
+  const likelyMissingIngestKey = Boolean(onboarding && !onboarding.ingest_key_ready);
+  const likelyMissingFirstEvent = Boolean(
+    onboarding && onboarding.ingest_key_ready && !onboarding.first_event_received,
+  );
   const hasRenderableData =
     dataReady === "traffic-full"
       ? Boolean(d.overview && d.requests && d.errorGroups)
@@ -256,18 +262,46 @@ export function DashboardPageBoundary({
           <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">
             No data for this view yet
           </h2>
-          <p className="mt-2 text-sm">
-            This view requires recent traffic data that has not arrived yet. If you are onboarding, open{" "}
-            <Link
-              href="/onboarding"
-              className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
-            >
-              Onboarding
-            </Link>
-            {isApiSubpathDashboard()
-              ? " — startup ping may appear after deploy; refresh."
-              : " — send traffic, refresh."}
-          </p>
+          {bootstrapIssue ? (
+            <p className="mt-2 text-sm">
+              Dashboard bootstrap failed before traffic queries completed: {bootstrapIssue}. Verify backend
+              readiness (`/health`, `/ready`) and confirm `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` points to
+              the API origin
+              {isAbsoluteOriginOnlyApiBase()
+                ? " (origin-only URL detected)."
+                : " (prefer origin-only URL for standalone backend)."}
+            </p>
+          ) : likelyMissingIngestKey ? (
+            <p className="mt-2 text-sm">
+              No project ingest key is ready yet. Issue a key in{" "}
+              <Link
+                href="/onboarding"
+                className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+              >
+                Onboarding
+              </Link>{" "}
+              (or `Settings` for existing projects), add it as `AUTOPULSE_API_KEY`, then send a request.
+            </p>
+          ) : likelyMissingFirstEvent ? (
+            <p className="mt-2 text-sm">
+              Ingest key exists, but no events were received for this project yet. Check that your app
+              sends to backend `POST /ingest`, confirm `AUTOPULSE_INGEST_URL` points at the correct backend,
+              and verify the key belongs to this dashboard project.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm">
+              This view requires recent traffic data that has not arrived yet. If you are onboarding, open{" "}
+              <Link
+                href="/onboarding"
+                className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+              >
+                Onboarding
+              </Link>
+              {isApiSubpathDashboard()
+                ? " — startup ping may appear after deploy; refresh."
+                : " — send traffic, refresh."}
+            </p>
+          )}
         </section>
       </div>
     );
