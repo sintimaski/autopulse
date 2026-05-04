@@ -14,6 +14,8 @@ type TimeSeriesLineChartProps = {
   summaryValue?: number;
   summaryLabel?: string;
   emptyMessage?: string;
+  /** Tailwind height class for the plot area (default matches compact dashboard cards). */
+  chartAreaHeightClass?: string;
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -38,6 +40,7 @@ export function TimeSeriesLineChart({
   summaryValue,
   summaryLabel = "Latest",
   emptyMessage = "No data for this graph range.",
+  chartAreaHeightClass = "h-[5.25rem]",
 }: TimeSeriesLineChartProps) {
   const latest = values.length ? values[values.length - 1] : 0;
   const displayValue = summaryValue ?? latest;
@@ -131,7 +134,7 @@ export function TimeSeriesLineChart({
       </div>
       {values.length ? (
         <>
-          <div className="relative h-[5.25rem] w-full" aria-label={`${title} time series chart`}>
+          <div className={`relative w-full ${chartAreaHeightClass}`} aria-label={`${title} time series chart`}>
             <CanvasLine data={chartData} options={options} />
           </div>
           <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400">

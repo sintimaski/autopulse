@@ -10,7 +10,11 @@ import {
   maxBucketRequestCount,
   trimSeriesToLastMinutes,
 } from "../../utils/dashboardData";
-import { buildAlignedChartSpanOptions, buildVolumeStepOptions } from "../../utils/dashboardChartWindows";
+import {
+  buildAlignedChartSpanOptions,
+  buildVolumeStepOptions,
+  defaultVolumeStepMinutes,
+} from "../../utils/dashboardChartWindows";
 import { CanvasBar } from "./charts/chartCanvas";
 import { TimeSeriesLineChart } from "./charts/TimeSeriesLineChart";
 
@@ -71,7 +75,8 @@ export function VolumeChart({
 }) {
   const router = useRouter();
   const [chartSpanMinutes, setChartSpanMinutes] = useState(0);
-  const [stepMinutes, setStepMinutes] = useState(1);
+  /** `null` = use span-derived default step (coarser than 1m when the window allows). */
+  const [stepMinutesUser, setStepMinutesUser] = useState<number | null>(null);
 
   const chartSpanOptions = useMemo(
     () => buildAlignedChartSpanOptions(globalWindowMinutes),
@@ -91,10 +96,15 @@ export function VolumeChart({
     [effectiveSpanMinutes],
   );
 
-  const effectiveStepMinutes = useMemo(
-    () => clampStepToAllowed(stepMinutes, allowedStepMinutes),
-    [allowedStepMinutes, stepMinutes],
+  const autoStepMinutes = useMemo(
+    () => defaultVolumeStepMinutes(effectiveSpanMinutes, allowedStepMinutes),
+    [allowedStepMinutes, effectiveSpanMinutes],
   );
+
+  const effectiveStepMinutes = useMemo(() => {
+    const pick = stepMinutesUser === null ? autoStepMinutes : stepMinutesUser;
+    return clampStepToAllowed(pick, allowedStepMinutes);
+  }, [allowedStepMinutes, autoStepMinutes, stepMinutesUser]);
 
   const displayed = useMemo(() => {
     const trimmed =
@@ -230,7 +240,8 @@ export function VolumeChart({
     [displayed, max, onBucketClick],
   );
 
-  const barChartHeight = 120;
+  const barChartHeight = Math.round(120 * 1.25);
+  const volumeLineChartHeightClass = "h-[6.5625rem]";
 
   return (
     <div>
@@ -258,7 +269,7 @@ export function VolumeChart({
             Step (minutes)
             <select
               value={effectiveStepMinutes}
-              onChange={(e) => setStepMinutes(Number(e.target.value))}
+              onChange={(e) => setStepMinutesUser(Number(e.target.value))}
               className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
               {allowedStepMinutes.map((m) => (
@@ -283,11 +294,11 @@ export function VolumeChart({
         ) : (
           <>
             <div
-              className="overflow-x-auto rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-3 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
+              className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-3 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
               role="img"
               aria-label="Request volume by time bucket"
             >
-              <div style={{ minWidth: Math.max(320, displayed.length * 8), height: barChartHeight }}>
+              <div className="w-full" style={{ height: barChartHeight }}>
                 <CanvasBar data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
@@ -300,6 +311,7 @@ export function VolumeChart({
                 formatValue={(value) => `${Math.round(value)}`}
                 summaryLabel="Total"
                 summaryValue={totalRequests}
+                chartAreaHeightClass={volumeLineChartHeightClass}
               />
               <TimeSeriesLineChart
                 title="Error Rate Trend"
@@ -313,6 +325,7 @@ export function VolumeChart({
                 formatValue={(value) => `${value.toFixed(1)}%`}
                 summaryLabel="Window avg"
                 summaryValue={overallErrorRatePct}
+                chartAreaHeightClass={volumeLineChartHeightClass}
               />
               <TimeSeriesLineChart
                 title="Error Count Trend"
@@ -322,6 +335,7 @@ export function VolumeChart({
                 formatValue={(value) => `${Math.round(value)}`}
                 summaryLabel="Total"
                 summaryValue={totalErrors}
+                chartAreaHeightClass={volumeLineChartHeightClass}
               />
               <TimeSeriesLineChart
                 title="Latency Trend"
@@ -330,6 +344,7 @@ export function VolumeChart({
                 color="#a3a3a3"
                 formatValue={(value) => `${value.toFixed(1)} ms`}
                 summaryLabel="Latest"
+                chartAreaHeightClass={volumeLineChartHeightClass}
               />
             </div>
           </>

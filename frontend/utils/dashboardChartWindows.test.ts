@@ -4,6 +4,7 @@ import {
   buildAlignedChartSpanOptions,
   buildAlignedRollupBucketOptions,
   buildVolumeStepOptions,
+  defaultVolumeStepMinutes,
   formatMinutesForUi,
   VOLUME_CHART_TARGET_MAX_BUCKETS,
 } from "./dashboardChartWindows";
@@ -66,5 +67,24 @@ describe("buildVolumeStepOptions", () => {
     expect(Math.min(...steps)).toBeGreaterThanOrEqual(5);
     expect(steps).toContain(10);
     expect(steps).toContain(15);
+  });
+});
+
+describe("defaultVolumeStepMinutes", () => {
+  it("prefers a coarser step than 1m when the span allows", () => {
+    const allowed = buildVolumeStepOptions(15);
+    expect(defaultVolumeStepMinutes(15, allowed)).toBeGreaterThanOrEqual(2);
+  });
+
+  it("falls back to the only allowed step for a 1-minute span", () => {
+    const allowed = buildVolumeStepOptions(1);
+    expect(defaultVolumeStepMinutes(1, allowed)).toBe(1);
+  });
+
+  it("targets a moderate bucket count for a 24h window", () => {
+    const allowed = buildVolumeStepOptions(1440);
+    const step = defaultVolumeStepMinutes(1440, allowed);
+    expect(1440 / step).toBeLessThanOrEqual(48);
+    expect(allowed).toContain(step);
   });
 });

@@ -37,6 +37,26 @@ export function buildVolumeStepOptions(effectiveSpanMinutes: number): number[] {
   return allowed;
 }
 
+/** Aim for ~24 bars by default (coarser than 1m when the span allows it). */
+const DEFAULT_VOLUME_STEP_TARGET_BUCKETS = 24;
+
+/**
+ * Default "Step (minutes)" for traffic volume: first allowed step that keeps the
+ * bucket count roughly under {@link DEFAULT_VOLUME_STEP_TARGET_BUCKETS}, when possible.
+ */
+export function defaultVolumeStepMinutes(effectiveSpanMinutes: number, allowedSteps: readonly number[]): number {
+  if (!allowedSteps.length) {
+    return 1;
+  }
+  const span = Math.max(1, Math.floor(Number(effectiveSpanMinutes) || 1));
+  const ideal = Math.max(2, Math.ceil(span / DEFAULT_VOLUME_STEP_TARGET_BUCKETS));
+  const atOrAbove = allowedSteps.filter((s) => s >= ideal);
+  if (atOrAbove.length > 0) {
+    return atOrAbove[0]!;
+  }
+  return allowedSteps[allowedSteps.length - 1]!;
+}
+
 export function formatMinutesForUi(minutes: number): string {
   const m = Math.max(1, Math.floor(Number(minutes) || 1));
   if (m % 1440 === 0) {
