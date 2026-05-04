@@ -35,6 +35,7 @@ __all__ = [
     "StubAlertSender",
     "WebhookAlertSender",
     "build_alert_sender",
+    "build_project_alert_sender",
     "evaluate_alerts_once",
 ]
 
@@ -56,7 +57,6 @@ async def evaluate_alerts_once(
     if not settings.alerts_enabled:
         return 0
 
-    resolved_sender = sender or build_alert_sender(settings)
     resolved_now = _as_utc(now or datetime.now(tz=UTC))
     dispatch_count = 0
 
@@ -65,6 +65,7 @@ async def evaluate_alerts_once(
         alert_settings = await get_or_create_project_alert_settings(session, project_id, settings)
         if not alert_settings.enabled:
             continue
+        resolved_sender = sender or build_project_alert_sender(settings, alert_settings)
 
         spike_window_start = resolved_now - timedelta(
             minutes=alert_settings.error_spike_window_minutes
@@ -174,3 +175,75 @@ async def evaluate_alerts_once(
 
     await session.commit()
     return dispatch_count
+
+
+def build_project_alert_sender(settings: Settings, project_alert_settings: object) -> AlertSender:
+    """Resolve a sender from project-level delivery channel settings.
+
+    Falls back to global sender wiring when no project channel is configured.
+    """
+    if not settings.alerts_enabled:
+        return StubAlertSender()
+
+    senders: list[AlertSender] = []
+    email_enabled = bool(getattr(project_alert_settings, "email_enabled", True))
+    destination_email = bool(getattr(project_alert_settings, "destination_email", None))
+
+    if email_enabled and destination_email:
+        email_provider = (settings.alert_email_provider or "").strip().lower()
+        if email_provider in {"file", "outbox"}:
+            senders.append(
+                EmailAlertSender(
+                    provider=email_provider,
+                    from_email=settings.alert_email_from,
+                    file_outbox_dir=getattr(settings, "alert_email_file_outbox_dir", None),
+                )
+            )
+        elif email_provider == "sendmail":
+            senders.append(
+                EmailAlertSender(
+                    provider=email_provider,
+                    from_email=settings.alert_email_from,
+                )
+            )
+        elif email_provider in {"smtp", "smtp_localhost"}:
+            senders.append(
+                EmailAlertSender(
+                    provider=email_provider,
+                    from_email=settings.alert_email_from,
+                    smtp_host=getattr(settings, "alert_email_smtp_host", None),
+                    smtp_port=getattr(settings, "alert_email_smtp_port", 25),
+                    smtp_use_tls=getattr(settings, "alert_email_smtp_use_tls", False),
+                    smtp_username=getattr(settings, "alert_email_smtp_username", None),
+                    smtp_password=getattr(settings, "alert_email_smtp_password", None),
+                )
+            )
+        elif settings.alert_email_api_key and settings.alert_email_from:
+            senders.append(
+                EmailAlertSender(
+                    provider=email_provider,
+                    api_key=settings.alert_email_api_key,
+                    from_email=settings.alert_email_from,
+                )
+            )
+
+    if bool(getattr(project_alert_settings, "slack_enabled", False)):
+        slack_webhook_url = getattr(project_alert_settings, "slack_webhook_url", None)
+        if slack_webhook_url:
+            senders.append(SlackWebhookAlertSender(webhook_url=slack_webhook_url))
+
+    if bool(getattr(project_alert_settings, "discord_enabled", False)):
+        discord_webhook_url = getattr(project_alert_settings, "discord_webhook_url", None)
+        if discord_webhook_url:
+            senders.append(DiscordWebhookAlertSender(webhook_url=discord_webhook_url))
+
+    if bool(getattr(project_alert_settings, "webhook_enabled", False)):
+        webhook_url = getattr(project_alert_settings, "webhook_url", None)
+        if webhook_url:
+            senders.append(WebhookAlertSender(webhook_url=webhook_url))
+
+    if len(senders) == 1:
+        return senders[0]
+    if len(senders) > 1:
+        return CompositeAlertSender(senders=senders)
+    return StubAlertSender()

@@ -27,6 +27,9 @@ export function useDashboardAuthSession(): {
   authSessionResolved: boolean;
   sessionEmail: string | null;
   membershipRole: DashboardSessionResponse["membership_role"];
+  /** Project UUID the cookie session is bound to (same scope as ``/dashboard/query``). */
+  sessionProjectId: string | null;
+  sessionOrganizationId: string | null;
   /** Distinguish expired/forbidden session from a connectivity failure when ``hasSession`` is false. */
   sessionIssue: DashboardAuthSessionIssue;
   /** Re-run ``/dashboard/auth/session`` (e.g. after WS handshake failures or HTTP 401) without a full reload. */
@@ -36,6 +39,8 @@ export function useDashboardAuthSession(): {
   const [authSessionResolved, setAuthSessionResolved] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [membershipRole, setMembershipRole] = useState<DashboardSessionResponse["membership_role"]>(null);
+  const [sessionProjectId, setSessionProjectId] = useState<string | null>(null);
+  const [sessionOrganizationId, setSessionOrganizationId] = useState<string | null>(null);
   const [sessionIssue, setSessionIssue] = useState<DashboardAuthSessionIssue>("none");
   const [sessionRequestId, setSessionRequestId] = useState(0);
 
@@ -60,6 +65,8 @@ export function useDashboardAuthSession(): {
             setHasSession(false);
             setSessionEmail(null);
             setMembershipRole(null);
+            setSessionProjectId(null);
+            setSessionOrganizationId(null);
             setSessionIssue(
               response.status === 401 || response.status === 403 ? "unauthorized" : "network",
             );
@@ -71,6 +78,10 @@ export function useDashboardAuthSession(): {
           setHasSession(Boolean(payload.authenticated));
           setSessionEmail(payload.email ?? null);
           setMembershipRole(payload.membership_role ?? null);
+          setSessionProjectId(payload.authenticated ? (payload.project_id ?? null) : null);
+          setSessionOrganizationId(
+            payload.authenticated ? (payload.organization_id ?? null) : null,
+          );
           setSessionIssue("none");
         }
       } catch (err) {
@@ -78,6 +89,8 @@ export function useDashboardAuthSession(): {
           setHasSession(false);
           setSessionEmail(null);
           setMembershipRole(null);
+          setSessionProjectId(null);
+          setSessionOrganizationId(null);
           setSessionIssue("network");
         }
       } finally {
@@ -92,5 +105,14 @@ export function useDashboardAuthSession(): {
     };
   }, [sessionRequestId]);
 
-  return { hasSession, authSessionResolved, sessionEmail, membershipRole, sessionIssue, reloadSession };
+  return {
+    hasSession,
+    authSessionResolved,
+    sessionEmail,
+    membershipRole,
+    sessionProjectId,
+    sessionOrganizationId,
+    sessionIssue,
+    reloadSession,
+  };
 }

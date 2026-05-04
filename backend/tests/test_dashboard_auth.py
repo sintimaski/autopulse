@@ -1055,3 +1055,64 @@ def test_dashboard_updates_websocket_subscribes_after_magic_link(
             first = ws.receive_json()
             assert first["type"] == "subscribed"
             assert first["project_id"] == expected_project_id
+
+
+def test_dashboard_active_project_rebinds_session_to_sibling_project(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Session defaults to the org's oldest project; active-project switches scope for queries."""
+    _truncate_tables(backend_test_database_url)
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(
+            client, email="active-proj@example.com", tmp_path=tmp_path
+        )
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+        first_project_id = verify_response.json()["project_id"]
+        organization_id = verify_response.json()["organization_id"]
+        assert organization_id
+
+        second_project_id = str(uuid4())
+
+        async def _insert_second_project() -> None:
+            engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+            session_maker = async_sessionmaker(
+                bind=engine, expire_on_commit=False, class_=AsyncSession
+            )
+            try:
+                async with session_maker() as session:
+                    session.add(
+                        Project(
+                            id=UUID(second_project_id),
+                            name="Sibling project",
+                            organization_id=UUID(organization_id),
+                        )
+                    )
+                    await session.commit()
+            finally:
+                await engine.dispose()
+
+        asyncio.run(_insert_second_project())
+
+        switch = client.post(
+            "/dashboard/auth/active-project",
+            json={"project_id": second_project_id},
+        )
+        assert switch.status_code == 200, switch.text
+        assert switch.json()["project_id"] == second_project_id
+
+        session_payload = client.get("/dashboard/auth/session").json()
+        assert session_payload["authenticated"] is True
+        assert session_payload["project_id"] == second_project_id
+        assert session_payload["project_id"] != first_project_id
+
+        missing = client.post("/dashboard/auth/active-project", json={"project_id": str(uuid4())})
+        assert missing.status_code == 404

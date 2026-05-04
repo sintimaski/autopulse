@@ -679,3 +679,60 @@ async def revoke_current_dashboard_session(
     row.revoked_at = now
     await session.commit()
     return True
+
+
+async def update_dashboard_session_active_project(
+    *,
+    request: HTTPConnection,
+    session: AsyncSession,
+    settings: Settings,
+    user_id: UUID,
+    next_project_id: UUID,
+) -> DashboardAuthSession:
+    """Point the current cookie session at another project the user may access.
+
+    Without this, ``_resolve_project_for_user`` only runs at login, so the dashboard can stay
+    bound to an org's oldest project while ingest uses a key for a different project in the
+    same org — traffic queries then return empty series.
+    """
+    raw_token = _raw_dashboard_session_token_from_request(request, settings)
+    if not raw_token:
+        raise _unauthorized("Dashboard session is required")
+    now = _now()
+    session_row = await session.scalar(
+        select(DashboardSession).where(
+            DashboardSession.token_hash == _hash_token(raw_token),
+            DashboardSession.revoked_at.is_(None),
+            DashboardSession.expires_at >= now,
+        )
+    )
+    if session_row is None or session_row.user_id != user_id:
+        raise _unauthorized("Invalid dashboard session")
+    project = await session.scalar(select(Project).where(Project.id == next_project_id))
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.organization_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project is not linked to an organization",
+        )
+    membership = await session.scalar(
+        select(OrganizationMembership).where(
+            OrganizationMembership.organization_id == project.organization_id,
+            OrganizationMembership.user_id == user_id,
+        )
+    )
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a member of this project's organization",
+        )
+    session_row.project_id = next_project_id
+    session_row.organization_id = project.organization_id
+    await session.commit()
+    refreshed = await get_dashboard_auth_session(
+        session=session, settings=settings, request=request
+    )
+    if refreshed is None:
+        raise _unauthorized("Session could not be refreshed")
+    return refreshed

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -271,6 +272,13 @@ class DashboardBootstrapResponse(BaseModel):
 class DashboardAlertSettings(BaseModel):
     enabled: bool
     destination_email: str | None = None
+    email_enabled: bool = True
+    slack_enabled: bool = False
+    slack_webhook_url: str | None = None
+    discord_enabled: bool = False
+    discord_webhook_url: str | None = None
+    webhook_enabled: bool = False
+    webhook_url: str | None = None
     error_spike_ratio_threshold: float
     error_spike_min_requests: int
     error_spike_window_minutes: int
@@ -282,6 +290,13 @@ class DashboardAlertSettings(BaseModel):
 class DashboardAlertSettingsUpdate(BaseModel):
     enabled: bool
     destination_email: str | None = None
+    email_enabled: bool = True
+    slack_enabled: bool = False
+    slack_webhook_url: str | None = None
+    discord_enabled: bool = False
+    discord_webhook_url: str | None = None
+    webhook_enabled: bool = False
+    webhook_url: str | None = None
     error_spike_ratio_threshold: float
     error_spike_min_requests: int
     error_spike_window_minutes: int
@@ -292,6 +307,14 @@ class DashboardAlertSettingsUpdate(BaseModel):
     @field_validator("destination_email")
     @classmethod
     def normalize_destination_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("slack_webhook_url", "discord_webhook_url", "webhook_url")
+    @classmethod
+    def normalize_optional_webhook_url(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
@@ -489,6 +512,12 @@ class DashboardSessionResponse(BaseModel):
     project_id: str | None = None
     organization_id: str | None = None
     membership_role: Literal["owner", "admin", "member", "viewer"] | None = None
+
+
+class DashboardSetActiveProjectRequest(BaseModel):
+    """Switch the signed-in session to another project the user may access."""
+
+    project_id: UUID
 
 
 class DashboardOnboardingStatusResponse(BaseModel):

@@ -5,58 +5,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import type { AlertSettings } from "../dashboardTypes";
-import { buildApiUrl } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
-import { canManageProjectAlertsAndRetention, isDashboardViewer } from "../dashboardRoleHelpers";
+import { canManageProjectAlertsAndRetention } from "../dashboardRoleHelpers";
 import { buildScopedQuery } from "../dashboardQueryState";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { useDashboardAlertsSlice } from "../data/useDashboardSlices";
 
-type AlertTestResult = {
-  status: string;
-  delivered_via: string;
-  reason_code: string | null;
-  reason_message: string | null;
-  attempt_count: number;
-  delivered_at: string | null;
-  provider_message_id: string | null;
-  destination_email: string | null;
-};
-
 export function AlertsContent() {
   const d = useDashboardData();
   const canEditAlertPolicy = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
-  const viewerSession = isDashboardViewer(d.sessionMembershipRole);
   const alertsSlice = useDashboardAlertsSlice();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
   const [showFailedOnly, setShowFailedOnly] = useState(false);
-  const [testAlertSending, setTestAlertSending] = useState(false);
-  const [testAlertResult, setTestAlertResult] = useState<AlertTestResult | null>(null);
-  const [testAlertError, setTestAlertError] = useState<string | null>(null);
   const form = alertsSlice.alertSettings;
-
-  const sendTestAlert = async () => {
-    setTestAlertSending(true);
-    setTestAlertError(null);
-    setTestAlertResult(null);
-    try {
-      const response = await fetch(buildApiUrl("/dashboard/alert-test"), {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error(`alert-test failed (${response.status})`);
-      }
-      const body = (await response.json()) as AlertTestResult;
-      setTestAlertResult(body);
-      d.setRefreshToken((token) => token + 1);
-    } catch (error) {
-      setTestAlertError(error instanceof Error ? error.message : "Test alert failed.");
-    } finally {
-      setTestAlertSending(false);
-    }
-  };
 
   const overview = d.overview;
   const { requestCount, errorCount } = useMemo(
@@ -202,8 +164,14 @@ export function AlertsContent() {
             <>
               {!canEditAlertPolicy ? (
                 <p className="mt-2 text-xs text-slate-600 dark:text-neutral-300">
-                  Only owners and admins can change alert policy. You can still send a test alert (except viewers) and
-                  review dispatches.
+                  Only owners and admins can change alert policy. Members can still send a test alert from{" "}
+                  <Link
+                    href="/settings#alert-delivery"
+                    className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                  >
+                    Settings
+                  </Link>
+                  ; review dispatches below.
                 </p>
               ) : null}
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -363,74 +331,17 @@ export function AlertsContent() {
           )}
         </div>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">
-                Delivery channels
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-                Status reflects current server configuration. A channel is marked active only when
-                the backend env is wired to actually dispatch through it.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void sendTestAlert()}
-              disabled={viewerSession || testAlertSending}
-              className="ap-btn-primary"
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-neutral-200">Delivery channels</h3>
+          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-300">
+            Configure email, Slack, Discord, and generic webhooks, see server readiness, and send a test alert on{" "}
+            <Link
+              href="/settings#alert-delivery"
+              className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
             >
-              {testAlertSending ? "Sending test alert…" : "Send test alert"}
-            </button>
-          </div>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-            {d.alertCapabilities.map((capability) => (
-              <li
-                key={capability.channel}
-                className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900/60"
-              >
-                <div>
-                  <p className="font-medium capitalize text-slate-800 dark:text-neutral-100">
-                    {capability.channel}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">
-                    {capability.reason}
-                  </p>
-                </div>
-                <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    capability.status === "active"
-                      ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
-                      : capability.status === "planned"
-                        ? "bg-slate-300/40 text-slate-700 dark:bg-neutral-700 dark:text-neutral-200"
-                        : "bg-amber-500/15 text-amber-800 dark:text-amber-300"
-                  }`}
-                >
-                  {capability.status}
-                </span>
-              </li>
-            ))}
-          </ul>
-          {testAlertResult ? (
-            <p
-              className={`mt-2 text-xs ${
-                testAlertResult.status === "sent"
-                  ? "text-emerald-700 dark:text-emerald-400"
-                  : "text-rose-700 dark:text-rose-400"
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              Test alert {testAlertResult.status} via {testAlertResult.delivered_via}
-              {testAlertResult.reason_message ? ` — ${testAlertResult.reason_message}` : ""}
-              {testAlertResult.destination_email
-                ? ` (to ${testAlertResult.destination_email})`
-                : ""}
-              .
-            </p>
-          ) : null}
-          {testAlertError ? (
-            <p className="mt-2 text-xs text-rose-700 dark:text-rose-400">{testAlertError}</p>
-          ) : null}
+              Settings → Alert delivery
+            </Link>
+            .
+          </p>
         </div>
         <div className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60 lg:col-span-3">
           <div className="flex items-center justify-between gap-2">

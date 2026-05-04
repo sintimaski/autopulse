@@ -815,6 +815,10 @@ def test_dashboard_alert_settings_read_and_update(backend_test_database_url: str
         assert read_response.status_code == 200
         current = read_response.json()
         assert current["enabled"] is True
+        assert current["email_enabled"] is True
+        assert current["slack_enabled"] is False
+        assert current["discord_enabled"] is False
+        assert current["webhook_enabled"] is False
         assert current["error_spike_ratio_threshold"] == 0.4
         assert current["error_spike_min_requests"] == 20
         assert current["outage_min_requests"] == 10
@@ -823,6 +827,13 @@ def test_dashboard_alert_settings_read_and_update(backend_test_database_url: str
         update_payload = {
             "enabled": False,
             "destination_email": "team@example.com",
+            "email_enabled": True,
+            "slack_enabled": True,
+            "slack_webhook_url": "https://hooks.slack.test/abc",
+            "discord_enabled": True,
+            "discord_webhook_url": "https://discord.test/webhooks/1",
+            "webhook_enabled": True,
+            "webhook_url": "https://example.com/webhook",
             "error_spike_ratio_threshold": 0.6,
             "error_spike_min_requests": 35,
             "error_spike_window_minutes": 7,
@@ -854,6 +865,13 @@ def test_dashboard_alert_settings_are_scoped_by_project(backend_test_database_ur
             json={
                 "enabled": True,
                 "destination_email": "project-one@example.com",
+                "email_enabled": True,
+                "slack_enabled": False,
+                "slack_webhook_url": None,
+                "discord_enabled": False,
+                "discord_webhook_url": None,
+                "webhook_enabled": False,
+                "webhook_url": None,
                 "error_spike_ratio_threshold": 0.55,
                 "error_spike_min_requests": 25,
                 "error_spike_window_minutes": 6,
@@ -955,9 +973,9 @@ def test_dashboard_alert_capabilities_reports_active_and_unavailable_channels(
     by_channel = {channel["channel"]: channel for channel in payload["channels"]}
     assert by_channel["email"]["status"] == "active"
     assert by_channel["email"]["enabled"] is True
-    assert by_channel["slack"]["status"] == "unavailable"
-    assert by_channel["slack"]["enabled"] is False
-    assert "alert_sender_mode excludes slack" in by_channel["slack"]["reason"].lower()
+    assert by_channel["slack"]["status"] == "active"
+    assert by_channel["slack"]["enabled"] is True
+    assert "enabled and webhook is configured" in by_channel["slack"]["reason"].lower()
     assert by_channel["discord"]["status"] == "planned"
     assert by_channel["webhook"]["status"] == "planned"
 

@@ -152,11 +152,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _log_grouped_startup_settings()
     settings = get_settings()
 
-    if not settings.database_url.startswith("sqlite"):
-        from autopulse_backend.database.migrations import upgrade_to_head
+    # Alembic must run for SQLite too: ``create_all`` only creates missing tables and does not
+    # ALTER existing tables when ORM columns are added (otherwise startup hits "no such column").
+    from autopulse_backend.database.migrations import upgrade_to_head
 
-        upgrade_to_head()
-        logger.info("Applied Alembic migrations to head (non-SQLite DATABASE_URL)")
+    upgrade_to_head()
+    logger.info("Applied Alembic migrations to head")
 
     if settings.database_url.startswith("sqlite"):
         engine = get_engine(settings.database_url)

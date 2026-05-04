@@ -14,6 +14,13 @@ def serialize_alert_settings(settings: ProjectAlertSettings) -> DashboardAlertSe
     return DashboardAlertSettings(
         enabled=settings.enabled,
         destination_email=settings.destination_email,
+        email_enabled=bool(settings.email_enabled),
+        slack_enabled=bool(settings.slack_enabled),
+        slack_webhook_url=settings.slack_webhook_url,
+        discord_enabled=bool(settings.discord_enabled),
+        discord_webhook_url=settings.discord_webhook_url,
+        webhook_enabled=bool(settings.webhook_enabled),
+        webhook_url=settings.webhook_url,
         error_spike_ratio_threshold=float(settings.error_spike_ratio_threshold),
         error_spike_min_requests=int(settings.error_spike_min_requests),
         error_spike_window_minutes=int(settings.error_spike_window_minutes),

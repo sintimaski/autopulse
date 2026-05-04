@@ -256,7 +256,7 @@ async def get_dashboard_bootstrap(
     alert_settings = await get_dashboard_alert_settings(context=context, session=session)
     theme_settings = await get_dashboard_theme_settings(context=context, session=session)
     api_keys = await list_dashboard_api_keys(auth_session=auth_session, session=session)
-    alert_capabilities = await get_dashboard_alert_capabilities()
+    alert_capabilities = await get_dashboard_alert_capabilities(context=context, session=session)
     onboarding_status = await get_dashboard_onboarding_status(
         auth_session=auth_session, session=session
     )

@@ -38,7 +38,7 @@ from autopulse_backend.schemas import (
 )
 from autopulse_backend.services.alert_service import (
     AlertSignal,
-    build_alert_sender,
+    build_project_alert_sender,
 )
 
 AlertChannelStatus = Literal["active", "configured", "planned", "unavailable"]
@@ -168,70 +168,80 @@ async def get_dashboard_alert_dispatches(
 
 
 @router.get("/alert-capabilities", response_model=DashboardAlertCapabilitiesResponse)
-async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesResponse:
+async def get_dashboard_alert_capabilities(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardAlertCapabilitiesResponse:
     settings = get_settings()
-    mode = (settings.alert_sender_mode or "").strip().lower()
+    alert_settings = await get_or_create_project_alert_settings(
+        session, context.project_id, settings
+    )
+    await session.commit()
     email_provider = (settings.alert_email_provider or "").strip().lower()
-    email_status: AlertChannelStatus
-    if not settings.alerts_enabled:
+    email_destination_set = bool(alert_settings.destination_email)
+    email_provider_ready = (
+        email_provider in {"file", "outbox", "sendmail"}
+        or (email_provider in {"smtp", "smtp_localhost"} and bool(settings.alert_email_smtp_host))
+        or (
+            email_provider in {"resend", "postmark"}
+            and bool(settings.alert_email_api_key)
+            and bool(settings.alert_email_from)
+        )
+    )
+    if not alert_settings.email_enabled:
+        email_status: AlertChannelStatus = "configured" if email_destination_set else "planned"
+        email_reason = (
+            "Email delivery is configured but disabled for this project."
+            if email_destination_set
+            else "Set destination email and enable channel to dispatch email alerts."
+        )
+    elif not settings.alerts_enabled:
         email_status = "unavailable"
         email_reason = "Alert dispatch is disabled by configuration."
-    elif email_provider in {"file", "outbox"}:
-        email_status = "active"
-        email_reason = (
-            "File outbox provider is active; alerts are written to disk "
-            f"({settings.alert_email_file_outbox_dir})."
-        )
-    elif email_provider in {"smtp", "smtp_localhost"} and settings.alert_email_smtp_host:
-        email_status = "active"
-        email_reason = "SMTP dispatch configured."
-    elif email_provider in {"resend", "postmark"} and settings.alert_email_api_key:
-        email_status = "active"
-        email_reason = f"Email provider {email_provider} configured with API key."
-    elif email_provider == "sendmail":
-        email_status = "active"
-        email_reason = "sendmail provider configured; delivery depends on local MTA."
-    elif mode == "stub":
+    elif not email_destination_set:
         email_status = "unavailable"
-        email_reason = "Alert sender is running in stub mode (no external delivery)."
+        email_reason = "Email channel is enabled but destination email is not set."
+    elif email_provider_ready:
+        email_status = "active"
+        email_reason = f"Email channel enabled and provider '{email_provider}' is ready."
     else:
         email_status = "unavailable"
-        email_reason = (
-            "Email provider is not fully configured. Set ALERT_EMAIL_PROVIDER plus the "
-            "relevant credentials or outbox directory."
-        )
-    slack_configured = bool(settings.alert_slack_webhook_url)
-    discord_configured = bool(settings.alert_discord_webhook_url)
-    webhook_configured = bool(settings.alert_webhook_url)
-    slack_active = slack_configured and mode in {"slack", "composite"} and settings.alerts_enabled
+        email_reason = "Email channel is enabled but provider is not fully configured."
+    slack_configured = bool(alert_settings.slack_webhook_url)
+    discord_configured = bool(alert_settings.discord_webhook_url)
+    webhook_configured = bool(alert_settings.webhook_url)
+    slack_active = (
+        bool(alert_settings.slack_enabled) and slack_configured and settings.alerts_enabled
+    )
     discord_active = (
-        discord_configured and mode in {"discord", "composite"} and settings.alerts_enabled
+        bool(alert_settings.discord_enabled) and discord_configured and settings.alerts_enabled
     )
     webhook_active = (
-        webhook_configured and mode in {"webhook", "composite"} and settings.alerts_enabled
+        bool(alert_settings.webhook_enabled) and webhook_configured and settings.alerts_enabled
     )
-    slack_modes = frozenset({"slack", "composite"})
-    discord_modes = frozenset({"discord", "composite"})
-    webhook_modes = frozenset({"webhook", "composite"})
+    slack_modes = frozenset({"enabled"})
+    discord_modes = frozenset({"enabled"})
+    webhook_modes = frozenset({"enabled"})
+    toggle_mode = "enabled"
     slack_status = _auxiliary_webhook_channel_status(
         configured=slack_configured,
         active=slack_active,
         alerts_enabled=settings.alerts_enabled,
-        mode=mode,
+        mode=toggle_mode if alert_settings.slack_enabled else "disabled",
         allowed_modes=slack_modes,
     )
     discord_status = _auxiliary_webhook_channel_status(
         configured=discord_configured,
         active=discord_active,
         alerts_enabled=settings.alerts_enabled,
-        mode=mode,
+        mode=toggle_mode if alert_settings.discord_enabled else "disabled",
         allowed_modes=discord_modes,
     )
     webhook_status = _auxiliary_webhook_channel_status(
         configured=webhook_configured,
         active=webhook_active,
         alerts_enabled=settings.alerts_enabled,
-        mode=mode,
+        mode=toggle_mode if alert_settings.webhook_enabled else "disabled",
         allowed_modes=webhook_modes,
     )
     channels = [
@@ -246,18 +256,18 @@ async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesRespon
             status=slack_status,
             enabled=slack_active,
             reason=(
-                "Slack webhook configured and included in alert_sender_mode."
+                "Slack channel is enabled and webhook is configured."
                 if slack_active
                 else (
-                    "Slack webhook is configured but alert_sender_mode excludes slack."
-                    if slack_status == "configured"
+                    "Slack webhook is configured but channel is disabled for this project."
+                    if slack_configured and not alert_settings.slack_enabled
                     else (
-                        "Slack webhook is set but alerts are disabled."
-                        if slack_configured and not settings.alerts_enabled
+                        "Slack channel is enabled but webhook URL is missing."
+                        if alert_settings.slack_enabled and not slack_configured
                         else (
-                            "Slack delivery is not enabled. Set ALERT_SLACK_WEBHOOK_URL."
-                            if not slack_configured
-                            else "Slack channel is not active for this deployment."
+                            "Slack webhook configured, but global alert dispatch is disabled."
+                            if slack_configured and not settings.alerts_enabled
+                            else "Set a Slack webhook URL to configure this channel."
                         )
                     )
                 )
@@ -268,18 +278,18 @@ async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesRespon
             status=discord_status,
             enabled=discord_active,
             reason=(
-                "Discord webhook configured and included in alert_sender_mode."
+                "Discord channel is enabled and webhook is configured."
                 if discord_active
                 else (
-                    "Discord webhook is configured but alert_sender_mode excludes discord."
-                    if discord_status == "configured"
+                    "Discord webhook is configured but channel is disabled for this project."
+                    if discord_configured and not alert_settings.discord_enabled
                     else (
-                        "Discord webhook is set but alerts are disabled."
-                        if discord_configured and not settings.alerts_enabled
+                        "Discord channel is enabled but webhook URL is missing."
+                        if alert_settings.discord_enabled and not discord_configured
                         else (
-                            "Discord delivery is not enabled. Set ALERT_DISCORD_WEBHOOK_URL."
-                            if not discord_configured
-                            else "Discord channel is not active for this deployment."
+                            "Discord webhook configured, but global alert dispatch is disabled."
+                            if discord_configured and not settings.alerts_enabled
+                            else "Set a Discord webhook URL to configure this channel."
                         )
                     )
                 )
@@ -290,18 +300,18 @@ async def get_dashboard_alert_capabilities() -> DashboardAlertCapabilitiesRespon
             status=webhook_status,
             enabled=webhook_active,
             reason=(
-                "Generic webhook configured and included in alert_sender_mode."
+                "Webhook channel is enabled and URL is configured."
                 if webhook_active
                 else (
-                    "Webhook URL is configured but alert_sender_mode excludes it."
-                    if webhook_status == "configured"
+                    "Webhook URL is configured but channel is disabled for this project."
+                    if webhook_configured and not alert_settings.webhook_enabled
                     else (
-                        "Webhook URL is set but alerts are disabled."
-                        if webhook_configured and not settings.alerts_enabled
+                        "Webhook channel is enabled but URL is missing."
+                        if alert_settings.webhook_enabled and not webhook_configured
                         else (
-                            "Generic webhook delivery is not configured."
-                            if not webhook_configured
-                            else "Webhook channel is not active for this deployment."
+                            "Webhook URL configured, but global alert dispatch is disabled."
+                            if webhook_configured and not settings.alerts_enabled
+                            else "Set a generic webhook URL to configure this channel."
                         )
                     )
                 )
@@ -341,7 +351,7 @@ async def send_test_alert_dispatch(
             "sender_mode": settings.alert_sender_mode,
         },
     )
-    sender = build_alert_sender(settings)
+    sender = build_project_alert_sender(settings, alert_settings)
     dispatch_result = await sender.send(signal)
     merged_detail = (
         {**signal.detail, **dispatch_result.detail}
@@ -385,6 +395,13 @@ async def update_dashboard_alert_settings(
     )
     alert_settings.enabled = payload.enabled
     alert_settings.destination_email = payload.destination_email
+    alert_settings.email_enabled = payload.email_enabled
+    alert_settings.slack_enabled = payload.slack_enabled
+    alert_settings.slack_webhook_url = payload.slack_webhook_url
+    alert_settings.discord_enabled = payload.discord_enabled
+    alert_settings.discord_webhook_url = payload.discord_webhook_url
+    alert_settings.webhook_enabled = payload.webhook_enabled
+    alert_settings.webhook_url = payload.webhook_url
     alert_settings.error_spike_ratio_threshold = payload.error_spike_ratio_threshold
     alert_settings.error_spike_min_requests = payload.error_spike_min_requests
     alert_settings.error_spike_window_minutes = payload.error_spike_window_minutes

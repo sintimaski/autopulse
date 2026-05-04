@@ -209,6 +209,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     authSessionResolved,
     sessionEmail,
     membershipRole: sessionMembershipRole,
+    sessionProjectId,
+    sessionOrganizationId,
     sessionIssue: dashboardAuthSessionIssue,
     reloadSession: reloadDashboardAuthSession,
   } = useDashboardAuthSession();
@@ -388,7 +390,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       controller.abort();
     };
-  }, [hasDashboardSession, reloadDashboardAuthSession, bootstrapRetryToken]);
+  }, [hasDashboardSession, reloadDashboardAuthSession, bootstrapRetryToken, sessionProjectId]);
 
   useEffect(() => {
     if (!hasDashboardSession) {
@@ -665,6 +667,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     sqlFilterEnabled,
     sqlFilterApplied,
     reloadDashboardAuthSession,
+    sessionProjectId,
   ]);
 
   useEffect(() => {
@@ -840,7 +843,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         liveSocketRef.current = null;
       }
     };
-  }, [hasDashboardSession, authSessionResolved, reloadDashboardAuthSession]);
+  }, [hasDashboardSession, authSessionResolved, reloadDashboardAuthSession, sessionProjectId]);
 
   useEffect(() => {
     if (!hasDashboardSession || liveUpdatesConnected) {
@@ -1209,6 +1212,29 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const payload = (await response.json()) as DashboardApiKeyListResponse;
     setApiKeys(payload.items ?? []);
   }, [hasDashboardSession]);
+
+  const setActiveDashboardProject = useCallback(
+    async (projectId: string): Promise<boolean> => {
+      if (!hasDashboardSession) {
+        return false;
+      }
+      const response = await fetch(buildApiUrl("/dashboard/auth/active-project"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ project_id: projectId }),
+      });
+      if (!response.ok) {
+        return false;
+      }
+      reloadDashboardAuthSession();
+      setWorkspaceBootstrapError(null);
+      setBootstrapRetryToken((t) => t + 1);
+      setRefreshToken((n) => n + 1);
+      return true;
+    },
+    [hasDashboardSession, reloadDashboardAuthSession],
+  );
 
   const issueApiKey = useCallback(async (): Promise<boolean> => {
     if (!hasDashboardSession) {
@@ -1843,6 +1869,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       hasDashboardSession,
       sessionEmail,
       sessionMembershipRole,
+      sessionProjectId,
+      sessionOrganizationId,
       authSessionResolved,
       dashboardAuthSessionIssue,
       windowMinutes,
@@ -1926,6 +1954,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
       refreshApiKeys,
+      setActiveDashboardProject,
       signOutDashboard,
       completeOnboarding,
       issueApiKey,
@@ -1974,6 +2003,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       hasDashboardSession,
       sessionEmail,
       sessionMembershipRole,
+      sessionProjectId,
+      sessionOrganizationId,
       authSessionResolved,
       dashboardAuthSessionIssue,
       windowMinutes,
@@ -2043,6 +2074,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       saveExcludeAutopulseTraffic,
       saveRetentionSettings,
       refreshApiKeys,
+      setActiveDashboardProject,
       signOutDashboard,
       completeOnboarding,
       issueApiKey,

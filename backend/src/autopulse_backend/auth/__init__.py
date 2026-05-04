@@ -19,6 +19,7 @@ from autopulse_backend.auth.dashboard import (
     issue_dashboard_session_for_user,
     require_dashboard_auth_session,
     revoke_current_dashboard_session,
+    update_dashboard_session_active_project,
     verify_magic_link_and_create_session,
 )
 from autopulse_backend.auth.rbac import (
@@ -52,6 +53,7 @@ __all__ = [
     "parse_api_key",
     "require_dashboard_auth_session",
     "revoke_current_dashboard_session",
+    "update_dashboard_session_active_project",
     "verify_api_key_secret",
     "verify_magic_link_and_create_session",
 ]

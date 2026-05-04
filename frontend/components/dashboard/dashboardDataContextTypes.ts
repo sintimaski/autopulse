@@ -52,6 +52,9 @@ export type DashboardDataContextValue = {
   sessionEmail: string | null;
   /** Role in the organization for the session's active project (from ``/dashboard/auth/session``). */
   sessionMembershipRole: DashboardSessionResponse["membership_role"];
+  /** Ingest and dashboard traffic are queried for this project id (cookie session). */
+  sessionProjectId: string | null;
+  sessionOrganizationId: string | null;
   /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
   authSessionResolved: boolean;
   /** When there is no session, whether the API rejected cookies vs a connectivity problem. */
@@ -141,6 +144,8 @@ export type DashboardDataContextValue = {
   saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
   saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
   refreshApiKeys: () => Promise<void>;
+  /** Rebind the dashboard cookie session to another project you belong to (refreshes data). */
+  setActiveDashboardProject: (projectId: string) => Promise<boolean>;
   signOutDashboard: () => Promise<void>;
   /** Persists project onboarding completion after first ingest (server-validated). */
   completeOnboarding: () => Promise<boolean>;

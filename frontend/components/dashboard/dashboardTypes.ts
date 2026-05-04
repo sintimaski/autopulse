@@ -180,6 +180,13 @@ export type DiagnosisErrorGroupEventsResponse = {
 export type AlertSettings = {
   enabled: boolean;
   destination_email: string | null;
+  email_enabled: boolean;
+  slack_enabled: boolean;
+  slack_webhook_url: string | null;
+  discord_enabled: boolean;
+  discord_webhook_url: string | null;
+  webhook_enabled: boolean;
+  webhook_url: string | null;
   error_spike_ratio_threshold: number;
   error_spike_min_requests: number;
   error_spike_window_minutes: number;

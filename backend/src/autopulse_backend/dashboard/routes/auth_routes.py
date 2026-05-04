@@ -27,6 +27,7 @@ from autopulse_backend.auth import (
     require_owner,
     require_owner_or_admin,
     revoke_current_dashboard_session,
+    update_dashboard_session_active_project,
     verify_magic_link_and_create_session,
 )
 from autopulse_backend.auth.dashboard import derive_magic_link_base_url
@@ -53,6 +54,7 @@ from autopulse_backend.schemas import (
     DashboardMagicLinkVerifyRequest,
     DashboardOnboardingStatusResponse,
     DashboardSessionResponse,
+    DashboardSetActiveProjectRequest,
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync, run_duckdb_write_sync
 from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
@@ -400,6 +402,33 @@ async def revoke_dashboard_api_key(
         key_id=existing.key_id,
         created_at=existing.created_at,
         revoked_at=existing.revoked_at,
+    )
+
+
+@router.post("/auth/active-project", response_model=DashboardSessionResponse)
+async def set_dashboard_active_project(
+    payload: DashboardSetActiveProjectRequest,
+    request: Request,
+    auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardSessionResponse:
+    settings = get_settings()
+    updated = await update_dashboard_session_active_project(
+        request=request,
+        session=session,
+        settings=settings,
+        user_id=auth_session.user_id,
+        next_project_id=payload.project_id,
+    )
+    return DashboardSessionResponse(
+        authenticated=True,
+        email=updated.email,
+        expires_at=updated.expires_at,
+        project_id=str(updated.project_id),
+        organization_id=(
+            str(updated.organization_id) if updated.organization_id is not None else None
+        ),
+        membership_role=normalize_membership_role(updated.membership_role),
     )
 
 
