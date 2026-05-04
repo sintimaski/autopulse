@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { AlertSettings } from "../dashboardTypes";
 import { buildApiUrl } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { canManageProjectAlertsAndRetention, isDashboardViewer } from "../dashboardRoleHelpers";
 import { buildScopedQuery } from "../dashboardQueryState";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { useDashboardAlertsSlice } from "../data/useDashboardSlices";
@@ -24,6 +25,8 @@ type AlertTestResult = {
 
 export function AlertsContent() {
   const d = useDashboardData();
+  const canEditAlertPolicy = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
+  const viewerSession = isDashboardViewer(d.sessionMembershipRole);
   const alertsSlice = useDashboardAlertsSlice();
   const router = useRouter();
   const [formError, setFormError] = useState<string | null>(null);
@@ -197,10 +200,17 @@ export function AlertsContent() {
           </h3>
           {form ? (
             <>
+              {!canEditAlertPolicy ? (
+                <p className="mt-2 text-xs text-slate-600 dark:text-neutral-300">
+                  Only owners and admins can change alert policy. You can still send a test alert (except viewers) and
+                  review dispatches.
+                </p>
+              ) : null}
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
                   <input
                     type="checkbox"
+                    disabled={!canEditAlertPolicy}
                     checked={form.enabled}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({ ...form, enabled: event.target.checked })
@@ -212,6 +222,7 @@ export function AlertsContent() {
                   Destination email
                   <input
                     type="email"
+                    disabled={!canEditAlertPolicy}
                     value={form.destination_email ?? ""}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -230,6 +241,7 @@ export function AlertsContent() {
                     min={0}
                     max={1}
                     step={0.01}
+                    disabled={!canEditAlertPolicy}
                     value={form.error_spike_ratio_threshold}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -245,6 +257,7 @@ export function AlertsContent() {
                   <input
                     type="number"
                     min={1}
+                    disabled={!canEditAlertPolicy}
                     value={form.error_spike_min_requests}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -260,6 +273,7 @@ export function AlertsContent() {
                   <input
                     type="number"
                     min={1}
+                    disabled={!canEditAlertPolicy}
                     value={form.error_spike_window_minutes}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -275,6 +289,7 @@ export function AlertsContent() {
                   <input
                     type="number"
                     min={1}
+                    disabled={!canEditAlertPolicy}
                     value={form.outage_min_requests}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -290,6 +305,7 @@ export function AlertsContent() {
                   <input
                     type="number"
                     min={1}
+                    disabled={!canEditAlertPolicy}
                     value={form.outage_window_minutes}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -305,6 +321,7 @@ export function AlertsContent() {
                   <input
                     type="number"
                     min={1}
+                    disabled={!canEditAlertPolicy}
                     value={form.cooldown_minutes}
                     onChange={(event) =>
                       d.updateAlertSettingsDraft({
@@ -320,7 +337,7 @@ export function AlertsContent() {
                 <button
                   type="button"
                   onClick={onSave}
-                  disabled={d.alertSettingsSaving}
+                  disabled={!canEditAlertPolicy || d.alertSettingsSaving}
                   className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-medium text-sky-900 shadow-sm transition-colors hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 active:scale-[0.99] disabled:opacity-60 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40 dark:focus-visible:ring-neutral-500/50"
                 >
                   {d.alertSettingsSaving ? "Saving..." : "Save alert settings"}
@@ -359,7 +376,7 @@ export function AlertsContent() {
             <button
               type="button"
               onClick={() => void sendTestAlert()}
-              disabled={testAlertSending}
+              disabled={viewerSession || testAlertSending}
               className="ap-btn-primary"
             >
               {testAlertSending ? "Sending test alert…" : "Send test alert"}

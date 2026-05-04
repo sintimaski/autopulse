@@ -1,4 +1,5 @@
 type DashboardEndpointLabel =
+  | "bootstrap"
   | "overview"
   | "overview-extended"
   | "widgets"

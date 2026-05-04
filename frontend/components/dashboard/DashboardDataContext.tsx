@@ -208,6 +208,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     hasSession: hasDashboardSession,
     authSessionResolved,
     sessionEmail,
+    membershipRole: sessionMembershipRole,
     sessionIssue: dashboardAuthSessionIssue,
     reloadSession: reloadDashboardAuthSession,
   } = useDashboardAuthSession();
@@ -354,7 +355,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (bootstrapResponse.status === 401) {
           reloadDashboardAuthSession();
         }
-        const results = [{ endpoint: "overview", response: bootstrapResponse }] as DashboardFetchResult[];
+        const results = [{ endpoint: "bootstrap", response: bootstrapResponse }] as DashboardFetchResult[];
 
         const fetchError = buildDashboardFetchError(results);
         if (fetchError) {
@@ -1841,6 +1842,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     (): DashboardDataContextValue => ({
       hasDashboardSession,
       sessionEmail,
+      sessionMembershipRole,
       authSessionResolved,
       dashboardAuthSessionIssue,
       windowMinutes,
@@ -1971,6 +1973,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [
       hasDashboardSession,
       sessionEmail,
+      sessionMembershipRole,
       authSessionResolved,
       dashboardAuthSessionIssue,
       windowMinutes,

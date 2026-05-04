@@ -3,15 +3,18 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import (
     DashboardAuthSession,
+    create_magic_link_token,
     normalize_membership_role,
     require_dashboard_auth_session,
 )
+from autopulse_backend.auth.dashboard import derive_magic_link_base_url
+from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_db_session
 from autopulse_backend.models import (
     DashboardUser,
@@ -157,6 +160,7 @@ async def list_organization_members(
 async def invite_organization_member(
     organization_id: UUID,
     payload: DashboardInviteMemberRequest,
+    request: Request,
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardMembershipItem:
@@ -212,6 +216,15 @@ async def invite_organization_member(
     )
     await session.commit()
     await session.refresh(membership)
+    settings = get_settings()
+    if settings.dashboard_auth_enabled:
+        magic_base = derive_magic_link_base_url(request, settings)
+        await create_magic_link_token(
+            session=session,
+            settings=settings,
+            email=payload.email,
+            magic_link_base_url=magic_base,
+        )
     return DashboardMembershipItem(
         user_id=str(invited_user.id),
         email=invited_user.email,

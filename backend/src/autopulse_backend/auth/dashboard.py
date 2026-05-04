@@ -291,19 +291,10 @@ async def create_magic_link_token(
     magic_link_base_url: str | None = None,
 ) -> str | None:
     normalized_email = _normalize_email(email)
-    allowed_email = _normalize_email(settings.dashboard_auth_allowed_email or "")
-    domains = settings.dashboard_allowed_email_domains
-    env = (settings.autopulse_env or "development").strip().lower()
     if not settings.dashboard_auth_enabled:
         raise _forbidden("Dashboard authentication is disabled.")
-    if allowed_email:
-        if normalized_email != allowed_email:
-            # Return None for unknown email so request endpoint remains non-enumerating.
-            return None
-    elif domains:
-        if not _email_matches_allowed_domains(normalized_email, domains):
-            return None
-    elif env == "production":
+    if not await dashboard_email_allowed_for_sign_in(session, settings, normalized_email):
+        # Return None for unknown email so request endpoint remains non-enumerating.
         return None
 
     raw_token = secrets.token_urlsafe(32)
@@ -325,6 +316,61 @@ async def create_magic_link_token(
         magic_link_base_url=magic_link_base_url,
     )
     return raw_token
+
+
+def derive_magic_link_base_url(request: HTTPConnection, settings: Settings) -> str | None:
+    """Build absolute magic-link verify URL when the request hits a ``/dashboard/...`` route."""
+    configured = (settings.dashboard_auth_magic_link_base_url or "").strip()
+    if configured:
+        return configured
+    path = request.url.path
+    if "/dashboard/" in path:
+        prefix = path.split("/dashboard/", 1)[0]
+        return f"{request.base_url.scheme}://{request.base_url.netloc}{prefix}/ui/auth/magic-link"
+    return None
+
+
+async def _dashboard_user_has_organization_membership(
+    session: AsyncSession, normalized_email: str
+) -> bool:
+    user_id = await session.scalar(
+        select(DashboardUser.id).where(DashboardUser.email == normalized_email)
+    )
+    if user_id is None:
+        return False
+    return bool(
+        await session.scalar(
+            select(OrganizationMembership.id)
+            .where(OrganizationMembership.user_id == user_id)
+            .limit(1)
+        )
+    )
+
+
+async def dashboard_email_allowed_for_sign_in(
+    session: AsyncSession,
+    settings: Settings,
+    normalized_email: str,
+) -> bool:
+    """True when this email may request a magic link or complete OIDC sign-in.
+
+    Uses configured allowlist/domain rules, then allows any email that already has at
+    least one organization membership (e.g. invited teammates).
+    """
+    allowed_email = _normalize_email(settings.dashboard_auth_allowed_email or "")
+    domains = settings.dashboard_allowed_email_domains
+    env = (settings.autopulse_env or "development").strip().lower()
+    if allowed_email:
+        if normalized_email == allowed_email:
+            return True
+    elif domains:
+        if _email_matches_allowed_domains(normalized_email, domains):
+            return True
+    else:
+        if env != "production":
+            return True
+
+    return await _dashboard_user_has_organization_membership(session, normalized_email)
 
 
 def _build_magic_link_url(settings: Settings, token: str, *, base_url: str | None = None) -> str:

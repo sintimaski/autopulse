@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import (
+    DashboardAuthSession,
     ProjectContext,
     authenticate_dashboard_project,
     ensure_dashboard_admin_or_owner,
-    ensure_dashboard_not_viewer,
 )
+from autopulse_backend.auth.dashboard import get_dashboard_auth_session
+from autopulse_backend.auth.rbac import require_member_or_above, require_owner_or_admin
 from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.repositories.project_ui import get_or_create_project_ui_settings
 from autopulse_backend.dashboard.serializers import (
@@ -26,6 +28,15 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
+
+
+async def _optional_dashboard_auth_session(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardAuthSession | None:
+    """Cookie session when present; ``None`` for API-key-only dashboard clients."""
+    settings = get_settings()
+    return await get_dashboard_auth_session(session=session, settings=settings, request=request)
 
 
 @router.get("/theme-settings", response_model=DashboardThemeSettings)
@@ -44,9 +55,18 @@ async def update_dashboard_theme_settings(
     payload: DashboardThemeSettingsUpdate,
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
-    _: Annotated[None, Depends(ensure_dashboard_not_viewer)],
+    auth_session: Annotated[DashboardAuthSession | None, Depends(_optional_dashboard_auth_session)],
 ) -> DashboardThemeSettings:
     settings = await get_or_create_project_ui_settings(session, context.project_id)
+    exclude_changed = payload.exclude_autopulse_traffic != settings.exclude_autopulse_traffic
+    theme_changed = payload.theme_preference != settings.theme_preference
+    if auth_session is not None:
+        if exclude_changed:
+            require_owner_or_admin(auth_session)
+        if theme_changed:
+            require_member_or_above(auth_session)
+    # API-key-only requests have no cookie session; ``authenticate_dashboard_project`` treats them
+    # as operator/owner scope (see ``ProjectContext.membership_role`` on fallback).
     settings.theme_preference = payload.theme_preference
     settings.exclude_autopulse_traffic = payload.exclude_autopulse_traffic
     await session.commit()

@@ -12,6 +12,12 @@ import type {
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
+import {
+  canInviteOrganizationMembers,
+  canManageIngestApiKeys,
+  canManageProjectAlertsAndRetention,
+  isDashboardViewer,
+} from "../dashboardRoleHelpers";
 
 /** This account must not be assigned the member role (product guardrail). */
 const PROTECTED_OWNER_EMAIL = "owner@example.com";
@@ -52,8 +58,13 @@ export function SettingsContent() {
   const [keyBulkAction, setKeyBulkAction] = useState<"" | "rotate" | "revoke">("");
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
+  const canEditRetention = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
+  const canMutateApiKeys = canManageIngestApiKeys(d.sessionMembershipRole);
+  const viewerSession = isDashboardViewer(d.sessionMembershipRole);
 
   const selectedOrganization = organizations.find((organization) => organization.organization_id === selectedOrganizationId);
+  /** Invites are tied to the signed-in dashboard session role, not the org picker alone. */
+  const canInviteMembers = canInviteOrganizationMembers(d.sessionMembershipRole);
 
   const primaryActiveKeyId = useMemo(() => {
     const active = d.apiKeys.filter((k) => !k.revoked_at);
@@ -320,12 +331,18 @@ export function SettingsContent() {
             <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
               Configure how long raw events are retained and the max query window for SQL logs.
             </p>
+            {!canEditRetention ? (
+              <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+                Only organization owners and admins can change retention. You can still view the current policy.
+              </p>
+            ) : null}
             <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
               <label className="block min-w-0 max-w-md text-sm text-slate-700 dark:text-neutral-200">
                 Raw events retention (days)
                 <input
                   type="number"
                   min={1}
+                  disabled={!canEditRetention}
                   value={effectiveRetentionDraft.raw_events_days}
                   onChange={(event) =>
                     setRetentionDraft({
@@ -350,6 +367,7 @@ export function SettingsContent() {
                 <input
                   type="number"
                   min={1}
+                  disabled={!canEditRetention}
                   value={effectiveRetentionDraft.logs_query_max_window_minutes}
                   onChange={(event) =>
                     setRetentionDraft({
@@ -373,6 +391,7 @@ export function SettingsContent() {
                 <input
                   type="number"
                   min={1}
+                  disabled={!canEditRetention}
                   value={effectiveRetentionDraft.retention_max_db_size_mb ?? ""}
                   onChange={(event) =>
                     setRetentionDraft({
@@ -389,6 +408,7 @@ export function SettingsContent() {
                 <input
                   type="number"
                   min={1}
+                  disabled={!canEditRetention}
                   value={effectiveRetentionDraft.retention_max_log_rows ?? ""}
                   onChange={(event) =>
                     setRetentionDraft({
@@ -406,6 +426,7 @@ export function SettingsContent() {
                 Retention tier
                 <select
                   value={effectiveRetentionDraft.retention_plan}
+                  disabled={!canEditRetention}
                   onChange={(event) =>
                     setRetentionDraft({
                       ...effectiveRetentionDraft,
@@ -422,6 +443,7 @@ export function SettingsContent() {
               <label className="flex max-w-md flex-1 items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
                 <input
                   type="checkbox"
+                  disabled={!canEditRetention}
                   checked={effectiveRetentionDraft.archival_enabled}
                   onChange={(event) =>
                     setRetentionDraft({
@@ -455,6 +477,7 @@ export function SettingsContent() {
             </p>
             <button
               type="button"
+              disabled={!canEditRetention}
               onClick={async () => {
                 if (!effectiveRetentionDraft) {
                   return;
@@ -485,6 +508,11 @@ export function SettingsContent() {
         <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-neutral-50">
           Exclude AutoPulse internal traffic
         </h2>
+        {!canEditRetention ? (
+          <p className="mt-2 text-sm text-slate-700 dark:text-neutral-200">
+            Only organization owners and admins can change this setting.
+          </p>
+        ) : null}
         <p className="mt-2 text-sm font-medium text-slate-700 dark:text-neutral-200">
           When enabled, requests to <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/autopulse/*</code>,{" "}
           <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/dashboard/*</code>, and{" "}
@@ -496,7 +524,7 @@ export function SettingsContent() {
             type="checkbox"
             className="mt-1 size-4 shrink-0 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
             checked={d.excludeAutopulseTraffic}
-            disabled={d.themeSettingsSaving}
+            disabled={!canEditRetention || d.themeSettingsSaving}
             onChange={async (event) => {
               const ok = await d.saveExcludeAutopulseTraffic(event.target.checked);
               setThemeMessage(
@@ -521,7 +549,8 @@ export function SettingsContent() {
             </p>
             <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Organizations &amp; members</h2>
             <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-neutral-400">
-              Owners: select members, choose an action, confirm, then apply.{" "}
+              Owners: select members, choose an action, confirm, then apply. Admins can invite members and manage most
+              settings; only owners can promote or demote roles here.{" "}
               <span className="font-medium text-slate-800 dark:text-neutral-200">{PROTECTED_OWNER_EMAIL}</span> cannot be
               assigned the member role.
             </p>
@@ -551,6 +580,10 @@ export function SettingsContent() {
                     setSelectedMemberIds(new Set());
                     setMemberBulkRole("");
                     setSelectedOrganizationId(value);
+                    const nextOrg = organizations.find((o) => o.organization_id === value);
+                    if (nextOrg?.role === "admin") {
+                      setInviteRole((r) => (r === "owner" ? "member" : r));
+                    }
                   }}
                   className="ap-select mt-1.5 w-full"
                 >
@@ -690,7 +723,7 @@ export function SettingsContent() {
               )}
             </div>
 
-            {orgOwnerAccess ? (
+            {canInviteMembers ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-neutral-700 dark:bg-neutral-900/50">
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Invite member</h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
@@ -718,7 +751,9 @@ export function SettingsContent() {
                       aria-label="Invite role"
                     >
                       <option value="member">Member</option>
-                      <option value="owner">Owner</option>
+                      {selectedOrganization?.role === "owner" ? (
+                        <option value="owner">Owner</option>
+                      ) : null}
                     </select>
                   </label>
                   <button
@@ -768,7 +803,9 @@ export function SettingsContent() {
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">API key lifecycle</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Issue, rotate, and revoke ingest keys. These actions are owner-only and audited.
+          {canMutateApiKeys
+            ? "Issue, rotate, and revoke ingest keys (owners and admins). All changes are audited."
+            : "Active keys for this project (read-only). Ask an owner or admin to issue or rotate keys."}
         </p>
         {isApiSubpathDashboard() ? (
           <p className="mt-2 text-xs text-slate-600 dark:text-neutral-400">
@@ -779,6 +816,7 @@ export function SettingsContent() {
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
+            disabled={!canMutateApiKeys}
             onClick={async () => {
               const ok = await d.issueApiKey();
               setApiKeyMessage(ok ? "New API key issued." : "Failed to issue API key.");
@@ -804,7 +842,7 @@ export function SettingsContent() {
             <code className="mt-1 block break-all">{d.lastIssuedApiKey}</code>
           </div>
         ) : null}
-        {activeKeyIds.length > 0 ? (
+        {activeKeyIds.length > 0 && canMutateApiKeys ? (
           <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 dark:border-neutral-700 dark:bg-neutral-800/60">
             <label className="block min-w-[12rem] text-sm font-medium text-slate-700 dark:text-neutral-200">
               Action
@@ -842,7 +880,7 @@ export function SettingsContent() {
             <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
               <tr>
                 <th className="w-10 px-2 py-2">
-                  {activeKeyIds.length > 0 ? (
+                  {activeKeyIds.length > 0 && canMutateApiKeys ? (
                     <input
                       type="checkbox"
                       className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
@@ -867,7 +905,7 @@ export function SettingsContent() {
               {d.apiKeys.map((item) => (
                 <tr key={item.key_id}>
                   <td className="px-2 py-2 align-middle">
-                    {!item.revoked_at ? (
+                    {!item.revoked_at && canMutateApiKeys ? (
                       <input
                         type="checkbox"
                         className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
@@ -899,6 +937,12 @@ export function SettingsContent() {
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Theme preference is now a project setting stored in the backend.
         </p>
+        {viewerSession ? (
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            Viewer role: theme and traffic filters are read-only. Ask an owner or admin to change project appearance
+            settings.
+          </p>
+        ) : null}
         <div className="mt-3 grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Dashboard theme">
           {(["system", "light", "dark"] as const).map((theme) => (
             <button
@@ -910,7 +954,7 @@ export function SettingsContent() {
                 const ok = await d.saveThemePreference(theme);
                 setThemeMessage(ok ? "Theme saved." : "Failed to save theme.");
               }}
-              disabled={d.themeSettingsSaving}
+              disabled={viewerSession || d.themeSettingsSaving}
               className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
                 d.themePreference === theme
                   ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"

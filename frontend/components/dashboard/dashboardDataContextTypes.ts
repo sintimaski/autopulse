@@ -10,6 +10,7 @@ import type {
   AlertSettings,
   DashboardApiKeyItem,
   DashboardOnboardingStatusResponse,
+  DashboardSessionResponse,
   DashboardWidgetsResponse,
   DiagnosisErrorGroupEventsResponse,
   DiagnosisFailureRoutesResponse,
@@ -49,6 +50,8 @@ export type DashboardDataContextValue = {
   /** True when the dashboard session cookie is authenticated (not the project ingest API key). */
   hasDashboardSession: boolean;
   sessionEmail: string | null;
+  /** Role in the organization for the session's active project (from ``/dashboard/auth/session``). */
+  sessionMembershipRole: DashboardSessionResponse["membership_role"];
   /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
   authSessionResolved: boolean;
   /** When there is no session, whether the API rejected cookies vs a connectivity problem. */

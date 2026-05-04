@@ -6,10 +6,12 @@ import { useMemo, useState } from "react";
 import { ApCard } from "../../ui/ApCard";
 import { useDashboardData } from "../DashboardDataContext";
 import { isApiSubpathDashboard } from "../dashboardTypes";
+import { canManageIngestApiKeys } from "../dashboardRoleHelpers";
 
 export function OnboardingContent() {
   const router = useRouter();
   const d = useDashboardData();
+  const canIssueKeys = canManageIngestApiKeys(d.sessionMembershipRole);
   const subpathUi = isApiSubpathDashboard();
   const [message, setMessage] = useState<string | null>(null);
   const [continueBusy, setContinueBusy] = useState(false);
@@ -59,13 +61,16 @@ export function OnboardingContent() {
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">2. Ingest key</p>
           <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
-            {subpathUi
-              ? "Issue below only if you want a new token; dashboard auto-syncs .env.autopulse. Rebuild UI after key changes."
-              : "Issue, then copy into host env as AUTOPULSE_API_KEY."}
+            {canIssueKeys
+              ? subpathUi
+                ? "Issue below only if you want a new token; dashboard auto-syncs .env.autopulse. Rebuild UI after key changes."
+                : "Issue, then copy into host env as AUTOPULSE_API_KEY."
+              : "Ask an organization owner or admin to issue or rotate the ingest key."}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
+              disabled={!canIssueKeys}
               onClick={async () => {
                 const ok = await d.issueApiKey();
                 setMessage(

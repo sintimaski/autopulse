@@ -23,11 +23,13 @@ from autopulse_backend.auth import (
     get_dashboard_auth_session,
     normalize_membership_role,
     require_dashboard_auth_session,
+    require_dashboard_org_member,
     require_owner,
     require_owner_or_admin,
     revoke_current_dashboard_session,
     verify_magic_link_and_create_session,
 )
+from autopulse_backend.auth.dashboard import derive_magic_link_base_url
 from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.database import get_db_session
 from autopulse_backend.models import (
@@ -165,7 +167,7 @@ async def request_dashboard_magic_link(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardMagicLinkRequestResponse:
     settings = get_settings()
-    derived_magic_link_base_url = _derive_magic_link_base_url(request, settings)
+    derived_magic_link_base_url = derive_magic_link_base_url(request, settings)
     raw_token = await create_magic_link_token(
         session=session,
         settings=settings,
@@ -186,18 +188,6 @@ async def request_dashboard_magic_link(
         dev_token=raw_token if settings.dashboard_auth_magic_link_dev_expose_token else None,
         dev_magic_link_url=dev_magic_link_url,
     )
-
-
-def _derive_magic_link_base_url(request: Request, settings: Settings) -> str | None:
-    configured = (settings.dashboard_auth_magic_link_base_url or "").strip()
-    if configured:
-        return configured
-    path = request.url.path
-    marker = "/dashboard/auth/magic-link/request"
-    if marker in path:
-        prefix = path.split(marker, 1)[0]
-        return f"{request.base_url.scheme}://{request.base_url.netloc}{prefix}/ui/auth/magic-link"
-    return None
 
 
 @router.post("/auth/magic-link/verify", response_model=DashboardSessionResponse)
@@ -270,7 +260,7 @@ async def list_dashboard_api_keys(
     auth_session: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardApiKeyListResponse:
-    require_owner_or_admin(auth_session)
+    require_dashboard_org_member(auth_session)
     rows = (
         (
             await session.execute(

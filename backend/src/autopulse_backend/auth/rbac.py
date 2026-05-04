@@ -57,6 +57,15 @@ def require_member_or_above(auth_session: DashboardAuthSession) -> None:
     require_min_dashboard_role(auth_session, min_role="member")
 
 
+def require_dashboard_org_member(auth_session: DashboardAuthSession) -> None:
+    """Require a recognized org role (viewer through owner) for read-only project metadata."""
+    if normalize_membership_role(auth_session.membership_role) is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organization membership required",
+        )
+
+
 async def ensure_dashboard_not_viewer(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db_session)],

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { buildApiUrl } from "./dashboardTypes";
+import { buildApiUrl, type DashboardSessionResponse } from "./dashboardTypes";
 
 const DASHBOARD_AUTH_SESSION_TIMEOUT_MS = 12_000;
 
@@ -26,6 +26,7 @@ export function useDashboardAuthSession(): {
   hasSession: boolean;
   authSessionResolved: boolean;
   sessionEmail: string | null;
+  membershipRole: DashboardSessionResponse["membership_role"];
   /** Distinguish expired/forbidden session from a connectivity failure when ``hasSession`` is false. */
   sessionIssue: DashboardAuthSessionIssue;
   /** Re-run ``/dashboard/auth/session`` (e.g. after WS handshake failures or HTTP 401) without a full reload. */
@@ -34,6 +35,7 @@ export function useDashboardAuthSession(): {
   const [hasSession, setHasSession] = useState(false);
   const [authSessionResolved, setAuthSessionResolved] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [membershipRole, setMembershipRole] = useState<DashboardSessionResponse["membership_role"]>(null);
   const [sessionIssue, setSessionIssue] = useState<DashboardAuthSessionIssue>("none");
   const [sessionRequestId, setSessionRequestId] = useState(0);
 
@@ -57,25 +59,25 @@ export function useDashboardAuthSession(): {
           if (!cancelled) {
             setHasSession(false);
             setSessionEmail(null);
+            setMembershipRole(null);
             setSessionIssue(
               response.status === 401 || response.status === 403 ? "unauthorized" : "network",
             );
           }
           return;
         }
-        const payload = (await response.json()) as {
-          authenticated?: boolean;
-          email?: string | null;
-        };
+        const payload = (await response.json()) as DashboardSessionResponse;
         if (!cancelled) {
           setHasSession(Boolean(payload.authenticated));
           setSessionEmail(payload.email ?? null);
+          setMembershipRole(payload.membership_role ?? null);
           setSessionIssue("none");
         }
       } catch (err) {
         if (!cancelled) {
           setHasSession(false);
           setSessionEmail(null);
+          setMembershipRole(null);
           setSessionIssue("network");
         }
       } finally {
@@ -90,5 +92,5 @@ export function useDashboardAuthSession(): {
     };
   }, [sessionRequestId]);
 
-  return { hasSession, authSessionResolved, sessionEmail, sessionIssue, reloadSession };
+  return { hasSession, authSessionResolved, sessionEmail, membershipRole, sessionIssue, reloadSession };
 }

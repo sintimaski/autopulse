@@ -134,9 +134,11 @@ def _truncate_tables(database_url: str) -> None:
 
 def _extract_magic_link_token_from_outbox(tmp_path) -> str:
     """Decode MIME so quoted-printable outbox tokens are not truncated at ``=`` or soft breaks."""
-    outbox_files = sorted(tmp_path.glob("*.eml"))
+    outbox_files = list(tmp_path.glob("*.eml"))
     assert outbox_files
-    msg = email.message_from_bytes(outbox_files[-1].read_bytes(), policy=policy.default)
+    # Filenames are random UUIDs; pick newest by mtime so this matches the latest send.
+    latest = max(outbox_files, key=lambda p: p.stat().st_mtime)
+    msg = email.message_from_bytes(latest.read_bytes(), policy=policy.default)
     plaintext = msg.get_body(preferencelist=("plain",))
     body = plaintext.get_content() if plaintext is not None else ""
     match = re.search(r"token=([A-Za-z0-9_-]+)", body)
@@ -311,6 +313,234 @@ def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
         )
         assert verify_response.status_code == 200
         assert verify_response.json()["authenticated"] is True
+
+
+def test_dashboard_member_cannot_invite_organization_members(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        owner_token = _request_magic_link_token(
+            client, email="owner@example.com", tmp_path=tmp_path
+        )
+        assert (
+            client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": owner_token}
+            ).status_code
+            == 200
+        )
+        orgs = client.get("/dashboard/organizations").json()["organizations"]
+        organization_id = orgs[0]["organization_id"]
+        assert (
+            client.post(
+                f"/dashboard/organizations/{organization_id}/members/invite",
+                json={"email": "member@example.com", "role": "member"},
+            ).status_code
+            == 200
+        )
+        assert client.post("/dashboard/auth/logout").status_code == 200
+
+    member_app = create_app()
+    with TestClient(member_app) as member_client:
+        member_client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "member@example.com"},
+        )
+        member_token = _extract_magic_link_token_from_outbox(tmp_path)
+        assert (
+            member_client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": member_token}
+            ).status_code
+            == 200
+        )
+        deny = member_client.post(
+            f"/dashboard/organizations/{organization_id}/members/invite",
+            json={"email": "other@example.com", "role": "member"},
+        )
+        assert deny.status_code == 403
+
+
+def test_dashboard_member_cannot_toggle_exclude_autopulse_via_theme_settings(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        owner_token = _request_magic_link_token(
+            client, email="owner@example.com", tmp_path=tmp_path
+        )
+        assert (
+            client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": owner_token}
+            ).status_code
+            == 200
+        )
+        orgs = client.get("/dashboard/organizations").json()["organizations"]
+        organization_id = orgs[0]["organization_id"]
+        assert (
+            client.post(
+                f"/dashboard/organizations/{organization_id}/members/invite",
+                json={"email": "member@example.com", "role": "member"},
+            ).status_code
+            == 200
+        )
+        assert client.post("/dashboard/auth/logout").status_code == 200
+
+    member_app = create_app()
+    with TestClient(member_app) as member_client:
+        member_client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "member@example.com"},
+        )
+        member_token = _extract_magic_link_token_from_outbox(tmp_path)
+        assert (
+            member_client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": member_token}
+            ).status_code
+            == 200
+        )
+
+        read = member_client.get("/dashboard/theme-settings")
+        assert read.status_code == 200
+        initial = read.json()
+        assert initial["exclude_autopulse_traffic"] is True
+
+        deny_exclude = member_client.put(
+            "/dashboard/theme-settings",
+            json={
+                "theme_preference": initial["theme_preference"],
+                "exclude_autopulse_traffic": False,
+            },
+        )
+        assert deny_exclude.status_code == 403
+
+        allow_theme = member_client.put(
+            "/dashboard/theme-settings",
+            json={
+                "theme_preference": "dark",
+                "exclude_autopulse_traffic": initial["exclude_autopulse_traffic"],
+            },
+        )
+        assert allow_theme.status_code == 200
+        assert allow_theme.json()["theme_preference"] == "dark"
+
+
+def test_dashboard_bootstrap_succeeds_for_invited_member(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Bootstrap includes API key list; members must receive 200 (not 403 from list keys)."""
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        owner_token = _request_magic_link_token(
+            client, email="owner@example.com", tmp_path=tmp_path
+        )
+        assert (
+            client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": owner_token}
+            ).status_code
+            == 200
+        )
+        orgs = client.get("/dashboard/organizations").json()["organizations"]
+        organization_id = orgs[0]["organization_id"]
+        invite = client.post(
+            f"/dashboard/organizations/{organization_id}/members/invite",
+            json={"email": "member@example.com", "role": "member"},
+        )
+        assert invite.status_code == 200
+        assert client.post("/dashboard/auth/logout").status_code == 200
+
+    member_app = create_app()
+    with TestClient(member_app) as member_client:
+        member_client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "member@example.com"},
+        )
+        member_token = _extract_magic_link_token_from_outbox(tmp_path)
+        assert (
+            member_client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": member_token}
+            ).status_code
+            == 200
+        )
+        bootstrap = member_client.get("/dashboard/bootstrap")
+        assert bootstrap.status_code == 200
+        payload = bootstrap.json()
+        assert "api_keys" in payload
+        assert isinstance(payload["api_keys"].get("items"), list)
+
+
+def test_invited_member_magic_link_under_single_email_allowlist(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """Invited org members must get magic links even when only the owner email is allowlisted."""
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        owner_token = _request_magic_link_token(
+            client, email="owner@example.com", tmp_path=tmp_path
+        )
+        assert (
+            client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": owner_token}
+            ).status_code
+            == 200
+        )
+        orgs = client.get("/dashboard/organizations").json()["organizations"]
+        organization_id = orgs[0]["organization_id"]
+        eml_before_invite = len(list(tmp_path.glob("*.eml")))
+        invite = client.post(
+            f"/dashboard/organizations/{organization_id}/members/invite",
+            json={"email": "member@example.com", "role": "member"},
+        )
+        assert invite.status_code == 200
+        assert len(list(tmp_path.glob("*.eml"))) > eml_before_invite
+
+        request_response = client.post(
+            "/dashboard/auth/magic-link/request",
+            json={"email": "member@example.com"},
+        )
+        assert request_response.status_code == 200
+        member_token = _extract_magic_link_token_from_outbox(tmp_path)
+        verify_member = client.post(
+            "/dashboard/auth/magic-link/verify",
+            json={"token": member_token},
+        )
+        assert verify_member.status_code == 200
+        assert verify_member.json()["authenticated"] is True
 
 
 def test_dashboard_organization_governance_flow(

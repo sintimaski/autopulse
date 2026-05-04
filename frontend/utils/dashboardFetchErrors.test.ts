@@ -7,7 +7,7 @@ import {
 } from "./dashboardFetchErrors";
 
 function result(
-  endpoint: "overview" | "widgets" | "requests" | "error-groups",
+  endpoint: "bootstrap" | "overview" | "widgets" | "requests" | "error-groups",
   status: number,
 ): DashboardFetchResult {
   return {

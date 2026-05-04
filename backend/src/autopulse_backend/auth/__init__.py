@@ -25,6 +25,7 @@ from autopulse_backend.auth.rbac import (
     ensure_dashboard_admin_or_owner,
     ensure_dashboard_not_viewer,
     normalize_membership_role,
+    require_dashboard_org_member,
     require_owner,
     require_owner_or_admin,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "ensure_dashboard_not_viewer",
     "issue_dashboard_session_for_user",
     "normalize_membership_role",
+    "require_dashboard_org_member",
     "require_owner",
     "require_owner_or_admin",
     "authenticate_dashboard_project",

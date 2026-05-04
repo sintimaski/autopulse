@@ -1006,6 +1006,10 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
     key, _ = _seed_project_and_key(backend_test_database_url, "Project UI Settings")
     base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
     monkeypatch.setenv("INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB", "false")
+    # Do not inherit host .env allowlist-only auth (Bearer ingest key must reach dashboard reads).
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
     app = create_app()
     headers = {"Authorization": f"Bearer {key}"}
     with TestClient(app) as client:

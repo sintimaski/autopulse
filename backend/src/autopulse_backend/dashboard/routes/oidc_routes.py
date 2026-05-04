@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import RedirectResponse, Response
 
 from autopulse_backend.auth.dashboard import (
-    _email_matches_allowed_domains,
+    dashboard_email_allowed_for_sign_in,
     issue_dashboard_session_for_user,
 )
 from autopulse_backend.core.config import get_settings
@@ -248,16 +248,10 @@ async def oidc_login_callback(
             detail="OIDC response did not include a subject (sub) claim",
         )
     normalized_email = email.strip().lower()
-    allow = (settings.dashboard_auth_allowed_email or "").strip().lower()
-    domains = settings.dashboard_allowed_email_domains
-    if allow and normalized_email != allow:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Email is not allowed for this deployment"
-        )
-    if domains and not _email_matches_allowed_domains(normalized_email, domains):
+    if not await dashboard_email_allowed_for_sign_in(session, settings, normalized_email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email domain is not allowed for this deployment",
+            detail="Email is not allowed for this deployment",
         )
 
     parsed_issuer = urlparse(issuer)
