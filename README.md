@@ -14,10 +14,10 @@ pip install autopulse
 
 ```python
 from fastapi import FastAPI
-from autopulse import monitor
+from autopulse import autopulse
 
 app = FastAPI()
-monitor(app)
+autopulse(app)
 ```
 
 ### 1. Remote ingest — local backend
@@ -44,15 +44,15 @@ Operations: [docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT
 
 ## Custom dashboard widgets
 
-Pass `dashboard_widgets=(...)` to `monitor` with `CardWidget`, `LineChartWidget`, `BarChartWidget`, `DonutChartWidget`, `HistogramWidget`, `ScatterPlotWidget`, `StackedAreaWidget` from `autopulse`. Types: `card`, `line`, `bar`, `donut`, `histogram`, `scatter`, `stacked_area`.
+Pass `dashboard_widgets=(...)` to `autopulse` with `CardWidget`, `LineChartWidget`, `BarChartWidget`, `DonutChartWidget`, `HistogramWidget`, `ScatterPlotWidget`, `StackedAreaWidget` from `autopulse`. Types: `card`, `line`, `bar`, `donut`, `histogram`, `scatter`, `stacked_area`.
 
 ```python
 from datetime import UTC, datetime, timedelta
 from fastapi import FastAPI
-from autopulse import CardWidget, LineChartWidget, monitor
+from autopulse import CardWidget, LineChartWidget, autopulse
 
 app = FastAPI()
-monitor(
+autopulse(
     app,
     dashboard_widgets=[
         CardWidget(widget_id="n", title="Count", value=42.0, unit="n", order=10),
@@ -99,9 +99,11 @@ API details: `sdk/src/autopulse/widgets.py`. Full fixture example: `sdk/src/auto
 
 ---
 
-## `monitor(app, **kwargs)`
+## `autopulse(app, **kwargs)` (recommended)
 
 Remote defaults: `mode="remote"`. Ingest from `ingest_url` / `AUTOPULSE_INGEST_URL` / `AUTOPULSE_ENDPOINT` and `api_key` / `AUTOPULSE_API_KEY`.
+
+`monitor(app, **kwargs)` remains supported for backward compatibility, but new integrations should prefer `autopulse(app, **kwargs)` for a one-line default setup.
 
 | Parameter | Notes |
 |-----------|--------|
@@ -112,6 +114,7 @@ Remote defaults: `mode="remote"`. Ingest from `ingest_url` / `AUTOPULSE_INGEST_U
 | `debug` | `AUTOPULSE_DEBUG` |
 | `mount_prefix` | Align with submounted AutoPulse |
 | `capture_headers`, `capture_query_params`, `scrub_keys` | Privacy / capture |
+| `request_sample_rate`, `ignore_path_prefixes` | Volume control (sample high-volume requests, ignore health/noise routes) |
 | `dashboard_widgets` | Custom charts |
 | `capture_infrastructure_metrics`, `infrastructure_probe_interval_ms` | Host metrics |
 | `startup_ingest_ping`, `http_client`, `owns_http_client` | See SDK source |
@@ -120,7 +123,7 @@ Remote defaults: `mode="remote"`. Ingest from `ingest_url` / `AUTOPULSE_INGEST_U
 
 ## Environment reference
 
-**SDK:** `AUTOPULSE_API_KEY`, `AUTOPULSE_INGEST_URL` / `AUTOPULSE_ENDPOINT`, `AUTOPULSE_MAX_QUEUE_SIZE`, `AUTOPULSE_BATCH_MAX_EVENTS`, `AUTOPULSE_FLUSH_INTERVAL_SECONDS`, `AUTOPULSE_DEBUG`, `AUTOPULSE_CAPTURE_HEADERS`, `AUTOPULSE_CAPTURE_QUERY_PARAMS`, `AUTOPULSE_INFRA_PROBE_INTERVAL_MS`.
+**SDK:** `AUTOPULSE_API_KEY`, `AUTOPULSE_INGEST_URL` / `AUTOPULSE_ENDPOINT`, `AUTOPULSE_MAX_QUEUE_SIZE`, `AUTOPULSE_BATCH_MAX_EVENTS`, `AUTOPULSE_FLUSH_INTERVAL_SECONDS`, `AUTOPULSE_DEBUG`, `AUTOPULSE_CAPTURE_HEADERS`, `AUTOPULSE_CAPTURE_QUERY_PARAMS`, `AUTOPULSE_REQUEST_SAMPLE_RATE` (0.0-1.0), `AUTOPULSE_IGNORE_PATH_PREFIXES` (comma-separated route prefixes; default `/health,/ready`), `AUTOPULSE_INFRA_PROBE_INTERVAL_MS`.
 
 **Backend:** `DATABASE_URL`, `AUTOPULSE_EVENT_STORE`, `AUTOPULSE_DUCKDB_PATH`, `AUTOPULSE_DATA_DIR`, `AUTOPULSE_BACKEND_DOTENV`, `CORS_ALLOW_ORIGINS`, `AUTOPULSE_SQLITE_MAX_DB_FILE_MB` (deprecated alias `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`), `AUTOPULSE_ENV_AUTOPULSE_FILE`, plus `DASHBOARD_AUTH_*`, `ALERT_*`, `INGEST_*`, `JOBS_*` — full list in [backend/README.md](./backend/README.md) and `core/config.py`.
 

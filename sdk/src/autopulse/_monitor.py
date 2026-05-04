@@ -66,6 +66,8 @@ class _MonitorConfig:
     capture_headers: bool
     capture_query_params: bool
     scrub_keys: frozenset[str]
+    request_sample_rate: float
+    ignore_path_prefixes: tuple[str, ...]
     dashboard_widgets: tuple[BaseDashboardWidget, ...]
     infrastructure_sampler: InfrastructureSampler | None
     infrastructure_probe_interval_s: float
@@ -157,6 +159,11 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_csv(name: str, default: str = "") -> tuple[str, ...]:
+    raw = os.getenv(name, default)
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
 def _is_sensitive_key(key: str, scrub_keys: frozenset[str]) -> bool:
     lowered = key.lower()
     if lowered in scrub_keys:
@@ -190,6 +197,69 @@ def _scrub_value(value: Any, scrub_keys: frozenset[str]) -> Any:
     if isinstance(value, list):
         return [_scrub_value(item, scrub_keys) for item in value]
     return value
+
+
+def _normalize_path_prefix(prefix: str) -> str:
+    cleaned = str(prefix).strip()
+    if not cleaned:
+        return ""
+    if not cleaned.startswith("/"):
+        cleaned = f"/{cleaned}"
+    if cleaned != "/":
+        cleaned = cleaned.rstrip("/")
+    return cleaned
+
+
+def _resolve_ignore_path_prefixes(raw: object | None) -> tuple[str, ...]:
+    if raw is None:
+        return tuple(
+            prefix
+            for prefix in (
+                _normalize_path_prefix(value)
+                for value in _env_csv("AUTOPULSE_IGNORE_PATH_PREFIXES", "/health,/ready")
+            )
+            if prefix
+        )
+    if isinstance(raw, str):
+        candidates = [raw]
+    elif isinstance(raw, list | tuple | set):
+        candidates = [str(value) for value in raw]
+    else:
+        return ()
+    normalized = []
+    for candidate in candidates:
+        for part in candidate.split(","):
+            prefix = _normalize_path_prefix(part)
+            if prefix:
+                normalized.append(prefix)
+    return tuple(dict.fromkeys(normalized))
+
+
+def _path_is_ignored(path: str, ignore_path_prefixes: tuple[str, ...]) -> bool:
+    if not ignore_path_prefixes:
+        return False
+    return any(path.startswith(prefix) for prefix in ignore_path_prefixes)
+
+
+def _clamp_sample_rate(value: float) -> float:
+    return min(1.0, max(0.0, value))
+
+
+def _should_sample_request(
+    *,
+    request_sample_rate: float,
+    method: str,
+    path: str,
+    request_id: str | None,
+) -> bool:
+    if request_sample_rate >= 1.0:
+        return True
+    if request_sample_rate <= 0.0:
+        return False
+    key = request_id.strip() if request_id else f"{method}:{path}:{_utc_now_iso()}"
+    digest = hashlib.sha256(key.encode("utf-8")).digest()
+    fraction = int.from_bytes(digest[:8], byteorder="big", signed=False) / float(1 << 64)
+    return fraction < request_sample_rate
 
 
 def _add_event_handler(app: Any, event: str, handler: Callable[[], Awaitable[None]]) -> bool:
@@ -470,6 +540,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         started_at = perf_counter()
+        resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
         common: dict[str, Any] = {
             "timestamp": _utc_now_iso(),
             "service_name": self._config.service_name,
@@ -509,12 +580,14 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as exc:
+            if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
+                raise
             latency_ms = (perf_counter() - started_at) * 1000
             stack_trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             self._dispatcher.enqueue(
                 {
                     **common,
-                    "path": _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
+                    "path": resolved_path,
                     "type": "request",
                     "status_code": 500,
                     "latency_ms": round(latency_ms, 3),
@@ -523,7 +596,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             self._dispatcher.enqueue(
                 {
                     **common,
-                    "path": _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
+                    "path": resolved_path,
                     "type": "error",
                     "status_code": 500,
                     "latency_ms": round(latency_ms, 3),
@@ -534,16 +607,26 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
                         type(exc).__name__,
                         str(exc),
                         stack_trace,
-                        _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
+                        resolved_path,
                     ),
                 }
             )
             raise
+        if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
+            return response
         latency_ms = (perf_counter() - started_at) * 1000
+        should_capture_request = response.status_code >= 500 or _should_sample_request(
+            request_sample_rate=self._config.request_sample_rate,
+            method=request.method,
+            path=resolved_path,
+            request_id=request.headers.get("x-request-id"),
+        )
+        if not should_capture_request:
+            return response
         self._dispatcher.enqueue(
             {
                 **common,
-                "path": _resolve_route_path(request, mount_prefix=self._config.mount_prefix),
+                "path": resolved_path,
                 "type": "request",
                 "status_code": response.status_code,
                 "latency_ms": round(latency_ms, 3),
@@ -639,6 +722,17 @@ def monitor(app: Any, **kwargs: Any) -> None:
             )
         ),
         scrub_keys=scrub_keys,
+        request_sample_rate=_clamp_sample_rate(
+            float(
+                resolved_kwargs.get(
+                    "request_sample_rate",
+                    _env_float("AUTOPULSE_REQUEST_SAMPLE_RATE", 1.0),
+                )
+            )
+        ),
+        ignore_path_prefixes=_resolve_ignore_path_prefixes(
+            resolved_kwargs.get("ignore_path_prefixes")
+        ),
         dashboard_widgets=tuple(
             widget for widget in widgets_iterable if isinstance(widget, BaseDashboardWidget)
         ),

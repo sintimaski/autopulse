@@ -262,23 +262,27 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 | Deep links (overview → diagnosis scoped round-trip) | Frontend routing UX | ✅ Done | 2026-05-05 | Phased dashboard “Recent errors → Open diagnosis” now preserves full scoped query state |
 | No-data diagnostics (cause-specific empty state) | Frontend UX | ✅ Done | 2026-05-05 | Empty-state now distinguishes bootstrap/API issues, missing ingest key, and missing first event with actionable next steps |
 | Copy audit (phase 2: trace-claim sweep) | Frontend UX copy | ✅ Done | 2026-05-05 | Searched frontend for trace/tracing claims; no remaining trace-product claims found outside stack-trace exception context |
+| SDK DX polish (recommended entrypoint + fixture env fix) | SDK docs / DX | ✅ Done | 2026-05-05 | README + `sdk/README.md` now recommend `autopulse(app)` while keeping `monitor` compatibility; fixture ingest URL corrected to `/ingest` |
+| Unify scope UX story (phase 1 wording alignment) | Frontend UX | ✅ Done | 2026-05-05 | Server scope toolbar now uses consistent “Requests scope” terminology across requests/logs routes |
+| Sampling (SDK: request sample rate) | SDK | ✅ Done | 2026-05-05 | Added `request_sample_rate` / `AUTOPULSE_REQUEST_SAMPLE_RATE` with 5xx capture preserved |
+| Health/noise ignore list (SDK path prefixes) | SDK | ✅ Done | 2026-05-05 | Added `ignore_path_prefixes` / `AUTOPULSE_IGNORE_PATH_PREFIXES` (default `/health,/ready`) |
 
 ### 7.1 Now (0–4 weeks) — trust, clarity, golden path
 
 | Item | Status | Outcome / acceptance criteria |
 |------|--------|-------------------------------|
-| Unify scope UX story | ⬜ Planned | One documented pattern: “simple facets everywhere” OR “toolbar everywhere” with migration plan |
+| Unify scope UX story | 🟨 In progress | One documented pattern: “simple facets everywhere” OR “toolbar everywhere” with migration plan |
 | Copy audit | ✅ Done | No user-facing “tracing” claims unless traces ship; replace with request/error language |
 | Deep links | ✅ Done | Overview → Diagnosis/Requests preserves time + env + service + status in URL consistently |
 | “No data” diagnostics | ✅ Done | Distinguish: no key, wrong ingest URL, backend down, zero traffic — link to docs/steps |
-| SDK DX polish | ⬜ Planned | Single recommended entry (`autopulse` vs `monitor`); fix fixture README env names |
+| SDK DX polish | ✅ Done | Single recommended entry (`autopulse` vs `monitor`); fix fixture README env names |
 
 ### 7.2 Next (1–2 quarters) — depth without losing one-liner
 
 | Item | Status | Outcome / acceptance criteria |
 |------|--------|-------------------------------|
-| Sampling (SDK) | ⬜ Planned | Default safe sampling for high-RPM routes; errors at full fidelity where feasible |
-| Health / noise ignore list | ⬜ Planned | Configurable prefixes; sane defaults (`/health`, `/ready`) |
+| Sampling (SDK) | ✅ Done | Default safe sampling for high-RPM routes; errors at full fidelity where feasible |
+| Health / noise ignore list | ✅ Done | Configurable prefixes; sane defaults (`/health`, `/ready`) |
 | Job/cron events (minimal) | ⬜ Planned | New event type + dashboard strip “async work” failures linked to HTTP context when present |
 | WebSocket-driven UI | ⬜ Planned | Live overview/diagnosis counters where it materially reduces TTD (time to detect) |
 | Saved views (light) | ⬜ Planned | Named filter presets per project — not a full Grafana library |

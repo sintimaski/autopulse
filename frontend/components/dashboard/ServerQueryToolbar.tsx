@@ -61,7 +61,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   const d = useDashboardData();
   const advancedQueryUiEnabled = process.env.NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI === "1";
   const scopeTitle =
-    variant === "diagnosis" ? "Diagnosis scope" : variant === "requests" ? "Requests scope" : "Logs scope";
+    variant === "diagnosis" ? "Diagnosis scope" : "Requests scope";
   const selectedEnvironmentTags = useMemo(
     () => new Set(d.serverEnvironmentTags),
     [d.serverEnvironmentTags],
@@ -227,7 +227,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               ? "Applies to grouped errors, diagnosis timeline, and the loaded request slice."
               : variant === "requests"
                 ? "Applies to the request evidence explorer and related drill-down panels."
-              : "Applies to the request log table and server-backed log queries."}
+              : "Applies to the request evidence table and server-backed query results."}
           </p>
         </div>
         <div className="flex items-center gap-2">

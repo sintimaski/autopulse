@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 import pytest
 from client_lifespan import lifespan_test_client
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 
 from autopulse._infrastructure import InfrastructureSampler
 from autopulse._monitor import (
@@ -99,6 +99,8 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "capture_headers": True,
         "capture_query_params": True,
         "scrub_keys": frozenset({"authorization", "cookie", "token", "api_key"}),
+        "request_sample_rate": 1.0,
+        "ignore_path_prefixes": (),
         "dashboard_widgets": tuple(),
         "infrastructure_sampler": None,
         "infrastructure_probe_interval_s": 0.0,
@@ -270,6 +272,48 @@ def test_middleware_respects_capture_toggles() -> None:
     event = dispatcher.events[0]
     assert "headers" not in event
     assert "query_params" not in event
+
+
+def test_middleware_ignores_configured_path_prefixes() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config(ignore_path_prefixes=("/health",))
+    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/health")
+    async def health() -> dict[str, bool]:
+        return {"ok": True}
+
+    with lifespan_test_client(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert dispatcher.events == []
+
+
+def test_middleware_sampling_drops_success_events_but_keeps_5xx() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config(request_sample_rate=0.0)
+    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/ok")
+    async def ok() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.get("/server-error")
+    async def server_error() -> Response:
+        return Response(status_code=503)
+
+    with lifespan_test_client(app) as client:
+        ok_response = client.get("/ok")
+        error_response = client.get("/server-error")
+
+    assert ok_response.status_code == 200
+    assert error_response.status_code == 503
+    assert len(dispatcher.events) == 1
+    assert dispatcher.events[0]["path"] == "/server-error"
+    assert dispatcher.events[0]["status_code"] == 503
 
 
 def test_middleware_attaches_infrastructure_metrics_when_enabled() -> None:

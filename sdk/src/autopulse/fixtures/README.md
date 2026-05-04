@@ -19,7 +19,7 @@ Manual two-process setup:
 uv run python -m autopulse_backend.main
 
 # Terminal B — synthetic app (set AUTOPULSE_API_KEY to your project ingest key)
-export AUTOPULSE_INGEST_URL="http://127.0.0.1:8000/autopulse/ingest"
+export AUTOPULSE_INGEST_URL="http://127.0.0.1:8000/ingest"
 export AUTOPULSE_API_KEY="<project API key>"
 uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001
 ```
