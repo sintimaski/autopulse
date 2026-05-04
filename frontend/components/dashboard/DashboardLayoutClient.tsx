@@ -29,7 +29,8 @@ import { isApiSubpathDashboard } from "./dashboardTypes";
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/dashboard": {
     title: "Overview",
-    subtitle: "Health snapshot — scope time range, then jump to errors or request evidence.",
+    subtitle:
+      "Health snapshot — Overview scope uses the same URL keys as Diagnosis and Requests; open those pages for path, latency, or advanced filters.",
   },
   "/widgets-showcase": {
     title: "Widgets",

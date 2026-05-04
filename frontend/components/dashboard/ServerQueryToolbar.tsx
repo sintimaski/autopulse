@@ -1,9 +1,26 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEventHandler } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEventHandler,
+  type RefObject,
+} from "react";
 
-import { Ban, CalendarClock, Check, FilterX, History, ListChecks, SlidersHorizontal } from "../../lib/icons";
+import {
+  Ban,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  FilterX,
+  ListChecks,
+  SlidersHorizontal,
+  Undo2,
+} from "../../lib/icons";
 import { useDashboardData } from "./DashboardDataContext";
+import type { SavedScopePresetSaveDraft } from "./dashboardDataContextTypes";
 import { resetServerScope } from "./dashboardScopeReset";
 import { TagSelector } from "./TagSelector";
 
@@ -57,6 +74,51 @@ function formatRelativeToUserTime(serverIso: string): string {
 
 export type ServerScopeToolbarVariant = "diagnosis" | "logs" | "requests";
 
+function gatherToolbarScopeSaveDraft(
+  d: ReturnType<typeof useDashboardData>,
+  refs: {
+    fromInputRef: RefObject<HTMLInputElement | null>;
+    toInputRef: RefObject<HTMLInputElement | null>;
+    methodRef: RefObject<HTMLSelectElement | null>;
+    statusClassRef: RefObject<HTMLSelectElement | null>;
+    minLatencyRef: RefObject<HTMLInputElement | null>;
+    maxLatencyRef: RefObject<HTMLInputElement | null>;
+    pathRef: RefObject<HTMLInputElement | null>;
+    errorGroupSortRef: RefObject<HTMLSelectElement | null>;
+  },
+  variant: ServerScopeToolbarVariant,
+): SavedScopePresetSaveDraft {
+  const draft: SavedScopePresetSaveDraft = {
+    method: refs.methodRef.current?.value ?? d.method,
+    statusClass: refs.statusClassRef.current?.value ?? d.statusClass,
+    minLatencyMs: refs.minLatencyRef.current?.value ?? d.minLatencyMs,
+    maxLatencyMs: refs.maxLatencyRef.current?.value ?? d.maxLatencyMs,
+    pathQuery: refs.pathRef.current?.value ?? d.pathQuery,
+    windowMinutes: d.windowMinutes,
+  };
+  if (variant === "diagnosis") {
+    const eg = refs.errorGroupSortRef.current?.value;
+    draft.errorGroupSort = eg === "count" || eg === "last_seen" ? eg : d.errorGroupSort;
+  }
+  const syncedFrom = isoToLocalInputValue(d.windowFromTimestamp);
+  const syncedTo = isoToLocalInputValue(d.windowToTimestamp);
+  const fromRaw = refs.fromInputRef.current?.value ?? "";
+  const toRaw = refs.toInputRef.current?.value ?? "";
+  const inputsChanged =
+    d.isAbsoluteWindow ||
+    (fromRaw.length > 0 && toRaw.length > 0 && (fromRaw !== syncedFrom || toRaw !== syncedTo));
+  if (inputsChanged) {
+    const fd = parseLocalDateTimeInput(fromRaw);
+    const td = parseLocalDateTimeInput(toRaw);
+    if (fd && td && fd.getTime() < td.getTime()) {
+      draft.isAbsoluteWindow = true;
+      draft.windowFromTimestamp = fd.toISOString();
+      draft.windowToTimestamp = td.toISOString();
+    }
+  }
+  return draft;
+}
+
 export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVariant }) {
   const d = useDashboardData();
   const advancedQueryUiEnabled = process.env.NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI === "1";
@@ -96,6 +158,9 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   const errorGroupSortRef = useRef<HTMLSelectElement>(null);
   const [windowError, setWindowError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [scopePresetNameDraft, setScopePresetNameDraft] = useState("");
+  const [scopePresetFeedback, setScopePresetFeedback] = useState<string | null>(null);
+  const [selectedScopePresetId, setSelectedScopePresetId] = useState("");
   const [presetNameDraft, setPresetNameDraft] = useState("");
   const [presetFeedback, setPresetFeedback] = useState<string | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState("");
@@ -124,6 +189,34 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
       to.value = nextTo;
     }
   }, [d.windowFromTimestamp, d.windowToTimestamp]);
+
+  /** Keep uncontrolled fields aligned when scope changes from URL, saved views, or other pages — avoids Apply overwriting with stale ref values. */
+  useEffect(() => {
+    const m = methodRef.current;
+    if (m && m.value !== d.method) {
+      m.value = d.method;
+    }
+    const s = statusClassRef.current;
+    if (s && s.value !== d.statusClass) {
+      s.value = d.statusClass;
+    }
+    const minEl = minLatencyRef.current;
+    if (minEl && minEl.value !== d.minLatencyMs) {
+      minEl.value = d.minLatencyMs;
+    }
+    const maxEl = maxLatencyRef.current;
+    if (maxEl && maxEl.value !== d.maxLatencyMs) {
+      maxEl.value = d.maxLatencyMs;
+    }
+    const p = pathRef.current;
+    if (p && p.value !== d.pathQuery && document.activeElement !== p) {
+      p.value = d.pathQuery;
+    }
+    const eg = errorGroupSortRef.current;
+    if (eg && eg.value !== d.errorGroupSort) {
+      eg.value = d.errorGroupSort;
+    }
+  }, [d.method, d.statusClass, d.minLatencyMs, d.maxLatencyMs, d.pathQuery, d.errorGroupSort]);
 
   const resetServerFilters = () => {
     resetServerScope(
@@ -251,6 +344,105 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           </button>
         </div>
       </div>
+      <details className="group mb-2 rounded-lg border border-slate-200 bg-white/90 dark:border-neutral-700 dark:bg-neutral-950/40">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2 py-2 text-xs font-medium text-slate-700 dark:text-neutral-200 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-2">
+            <ChevronDown
+              className="size-3.5 shrink-0 text-slate-500 transition-transform group-open:rotate-180 dark:text-neutral-400"
+              aria-hidden
+            />
+            <span>
+              Saved views{d.savedScopePresets.length > 0 ? ` (${d.savedScopePresets.length})` : ""}
+            </span>
+          </span>
+        </summary>
+        <div className="border-t border-slate-200 p-2 dark:border-neutral-700">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={scopePresetNameDraft}
+              onChange={(event) => setScopePresetNameDraft(event.target.value)}
+              placeholder="Saved view name (e.g. Prod 5xx spikes)"
+              className="min-w-[200px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const draft = gatherToolbarScopeSaveDraft(
+                  d,
+                  {
+                    fromInputRef,
+                    toInputRef,
+                    methodRef,
+                    statusClassRef,
+                    minLatencyRef,
+                    maxLatencyRef,
+                    pathRef,
+                    errorGroupSortRef,
+                  },
+                  variant,
+                );
+                const saved = d.saveScopePreset(scopePresetNameDraft, draft);
+                if (!saved.ok) {
+                  setScopePresetFeedback(saved.error ?? "Unable to save view.");
+                  return;
+                }
+                setScopePresetNameDraft("");
+                setScopePresetFeedback("Saved view stored.");
+              }}
+              className="ap-btn px-2.5 py-1.5 text-xs"
+            >
+              Save view
+            </button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <select
+              value={selectedScopePresetId}
+              onChange={(event) => setSelectedScopePresetId(event.target.value)}
+              className="min-w-[240px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+            >
+              <option value="">Choose a saved view…</option>
+              {d.savedScopePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!selectedScopePresetId}
+              onClick={() => {
+                const applied = d.applySavedScopePreset(selectedScopePresetId);
+                if (!applied.ok) {
+                  setScopePresetFeedback(applied.error ?? "Unable to apply saved view.");
+                  return;
+                }
+                setScopePresetFeedback("Saved view applied.");
+              }}
+              className="ap-btn-primary px-2.5 py-1.5 text-xs"
+            >
+              Apply view
+            </button>
+            <button
+              type="button"
+              disabled={!selectedScopePresetId}
+              onClick={() => {
+                d.removeScopePreset(selectedScopePresetId);
+                setSelectedScopePresetId("");
+                setScopePresetFeedback("Saved view removed.");
+              }}
+              className="ap-btn px-2.5 py-1.5 text-xs"
+            >
+              Remove
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-neutral-400">
+            Saved views are scoped to your active project and signed-in user.
+          </p>
+          {scopePresetFeedback ? (
+            <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">{scopePresetFeedback}</p>
+          ) : null}
+        </div>
+      </details>
 
       <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
@@ -288,26 +480,28 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           />
         </label>
         <div className="flex items-end gap-2 lg:col-span-1 xl:col-span-1">
-          <button
-            type="button"
-            onClick={applyAbsoluteWindow}
-            title="Apply custom time window"
-            aria-label="Apply custom time window"
-            className="ap-btn p-2"
-          >
-            <CalendarClock className="size-4" aria-hidden />
-          </button>
           {d.isAbsoluteWindow ? (
             <button
               type="button"
               onClick={d.clearAbsoluteWindow}
-              title="Use quick range preset"
-              aria-label="Use quick range preset"
+              title={`Drop custom window and use last ${d.windowMinutes} minutes`}
+              aria-label={`Drop custom window and use last ${d.windowMinutes} minutes`}
+              className="ap-btn flex max-w-full min-w-0 items-center gap-1.5 px-2 py-1.5 text-xs"
+            >
+              <Undo2 className="size-4 shrink-0" aria-hidden />
+              <span className="min-w-0 truncate">Last {d.windowMinutes}m</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={applyAbsoluteWindow}
+              title="Apply custom time window"
+              aria-label="Apply custom time window"
               className="ap-btn p-2"
             >
-              <History className="size-4" aria-hidden />
+              <CalendarClock className="size-4" aria-hidden />
             </button>
-          ) : null}
+          )}
         </div>
         <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Method

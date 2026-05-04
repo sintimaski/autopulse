@@ -104,6 +104,8 @@ import type {
   DashboardDiagnosisSliceValue,
   DashboardHomeSliceValue,
   DashboardLogsSliceValue,
+  SavedScopePreset,
+  SavedScopePresetSaveDraft,
   SavedSqlFilterPreset,
 } from "./dashboardDataContextTypes";
 
@@ -113,6 +115,8 @@ export type {
   DashboardDiagnosisSliceValue,
   DashboardHomeSliceValue,
   DashboardLogsSliceValue,
+  SavedScopePreset,
+  SavedScopePresetSaveDraft,
   SavedSqlFilterPreset,
 } from "./dashboardDataContextTypes";
 
@@ -162,6 +166,56 @@ export function useDashboardLogsDataSlice(): DashboardLogsSliceValue {
   return ctx;
 }
 
+function coerceScopeNumber(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function savedPresetScopeToDashboardQuery(scope: SavedScopePreset["scope"]): DashboardScopedQueryState {
+  const wmRaw = coerceScopeNumber(scope.windowMinutes, 60);
+  const windowMinutes = wmRaw > 0 ? wmRaw : 60;
+  const requestLimitRaw = coerceScopeNumber(scope.requestLimit, 100);
+  const requestLimit = REQUEST_LIMIT_OPTIONS.includes(
+    requestLimitRaw as (typeof REQUEST_LIMIT_OPTIONS)[number],
+  )
+    ? requestLimitRaw
+    : 100;
+  const errorGroupLimitRaw = coerceScopeNumber(scope.errorGroupLimit, 25);
+  const errorGroupLimit = ERROR_GROUP_LIMIT_OPTIONS.includes(
+    errorGroupLimitRaw as (typeof ERROR_GROUP_LIMIT_OPTIONS)[number],
+  )
+    ? errorGroupLimitRaw
+    : 25;
+
+  return {
+    isAbsoluteWindow: Boolean(scope.isAbsoluteWindow),
+    windowMinutes,
+    windowFromTimestamp: typeof scope.windowFromTimestamp === "string" ? scope.windowFromTimestamp : "",
+    windowToTimestamp: typeof scope.windowToTimestamp === "string" ? scope.windowToTimestamp : "",
+    method: typeof scope.method === "string" ? scope.method : "ALL",
+    statusClass: typeof scope.statusClass === "string" ? scope.statusClass : "ALL",
+    minLatencyMs: typeof scope.minLatencyMs === "string" ? scope.minLatencyMs : "",
+    maxLatencyMs: typeof scope.maxLatencyMs === "string" ? scope.maxLatencyMs : "",
+    pathQuery: typeof scope.pathQuery === "string" ? scope.pathQuery : "",
+    serverEnvironmentQuery:
+      typeof scope.serverEnvironmentQuery === "string"
+        ? normalizeCommaSeparated(scope.serverEnvironmentQuery)
+        : "",
+    serverServiceQuery:
+      typeof scope.serverServiceQuery === "string" ? normalizeCommaSeparated(scope.serverServiceQuery) : "",
+    requestLimit,
+    requestPage: 0,
+    errorGroupLimit,
+    errorGroupPage: 0,
+    errorGroupSort: scope.errorGroupSort === "count" ? "count" : "last_seen",
+    sqlFilterApplied: typeof scope.sqlFilterApplied === "string" ? scope.sqlFilterApplied : "",
+    sqlFilterEnabled: Boolean(scope.sqlFilterEnabled),
+  };
+}
+
 export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [windowMinutes, setWindowMinutes] = useState(60);
   const [absoluteWindow, setAbsoluteWindowState] = useState<{ from: string; to: string } | null>(null);
@@ -204,6 +258,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  const liveRefreshPausedRef = useRef(false);
+  const [liveDataPaused, setLiveDataPaused] = useState(false);
+  const stretchAbsoluteEndAfterResumeRef = useRef(false);
+
   const {
     hasSession: hasDashboardSession,
     authSessionResolved,
@@ -224,6 +282,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [sqlFilterValidation, setSqlFilterValidation] = useState<LogQueryValidationResponse | null>(null);
   const [sqlFilterValidating, setSqlFilterValidating] = useState(false);
   const [savedSqlFilterPresets, setSavedSqlFilterPresets] = useState<SavedSqlFilterPreset[]>([]);
+  const [savedScopePresets, setSavedScopePresets] = useState<SavedScopePreset[]>([]);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveFallbackRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -242,6 +301,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     () => toDashboardRoutePath(rawDashboardPathname),
     [rawDashboardPathname],
   );
+
+  useEffect(() => {
+    const scopedRoute =
+      dashboardRoutePath === "/diagnosis" ||
+      dashboardRoutePath === "/logs" ||
+      dashboardRoutePath === "/requests";
+    if (scopedRoute) {
+      return;
+    }
+    if (!liveRefreshPausedRef.current) {
+      return;
+    }
+    liveRefreshPausedRef.current = false;
+    setLiveDataPaused(false);
+  }, [dashboardRoutePath]);
+
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
   /** Snapshot of request_id values from the last `requests` payload; used to prune stale row expansion only. */
   const prevVisibleRequestIdSetRef = useRef<Set<string>>(new Set());
@@ -264,6 +339,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
     return absoluteWindow;
   }, [absoluteWindow]);
+
+  const effectiveScopeFromTs = useMemo(
+    () => toIsoWindow?.from ?? overview?.from_timestamp ?? requests?.from_timestamp ?? "",
+    [toIsoWindow?.from, overview?.from_timestamp, requests?.from_timestamp],
+  );
+  const effectiveScopeToTs = useMemo(
+    () => toIsoWindow?.to ?? overview?.to_timestamp ?? requests?.to_timestamp ?? "",
+    [toIsoWindow?.to, overview?.to_timestamp, requests?.to_timestamp],
+  );
 
   useEffect(() => {
     if (!hasHydratedPersistedScope.current) {
@@ -617,6 +701,37 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (overviewData || requestsData) {
           hasLoadedDashboardData.current = true;
         }
+
+        if (stretchAbsoluteEndAfterResumeRef.current) {
+          const aw = absoluteWindow;
+          if (!aw) {
+            stretchAbsoluteEndAfterResumeRef.current = false;
+          } else {
+            const serverNowForStretch =
+              overviewData?.server_now ??
+              requestsData?.server_now ??
+              data.error_groups?.server_now ??
+              null;
+            if (serverNowForStretch) {
+              const fromMs = new Date(aw.from).getTime();
+              const prevToMs = new Date(aw.to).getTime();
+              const nowMs = new Date(serverNowForStretch).getTime();
+              if (
+                Number.isFinite(fromMs) &&
+                Number.isFinite(prevToMs) &&
+                Number.isFinite(nowMs) &&
+                fromMs < prevToMs &&
+                nowMs > prevToMs
+              ) {
+                // Extend window end only (do not reset request/error pages like setAbsoluteWindow does).
+                setAbsoluteWindowState({ from: aw.from, to: new Date(nowMs).toISOString() });
+              }
+              stretchAbsoluteEndAfterResumeRef.current = false;
+            } else if (overviewData || requestsData || data.error_groups) {
+              stretchAbsoluteEndAfterResumeRef.current = false;
+            }
+          }
+        }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           if (
@@ -634,7 +749,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         dashboardFetchInFlightRef.current = false;
         if (!isCancelled() && dashboardQueuedRefreshRef.current) {
           dashboardQueuedRefreshRef.current = false;
-          setRefreshToken((token) => token + 1);
+          if (!liveRefreshPausedRef.current) {
+            setRefreshToken((token) => token + 1);
+          }
         }
         if (isInitialLoad && !isCancelled()) {
           setLoading(false);
@@ -651,6 +768,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     dashboardRoutePath,
     method,
     statusClass,
+    absoluteWindow,
     toIsoWindow,
     windowMinutes,
     refreshToken,
@@ -718,6 +836,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         ? LIVE_REFRESH_BACKOFF_THROTTLE_MS
         : LIVE_REFRESH_THROTTLE_MS;
     const scheduleLiveRefreshFromWebSocket = () => {
+      if (liveRefreshPausedRef.current) {
+        return;
+      }
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
@@ -737,6 +858,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const delayMs = Math.max(1, throttleMs - elapsedMs);
         livePendingRefreshTimer.current = setTimeout(() => {
           livePendingRefreshTimer.current = null;
+          if (liveRefreshPausedRef.current) {
+            return;
+          }
           if (typeof document !== "undefined" && document.visibilityState !== "visible") {
             return;
           }
@@ -750,7 +874,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         livePendingRefreshTimer.current = null;
       }
       liveLastRefreshAtRef.current = now;
-      setRefreshToken((token) => token + 1);
+      if (!liveRefreshPausedRef.current) {
+        setRefreshToken((token) => token + 1);
+      }
     };
     const connect = () => {
       if (cancelled) {
@@ -858,6 +984,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
     // Fallback poll only when websocket is disconnected.
     liveFallbackRefreshTimer.current = setInterval(() => {
+      if (liveRefreshPausedRef.current) {
+        return;
+      }
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
@@ -876,6 +1005,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       return;
     }
     const onVisibilityChange = () => {
+      if (liveRefreshPausedRef.current) {
+        return;
+      }
       if (typeof document === "undefined" || document.visibilityState !== "visible") {
         return;
       }
@@ -917,6 +1049,24 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setRequestPage(0);
     setErrorGroupPage(0);
   }, []);
+
+  const toggleLiveDataPaused = useCallback(() => {
+    const nextPaused = !liveRefreshPausedRef.current;
+    liveRefreshPausedRef.current = nextPaused;
+    setLiveDataPaused(nextPaused);
+    if (nextPaused) {
+      const fromTs = effectiveScopeFromTs;
+      const toTs = effectiveScopeToTs;
+      const fromMs = new Date(fromTs).getTime();
+      const toMs = new Date(toTs).getTime();
+      if (Number.isFinite(fromMs) && Number.isFinite(toMs) && fromMs < toMs) {
+        setAbsoluteWindow(fromTs, toTs);
+      }
+    } else {
+      stretchAbsoluteEndAfterResumeRef.current = true;
+      setRefreshToken((t) => t + 1);
+    }
+  }, [effectiveScopeFromTs, effectiveScopeToTs, setAbsoluteWindow]);
 
   const onServerMethodChange = useCallback((value: string) => {
     setMethod(value);
@@ -1331,6 +1481,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     () => `autopulse.sql-filter-presets.${(sessionEmail ?? "anonymous").toLowerCase()}`,
     [sessionEmail],
   );
+  const scopePresetStorageKey = useMemo(
+    () =>
+      `autopulse.scope-presets.${(sessionProjectId ?? "no-project").toLowerCase()}.${(sessionEmail ?? "anonymous").toLowerCase()}`,
+    [sessionProjectId, sessionEmail],
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1396,6 +1551,113 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
   }, [savedSqlFilterPresets, sqlFilterStorageKey]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(scopePresetStorageKey);
+      if (!raw) {
+        queueMicrotask(() => {
+          setSavedScopePresets([]);
+        });
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        queueMicrotask(() => {
+          setSavedScopePresets([]);
+        });
+        return;
+      }
+      const normalized: SavedScopePreset[] = parsed
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return null;
+          }
+          const obj = entry as Record<string, unknown>;
+          if (
+            typeof obj.id !== "string" ||
+            typeof obj.name !== "string" ||
+            typeof obj.createdAt !== "string" ||
+            typeof obj.updatedAt !== "string" ||
+            !obj.scope ||
+            typeof obj.scope !== "object"
+          ) {
+            return null;
+          }
+          const scope = obj.scope as Record<string, unknown>;
+          const windowMinutes = Math.max(1, coerceScopeNumber(scope.windowMinutes, 60));
+          const requestLimitRaw = coerceScopeNumber(scope.requestLimit, 100);
+          const requestLimit = REQUEST_LIMIT_OPTIONS.includes(
+            requestLimitRaw as (typeof REQUEST_LIMIT_OPTIONS)[number],
+          )
+            ? requestLimitRaw
+            : 100;
+          const errorGroupLimitRaw = coerceScopeNumber(scope.errorGroupLimit, 25);
+          const errorGroupLimit = ERROR_GROUP_LIMIT_OPTIONS.includes(
+            errorGroupLimitRaw as (typeof ERROR_GROUP_LIMIT_OPTIONS)[number],
+          )
+            ? errorGroupLimitRaw
+            : 25;
+          const method =
+            typeof scope.method === "string" && (METHOD_OPTIONS as readonly string[]).includes(scope.method)
+              ? scope.method
+              : "ALL";
+          const statusClass =
+            typeof scope.statusClass === "string" &&
+            (STATUS_CLASS_OPTIONS as readonly string[]).includes(scope.statusClass)
+              ? scope.statusClass
+              : "ALL";
+          const errorGroupSort = scope.errorGroupSort === "count" ? "count" : "last_seen";
+          return {
+            id: obj.id,
+            name: obj.name,
+            createdAt: obj.createdAt,
+            updatedAt: obj.updatedAt,
+            scope: {
+              isAbsoluteWindow: Boolean(scope.isAbsoluteWindow),
+              windowMinutes,
+              windowFromTimestamp: typeof scope.windowFromTimestamp === "string" ? scope.windowFromTimestamp : "",
+              windowToTimestamp: typeof scope.windowToTimestamp === "string" ? scope.windowToTimestamp : "",
+              method,
+              statusClass,
+              minLatencyMs: typeof scope.minLatencyMs === "string" ? scope.minLatencyMs : "",
+              maxLatencyMs: typeof scope.maxLatencyMs === "string" ? scope.maxLatencyMs : "",
+              pathQuery: typeof scope.pathQuery === "string" ? scope.pathQuery : "",
+              serverEnvironmentQuery:
+                typeof scope.serverEnvironmentQuery === "string" ? scope.serverEnvironmentQuery : "",
+              serverServiceQuery: typeof scope.serverServiceQuery === "string" ? scope.serverServiceQuery : "",
+              requestLimit,
+              errorGroupLimit,
+              errorGroupSort,
+              sqlFilterApplied: typeof scope.sqlFilterApplied === "string" ? scope.sqlFilterApplied : "",
+              sqlFilterEnabled: Boolean(scope.sqlFilterEnabled),
+            },
+          };
+        })
+        .filter((item): item is SavedScopePreset => item !== null);
+      queueMicrotask(() => {
+        setSavedScopePresets(normalized);
+      });
+    } catch {
+      queueMicrotask(() => {
+        setSavedScopePresets([]);
+      });
+    }
+  }, [scopePresetStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.localStorage.setItem(scopePresetStorageKey, JSON.stringify(savedScopePresets));
+    } catch {
+      // ignore quota/private mode
+    }
+  }, [savedScopePresets, scopePresetStorageKey]);
+
   const saveSqlFilterPreset = useCallback(
     (name: string, where: string): { ok: boolean; error?: string } => {
       const cleanName = name.trim();
@@ -1453,6 +1715,150 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setRequestPage(0);
     setErrorGroupPage(0);
   }, [savedSqlFilterPresets]);
+
+  const saveScopePreset = useCallback(
+    (name: string, draft?: SavedScopePresetSaveDraft): { ok: boolean; error?: string } => {
+      const cleanName = name.trim();
+      if (!cleanName) {
+        return { ok: false, error: "Saved view name is required." };
+      }
+      if (cleanName.length > 80) {
+        return { ok: false, error: "Saved view name must be 80 characters or less." };
+      }
+      const now = new Date().toISOString();
+      const draftFrom = draft?.windowFromTimestamp;
+      const draftTo = draft?.windowToTimestamp;
+      const draftAbs =
+        Boolean(draft?.isAbsoluteWindow) &&
+        typeof draftFrom === "string" &&
+        typeof draftTo === "string" &&
+        draftFrom.length > 0 &&
+        draftTo.length > 0 &&
+        new Date(draftFrom).getTime() < new Date(draftTo).getTime();
+      const isAbs = draftAbs || Boolean(toIsoWindow);
+      const fromTs = draftAbs ? draftFrom : toIsoWindow?.from ?? "";
+      const toTs = draftAbs ? draftTo : toIsoWindow?.to ?? "";
+      const scope: SavedScopePreset["scope"] = {
+        isAbsoluteWindow: isAbs,
+        windowMinutes: draft?.windowMinutes ?? windowMinutes,
+        windowFromTimestamp: fromTs,
+        windowToTimestamp: toTs,
+        method: draft?.method ?? method,
+        statusClass: draft?.statusClass ?? statusClass,
+        minLatencyMs: draft?.minLatencyMs ?? minLatencyMs,
+        maxLatencyMs: draft?.maxLatencyMs ?? maxLatencyMs,
+        pathQuery: draft?.pathQuery ?? pathQuery,
+        serverEnvironmentQuery: normalizeCommaSeparated(draft?.serverEnvironmentQuery ?? serverEnvironmentQuery),
+        serverServiceQuery: normalizeCommaSeparated(draft?.serverServiceQuery ?? serverServiceQuery),
+        requestLimit,
+        errorGroupLimit,
+        errorGroupSort: draft?.errorGroupSort ?? errorGroupSort,
+        sqlFilterApplied,
+        sqlFilterEnabled,
+      };
+      setSavedScopePresets((prev) => {
+        const existing = prev.find((preset) => preset.name.toLowerCase() === cleanName.toLowerCase());
+        if (existing) {
+          return prev.map((preset) =>
+            preset.id === existing.id
+              ? { ...preset, name: cleanName, updatedAt: now, scope }
+              : preset,
+          );
+        }
+        const next: SavedScopePreset = {
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: cleanName,
+          scope,
+          createdAt: now,
+          updatedAt: now,
+        };
+        return [next, ...prev].slice(0, 100);
+      });
+      return { ok: true };
+    },
+    [
+      toIsoWindow,
+      windowMinutes,
+      method,
+      statusClass,
+      minLatencyMs,
+      maxLatencyMs,
+      pathQuery,
+      serverEnvironmentQuery,
+      serverServiceQuery,
+      requestLimit,
+      errorGroupLimit,
+      errorGroupSort,
+      sqlFilterApplied,
+      sqlFilterEnabled,
+    ],
+  );
+
+  const removeScopePreset = useCallback((id: string) => {
+    setSavedScopePresets((prev) => prev.filter((preset) => preset.id !== id));
+  }, []);
+
+  const applySavedScopePreset = useCallback(
+    (id: string): { ok: boolean; error?: string } => {
+      const preset = savedScopePresets.find((candidate) => candidate.id === id);
+      if (!preset) {
+        return { ok: false, error: "Saved view no longer exists." };
+      }
+      try {
+        const parsed = savedPresetScopeToDashboardQuery(preset.scope);
+        applyDashboardScopedQueryState(
+          {
+            setAbsoluteWindow,
+            clearAbsoluteWindow,
+            onServerWindowChange,
+            onServerMethodChange,
+            onServerStatusClassChange,
+            setPathQuery,
+            setMinLatencyMs,
+            setMaxLatencyMs,
+            setServerEnvironmentQuery,
+            setServerServiceQuery,
+            setRequestLimit,
+            setRequestPage,
+            setErrorGroupLimit,
+            setErrorGroupPage,
+            setErrorGroupSort,
+            setSqlFilterApplied,
+            setSqlFilterDraft,
+            setSqlFilterEnabled,
+          },
+          parsed,
+        );
+        return { ok: true };
+      } catch {
+        return { ok: false, error: "Could not apply saved view." };
+      }
+    },
+    [
+      savedScopePresets,
+      setAbsoluteWindow,
+      clearAbsoluteWindow,
+      onServerWindowChange,
+      onServerMethodChange,
+      onServerStatusClassChange,
+      setPathQuery,
+      setMinLatencyMs,
+      setMaxLatencyMs,
+      setServerEnvironmentQuery,
+      setServerServiceQuery,
+      setRequestLimit,
+      setRequestPage,
+      setErrorGroupLimit,
+      setErrorGroupPage,
+      setErrorGroupSort,
+      setSqlFilterApplied,
+      setSqlFilterDraft,
+      setSqlFilterEnabled,
+    ],
+  );
 
   const validateSqlFilterDraft = useCallback(async (): Promise<LogQueryValidationResponse | null> => {
     if (!hasDashboardSession) {
@@ -1920,6 +2326,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       loading,
       errorMessage,
       refreshToken,
+      liveDataPaused,
+      toggleLiveDataPaused,
       runbookMessage,
       alertSettingsMessage,
       alertSettingsSaving,
@@ -1986,9 +2394,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterValidation,
       sqlFilterValidating,
       savedSqlFilterPresets,
+      savedScopePresets,
       saveSqlFilterPreset,
       removeSqlFilterPreset,
       applySavedSqlFilterPreset,
+      saveScopePreset,
+      removeScopePreset,
+      applySavedScopePreset,
       WINDOW_OPTIONS,
       METHOD_OPTIONS,
       STATUS_CLASS_OPTIONS,
@@ -2052,6 +2464,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       loading,
       errorMessage,
       refreshToken,
+      liveDataPaused,
+      toggleLiveDataPaused,
       runbookMessage,
       alertSettingsMessage,
       alertSettingsSaving,
@@ -2106,9 +2520,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterValidation,
       sqlFilterValidating,
       savedSqlFilterPresets,
+      savedScopePresets,
       saveSqlFilterPreset,
       removeSqlFilterPreset,
       applySavedSqlFilterPreset,
+      saveScopePreset,
+      removeScopePreset,
+      applySavedScopePreset,
     ],
   );
 

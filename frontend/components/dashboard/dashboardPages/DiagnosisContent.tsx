@@ -15,6 +15,7 @@ import { useDashboardDiagnosisSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
+import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { MetricCard } from "../MetricCard";
 
 export function DiagnosisContent() {
@@ -81,7 +82,12 @@ export function DiagnosisContent() {
 
   if (!requests || !errorGroups || !timeline || !failures) {
     if (d.loading && !d.errorMessage) {
-      return <InlineDataSpinner label="Loading diagnosis…" className="rounded-2xl" />;
+      return (
+        <>
+          <DiagnosisRequestsStickyScopeBar />
+          <InlineDataSpinner label="Loading diagnosis…" className="rounded-2xl" />
+        </>
+      );
     }
     const missing = [
       !requests ? "requests" : null,
@@ -90,7 +96,9 @@ export function DiagnosisContent() {
       !failures ? "failures" : null,
     ].filter((entry): entry is string => entry !== null);
     return (
-      <section
+      <>
+        <DiagnosisRequestsStickyScopeBar />
+        <section
         className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
         role="status"
         aria-live="polite"
@@ -127,11 +135,13 @@ export function DiagnosisContent() {
           if evidence arrived outside this scope.
         </p>
       </section>
+      </>
     );
   }
 
   return (
     <>
+      <DiagnosisRequestsStickyScopeBar />
       {d.errorMessage ? (
         <section
           className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"

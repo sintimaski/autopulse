@@ -46,6 +46,47 @@ export type SavedSqlFilterPreset = {
   updatedAt: string;
 };
 
+/** Optional toolbar draft merged into save when fields are not yet applied to context. */
+export type SavedScopePresetSaveDraft = Partial<{
+  isAbsoluteWindow: boolean;
+  windowMinutes: number;
+  windowFromTimestamp: string;
+  windowToTimestamp: string;
+  method: string;
+  statusClass: string;
+  minLatencyMs: string;
+  maxLatencyMs: string;
+  pathQuery: string;
+  serverEnvironmentQuery: string;
+  serverServiceQuery: string;
+  errorGroupSort: "last_seen" | "count";
+}>;
+
+export type SavedScopePreset = {
+  id: string;
+  name: string;
+  scope: {
+    isAbsoluteWindow: boolean;
+    windowMinutes: number;
+    windowFromTimestamp: string;
+    windowToTimestamp: string;
+    method: string;
+    statusClass: string;
+    minLatencyMs: string;
+    maxLatencyMs: string;
+    pathQuery: string;
+    serverEnvironmentQuery: string;
+    serverServiceQuery: string;
+    requestLimit: number;
+    errorGroupLimit: number;
+    errorGroupSort: "last_seen" | "count";
+    sqlFilterApplied: string;
+    sqlFilterEnabled: boolean;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type DashboardDataContextValue = {
   /** True when the dashboard session cookie is authenticated (not the project ingest API key). */
   hasDashboardSession: boolean;
@@ -109,6 +150,9 @@ export type DashboardDataContextValue = {
   loading: boolean;
   errorMessage: string | null;
   refreshToken: number;
+  /** When true, WebSocket/poll/visibility-driven refresh is paused (Diagnosis/Requests sticky bar). Scope changes still fetch. */
+  liveDataPaused: boolean;
+  toggleLiveDataPaused: () => void;
   runbookMessage: string | null;
   alertSettingsMessage: string | null;
   alertSettingsSaving: boolean;
@@ -178,12 +222,25 @@ export type DashboardDataContextValue = {
   sqlFilterValidation: LogQueryValidationResponse | null;
   sqlFilterValidating: boolean;
   savedSqlFilterPresets: SavedSqlFilterPreset[];
+  savedScopePresets: SavedScopePreset[];
   saveSqlFilterPreset: (name: string, where: string) => {
     ok: boolean;
     error?: string;
   };
   removeSqlFilterPreset: (id: string) => void;
   applySavedSqlFilterPreset: (id: string) => void;
+  saveScopePreset: (
+    name: string,
+    draft?: SavedScopePresetSaveDraft,
+  ) => {
+    ok: boolean;
+    error?: string;
+  };
+  removeScopePreset: (id: string) => void;
+  applySavedScopePreset: (id: string) => {
+    ok: boolean;
+    error?: string;
+  };
   WINDOW_OPTIONS: typeof WINDOW_OPTIONS;
   METHOD_OPTIONS: typeof METHOD_OPTIONS;
   STATUS_CLASS_OPTIONS: typeof STATUS_CLASS_OPTIONS;

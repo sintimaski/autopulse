@@ -266,12 +266,16 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 | Unify scope UX story (phase 1 wording alignment) | Frontend UX | ✅ Done | 2026-05-05 | Server scope toolbar now uses consistent “Requests scope” terminology across requests/logs routes |
 | Sampling (SDK: request sample rate) | SDK | ✅ Done | 2026-05-05 | Added `request_sample_rate` / `AUTOPULSE_REQUEST_SAMPLE_RATE` with 5xx capture preserved |
 | Health/noise ignore list (SDK path prefixes) | SDK | ✅ Done | 2026-05-05 | Added `ignore_path_prefixes` / `AUTOPULSE_IGNORE_PATH_PREFIXES` (default `/health,/ready`) |
+| Unify scope UX story (phase 2: overview labeling + documented pattern) | Frontend UX | ✅ Done | 2026-05-05 | Overview facet bar labeled “Overview scope” with tooltip linking mental model to Diagnosis/Requests; §7.1 pattern note |
+| Saved views (light) | Frontend UX | ✅ Done | 2026-05-05 | Added per-project saved scope views (save/apply/remove) in `ServerQueryToolbar` backed by `DashboardDataContext` local persistence |
 
 ### 7.1 Now (0–4 weeks) — trust, clarity, golden path
 
+**Scope UX pattern (implemented):** One **shared URL/query model** for time window, method, status class, env, service, path, latency, and (when enabled) SQL scope. **Overview** exposes a compact **facet row** for the dimensions that drive charts and headline metrics; **Diagnosis** and **Requests** use the **expandable toolbar** for the same dimensions plus path/latency/SQL and apply/reset. Users can start on Overview, then open Diagnosis or Requests without losing scope.
+
 | Item | Status | Outcome / acceptance criteria |
 |------|--------|-------------------------------|
-| Unify scope UX story | 🟨 In progress | One documented pattern: “simple facets everywhere” OR “toolbar everywhere” with migration plan |
+| Unify scope UX story | ✅ Done | Shared query model + consistent naming (“Overview scope”, “Diagnosis scope”, “Requests scope”); facet row vs toolbar split documented above |
 | Copy audit | ✅ Done | No user-facing “tracing” claims unless traces ship; replace with request/error language |
 | Deep links | ✅ Done | Overview → Diagnosis/Requests preserves time + env + service + status in URL consistently |
 | “No data” diagnostics | ✅ Done | Distinguish: no key, wrong ingest URL, backend down, zero traffic — link to docs/steps |
@@ -285,7 +289,7 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 | Health / noise ignore list | ✅ Done | Configurable prefixes; sane defaults (`/health`, `/ready`) |
 | Job/cron events (minimal) | ⬜ Planned | New event type + dashboard strip “async work” failures linked to HTTP context when present |
 | WebSocket-driven UI | ⬜ Planned | Live overview/diagnosis counters where it materially reduces TTD (time to detect) |
-| Saved views (light) | ⬜ Planned | Named filter presets per project — not a full Grafana library |
+| Saved views (light) | ✅ Done | Named filter presets per project — not a full Grafana library |
 
 ### 7.3 Later — platform expansion (gated)
 
@@ -309,14 +313,15 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 
 ## 9. Post-task code review (changed artifacts)
 
-**Scope:** New file `docs/AUTOPULSE_FULL_AUDIT_ROADMAP.md` only.
+**Scope:** `docs/AUTOPULSE_FULL_AUDIT_ROADMAP.md`, `frontend/components/dashboard/OverviewScopeFacetBoard.tsx`, `frontend/components/dashboard/DashboardLayoutClient.tsx`.
 
 | Severity | Finding |
 |----------|---------|
-| — | No runtime code changed; no security regression in product behavior. |
+| — | No auth, ingest, or data-capture behavior changed. |
+| Low | Overview subtitle is longer; acceptable for clarity; trim later if UX feedback says so. |
 | Low | Audit may drift from code over time; re-run audit on major releases or link to commit SHA in PR description. |
 
-**Tests run:** None (documentation-only).
+**Tests run:** `npm run build` in `frontend/` (static export succeeded).
 
 ---
 
@@ -326,6 +331,7 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 2. **Flow walkthrough:** Run `./scripts/run_synthetic_stack.sh` (or backend + synthetic app per `README.md`); complete magic link → onboarding → confirm events on `/dashboard` → drill `/diagnosis` and `/requests`.
 3. **Edge:** Clear `AUTOPULSE_API_KEY` in a test app; confirm app stays healthy and dashboard shows actionable empty-state messaging (note any gap for follow-up ticket).
 4. **Advanced:** Enable `NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI` if used; run a constrained query from Diagnosis/Requests and confirm validation errors are understandable.
+5. **Scope UX:** On `/dashboard`, confirm the facet bar shows “Overview scope” and the header subtitle mentions shared URL keys with Diagnosis/Requests; hover the scope label tooltip; navigate to `/requests` with the same query string and confirm filters align.
 
 ---
 

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 
+import { SlidersHorizontal } from "../../lib/icons";
 import { useDashboardData } from "./DashboardDataContext";
 import { METHOD_OPTIONS, STATUS_CLASS_OPTIONS, WINDOW_OPTIONS } from "./dashboardTypes";
 
@@ -27,6 +28,13 @@ export function OverviewScopeFacetBoard() {
 
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+      <div
+        className="flex min-w-0 shrink-0 items-center gap-2 border-r border-slate-200 pr-4 dark:border-neutral-600"
+        title="Window, method, status, env, and service use the same URL query keys as Diagnosis and Requests. Open those pages for path, latency, or SQL-scoped filters."
+      >
+        <SlidersHorizontal className="size-4 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
+        <span className="text-sm font-semibold text-slate-700 dark:text-neutral-200">Overview scope</span>
+      </div>
       <label
         className={`flex items-center gap-1.5 ${labelClass}`}
         title="Applies to every chart and number below"

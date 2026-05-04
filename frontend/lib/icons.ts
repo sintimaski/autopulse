@@ -20,10 +20,13 @@ export {
   LogOut,
   PanelLeft,
   PanelLeftClose,
+  Pause,
+  Play,
   Rocket,
   RotateCw,
   ScrollText,
   Settings,
   SlidersHorizontal,
   Stethoscope,
+  Undo2,
 } from "lucide-react";

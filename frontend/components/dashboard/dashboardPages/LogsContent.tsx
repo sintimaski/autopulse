@@ -13,6 +13,7 @@ import {
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardLogsSlice } from "../data/useDashboardSlices";
+import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { TagSelector } from "../TagSelector";
@@ -83,10 +84,17 @@ export function LogsContent() {
   const requests = logsSlice.requests;
   if (!requests) {
     if (d.loading && !d.errorMessage) {
-      return <InlineDataSpinner label="Loading requests…" className="rounded-2xl" />;
+      return (
+        <>
+          <DiagnosisRequestsStickyScopeBar />
+          <InlineDataSpinner label="Loading requests…" className="rounded-2xl" />
+        </>
+      );
     }
     return (
-      <section
+      <>
+        <DiagnosisRequestsStickyScopeBar />
+        <section
         className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
         role="status"
         aria-live="polite"
@@ -111,6 +119,7 @@ export function LogsContent() {
           )}
         </p>
       </section>
+      </>
     );
   }
   const serverWindowTotal = requests.total;
@@ -118,6 +127,7 @@ export function LogsContent() {
 
   return (
     <>
+      <DiagnosisRequestsStickyScopeBar />
       {d.errorMessage ? (
         <section
           className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
