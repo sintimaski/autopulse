@@ -18,4 +18,6 @@ npm run build
 rm -rf "$ROOT/sdk/src/autopulse/ui"
 mkdir -p "$ROOT/sdk/src/autopulse/ui"
 rsync -a "$ROOT/frontend/out/" "$ROOT/sdk/src/autopulse/ui/"
+# Drop Next export `*.txt` metadata (RSC route manifests); not needed for static HTML+assets.
+find "$ROOT/sdk/src/autopulse/ui" -type f -name '*.txt' -delete
 echo "Bundled UI -> sdk/src/autopulse/ui ($(du -sh "$ROOT/sdk/src/autopulse/ui" | cut -f1))"

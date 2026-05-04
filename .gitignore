@@ -61,3 +61,7 @@ out/
 *.log
 
 .autopulse/
+
+# Next.js static export route metadata copied into the SDK bundle (not used by
+# standalone StaticFiles serving; keeps the embedded tree smaller).
+sdk/src/autopulse/ui/**/*.txt
