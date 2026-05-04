@@ -4,7 +4,11 @@ import asyncio
 import logging
 import os
 import shlex
+import socket
 import subprocess  # nosec B404
+import threading
+import time
+from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -18,6 +22,8 @@ from starlette.exceptions import HTTPException
 from starlette.responses import RedirectResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
+
+from autopulse._embedded_loopback_proxy import AutopulseLoopbackMountProxy
 
 _LOG = logging.getLogger(__name__)
 
@@ -120,7 +126,7 @@ def _write_generated_env_autopulse(*, path: Path, raw_key: str, mount_prefix: st
     content = (
         "# AutoPulse — generated on first embedded monitor() boot.\n"
         "# Source before static UI build: set -a && source .env.autopulse && set +a\n"
-        "# (scripts/run_synthetic_stack.sh sources this file automatically when present.)\n"
+        "# (run_synthetic_stack.sh sources when present; sidecar sets NEXT_PUBLIC_* in env.)\n"
         f"NEXT_PUBLIC_AUTOPULSE_API_BASE_URL={base}\n"
         f"AUTOPULSE_EMBEDDED_API_KEY={raw_key}\n"
         f"NEXT_PUBLIC_AUTOPULSE_API_KEY={raw_key}\n"
@@ -437,21 +443,56 @@ def _mount_embedded_ui(backend_app: Any, *, static_dir: str | None = None) -> No
     backend_app.state._autopulse_embedded_ui_mounted = True
 
 
+def _normalize_sidecar_argv(command: str | Sequence[str] | None) -> list[str] | None:
+    if command is None:
+        return None
+    if isinstance(command, str):
+        parts = shlex.split(command.strip())
+        return parts or None
+    out = [str(p).strip() for p in command]
+    out = [p for p in out if p]
+    return out or None
+
+
+def _resolve_sidecar_frontend_root(cwd_hint: str | None) -> Path | None:
+    """Directory containing the Next.js ``package.json`` for ``npm run dev``."""
+    if cwd_hint:
+        p = Path(cwd_hint).expanduser().resolve()
+        if (p / "package.json").is_file():
+            return p
+    candidate = Path.cwd() / "frontend"
+    if (candidate / "package.json").is_file():
+        return candidate.resolve()
+    return None
+
+
 def _configure_sidecar(
-    app: Any, *, command: str | None, working_directory: str | None = None
+    app: Any,
+    *,
+    command: str | Sequence[str] | None,
+    working_directory: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> None:
-    if not command or getattr(app.state, "_autopulse_sidecar_registered", False):
+    argv = _normalize_sidecar_argv(command)
+    if not argv or getattr(app.state, "_autopulse_sidecar_registered", False):
         return
     sidecar_cwd = Path(working_directory).resolve() if working_directory else Path.cwd()
 
     async def start_sidecar() -> None:
         if getattr(app.state, "_autopulse_sidecar_process", None) is not None:
             return
+        env = os.environ.copy()
+        if extra_env:
+            env.update(extra_env)
+        _LOG.info(
+            "Starting dashboard frontend sidecar (cwd=%s argv=%s)",
+            sidecar_cwd,
+            argv,
+        )
         process = subprocess.Popen(  # nosec B603
-            shlex.split(command),
-            cwd=sidecar_cwd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            argv,
+            cwd=str(sidecar_cwd),
+            env=env,
         )
         app.state._autopulse_sidecar_process = process
 
@@ -467,6 +508,64 @@ def _configure_sidecar(
     app.state._autopulse_sidecar_registered = True
 
 
+def _resolve_embedded_ingest_transport(kwargs: dict[str, Any]) -> str:
+    """``http`` (default): loopback FastAPI + HTTP ingest (matches split-stack responsiveness).
+
+    ``asgi``: legacy in-process ASGI transport to the host app (smaller surface, can lag WS).
+    """
+    raw_kw = kwargs.get("embedded_ingest_transport")
+    if raw_kw is not None:
+        v = str(raw_kw).strip().lower()
+        return v if v in {"http", "asgi"} else "http"
+    env = os.getenv("AUTOPULSE_EMBEDDED_INGEST_TRANSPORT", "http").strip().lower()
+    return env if env in {"http", "asgi"} else "http"
+
+
+def _pick_loopback_tcp_port() -> int:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+    finally:
+        s.close()
+
+
+def _wait_loopback_ready(*, port: int, prefix: str, timeout_s: float = 30.0) -> None:
+    base = prefix.rstrip("/") or ""
+    url = f"http://127.0.0.1:{port}{base}/ready"
+    deadline = time.perf_counter() + timeout_s
+    last_exc: Exception | None = None
+    while time.perf_counter() < deadline:
+        try:
+            with httpx.Client(timeout=0.75) as client:
+                response = client.get(url)
+                if response.status_code == 200:
+                    return
+        except (httpx.RequestError, OSError) as exc:
+            last_exc = exc
+        time.sleep(0.05)
+    msg = f"AutoPulse embedded loopback server did not become ready at {url}"
+    if last_exc is not None:
+        raise RuntimeError(msg) from last_exc
+    raise RuntimeError(msg)
+
+
+def _start_uvicorn_embedded_loopback(app: Any, *, port: int) -> tuple[Any, threading.Thread]:
+    import asyncio
+
+    import uvicorn
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
+    server = uvicorn.Server(config)
+
+    def _serve() -> None:
+        asyncio.run(server.serve())
+
+    thread = threading.Thread(target=_serve, name="autopulse-embedded-loopback", daemon=True)
+    thread.start()
+    return server, thread
+
+
 def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
     mode = str(kwargs.get("mode", "embedded")).strip().lower()
     if mode != "embedded":
@@ -478,7 +577,11 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
     raw_kw = kwargs.get("api_key")
     kwargs_api_key = raw_kw.strip() if isinstance(raw_kw, str) and raw_kw.strip() else None
     api_key = _resolve_embedded_api_key(kwargs_api_key=kwargs_api_key, mount_prefix=prefix)
-    frontend_mode = str(kwargs.get("frontend_mode", "static")).strip().lower()
+    if "frontend_mode" in kwargs and kwargs.get("frontend_mode") is not None:
+        raw_frontend = str(kwargs["frontend_mode"]).strip().lower()
+    else:
+        raw_frontend = os.getenv("AUTOPULSE_FRONTEND_MODE", "static").strip().lower()
+    frontend_mode = raw_frontend if raw_frontend in {"static", "sidecar"} else "static"
     probe_interval_ms = float(
         kwargs.get(
             "infrastructure_probe_interval_ms",
@@ -487,54 +590,169 @@ def configure_embedded(app: Any, *, kwargs: dict[str, Any]) -> dict[str, Any]:
     )
     _apply_backend_environment(database_url=database_url)
 
+    ingest_transport = _resolve_embedded_ingest_transport(kwargs)
+
     if not getattr(app.state, "_autopulse_embedded_configured", False):
-        from autopulse_backend.app import mount_on_app
+        if ingest_transport == "http":
+            from fastapi import FastAPI
 
-        backend_app = mount_on_app(app, prefix=prefix)
+            from autopulse_backend.app import mount_on_app
 
-        async def ensure_project_key() -> None:
-            from autopulse_backend.config import get_settings
-            from autopulse_backend.jobs import run_retention_once
+            loopback_root = FastAPI()
+            backend_app = mount_on_app(loopback_root, prefix=prefix)
+            if frontend_mode == "static":
+                _mount_embedded_ui(backend_app, static_dir=kwargs.get("frontend_static_dir"))
+            port = _pick_loopback_tcp_port()
+            server, loopback_thread = _start_uvicorn_embedded_loopback(loopback_root, port=port)
+            _wait_loopback_ready(port=port, prefix=prefix)
 
-            await _ensure_embedded_project_and_key(
-                database_url=database_url,
-                project_name=project_name,
-                api_key=api_key,
+            proxy = AutopulseLoopbackMountProxy(loopback_port=port)
+            mount_path = prefix.rstrip("/") or "/"
+            app.mount(mount_path, proxy)
+
+            app.state._autopulse_embedded_loopback_http = True
+            app.state._autopulse_embedded_loopback_server = server
+            app.state._autopulse_embedded_loopback_thread = loopback_thread
+            app.state._autopulse_embedded_loopback_port = port
+            app.state._autopulse_embedded_loopback_proxy = proxy
+            app.state._autopulse_embedded_loopback_ingest_url = (
+                f"http://127.0.0.1:{port}{prefix}/ingest"
             )
 
-            # Never block application startup on retention; large local DB cleanup can be slow.
-            async def _run_retention_background() -> None:
-                with suppress(Exception):
-                    await run_retention_once(settings=get_settings())
+            async def ensure_project_key() -> None:
+                from autopulse_backend.config import get_settings
+                from autopulse_backend.jobs import run_retention_once
 
-            task = asyncio.create_task(_run_retention_background())
-            app.state._autopulse_startup_retention_task = task
-            # Ensure periodic loops run in embedded hosts even if mounted
-            # subapp lifespan is skipped.
-            _start_embedded_background_jobs(app)
+                await _ensure_embedded_project_and_key(
+                    database_url=database_url,
+                    project_name=project_name,
+                    api_key=api_key,
+                )
 
-        async def stop_startup_retention_task() -> None:
-            task = getattr(app.state, "_autopulse_startup_retention_task", None)
-            if task is None:
-                return
-            if not task.done():
-                task.cancel()
-                with suppress(Exception):
-                    await task
-            app.state._autopulse_startup_retention_task = None
-            await _stop_embedded_background_jobs(app)
+                async def _run_retention_background() -> None:
+                    with suppress(Exception):
+                        await run_retention_once(settings=get_settings())
 
-        _add_event_handler(app, "startup", ensure_project_key)
-        _add_event_handler(app, "shutdown", stop_startup_retention_task)
-        if frontend_mode == "static":
-            _mount_embedded_ui(backend_app, static_dir=kwargs.get("frontend_static_dir"))
+                task = asyncio.create_task(_run_retention_background())
+                app.state._autopulse_startup_retention_task = task
+
+            async def stop_embedded_stack() -> None:
+                task = getattr(app.state, "_autopulse_startup_retention_task", None)
+                if task is not None:
+                    if not task.done():
+                        task.cancel()
+                        with suppress(Exception):
+                            await task
+                    app.state._autopulse_startup_retention_task = None
+                proxy_obj = getattr(app.state, "_autopulse_embedded_loopback_proxy", None)
+                if proxy_obj is not None:
+                    await proxy_obj.aclose()
+                srv = getattr(app.state, "_autopulse_embedded_loopback_server", None)
+                if srv is not None:
+                    srv.should_exit = True
+                thr = getattr(app.state, "_autopulse_embedded_loopback_thread", None)
+                if thr is not None and thr.is_alive():
+                    await asyncio.to_thread(thr.join, 15.0)
+                app.state._autopulse_embedded_loopback_proxy = None
+                app.state._autopulse_embedded_loopback_server = None
+                app.state._autopulse_embedded_loopback_thread = None
+
+            _add_event_handler(app, "startup", ensure_project_key)
+            _add_event_handler(app, "shutdown", stop_embedded_stack)
+            _LOG.info(
+                "AutoPulse embedded loopback ingest=http://127.0.0.1:%s%s/ingest; "
+                "dashboard mount on your app remains at %s",
+                port,
+                prefix,
+                prefix,
+            )
+        else:
+            from autopulse_backend.app import mount_on_app
+
+            backend_app = mount_on_app(app, prefix=prefix)
+
+            async def ensure_project_key() -> None:
+                from autopulse_backend.config import get_settings
+                from autopulse_backend.jobs import run_retention_once
+
+                await _ensure_embedded_project_and_key(
+                    database_url=database_url,
+                    project_name=project_name,
+                    api_key=api_key,
+                )
+
+                async def _run_retention_background() -> None:
+                    with suppress(Exception):
+                        await run_retention_once(settings=get_settings())
+
+                task = asyncio.create_task(_run_retention_background())
+                app.state._autopulse_startup_retention_task = task
+                _start_embedded_background_jobs(app)
+
+            async def stop_startup_retention_task() -> None:
+                task = getattr(app.state, "_autopulse_startup_retention_task", None)
+                if task is None:
+                    return
+                if not task.done():
+                    task.cancel()
+                    with suppress(Exception):
+                        await task
+                app.state._autopulse_startup_retention_task = None
+                await _stop_embedded_background_jobs(app)
+
+            _add_event_handler(app, "startup", ensure_project_key)
+            _add_event_handler(app, "shutdown", stop_startup_retention_task)
+            if frontend_mode == "static":
+                _mount_embedded_ui(backend_app, static_dir=kwargs.get("frontend_static_dir"))
+
         if frontend_mode == "sidecar":
-            _configure_sidecar(
-                app,
-                command=kwargs.get("frontend_sidecar_command"),
-                working_directory=kwargs.get("frontend_sidecar_cwd"),
-            )
+            cmd_kw = kwargs.get("frontend_sidecar_command")
+            cmd_env = os.getenv("AUTOPULSE_FRONTEND_SIDECAR_COMMAND", "").strip() or None
+            if cmd_kw not in (None, ""):
+                explicit_cmd = cmd_kw
+            elif cmd_env:
+                explicit_cmd = cmd_env
+            else:
+                explicit_cmd = None
+            cwd_kw = kwargs.get("frontend_sidecar_cwd")
+            cwd_env = os.getenv("AUTOPULSE_FRONTEND_DIR", "").strip() or None
+            merged_cwd = cwd_kw or cwd_env
+            if explicit_cmd is not None:
+                _configure_sidecar(
+                    app,
+                    command=explicit_cmd,
+                    working_directory=merged_cwd,
+                    extra_env={"AUTOPULSE_FRONTEND_MODE": "sidecar"},
+                )
+            else:
+                root = _resolve_sidecar_frontend_root(merged_cwd)
+                if root is None:
+                    _LOG.warning(
+                        "AUTOPULSE_FRONTEND_MODE=sidecar but no frontend_sidecar_command / "
+                        "AUTOPULSE_FRONTEND_SIDECAR_COMMAND and no frontend/package.json under cwd "
+                        "or AUTOPULSE_FRONTEND_DIR — skipping Next dev sidecar."
+                    )
+                else:
+                    _configure_sidecar(
+                        app,
+                        command=["npm", "run", "dev"],
+                        working_directory=str(root),
+                        extra_env={"AUTOPULSE_FRONTEND_MODE": "sidecar"},
+                    )
         app.state._autopulse_embedded_configured = True
+
+    loopback_ingest = getattr(app.state, "_autopulse_embedded_loopback_ingest_url", None)
+    if loopback_ingest and ingest_transport == "http":
+        ingest_url = kwargs.get("ingest_url") or loopback_ingest
+        provided_http_client = kwargs.get("http_client")
+        return {
+            "api_key": api_key,
+            "ingest_url": ingest_url,
+            "infrastructure_probe_interval_ms": probe_interval_ms,
+            "embedded_startup_ingest_ping": _embedded_startup_ingest_ping_enabled(),
+            "http_client": provided_http_client or httpx.AsyncClient(timeout=httpx.Timeout(30.0)),
+            "owns_http_client": provided_http_client is None,
+        }
 
     ingest_url = kwargs.get("ingest_url") or f"http://autopulse.local{prefix}/ingest"
     provided_http_client = kwargs.get("http_client")

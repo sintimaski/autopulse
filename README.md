@@ -31,11 +31,10 @@ uv sync --group dev
 npm --prefix frontend install
 cp backend/.env.example backend/.env   # once; edit email etc.
 # First boot creates repo-root .env.autopulse (ingest + NEXT_PUBLIC_*). Then:
-npm --prefix frontend run build        # or use scripts/run_synthetic_stack.sh (sources .env.autopulse)
-uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000
+./scripts/run_synthetic_stack.sh       # one command: API + Next dev (default sidecar); or uvicorn alone after `npm --prefix frontend run build` with `AUTOPULSE_FRONTEND_MODE=static`
 ```
 
-First embedded `monitor()` boot writes **`.env.autopulse`** (gitignored) with `AUTOPULSE_EMBEDDED_API_KEY` and matching `NEXT_PUBLIC_*` for static UI. **`./scripts/run_synthetic_stack.sh`** sources `backend/.env` then **`.env.autopulse`** before `npm run build`, so the second run onward is mostly automatic. A one-shot startup ingest (`/.well-known/autopulse-onboarding`) runs unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`. Override path with `AUTOPULSE_ENV_AUTOPULSE_FILE`.
+First embedded `monitor()` boot writes **`.env.autopulse`** (gitignored) with `AUTOPULSE_EMBEDDED_API_KEY` and matching `NEXT_PUBLIC_*` for UI. **`./scripts/run_synthetic_stack.sh`** sources `backend/.env` then **`.env.autopulse`**, then starts uvicorn with **`AUTOPULSE_FRONTEND_MODE=sidecar`** by default so the dashboard runs as **Next dev on port 3000** (same responsiveness as a split stack). Set `AUTOPULSE_FRONTEND_MODE=static` if you prefer a static export (`npm run build` runs in that case). A one-shot startup ingest (`/.well-known/autopulse-onboarding`) runs unless `AUTOPULSE_EMBEDDED_STARTUP_INGEST=0`. Override path with `AUTOPULSE_ENV_AUTOPULSE_FILE`.
 
 Embedded mode needs the **`autopulse-backend`** distribution (not yet a separate PyPI install for every workflow). Use either:
 

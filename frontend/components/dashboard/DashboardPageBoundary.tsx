@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { DashboardDataContext, useDashboardData } from "./DashboardDataContext";
 import type { DashboardMagicLinkRequestResponse } from "./dashboardTypes";
-import { buildApiUrl, isEmbeddedRelativeDashboard } from "./dashboardTypes";
+import { buildApiUrl, isAbsoluteOriginOnlyApiBase, isEmbeddedRelativeDashboard } from "./dashboardTypes";
 
 /** Shown while `/dashboard/auth/session` is in flight so we do not flash the sign-in screen on reload. */
 export function DashboardSessionRestoring({
@@ -72,7 +72,10 @@ export function ApiKeyMissing() {
             "Typical fixes: set DASHBOARD_AUTH_ALLOWED_EMAIL to this address (or use dev allowlist), " +
             "ensure ALERT_EMAIL_PROVIDER + keys/outbox for delivery, add your UI origin to CORS_ALLOW_ORIGINS " +
             "if the API is on another host/port, and set NEXT_PUBLIC_AUTOPULSE_API_BASE_URL to a path " +
-            "(e.g. /autopulse) when UI and API share one origin.",
+            "(e.g. /autopulse) when UI and API share one origin." +
+            (response.status === 404 && isAbsoluteOriginOnlyApiBase()
+              ? " 404 often means the API base is missing the embedded mount path: use e.g. http://127.0.0.1:8000/autopulse (not just …:8000)."
+              : ""),
         );
         return;
       }

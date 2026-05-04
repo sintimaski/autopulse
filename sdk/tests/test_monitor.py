@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -580,6 +581,7 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
     # TestClient uses http://testserver; allow ingest without TLS like backend conftest.
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
+    monkeypatch.delenv("AUTOPULSE_FRONTEND_MODE", raising=False)
     monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
     monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
     monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
@@ -624,6 +626,57 @@ def test_embedded_mode_mounts_backend_and_accepts_events(
 
         missing_asset = client.get("/autopulse/ui/not-a-real-asset-xyz123.js")
         assert missing_asset.status_code == 404
+
+
+def test_embedded_sidecar_default_spawns_npm_dev(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("AUTOPULSE_ENV_AUTOPULSE_FILE", raising=False)
+    monkeypatch.delenv("AUTOPULSE_FRONTEND_SIDECAR_COMMAND", raising=False)
+    monkeypatch.delenv("AUTOPULSE_FRONTEND_DIR", raising=False)
+    monkeypatch.setenv("INGEST_REQUIRE_HTTPS", "false")
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_API_KEY", DEFAULT_EMBEDDED_API_KEY)
+    monkeypatch.setenv("AUTOPULSE_EMBEDDED_STARTUP_INGEST", "0")
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(tmp_path / "sidecar-events.duckdb"))
+    monkeypatch.setenv("AUTOPULSE_FRONTEND_MODE", "sidecar")
+    fe = tmp_path / "frontend"
+    fe.mkdir()
+    (fe / "package.json").write_text("{}\n", encoding="utf-8")
+
+    recorded: dict[str, Any] = {}
+
+    def fake_popen(*args: Any, **kwargs: Any) -> MagicMock:
+        recorded["args"] = args
+        recorded["kwargs"] = kwargs
+        proc = MagicMock()
+        proc.pid = 42_001
+        proc.poll.return_value = None
+        proc.terminate = MagicMock()
+        return proc
+
+    monkeypatch.setattr("autopulse._embedded.subprocess.Popen", fake_popen)
+
+    app = FastAPI()
+    monitor(
+        app,
+        mode="embedded",
+        mount_prefix="/autopulse",
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'sidecar.db'}",
+    )
+
+    with lifespan_test_client(app) as client:
+        assert client.get("/autopulse/health").status_code == 200
+
+    assert recorded.get("args") == (["npm", "run", "dev"],)
+    kw = recorded.get("kwargs") or {}
+    assert kw.get("cwd") == str(fe.resolve())
+    env = kw.get("env") or {}
+    assert env.get("AUTOPULSE_FRONTEND_MODE") == "sidecar"
+
+    from autopulse_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
 
 
 def test_embedded_writes_api_key_file_when_unconfigured(

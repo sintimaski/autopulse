@@ -4,13 +4,16 @@ Use this instead of ad-hoc ``os.getenv`` blocks in ``synthetic_test_app``.
 
 **Deployment shapes**
 
-- **Embedded (one process):** backend + ingest + dashboard mounted on the same
-  app — the default ``one_line_embedded()`` preset.
+- **Embedded (one process):** backend + ingest on the same app — the default
+  ``one_line_embedded()`` preset. Dashboard UI is either a **static export** under
+  ``/autopulse/ui`` (``frontend_mode="static"``) or a **Next dev sidecar** child
+  process (``frontend_mode="sidecar"``, env ``AUTOPULSE_FRONTEND_MODE``).
 - **Remote (separate server):** SDK sends to an external AutoPulse ingest URL —
   ``separate_backend()`` preset.
-- **Embedded + sidecar UI:** still embedded; set ``frontend_mode="sidecar"`` on
-  ``SyntheticEmbeddedDeployment`` when you want the Next dashboard as a child
-  process instead of static assets.
+- **Embedded + sidecar UI:** set ``frontend_mode="sidecar"`` (or env); the SDK
+  starts ``npm run dev`` in ``frontend/`` by default (see ``AUTOPULSE_FRONTEND_DIR`` /
+  ``AUTOPULSE_FRONTEND_SIDECAR_COMMAND``). ``scripts/run_synthetic_stack.sh`` defaults
+  to sidecar so one command matches split-stack dashboard responsiveness.
 
 Environment loading mirrors the variables documented in ``fixtures/README.md``.
 """

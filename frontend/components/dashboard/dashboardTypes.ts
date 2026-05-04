@@ -418,8 +418,14 @@ export const EMBEDDED_DEFAULT_API_BASE_URL = "/autopulse";
 export const apiBaseUrl =
   process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? EMBEDDED_DEFAULT_API_BASE_URL;
 
+const _isNextSidecarDev: boolean =
+  process.env.NEXT_PUBLIC_AUTOPULSE_FRONTEND_MODE === "sidecar";
+
 /** True when the dashboard bundle calls the API on the same origin via a path prefix (embedded static UI). */
 export function isEmbeddedRelativeDashboard(): boolean {
+  if (_isNextSidecarDev) {
+    return false;
+  }
   const normalized = normalizeBasePath(apiBaseUrl);
   return !normalized.startsWith("http://") && !normalized.startsWith("https://");
 }
@@ -432,8 +438,69 @@ function normalizeBasePath(baseUrl: string): string {
   return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
 }
 
+/** Sidecar: Next runs on :3000 while API is on another origin; relative ``/autopulse`` would hit Next and 404. */
+function resolveApiBaseForRequests(): string {
+  const base = normalizeBasePath(apiBaseUrl);
+  const relative = !base.startsWith("http://") && !base.startsWith("https://");
+  if (relative && _isNextSidecarDev) {
+    const origin = (
+      process.env.NEXT_PUBLIC_AUTOPULSE_DEV_API_ORIGIN ?? "http://127.0.0.1:8000"
+    ).replace(/\/+$/, "");
+    return `${origin}${base.startsWith("/") ? base : `/${base}`}`;
+  }
+  // Embedded static export is served under ``/autopulse/ui`` on the API host. If the public API
+  // base is mistakenly set to the bare origin (``http://host:port``), requests would hit ``/dashboard``
+  // instead of ``/autopulse/dashboard`` and return 404.
+  //
+  // Next may keep ``pathname`` relative to ``basePath`` (e.g. ``/dashboard/``) while the address bar
+  // still shows ``/autopulse/ui/...`` — use ``href`` and loaded script URLs as signals.
+  if (typeof window !== "undefined") {
+    const href = window.location.href || "";
+    const locPath = window.location.pathname || "";
+    let looksLikeEmbeddedUi =
+      href.includes("/autopulse/ui") ||
+      locPath === "/autopulse/ui" ||
+      locPath.startsWith("/autopulse/ui/");
+    if (!looksLikeEmbeddedUi && typeof document !== "undefined") {
+      const scripts = document.getElementsByTagName("script");
+      for (let i = 0; i < scripts.length; i++) {
+        const src = scripts[i]?.getAttribute("src") ?? "";
+        if (src.includes("/autopulse/ui/_next/")) {
+          looksLikeEmbeddedUi = true;
+          break;
+        }
+      }
+    }
+    if (looksLikeEmbeddedUi) {
+      const abs = base.startsWith("http://") || base.startsWith("https://");
+      if (abs && /^https?:\/\/[^/]+\/?$/i.test(base)) {
+        try {
+          const pageOrigin = window.location.origin;
+          const baseParsed = new URL(base);
+          const pageParsed = new URL(pageOrigin);
+          if (baseParsed.host === pageParsed.host && baseParsed.protocol === pageParsed.protocol) {
+            return `${pageParsed.origin}${EMBEDDED_DEFAULT_API_BASE_URL}`;
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return base;
+}
+
+/** True when API base is an absolute URL with no path (e.g. ``http://127.0.0.1:8000``) — wrong for embedded mount. */
+export function isAbsoluteOriginOnlyApiBase(): boolean {
+  const normalized = resolveApiBaseForRequests();
+  if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+    return false;
+  }
+  return /^https?:\/\/[^/]+\/?$/i.test(normalized);
+}
+
 export function buildApiUrl(path: string): string {
-  const normalizedBase = normalizeBasePath(apiBaseUrl);
+  const normalizedBase = resolveApiBaseForRequests();
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")) {
     return `${normalizedBase}${normalizedPath}`;

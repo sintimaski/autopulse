@@ -400,6 +400,23 @@ class _EventDispatcher:
                     f"status={response.status_code} accepted_events={len(batch)}",
                 )
                 return
+            except httpx.HTTPStatusError as exc:
+                code = exc.response.status_code
+                if code == 401:
+                    _debug_log(
+                        self._config.debug,
+                        "batch send got 401; not retrying (credentials or API key issue)",
+                    )
+                    return
+                _debug_log(
+                    self._config.debug,
+                    f"batch send failed attempt={attempt + 1} error={type(exc).__name__}: {exc}",
+                )
+                if attempt >= self._config.max_retries:
+                    _debug_log(self._config.debug, "dropping batch after retries exhausted")
+                    return
+                sleep_seconds = self._config.retry_backoff_s * (2**attempt)
+                await asyncio.sleep(sleep_seconds)
             except Exception as exc:
                 _debug_log(
                     self._config.debug,

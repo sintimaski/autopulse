@@ -6,7 +6,7 @@ alwaysApply: false
 
 # Synthetic Stack Storage Rule
 
-- Treat `scripts/run_synthetic_stack.sh` (embedded) and `scripts/run_remote_stack.sh` (split stack) as DuckDB-first local integration paths.
+- Treat `scripts/run_synthetic_stack.sh` (embedded API + default Next **sidecar** on :3000) and `scripts/run_remote_stack.sh` (split stack) as DuckDB-first local integration paths. Use `AUTOPULSE_FRONTEND_MODE=static` in the synthetic script when you need a static export build instead.
 - Keep `AUTOPULSE_EVENT_STORE=duckdb` explicit in script defaults.
 - Export **`AUTOPULSE_DATA_DIR`** (repo root) plus an absolute **`AUTOPULSE_DUCKDB_PATH`** (see scripts). The backend also normalizes relative `AUTOPULSE_DUCKDB_PATH` against that data root via `resolve_autopulse_data_root` / `normalize_event_store_duckdb_path` in `core/config.py`.
 - Do not silently switch these scripts to SQLite for raw event storage.
