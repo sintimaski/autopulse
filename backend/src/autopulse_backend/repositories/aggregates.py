@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autopulse_backend.dashboard.time_window import as_utc_datetime
 from autopulse_backend.models import ErrorGroupAggregate, MetricBucket
 
 
@@ -99,15 +100,19 @@ async def upsert_error_group_aggregates(
                     message=delta.message,
                     sample_stack_trace=delta.sample_stack_trace,
                     count=delta.count,
-                    first_seen=delta.first_seen,
-                    last_seen=delta.last_seen,
+                    first_seen=as_utc_datetime(delta.first_seen),
+                    last_seen=as_utc_datetime(delta.last_seen),
                 )
             )
             continue
         row.count += delta.count
-        row.first_seen = min(row.first_seen, delta.first_seen)
-        if delta.last_seen >= row.last_seen:
-            row.last_seen = delta.last_seen
+        row_first = as_utc_datetime(row.first_seen)
+        delta_first = as_utc_datetime(delta.first_seen)
+        delta_last = as_utc_datetime(delta.last_seen)
+        row_last = as_utc_datetime(row.last_seen)
+        row.first_seen = min(row_first, delta_first)
+        if delta_last >= row_last:
+            row.last_seen = delta_last
             row.path = delta.path
             row.exception_type = delta.exception_type
             row.message = delta.message

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -615,6 +615,44 @@ def test_ingest_idempotency_key_replays_accepted_without_duplicate_events(
     assert second.status_code == 200
     assert first.json() == second.json() == {"accepted": 1}
     assert _count_events(backend_test_database_url) == 1
+
+
+def test_ingest_second_error_batch_updates_error_group_aggregates_without_datetime_mismatch(
+    backend_test_database_url: str,
+) -> None:
+    """SQLite can return naive datetimes for TZ columns; deltas from ingest are UTC-aware."""
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    base_ts = datetime.now(tz=UTC).replace(microsecond=0)
+
+    def error_batch(ts: datetime) -> dict[str, object]:
+        return {
+            "events": [
+                {
+                    "type": "error",
+                    "timestamp": ts.isoformat(),
+                    "service_name": "api",
+                    "environment": "test",
+                    "method": "GET",
+                    "path": "/boom",
+                    "status_code": 500,
+                    "latency_ms": 1.0,
+                    "exception_type": "RuntimeError",
+                    "exception_message": "x",
+                }
+            ],
+        }
+
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        first = client.post("/ingest", json=error_batch(base_ts), headers=headers)
+        second = client.post(
+            "/ingest", json=error_batch(base_ts + timedelta(seconds=1)), headers=headers
+        )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json() == {"accepted": 1}
 
 
 def test_ingest_distributed_rate_limit_db_error_fails_open_and_increments_metric(

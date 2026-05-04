@@ -39,6 +39,18 @@ _HOP_BY_HOP_RESPONSE = frozenset(
     }
 )
 
+# ``websockets.connect`` already emits a fresh handshake (key, version, extensions, subprotocol).
+# Forwarding the browser's ``Sec-WebSocket-*`` headers merges duplicates (Headers.update appends),
+# which makes Starlette/Uvicorn reject the upgrade with HTTP 400 ("multiple values").
+_WS_CLIENT_REGENERATES = frozenset(
+    {
+        "sec-websocket-key",
+        "sec-websocket-version",
+        "sec-websocket-extensions",
+        "sec-websocket-protocol",
+    }
+)
+
 
 def _decode_header_list(scope_headers: list[tuple[bytes, bytes]]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
@@ -61,6 +73,47 @@ def _filter_response_headers(items: httpx.Headers) -> list[tuple[bytes, bytes]]:
             continue
         out.append((k.encode("latin-1"), v.encode("latin-1")))
     return out
+
+
+def _websocket_upstream_additional_headers(
+    scope_headers: list[tuple[bytes, bytes]], *, upstream_host_header: str
+) -> tuple[list[tuple[str, str]], str | None]:
+    """Build ``websockets.connect`` handshake inputs from the incoming ASGI scope.
+
+    Returns ``(additional_headers, origin)`` — pass ``origin`` as the connect
+    kwarg (not as a header) so it cannot duplicate ``Origin`` from
+    ``additional_headers``. ``Headers.update`` appends duplicate names, which
+    makes the upstream ``websockets`` server reject the handshake with HTTP 400
+    (e.g. multiple ``Origin`` or ``Host``).
+
+    Non-cookie headers are deduplicated case-insensitively (last value wins).
+    Multiple ``cookie`` lines are merged into one ``Cookie`` value.
+    """
+    decoded = _decode_header_list(list(scope_headers or []))
+    filtered = [(k, v) for k, v in decoded if k.lower() not in _WS_CLIENT_REGENERATES]
+
+    origin: str | None = None
+    cookies: list[str] = []
+    other_order: list[str] = []
+    other_last: dict[str, tuple[str, str]] = {}
+
+    for k, v in filtered:
+        lk = k.lower()
+        if lk == "origin":
+            origin = v
+            continue
+        if lk == "cookie":
+            cookies.append(v)
+            continue
+        if lk not in other_last:
+            other_order.append(lk)
+        other_last[lk] = (k, v)
+
+    out: list[tuple[str, str]] = [other_last[lk] for lk in other_order]
+    if cookies:
+        out.append(("Cookie", "; ".join(cookies)))
+    out.append(("Host", upstream_host_header))
+    return out, origin
 
 
 class AutopulseLoopbackMountProxy:
@@ -175,15 +228,20 @@ class AutopulseLoopbackMountProxy:
         if qs:
             uri = f"{uri}?{qs.decode('latin-1')}"
 
-        headers = _decode_header_list(list(scope.get("headers") or []))
-        headers.append(("Host", self._upstream_host_header))
+        headers, ws_origin = _websocket_upstream_additional_headers(
+            list(scope.get("headers") or []),
+            upstream_host_header=self._upstream_host_header,
+        )
 
         first = await receive()
         if first.get("type") != "websocket.connect":
             return
 
         try:
-            upstream = await ws_connect(uri, additional_headers=headers or None)
+            connect_kw: dict[str, Any] = {}
+            if ws_origin is not None:
+                connect_kw["origin"] = ws_origin
+            upstream = await ws_connect(uri, additional_headers=headers or None, **connect_kw)
         except Exception as exc:
             _LOG.warning("autopulse_embedded_proxy_ws_connect_failed uri=%s err=%s", uri, exc)
             await send({"type": "websocket.close", "code": 1011})
