@@ -61,3 +61,6 @@ out/
 *.log
 
 .autopulse/
+
+# Local stray copies of dashboard static export (canonical build is frontend/out)
+sdk/src/autopulse/ui/
