@@ -52,8 +52,8 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Project defaults, theme, and delivery channels.",
   },
   "/logs": {
-    title: "Logs",
-    subtitle: "Scope traffic quickly and inspect request evidence.",
+    title: "Requests",
+    subtitle: "Legacy /logs URL — same request-level evidence as Requests.",
   },
   "/onboarding": {
     title: "Onboarding",
@@ -473,6 +473,15 @@ function ShellWithData({ children }: { children: ReactNode }) {
     return <ApiKeyMissing />;
   }
 
+  if (!onboardingStatusKnown) {
+    return (
+      <DashboardSessionRestoring
+        title="Loading workspace…"
+        message="Checking onboarding status before opening the dashboard."
+      />
+    );
+  }
+
   const isDark =
     d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
@@ -581,11 +590,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
       filterToolbarCompactLabel={
         pathname === "/diagnosis"
           ? "Diagnosis scope"
-          : pathname === "/logs"
-            ? "Logs scope"
-            : pathname === "/requests"
-              ? "Requests scope"
-              : "Server scope"
+          : pathname === "/logs" || pathname === "/requests"
+            ? "Requests scope"
+            : "Server scope"
       }
       onResetServerFilters={
         showServerScope

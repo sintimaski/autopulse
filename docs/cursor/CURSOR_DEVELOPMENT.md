@@ -9,7 +9,7 @@ This file explains how this repo uses Cursor: rules, agent playbooks, and which 
 | `DEVELOPMENT.md` | Product scope, MVP, architecture, event model, security defaults. **Source of truth** when scope is ambiguous. |
 | `docs/DOCUMENTATION_GOVERNANCE.md` | When documentation may be edited and approval requirements. |
 | `AGENTS.md` | Entry point for humans and agents; links to `agents/`. |
-| `agents/*.md` | Playbooks: implement, review, UI/UX, security. |
+| `agents/*.md` | Playbooks: implement, review, UI/UX, security (plus `agents/README.md` as workflow index). |
 
 ## Rules layout (`.cursor/rules/`)
 
@@ -20,7 +20,25 @@ Rules use `.mdc` files with YAML frontmatter:
 
 Keep rules **short and enforceable**. Product nuance belongs in `DEVELOPMENT.md`, not duplicated at length in rules.
 
-For **bug hunts and “it doesn’t work”** reports, the always-on rule **`.cursor/rules/autopulse-debugging.mdc`** expects local SQLite + running BE/FE when relevant, browser reproduction or explicit user steps, logging over guesses, and temporary scripts removed before merge.
+New `.mdc` files **must** include the **Rule self-review** footer defined under **New `.cursor/rules/*.mdc` files** in `.cursor/rules/autopulse-execution.mdc` (every rule except `autopulse-execution.mdc` itself, which hosts the full process).
+
+For **bug hunts and “it doesn’t work”** reports, the always-on rule **`.cursor/rules/autopulse-debugging.mdc`** expects a **default repro** of file-backed SQLite from `backend/.env` (unless the issue is clearly Postgres-only), running backend/frontend when relevant, explicit repro steps and logs over guesses, and temporary probes removed before merge.
+
+### Always-on rules (current)
+
+These files use `alwaysApply: true` in Cursor:
+
+| File | Role |
+|------|------|
+| `autopulse-execution.mdc` | Delivery workflow, rules self-review, template for new rules |
+| `autopulse-product.mdc` | MVP boundaries and product filter |
+| `autopulse-engineering.mdc` | SDK/backend/security engineering constraints |
+| `autopulse-debugging.mdc` | Evidence-based debugging and default repro stack |
+| `documentation-and-context.mdc` | Governed docs policy; when to read `DEVELOPMENT.md` |
+| `post-task-manual-verification.mdc` | Final responses include manual verification steps |
+| `post-task-code-review.mdc` | Pre-handoff review gate |
+
+Other `.mdc` files are **path-scoped** (`globs`) for `sdk/`, `backend/`, `frontend/`, `scripts/`, tests, docs, synthetic stack, embedded bundle, etc. See the `.cursor/rules/` directory for the authoritative list.
 
 ## Automatic context
 
@@ -44,9 +62,11 @@ Repository configuration cannot force a human to attach files; the combination o
 |------|------|
 | Python SDK | `sdk/` |
 | Backend API | `backend/` |
-| Dashboard | `frontend/` |
+| Dashboard | `frontend/` (Next.js; static export is the default shipping path) |
+| Agent / workflow docs | `agents/`, `docs/cursor/` |
+| Local stack / ops scripts | `scripts/` |
 
-Tooling (Ruff, Mypy, Bandit, pytest, pre-commit) runs from the repo root via `uv`.
+Python tooling (Ruff, Mypy, Bandit, pytest, pre-commit) is configured in the **repo root** `pyproject.toml` and run via **`uv`** (workspace members: `sdk/`, `backend/`).
 
 ## Commands (optional)
 

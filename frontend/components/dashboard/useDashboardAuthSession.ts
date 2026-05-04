@@ -20,16 +20,21 @@ function fetchSessionWithTimeout(
   });
 }
 
+export type DashboardAuthSessionIssue = "none" | "unauthorized" | "network";
+
 export function useDashboardAuthSession(): {
   hasSession: boolean;
   authSessionResolved: boolean;
   sessionEmail: string | null;
+  /** Distinguish expired/forbidden session from a connectivity failure when ``hasSession`` is false. */
+  sessionIssue: DashboardAuthSessionIssue;
   /** Re-run ``/dashboard/auth/session`` (e.g. after WS handshake failures or HTTP 401) without a full reload. */
   reloadSession: () => void;
 } {
   const [hasSession, setHasSession] = useState(false);
   const [authSessionResolved, setAuthSessionResolved] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const [sessionIssue, setSessionIssue] = useState<DashboardAuthSessionIssue>("none");
   const [sessionRequestId, setSessionRequestId] = useState(0);
 
   const reloadSession = useCallback(() => {
@@ -39,6 +44,9 @@ export function useDashboardAuthSession(): {
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
+      if (!cancelled) {
+        setSessionIssue("none");
+      }
       try {
         const response = await fetchSessionWithTimeout(
           buildApiUrl("/dashboard/auth/session"),
@@ -48,6 +56,10 @@ export function useDashboardAuthSession(): {
         if (!response.ok) {
           if (!cancelled) {
             setHasSession(false);
+            setSessionEmail(null);
+            setSessionIssue(
+              response.status === 401 || response.status === 403 ? "unauthorized" : "network",
+            );
           }
           return;
         }
@@ -58,11 +70,13 @@ export function useDashboardAuthSession(): {
         if (!cancelled) {
           setHasSession(Boolean(payload.authenticated));
           setSessionEmail(payload.email ?? null);
+          setSessionIssue("none");
         }
-      } catch {
+      } catch (err) {
         if (!cancelled) {
           setHasSession(false);
           setSessionEmail(null);
+          setSessionIssue("network");
         }
       } finally {
         if (!cancelled) {
@@ -76,5 +90,5 @@ export function useDashboardAuthSession(): {
     };
   }, [sessionRequestId]);
 
-  return { hasSession, authSessionResolved, sessionEmail, reloadSession };
+  return { hasSession, authSessionResolved, sessionEmail, sessionIssue, reloadSession };
 }

@@ -11,3 +11,7 @@ alwaysApply: false
 - When fixing regressions, add or adjust at least one assertion that would fail before the fix.
 - Validate touched test suites with targeted commands first, then expand only if failures suggest cross-area impact.
 - In final handoff, include exact test commands run and outcomes (pass/fail/skip).
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

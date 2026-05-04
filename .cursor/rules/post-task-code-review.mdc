@@ -27,3 +27,8 @@ Before finalizing any implementation, run a short code review pass on changed fi
 - List findings first, ordered by severity; include file paths and concrete risk.
 - If no findings, state that clearly and call out any remaining test gaps or residual risk.
 - Include tests/checks run and a concise manual verification section.
+- If `.cursor/rules/` files were updated after **Rules self-review** (`autopulse-execution.mdc`), confirm they stay within non-material governance bounds (`documentation-and-context.mdc`).
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

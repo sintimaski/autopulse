@@ -89,10 +89,14 @@ async def authenticate_project(
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or not token:
         raise _unauthorized()
+    token = token.strip()
+    if not token:
+        raise _unauthorized()
     return await authenticate_project_token(session=session, token=token)
 
 
 async def authenticate_project_token(*, session: AsyncSession, token: str) -> ProjectContext:
+    token = token.strip()
     parsed = parse_api_key(token)
     if parsed is None:
         raise _unauthorized()

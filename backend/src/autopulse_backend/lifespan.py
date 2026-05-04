@@ -10,6 +10,8 @@ from fastapi import FastAPI
 from autopulse_backend.core.config import (
     _is_autopulse_embedded_default_sqlite_file,
     get_settings,
+    redact_database_url_for_log,
+    resolve_autopulse_data_root,
 )
 from autopulse_backend.database import get_engine, warm_database_connections
 from autopulse_backend.jobs import (
@@ -68,7 +70,7 @@ def _log_grouped_startup_settings() -> None:
     log = logging.getLogger("autopulse_backend")
     log.info(
         "Startup settings [database]: database_url=%s",
-        settings.database_url,
+        redact_database_url_for_log(settings.database_url),
     )
     log.info(
         "Startup settings [cors]: cors_allow_origins=%s",
@@ -134,6 +136,13 @@ def _log_grouped_startup_settings() -> None:
         "Startup settings [realtime]: dashboard_ws_live_tick_seconds=%.2f",
         settings.dashboard_ws_live_tick_seconds,
     )
+    if settings.event_store == "duckdb":
+        log.info(
+            "Startup settings [event_store]: mode=%s duckdb_path=%s data_root=%s",
+            settings.event_store,
+            settings.event_store_duckdb_path,
+            str(resolve_autopulse_data_root()),
+        )
 
 
 @asynccontextmanager

@@ -11,3 +11,24 @@ alwaysApply: true
 - For substantive edits, run strict but scoped validation for touched areas (lint plus targeted tests where possible).
 - If blocked, report concrete blocker, what was tried, and the smallest next step to unblock quickly.
 - Final responses must include what changed, what was verified, and manual verification steps.
+
+## Rules self-review (`.cursor/rules/**`)
+
+Whenever work was **substantive** and one or more files under `.cursor/rules/` **materially guided** how you approached the task (always-on or path-scoped), before handoff:
+
+1. **Compare rule to reality**: Did the task reveal a missing convention, stale path or link, unclear wording, or a pattern worth **generalizing** so the next run is smoother?
+2. **Act on it**: If a **small** edit to the relevant rule(s) improves accuracy or reuse **without** changing MVP scope or security expectations (see `DEVELOPMENT.md`), **update that rule file** in the same change series when practical.
+3. **Defer when material**: If the only honest fix would shift product boundaries, security defaults, or workflow obligations in a **material** way, do **not** treat that as a silent doc tweak — surface it in the response (and follow `docs/DOCUMENTATION_GOVERNANCE.md` / maintainer approval for governed changes).
+4. **Mention edits**: If you changed any `.cursor/rules/*.mdc`, add one sentence in the final response (which file, why).
+
+### New `.cursor/rules/*.mdc` files
+
+Any **new** rule under `.cursor/rules/` **must** ship with the standard **Rule self-review** footer at the end of the body (same text as existing rules), so every future rule participates in the loop. **Exception:** `autopulse-execution.mdc` only—this file carries the full **Rules self-review** section above and must **not** duplicate the short footer.
+
+**Required footer (verbatim):**
+
+```markdown
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.
+```

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from os import getenv
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse, urlunparse
 
 _RUNTIME_DOTENV_LOADED = False
 
@@ -258,6 +258,70 @@ def normalize_database_url(database_url: str) -> str:
     return f"{parsed.scheme}:///{normalized_path}"
 
 
+def redact_database_url_for_log(database_url: str) -> str:
+    """Return a log-safe ``DATABASE_URL`` with user password redacted.
+
+    URLs without a password (typical SQLite file paths) are returned unchanged.
+    """
+    normalized = database_url.strip()
+    parsed = urlparse(normalized)
+    if not parsed.password:
+        return normalized
+    user = parsed.username or ""
+    host = parsed.hostname or ""
+    port = f":{parsed.port}" if parsed.port else ""
+    auth = f"{quote(user, safe='')}:***" if user else "***"
+    netloc = f"{auth}@{host}{port}"
+    return urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+    )
+
+
+def resolve_autopulse_data_root() -> Path:
+    """Directory used to anchor relative ``AUTOPULSE_DUCKDB_PATH`` values.
+
+    Precedence:
+
+    1. ``AUTOPULSE_DATA_DIR`` (preferred)
+    2. ``AUTOPULSE_PROJECT_ROOT`` (alias for the same semantics)
+    3. Monorepo checkout: parent of ``backend/`` when ``backend/pyproject.toml`` exists
+       (same layout as ``normalize_database_url`` SQLite anchoring)
+    4. Current working directory (installed wheel / non-checkout layouts)
+    """
+    for key in ("AUTOPULSE_DATA_DIR", "AUTOPULSE_PROJECT_ROOT"):
+        raw = getenv(key, "").strip()
+        if raw:
+            return Path(raw).expanduser().resolve()
+    backend_dir = Path(__file__).resolve().parents[3]
+    if (backend_dir / "pyproject.toml").is_file():
+        return backend_dir.parent.resolve()
+    return Path.cwd().resolve()
+
+
+def normalize_event_store_duckdb_path(raw: str, *, data_root: Path | None = None) -> str:
+    """Resolve ``AUTOPULSE_DUCKDB_PATH`` to an absolute path independent of process cwd.
+
+    Relative paths are joined under ``data_root`` (default: :func:`resolve_autopulse_data_root`).
+    Absolute paths are expanded and resolved as-is.
+
+    Raises:
+        ValueError: if a relative path escapes ``data_root`` after resolution.
+    """
+    text = (raw or "").strip() or "./.autopulse/events.duckdb"
+    root = (data_root or resolve_autopulse_data_root()).resolve()
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    anchored = (root / text).resolve()
+    try:
+        anchored.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"AUTOPULSE_DUCKDB_PATH={raw!r} resolves outside data root {root}: {anchored}"
+        ) from exc
+    return str(anchored)
+
+
 def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
     """Filesystem path for a file-backed SQLite URL already normalized, or None."""
     if not normalized_sqlite_url.startswith("sqlite"):
@@ -353,9 +417,11 @@ def get_settings() -> Settings:
     event_store = getenv("AUTOPULSE_EVENT_STORE", "duckdb").strip().lower() or "duckdb"
     if event_store not in {"duckdb", "sqlite"}:
         event_store = "duckdb"
-    event_store_duckdb_path = (
+    _data_root = resolve_autopulse_data_root()
+    event_store_duckdb_path = normalize_event_store_duckdb_path(
         getenv("AUTOPULSE_DUCKDB_PATH", "./.autopulse/events.duckdb").strip()
-        or "./.autopulse/events.duckdb"
+        or "./.autopulse/events.duckdb",
+        data_root=_data_root,
     )
     dashboard_allowed_email_domains = _parse_email_domains(
         getenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS")

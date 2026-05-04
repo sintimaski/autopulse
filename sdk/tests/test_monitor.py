@@ -184,6 +184,24 @@ class _ErrorStatusClient:
         return httpx.Response(503, request=request, json={"detail": "unavailable"})
 
 
+@dataclass
+class _UnauthorizedStatusClient:
+    calls: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        headers: dict[str, str],
+        **_: Any,
+    ) -> httpx.Response:
+        self.calls += 1
+        request = httpx.Request("POST", url)
+        return httpx.Response(401, request=request, json={"detail": "Invalid API key"})
+
+
 def test_monitor_is_noop_for_non_fastapi_object() -> None:
     monitor(object())
 
@@ -427,6 +445,17 @@ def test_send_batch_retries_on_http_error_status() -> None:
         dispatcher = _EventDispatcher(config, client=client)
         await dispatcher._send_batch([{"type": "request"}])
         assert client.calls == 2
+
+    asyncio.run(run())
+
+
+def test_send_batch_does_not_retry_on_401() -> None:
+    async def run() -> None:
+        config = _make_config(max_retries=3, retry_backoff_s=0.0)
+        client = _UnauthorizedStatusClient()
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert client.calls == 1
 
     asyncio.run(run())
 

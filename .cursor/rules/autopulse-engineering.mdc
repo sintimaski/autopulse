@@ -26,3 +26,7 @@ Use HTTPS in production and conservative capture defaults (no full request/respo
 ## Implementation style
 
 Prefer small focused diffs, keep naming consistent, and avoid scope expansion without explicit approval.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

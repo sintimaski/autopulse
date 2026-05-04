@@ -21,9 +21,8 @@ from starlette.types import Scope
 
 _LOG = logging.getLogger(__name__)
 
-# Public default for zero-config local demos. For anything beyond loopback-trusted
-# dev, set AUTOPULSE_EMBEDDED_API_KEY to a random ap_live_<key_id>_<secret> value
-# (same shape as issued keys) so ingest is not gated by a repo-known bearer token.
+# Example key for local ``.env`` / docs only. Never used as an automatic runtime fallback
+# (generated keys are used when ``.env.autopulse`` cannot be written).
 DEFAULT_EMBEDDED_API_KEY = "ap_live_embeddedlocal_localdevsecret"
 DEFAULT_EMBEDDED_DATABASE_URL = "sqlite+aiosqlite:///./autopulse.db"
 DEFAULT_MOUNT_PREFIX = "/autopulse"
@@ -167,12 +166,14 @@ def _resolve_embedded_api_key(*, kwargs_api_key: str | None, mount_prefix: str) 
         return raw_key
     except OSError as exc:
         _LOG.warning(
-            "AutoPulse embedded could not write %s (%s); "
-            "falling back to built-in localdev default.",
+            "AutoPulse embedded could not write %s (%s); using an in-memory generated API key "
+            "for this process only. Set AUTOPULSE_EMBEDDED_API_KEY (or fix permissions on %s) "
+            "so the key persists across restarts and matches your static UI build.",
             env_path,
             exc,
+            env_path,
         )
-        return DEFAULT_EMBEDDED_API_KEY
+        return raw_key
 
 
 def _embedded_max_db_size_mb_for_settings() -> int | None:

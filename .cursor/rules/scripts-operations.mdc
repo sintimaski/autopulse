@@ -11,3 +11,7 @@ alwaysApply: false
 - Prefer deterministic local paths under repo workspace; avoid hidden side effects outside project directories.
 - Document expected prerequisites inline in script comments when non-obvious.
 - After edits, run the script path or closest dry-run/check command when feasible.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

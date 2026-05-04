@@ -26,7 +26,8 @@ Backend defaults to `http://localhost:8000`.
 
 - `DATABASE_URL`
 - `AUTOPULSE_EVENT_STORE` (`duckdb` default; set `sqlite` to force legacy SQL event reads)
-- `AUTOPULSE_DUCKDB_PATH` (embedded event store file path; default `./.autopulse/events.duckdb`)
+- `AUTOPULSE_DUCKDB_PATH` (DuckDB event store file; relative values anchor under `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT`, else monorepo root—see `normalize_event_store_duckdb_path` / `resolve_autopulse_data_root` in `core/config.py`; use absolute paths in production if you prefer)
+- `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT` (optional; pins the root for relative DuckDB paths and keeps ingest/dashboard/CLI on one file regardless of shell cwd)
 - `CORS_ALLOW_ORIGINS`
 - `DASHBOARD_AUTH_ALLOWED_EMAIL`
 - `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK` (disabled by default; enable only for controlled non-browser flows)

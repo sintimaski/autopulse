@@ -29,10 +29,14 @@ npm --prefix frontend run build
 
 # Force DuckDB for synthetic-stack runs so raw events/widget points never land in SQLite.
 export AUTOPULSE_EVENT_STORE="duckdb"
-export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-./.autopulse/events.duckdb}"
+# Pin data root + explicit DuckDB file (backend also normalizes relative AUTOPULSE_DUCKDB_PATH
+# against the repo root by default—this export keeps scripts and operators aligned).
+export AUTOPULSE_DATA_DIR="${AUTOPULSE_DATA_DIR:-$ROOT_DIR}"
+export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-$AUTOPULSE_DATA_DIR/.autopulse/events.duckdb}"
 
 echo "DATABASE_URL=${DATABASE_URL:-<unset>}"
 echo "AUTOPULSE_EVENT_STORE=${AUTOPULSE_EVENT_STORE}"
+echo "AUTOPULSE_DATA_DIR=${AUTOPULSE_DATA_DIR}"
 echo "AUTOPULSE_DUCKDB_PATH=${AUTOPULSE_DUCKDB_PATH}"
 echo "Starting: uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000 --log-level info"
 exec uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8000 --log-level info

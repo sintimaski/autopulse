@@ -11,3 +11,7 @@ alwaysApply: false
 - Preserve silent-failure defaults (except explicit debug modes) and scrub sensitive data before send.
 - Keep public API stable and typed; align names and behavior with `DEVELOPMENT.md`.
 - Run deterministic targeted SDK tests under `sdk/tests/` for touched behavior.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

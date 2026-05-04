@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from autopulse_backend.app import create_app
 from autopulse_backend.auth import generate_api_key
+from autopulse_backend.metrics import service_metrics
 from autopulse_backend.models import ApiKey, Project
 
 
@@ -578,3 +580,77 @@ def test_ingest_can_drop_autopulse_internal_traffic_before_db_write(
     assert response.status_code == 200
     assert response.json() == {"accepted": 1}
     assert _count_events(backend_test_database_url) == 1
+
+
+def test_ingest_idempotency_key_replays_accepted_without_duplicate_events(
+    backend_test_database_url: str,
+) -> None:
+    if "sqlite" in backend_test_database_url.lower():
+        pytest.skip(
+            "Idempotency completion uses a second DB session while the request session is "
+            "still open; SQLite file locking can raise OperationalError in this integration path."
+        )
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/idem",
+                "status_code": 200,
+                "latency_ms": 1.0,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {key}", "Idempotency-Key": "idem-integration-1"}
+    with TestClient(app) as client:
+        first = client.post("/ingest", json=payload, headers=headers)
+        second = client.post("/ingest", json=payload, headers=headers)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json() == {"accepted": 1}
+    assert _count_events(backend_test_database_url) == 1
+
+
+def test_ingest_distributed_rate_limit_db_error_fails_open_and_increments_metric(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED", "true")
+    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "50")
+    monkeypatch.setenv("INGEST_RATE_LIMIT_WINDOW_SECONDS", "60")
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/dist-limit-fallback",
+                "status_code": 200,
+                "latency_ms": 2.0,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {key}"}
+    baseline = service_metrics.snapshot().get("ingest.rate_limit.distributed_fallback", 0)
+    with (
+        patch(
+            "autopulse_backend.routes.ingest.allow_distributed_ingest_request",
+            side_effect=RuntimeError("simulated db limiter failure"),
+        ),
+        TestClient(app) as client,
+    ):
+        response = client.post("/ingest", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    after = service_metrics.snapshot().get("ingest.rate_limit.distributed_fallback", 0)
+    assert after == baseline + 1

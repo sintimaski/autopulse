@@ -23,3 +23,13 @@ The in-process scheduler uses leases for some tasks, but you should still treat 
 ## Readiness
 
 `/ready` checks SQL metadata connectivity and (when DuckDB is enabled) pings the configured DuckDB file. It does not prove end-to-end SMTP or external OIDC availability—cover those in synthetic checks or external probes.
+
+## Operator alerts (golden signals)
+
+Wire alerts (metrics or log-based) for at least:
+
+- **`ingest.rate_limit.distributed_fallback`** — sustained increments mean the SQL-backed distributed limiter is failing and replicas are falling back to per-process limits (cluster-wide ingest cap accuracy degrades).
+- **`/ready` failures** or ingest **5xx** from any replica — catches split-brain data paths, disk full, or migration drift.
+- **Scheduler lease churn** — log lines around lease acquisition; clock skew or TTL mis-tuning can cause duplicate or missed job ticks.
+
+Cross-check budgets in **[PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md)** §6–7.

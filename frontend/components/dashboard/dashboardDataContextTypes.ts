@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 
 import { computeOperationalSignals, M5_ALERT_DEFAULTS } from "../../utils/dashboardData";
+import type { DashboardAuthSessionIssue } from "./useDashboardAuthSession";
 import type { PersistedLogsClientSlice } from "./dashboardPersistentScope";
 import type {
   AlertChannelCapability,
@@ -50,6 +51,8 @@ export type DashboardDataContextValue = {
   sessionEmail: string | null;
   /** False until `/dashboard/auth/session` has completed (avoids flashing sign-in while cookies are validated). */
   authSessionResolved: boolean;
+  /** When there is no session, whether the API rejected cookies vs a connectivity problem. */
+  dashboardAuthSessionIssue: DashboardAuthSessionIssue;
   windowMinutes: number;
   windowFromTimestamp: string;
   windowToTimestamp: string;

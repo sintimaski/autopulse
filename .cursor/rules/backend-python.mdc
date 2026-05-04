@@ -6,8 +6,13 @@ alwaysApply: false
 
 # Backend
 
+- Dashboard static UI: **`AUTOPULSE_FRONTEND_STATIC_DIR`** → mount at **`/autopulse/ui/`** (see **`.cursor/rules/dashboard-static-export.mdc`**); do not assume a separate Next server for default full-stack flows.
 - Keep `POST /ingest` fast; move expensive work off request path.
 - Authenticate API keys and scope all data operations to project boundaries.
 - Validate and normalize payloads with Pydantic models; attach server metadata per `DEVELOPMENT.md`.
 - Prefer focused fixes over broad refactors; preserve existing naming/patterns unless task requires change.
 - Run targeted backend tests for touched behavior and report exact commands/results in final response.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

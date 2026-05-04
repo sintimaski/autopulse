@@ -140,6 +140,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _env_float(name: str, default: float) -> float:
     raw = os.getenv(name)
     if raw is None:
@@ -453,7 +460,11 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
             "method": request.method,
             "request_id": request.headers.get("x-request-id"),
         }
-        send_ok = self._dispatcher._send_enabled
+        send_ok = getattr(
+            self._dispatcher,
+            "_send_enabled",
+            bool(self._config.api_key and self._config.ingest_url),
+        )
         if send_ok and self._config.dashboard_widgets:
             widget_payload = serialize_dashboard_widgets(list(self._config.dashboard_widgets))
             if widget_payload["definitions"] or widget_payload["points"]:
@@ -603,8 +614,18 @@ def monitor(app: Any, **kwargs: Any) -> None:
             )
         ),
         mount_prefix=_normalize_mount_prefix(resolved_kwargs.get("mount_prefix")),
-        capture_headers=bool(resolved_kwargs.get("capture_headers", True)),
-        capture_query_params=bool(resolved_kwargs.get("capture_query_params", True)),
+        capture_headers=bool(
+            resolved_kwargs.get(
+                "capture_headers",
+                _env_bool("AUTOPULSE_CAPTURE_HEADERS", False),
+            )
+        ),
+        capture_query_params=bool(
+            resolved_kwargs.get(
+                "capture_query_params",
+                _env_bool("AUTOPULSE_CAPTURE_QUERY_PARAMS", False),
+            )
+        ),
         scrub_keys=scrub_keys,
         dashboard_widgets=tuple(
             widget for widget in widgets_iterable if isinstance(widget, BaseDashboardWidget)

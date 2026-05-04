@@ -15,9 +15,11 @@ Opinionated observability for FastAPI applications. Product scope, architecture,
 Contributor entry point: **[AGENTS.md](./AGENTS.md)**.
 Execution guide: **[docs/DEVELOPMENT_PROCESS.md](./docs/DEVELOPMENT_PROCESS.md)**.
 
+**Troubleshooting (DuckDB “has data” but dashboard shows zeros):** relative `AUTOPULSE_DUCKDB_PATH` is resolved against the **data root** (repo root in a checkout, or `AUTOPULSE_DATA_DIR`), not your shell cwd. If you still see mismatches, set `AUTOPULSE_DUCKDB_PATH` to an absolute file path and confirm startup logs print `Startup settings [event_store]: … duckdb_path=…`.
+
 ## Product vs local validation (read this once)
 
-- **Hosted / split stack** is the long-term production shape: dashboard session auth, `POST /ingest` from customer apps, and multi-instance deployment concerns described in **[docs/ops/DEPLOYMENT_MULTI_INSTANCE.md](./docs/ops/DEPLOYMENT_MULTI_INSTANCE.md)**.
+- **Hosted / split stack** is the long-term production shape: dashboard session auth, `POST /ingest` from customer apps, and multi-instance deployment concerns. Start with **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (canonical rollout + SLO gates), then **[docs/ops/DEPLOYMENT_MULTI_INSTANCE.md](./docs/ops/DEPLOYMENT_MULTI_INSTANCE.md)** for horizontal scale caveats.
 - **Embedded + synthetic fixture** in this repo is the fastest way to validate SDK + static UI + ingest together; it is not a substitute for production operations. **[DEVELOPMENT.md](./DEVELOPMENT.md)** defines MVP scope and “done”; see **[docs/ops/BACKUP_RESTORE.md](./docs/ops/BACKUP_RESTORE.md)** for durable state.
 
 ## Local development

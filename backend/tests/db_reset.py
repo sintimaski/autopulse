@@ -18,6 +18,9 @@ _FULL_RESET_TABLES = (
 )
 
 _INGEST_CORE_TABLES = (
+    "ingest_aggregate_dead_letters",
+    "ingest_idempotency_keys",
+    "ingest_rate_limit_windows",
     "error_group_aggregates",
     "metric_buckets",
     "events",

@@ -1,0 +1,19 @@
+---
+description: Next static export, /autopulse/ui base path, embedded vs standalone backend UI
+globs:
+  - frontend/**/*.{ts,tsx,js,jsx}
+  - backend/**/*.py
+  - sdk/src/autopulse/**/*.py
+alwaysApply: false
+---
+
+# Dashboard static export
+
+- The dashboard is built as a **Next.js static export** (`npm run build` → `frontend/out/`) with **`basePath` `/autopulse/ui`** so routes and `_next/static` assets align with embedded and API-submount layouts.
+- **Embedded SDK / PyPI wheel:** UI files live under `sdk/src/autopulse/ui/`. Sync from `frontend/out/` with `scripts/bundle_embedded_dashboard_ui.sh` (details in `.cursor/rules/autopulse-embedded-ui-bundle.mdc`).
+- **Standalone FastAPI backend:** when serving the export from the API process, env **`AUTOPULSE_FRONTEND_STATIC_DIR`** should point at the export root and the app should mount it under **`/autopulse/ui/`**. The integration hook is `maybe_mount_dashboard_static_export` in `backend/src/autopulse_backend/dashboard/static_export_mount.py` (currently a no-op stub—keep this rule and that module in sync when wiring lands).
+- Prefer **static export + backend** for default full-stack checks; do not assume a separate **`next start`** unless the task is Next-only (see `.cursor/rules/frontend-next.mdc`).
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

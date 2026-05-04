@@ -115,7 +115,7 @@ export type {
   SavedSqlFilterPreset,
 } from "./dashboardDataContextTypes";
 
-const DashboardDataContext = createContext<DashboardDataContextValue | null>(null);
+export const DashboardDataContext = createContext<DashboardDataContextValue | null>(null);
 const DashboardHomeSliceContext = createContext<DashboardHomeSliceValue | null>(null);
 const DashboardDiagnosisSliceContext = createContext<DashboardDiagnosisSliceValue | null>(null);
 const DashboardAlertsSliceContext = createContext<DashboardAlertsSliceValue | null>(null);
@@ -201,8 +201,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
-  const { hasSession: hasDashboardSession, authSessionResolved, sessionEmail, reloadSession: reloadDashboardAuthSession } =
-    useDashboardAuthSession();
+  const {
+    hasSession: hasDashboardSession,
+    authSessionResolved,
+    sessionEmail,
+    sessionIssue: dashboardAuthSessionIssue,
+    reloadSession: reloadDashboardAuthSession,
+  } = useDashboardAuthSession();
   const [runbookMessage, setRunbookMessage] = useState<string | null>(null);
   const [alertSettingsMessage, setAlertSettingsMessage] = useState<string | null>(null);
   const [alertSettingsSaving, setAlertSettingsSaving] = useState(false);
@@ -409,7 +414,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       const includeErrorGroups = routePath === "/diagnosis" || routePath === "/dashboard";
       const includeDiagnosis = routePath === "/diagnosis";
-      const includeAlertDispatches = routePath === "/alerts";
+      const includeAlertDispatches = routePath === "/alerts" || routePath === "/diagnosis";
       const useSnapshot = routePath === "/dashboard";
       const requestsLimitForRoute =
         routePath === "/dashboard"
@@ -1814,6 +1819,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       hasDashboardSession,
       sessionEmail,
       authSessionResolved,
+      dashboardAuthSessionIssue,
       windowMinutes,
       windowFromTimestamp:
         toIsoWindow?.from ?? overview?.from_timestamp ?? requests?.from_timestamp ?? "",
@@ -1941,6 +1947,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       hasDashboardSession,
       sessionEmail,
       authSessionResolved,
+      dashboardAuthSessionIssue,
       windowMinutes,
       toIsoWindow,
       absoluteWindow,

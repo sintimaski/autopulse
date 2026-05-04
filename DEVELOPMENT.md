@@ -140,8 +140,10 @@ Next.js dashboard
 
 - Keep relational metadata (projects, keys, UI settings, alerts) in SQL (`DATABASE_URL`).
 - Store high-volume raw events in embedded DuckDB by default (`AUTOPULSE_EVENT_STORE=duckdb`).
+- **DuckDB file path:** relative `AUTOPULSE_DUCKDB_PATH` values are anchored to the **AutoPulse data root** (monorepo checkout root, or `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT`), not the process cwd—so ingest, dashboard queries, retention, and CLI jobs always open the same file. See `normalize_event_store_duckdb_path` / `resolve_autopulse_data_root` in `backend/src/autopulse_backend/core/config.py` and `docs/ops/BACKUP_RESTORE.md` (migration note if you previously relied on cwd-relative files).
 - Preserve dashboard API contracts while event reads migrate behind an event-store abstraction.
 - Keep a `sqlite` event-store fallback mode for rollout safety.
+- **Production rollout:** topology, health probes, SLO budgets, backups, and drills are summarized in **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (canonical; use it instead of piecing ops docs ad hoc).
 
 SDK:
 
@@ -154,8 +156,9 @@ Backend:
 
 - FastAPI.
 - Pydantic for payload validation.
-- Postgres for raw events, grouped errors, and metrics.
-- SQLAlchemy or SQLModel if the project prefers ORM.
+- SQL database (Postgres in hosted stacks, SQLite for embedded defaults) for **metadata** (projects, hashed API keys, sessions), **aggregates** (metric buckets, error groups), and alert state.
+- High-volume **raw events** via the configured event store (DuckDB by default; see storage note above), abstracted behind the event-store layer—not “all raw rows in Postgres” unless you operate a custom deployment.
+- SQLAlchemy ORM models today; SQLModel is optional future polish.
 - Background tasks or a simple worker loop for aggregation.
 
 Frontend:

@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
-from autopulse_backend.core.config import Settings, get_settings
+from autopulse_backend.core.config import Settings, get_settings, redact_database_url_for_log
 from autopulse_backend.database import dispose_engine_for_url, get_engine, get_session_maker
 from autopulse_backend.maintenance.retention import (
     _resolve_sqlite_db_path,
@@ -151,7 +151,7 @@ async def run_retention_once(
         if resolved_settings.embedded_sqlite_max_db_file_mb is not None
         else None
     )
-    logger.info("Retention run start: database_url=%s", url)
+    logger.info("Retention run start: database_url=%s", redact_database_url_for_log(url))
     async with _retention_run_lock:
         logger.info("Retention lock acquired")
         await _ensure_sqlite_schema_from_models(url)

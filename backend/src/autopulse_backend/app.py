@@ -9,13 +9,14 @@ from starlette.middleware.gzip import GZipMiddleware
 from autopulse_backend.api.router import api_router
 from autopulse_backend.api.routes.health import router as health_router
 from autopulse_backend.core.config import get_settings
+from autopulse_backend.dashboard.static_export_mount import maybe_mount_dashboard_static_export
 from autopulse_backend.ingestion.body_size import IngestBodySizeLimitMiddleware
 from autopulse_backend.lifespan import lifespan
 from autopulse_backend.middleware.dashboard_origin import DashboardOriginEnforcementMiddleware
 from autopulse_backend.middleware.gzip_request_body import GzipRequestBodyMiddleware
 
 
-def create_app() -> FastAPI:
+def create_app(*, for_submount: bool = False) -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="AutoPulse Backend", lifespan=lifespan)
     app.add_middleware(
@@ -42,11 +43,12 @@ def create_app() -> FastAPI:
         from autopulse_backend.routes.dev_scenarios import router as dev_scenarios_router
 
         app.include_router(dev_scenarios_router)
+    maybe_mount_dashboard_static_export(app, settings, for_submount=for_submount)
     return app
 
 
 def mount_on_app(host_app: Any, *, prefix: str = "/autopulse") -> FastAPI:
     """Mount the backend app under a host FastAPI application."""
-    mounted_app = create_app()
+    mounted_app = create_app(for_submount=True)
     host_app.mount(prefix.rstrip("/") or "/", mounted_app)
     return mounted_app

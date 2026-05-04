@@ -29,3 +29,7 @@ When a report is vague ("doesn't work", "retention never runs", UI wrong), do no
 
 - Do not repeat the same failed action without new evidence.
 - After 3 failed attempts, summarize blocker, evidence gathered, and best next action.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

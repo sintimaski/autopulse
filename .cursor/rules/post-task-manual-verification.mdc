@@ -12,3 +12,7 @@ Requirements:
 - Include both automated checks run and manual end-to-end checks.
 - If backend and frontend were both changed, include verification for both surfaces.
 - If any checks were not run, state exactly what was skipped and why.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

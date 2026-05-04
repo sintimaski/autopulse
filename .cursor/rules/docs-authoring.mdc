@@ -1,9 +1,7 @@
 ---
 description: Documentation authoring style and governance safeguards
-globs: {docs/**/*.md,agents/**/*.md,DEVELOPMENT.md,AGENTS.md}
 alwaysApply: false
 ---
-
 # Documentation authoring
 
 - Keep docs aligned with current product behavior and MVP boundaries in `DEVELOPMENT.md`.
@@ -11,3 +9,7 @@ alwaysApply: false
 - Preserve existing section structure unless there is a clear readability gain.
 - Flag governed-doc changes requiring maintainer approval before treating as final.
 - Avoid introducing implementation promises not already supported in code.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

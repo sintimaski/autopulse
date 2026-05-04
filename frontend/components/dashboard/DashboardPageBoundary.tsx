@@ -1,27 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import type { ReactNode } from "react";
 
-import { useDashboardData } from "./DashboardDataContext";
+import { DashboardDataContext, useDashboardData } from "./DashboardDataContext";
 import type { DashboardMagicLinkRequestResponse } from "./dashboardTypes";
 import { buildApiUrl, isEmbeddedRelativeDashboard } from "./dashboardTypes";
 
 /** Shown while `/dashboard/auth/session` is in flight so we do not flash the sign-in screen on reload. */
-export function DashboardSessionRestoring() {
+export function DashboardSessionRestoring({
+  title = "Checking your session…",
+  message,
+}: {
+  title?: string;
+  message?: string;
+} = {}) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 px-4 text-slate-600 dark:bg-neutral-950 dark:text-neutral-400">
       <div
         className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600 dark:border-neutral-600 dark:border-t-sky-400"
-        aria-hidden
+        role="status"
+        aria-label={title}
       />
-      <p className="text-sm font-medium text-slate-700 dark:text-neutral-300">Checking your session…</p>
+      <p className="text-sm font-medium text-slate-700 dark:text-neutral-300" aria-live="polite">
+        {title}
+      </p>
+      {message ? (
+        <p className="max-w-sm text-center text-xs text-slate-500 dark:text-neutral-500" aria-live="polite">
+          {message}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 export function ApiKeyMissing() {
+  const dashboardCtx = useContext(DashboardDataContext);
+  const sessionIssue = dashboardCtx?.dashboardAuthSessionIssue ?? "none";
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,6 +117,25 @@ export function ApiKeyMissing() {
             <> SDK keys are for your app, not this screen.</>
           )}
         </p>
+        {sessionIssue === "unauthorized" ? (
+          <p
+            className="mt-4 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100"
+            role="status"
+            aria-live="polite"
+          >
+            Your dashboard session has ended. Request a new magic link below.
+          </p>
+        ) : null}
+        {sessionIssue === "network" ? (
+          <p
+            className="mt-4 rounded-lg border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100"
+            role="alert"
+            aria-live="polite"
+          >
+            Could not reach the server to verify your session. Check the API URL, VPN, and that the
+            backend is running.
+          </p>
+        ) : null}
         <div className="mt-5 space-y-3">
           <label className="block">
             <span className="sr-only">Email for magic link sign-in</span>

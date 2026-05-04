@@ -68,7 +68,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Continuously send dashboard test traffic to a running AutoPulse backend."
     )
-    parser.add_argument("--api-base-url", default="http://localhost:8000")
+    parser.add_argument("--api-base-url", default="http://127.0.0.1:8000")
     parser.add_argument(
         "--api-key",
         default=None,

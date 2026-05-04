@@ -8,6 +8,8 @@ globs:
 
 # Embedded dashboard bundle (deployment readiness)
 
+For **standalone backend** serving the same export from disk (no wheel), see **`.cursor/rules/dashboard-static-export.mdc`** (`AUTOPULSE_FRONTEND_STATIC_DIR`).
+
 When a change touches **`frontend/`** (or the bundle script) and the work is meant for **release / PyPI wheel / embedded `autopulse` consumers**, ensure the static export is copied into the SDK:
 
 ```bash
@@ -21,3 +23,7 @@ That runs **`npm run build`** in `frontend/` and rsyncs **`frontend/out/`** → 
 **If needed only:** skip the script when the commit does not ship UI (docs-only, backend-only with no dashboard contract change). For anything that changes dashboard behavior or assets, run it.
 
 **Pre-commit:** a hook runs this automatically when staged paths match `frontend/` or `scripts/bundle_embedded_dashboard_ui.sh` (uses `AUTOPULSE_BUNDLE_SKIP_NPM_CI=1` when `node_modules` exists for speed). If the hook fails, fix `npm run build` errors, re-run the script, then commit.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.

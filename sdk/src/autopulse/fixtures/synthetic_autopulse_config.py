@@ -83,7 +83,7 @@ class SyntheticEmbeddedDeployment:
 class SyntheticRemoteDeployment:
     """Events go to another AutoPulse stack (typical local ``uvicorn`` on :8000)."""
 
-    ingest_url: str = "http://localhost:8000/ingest"
+    ingest_url: str = "http://127.0.0.1:8000/ingest"
     api_key: str | None = None
 
 
@@ -114,7 +114,7 @@ class SyntheticAutopulseFixture:
     def separate_backend(
         cls,
         *,
-        ingest_url: str = "http://localhost:8000/ingest",
+        ingest_url: str = "http://127.0.0.1:8000/ingest",
         api_key: str | None = None,
         common: SyntheticAutopulseCommon | None = None,
     ) -> SyntheticAutopulseFixture:
@@ -137,7 +137,7 @@ class SyntheticAutopulseFixture:
         )
         if mode == "remote":
             deployment: SyntheticAutopulseDeployment = SyntheticRemoteDeployment(
-                ingest_url=os.getenv("AUTOPULSE_INGEST_URL", "http://localhost:8000/ingest"),
+                ingest_url=os.getenv("AUTOPULSE_INGEST_URL", "http://127.0.0.1:8000/ingest"),
                 api_key=os.getenv("AUTOPULSE_API_KEY"),
             )
         else:
