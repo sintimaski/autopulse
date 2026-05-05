@@ -64,6 +64,10 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Settings",
     subtitle: "Project defaults, theme, and delivery channels.",
   },
+  "/bookmarks": {
+    title: "Bookmarks",
+    subtitle: "Your saved deep links for this project — open, rename, or remove.",
+  },
   "/logs": {
     title: "Requests",
     subtitle: "This URL forwards to Requests — bookmark /requests for clarity.",

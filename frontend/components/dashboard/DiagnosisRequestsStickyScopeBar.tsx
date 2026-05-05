@@ -41,10 +41,10 @@ export function DiagnosisRequestsStickyScopeBar() {
 
   return (
     <DashboardScopeFacetShell className="sticky top-0 z-30 mb-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">{formatWindowSummary(d)}</p>
-          <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-400">{formatFilterHint(d)}</p>
+          <p className="text-base font-semibold text-slate-800 dark:text-neutral-100">{formatWindowSummary(d)}</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-slate-600 dark:text-neutral-400">{formatFilterHint(d)}</p>
         </div>
         {d.isAbsoluteWindow ? (
           <button

@@ -511,6 +511,43 @@ class DashboardSession(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DashboardUserBookmark(Base):
+    """Per-user saved deep links within a project (dashboard UI paths + query + hash)."""
+
+    __tablename__ = "dashboard_user_bookmarks"
+    __table_args__ = (
+        Index(
+            "ix_dashboard_user_bookmarks_user_project_updated",
+            "user_id",
+            "project_id",
+            "updated_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("dashboard_users.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    pathname: Mapped[str] = mapped_column(String(512), nullable=False)
+    query_string: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hash_fragment: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
+    )
+
+
 class IngestIdempotencyKey(Base):
     """Optional HTTP Idempotency-Key dedupe for ``POST /ingest`` (per project)."""
 

@@ -1,28 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useLayoutEffect, useMemo } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 
 import {
   buildCurrentScopedState,
   buildRequestsPageHref,
   type DashboardScopedQueryState,
 } from "../dashboardQueryState";
-import { formatTimestamp } from "../dashboardTypes";
+import { DashboardDetailModal } from "../DashboardDetailModal";
+import { ErrorGroupEvidenceBody } from "../ErrorGroupEvidenceBody";
+import { SaveBookmarkModal } from "../SaveBookmarkModal";
+import { toDashboardRoutePath } from "../dashboardRoutePath";
+import { formatTimestamp, type ErrorGroupItem } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardDiagnosisSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
+import { RowActionsMenu } from "../RowActionsMenu";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { MetricCard } from "../MetricCard";
+import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
 
 export function DiagnosisContent() {
   const d = useDashboardData();
   const diagnosisSlice = useDashboardDiagnosisSlice();
   const pathname = usePathname();
+  const routePath = useMemo(() => toDashboardRoutePath(pathname), [pathname]);
+  const searchParams = useSearchParams();
+  const queryStringForBookmarks = searchParams.toString();
+  const [errorModalItem, setErrorModalItem] = useState<ErrorGroupItem | null>(null);
+  const [bookmarkDraft, setBookmarkDraft] = useState<{ title: string; hashFragment: string } | null>(null);
   const scopedState = useMemo(
     (): DashboardScopedQueryState =>
       buildCurrentScopedState({
@@ -80,6 +91,34 @@ export function DiagnosisContent() {
       document.getElementById("grouped-errors")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const hash = window.location.hash;
+    if (!hash.startsWith("#error-group:")) {
+      return;
+    }
+    const encoded = hash.slice("#error-group:".length);
+    if (!encoded) {
+      return;
+    }
+    let decodedGroupKey = "";
+    try {
+      decodedGroupKey = decodeURIComponent(encoded);
+    } catch {
+      return;
+    }
+    const rowId = `error-group|${decodedGroupKey}`;
+    const exists = d.displayedErrorGroups.some((group) => group.group_key === decodedGroupKey);
+    if (!exists) {
+      return;
+    }
+    if (!d.expandedRequestIds.has(rowId)) {
+      d.toggleRequestRow(rowId);
+    }
+  }, [d]);
 
   if (!requests || !errorGroups || !timeline || !failures) {
     if (d.loading && !d.errorMessage) {
@@ -300,18 +339,17 @@ export function DiagnosisContent() {
             No grouped errors in this time window.
           </p>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-            <table className="min-w-full text-left text-sm">
+          <div className="mt-4 max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
+            <table className="w-full min-w-[640px] table-fixed border-collapse text-left text-sm">
               <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-300">
                 <tr>
                   <th className="w-10 px-2 py-2" aria-label="Expand row" />
-                  <th className="px-3 py-2">Exception</th>
-                  <th className="px-3 py-2">Message</th>
-                  <th className="px-3 py-2">Route</th>
-                  <th className="px-3 py-2">Count</th>
-                  <th className="px-3 py-2">First seen</th>
-                  <th className="px-3 py-2">Last seen</th>
-                  <th className="px-3 py-2">Sample stack</th>
+                  <th className="w-14 px-2 py-2">Count</th>
+                  <th className="w-[22%] min-w-0 px-2 py-2">Exception</th>
+                  <th className="w-[26%] min-w-0 px-2 py-2">Route</th>
+                  <th className="w-[28%] min-w-0 px-2 py-2">Message</th>
+                  <th className="w-36 px-2 py-2">Last seen</th>
+                  <th className="min-w-0 px-2 py-2">Stack</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
@@ -324,87 +362,61 @@ export function DiagnosisContent() {
                       rowId={rowId}
                       open={open}
                       onToggle={d.toggleRequestRow}
-                      colSpan={8}
-                      summaryClassName="cursor-pointer border-l-2 border-transparent align-top hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-orange-400/50 dark:hover:bg-neutral-800/90"
+                      colSpan={7}
+                      summaryClassName="cursor-pointer border-l-2 border-transparent align-middle hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-orange-400/50 dark:hover:bg-neutral-800/90"
                       detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
-                      detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
+                      detailsCellClassName="px-4 py-3 text-sm text-slate-700 dark:text-neutral-300"
                       renderSummary={() => (
                         <>
-                          <td className="px-3 py-2 font-medium text-slate-900 dark:text-neutral-100">
-                            {item.exception_type ?? "(unknown)"}
+                          <td className="px-2 py-2 align-middle">
+                            <span className="inline-flex min-w-[2rem] justify-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-800 dark:bg-rose-950/60 dark:text-rose-200">
+                              {item.count}
+                            </span>
                           </td>
-                          <td className="max-w-[220px] truncate px-3 py-2 text-slate-700 dark:text-neutral-300 sm:max-w-md">
-                            {item.message ?? "(no message)"}
+                          <td className="min-w-0 px-2 py-2 align-middle">
+                            <p className="truncate font-medium text-slate-900 dark:text-neutral-100" title={item.exception_type ?? ""}>
+                              {item.exception_type ?? "(unknown)"}
+                            </p>
                           </td>
-                          <td className="max-w-[220px] truncate px-3 py-2 font-mono text-xs text-slate-800 dark:text-neutral-100 sm:max-w-md">
-                            {item.path}
+                          <td className="min-w-0 px-2 py-2 align-middle">
+                            <p className="truncate font-mono text-sm text-slate-800 dark:text-neutral-100" title={item.path}>
+                              {item.path}
+                            </p>
                           </td>
-                          <td className="px-3 py-2 tabular-nums text-slate-700 dark:text-neutral-300">
-                            {item.count}
+                          <td className="min-w-0 px-2 py-2 align-middle">
+                            <p className="line-clamp-2 text-sm text-slate-600 dark:text-neutral-300" title={item.message ?? ""}>
+                              {item.message ?? "(no message)"}
+                            </p>
                           </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
-                            {formatTimestamp(item.first_seen)}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
+                          <td className="whitespace-nowrap px-2 py-2 align-middle text-sm text-slate-600 dark:text-neutral-300">
                             {formatTimestamp(item.last_seen)}
                           </td>
-                          <td className="px-3 py-2 text-xs text-slate-500 dark:text-neutral-400">
-                            {item.sample_stack_trace ? "Stack trace available" : "No stack trace available"}
+                          <td className="px-2 py-2 align-middle text-sm text-slate-500 dark:text-neutral-400">
+                            {item.sample_stack_trace ? "Yes" : "—"}
                           </td>
                         </>
                       )}
-                      renderDetails={() => (
-                        <dl className="grid gap-3 sm:grid-cols-2">
-                          <div className="sm:col-span-2">
-                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">Request logs</dt>
-                            <dd className="mt-1">
-                              <Link
-                                href={buildRequestsPageHref(scopedState, {
-                                  pathQuery: item.path,
-                                  statusClass: "ALL",
-                                })}
-                                className="text-sm font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
-                              >
-                                Open logs for this route
-                              </Link>
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">Group key</dt>
-                            <dd className="mt-0.5 break-all font-mono text-xs text-slate-800 dark:text-neutral-200">
-                              {item.group_key}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">Count</dt>
-                            <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
-                              {item.count}
-                            </dd>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                              Exception message
-                            </dt>
-                            <dd className="mt-0.5 break-words text-slate-900 dark:text-neutral-100">
-                              {item.message ?? "(no message)"}
-                            </dd>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                              Sample stack trace
-                            </dt>
-                            {item.sample_stack_trace ? (
-                              <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-slate-950 p-2 text-xs leading-5 text-slate-100">
-                                {item.sample_stack_trace}
-                              </pre>
-                            ) : (
-                              <dd className="mt-0.5 text-slate-600 dark:text-neutral-300">
-                                No stack trace (event had no exception payload).
-                              </dd>
-                            )}
-                          </div>
-                        </dl>
-                      )}
+                      renderDetails={() => {
+                        const bookmarkFragment = `error-group:${encodeURIComponent(item.group_key)}`;
+                        const defaultTitle = `${item.exception_type ?? "Error"} · ${item.path}`.slice(0, 200);
+                        const menuItems = buildErrorGroupEvidenceMenuItems({
+                          item,
+                          onOpenInModal: () => setErrorModalItem(item),
+                          onSaveBookmark: () =>
+                            setBookmarkDraft({
+                              title: defaultTitle,
+                              hashFragment: bookmarkFragment,
+                            }),
+                        });
+                        return (
+                          <>
+                            <div className="mb-3 flex justify-end">
+                              <RowActionsMenu items={menuItems} />
+                            </div>
+                            <ErrorGroupEvidenceBody item={item} scopedState={scopedState} />
+                          </>
+                        );
+                      }}
                     />
                   );
                 })}
@@ -463,6 +475,38 @@ export function DiagnosisContent() {
           <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">Select a busier window to load event evidence.</p>
         )}
       </section>
+      <DashboardDetailModal
+        open={errorModalItem !== null}
+        title={errorModalItem ? `${errorModalItem.exception_type ?? "Error"} · ${errorModalItem.path}` : ""}
+        onClose={() => setErrorModalItem(null)}
+      >
+        {errorModalItem ? (
+          <>
+            <div className="mb-4 flex justify-end border-b border-slate-200 pb-3 dark:border-neutral-700">
+              <RowActionsMenu
+                items={buildErrorGroupEvidenceMenuItems({
+                  item: errorModalItem,
+                  onOpenInModal: () => undefined,
+                  onSaveBookmark: () =>
+                    setBookmarkDraft({
+                      title: `${errorModalItem.exception_type ?? "Error"} · ${errorModalItem.path}`.slice(0, 200),
+                      hashFragment: `error-group:${encodeURIComponent(errorModalItem.group_key)}`,
+                    }),
+                }).filter((i) => i.id !== "open-modal")}
+              />
+            </div>
+            <ErrorGroupEvidenceBody item={errorModalItem} scopedState={scopedState} />
+          </>
+        ) : null}
+      </DashboardDetailModal>
+      <SaveBookmarkModal
+        open={bookmarkDraft !== null}
+        onClose={() => setBookmarkDraft(null)}
+        defaultTitle={bookmarkDraft?.title ?? ""}
+        pathname={routePath}
+        queryString={queryStringForBookmarks}
+        hashFragment={bookmarkDraft?.hashFragment ?? ""}
+      />
     </>
   );
 }

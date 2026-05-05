@@ -43,6 +43,16 @@ def _dashboard_list_payload_cell(value: object) -> dict[str, Any]:
     return {}
 
 
+def _first_non_empty_str(a: object, b: object) -> str | None:
+    for x in (a, b):
+        if x is None:
+            continue
+        s = str(x).strip()
+        if s:
+            return s
+    return None
+
+
 def _truncate_diagnosis_text(value: object, max_chars: int) -> str | None:
     if not isinstance(value, str):
         return None
@@ -118,6 +128,12 @@ def request_items(
             log_message=dashboard_request_log_message(
                 event_type, _dashboard_list_payload_cell(payload)
             ),
+            event_id=int(_event_id) if _event_id is not None else None,
+            received_at=as_utc_datetime(received_at) if received_at is not None else None,
+            sdk_version=str(sdk_version) if sdk_version is not None else None,
+            event_kind=str(event_type) if event_type is not None else None,
+            trace_id=_first_non_empty_str(trace_id, trace_id_alt),
+            span_id=_first_non_empty_str(span_id, span_id_alt),
         )
         for (
             _event_id,
@@ -131,6 +147,12 @@ def request_items(
             request_id,
             event_type,
             payload,
+            received_at,
+            sdk_version,
+            trace_id,
+            trace_id_alt,
+            span_id,
+            span_id_alt,
         ) in rows
     ]
 

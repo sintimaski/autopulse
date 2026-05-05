@@ -42,6 +42,21 @@ from autopulse_backend.services.event_store import event_store_enabled
 router = APIRouter()
 
 
+def _payload_trace_ids(payload: object) -> tuple[str | None, str | None]:
+    if not isinstance(payload, dict):
+        return None, None
+
+    def _norm(value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    trace = _norm(payload.get("trace_id")) or _norm(payload.get("traceId"))
+    span = _norm(payload.get("span_id")) or _norm(payload.get("spanId"))
+    return trace, span
+
+
 @router.get("/requests", response_model=DashboardRequestsResponse)
 async def get_dashboard_requests(
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
@@ -127,6 +142,7 @@ async def get_dashboard_requests(
 
     requests_query = (
         select(
+            Event.id,
             Event.timestamp,
             Event.method,
             Event.path,
@@ -136,6 +152,8 @@ async def get_dashboard_requests(
             Event.environment,
             Event.request_id,
             Event.type,
+            Event.received_at,
+            Event.sdk_version,
             Event.payload,
         )
         .where(*filters)
@@ -144,31 +162,42 @@ async def get_dashboard_requests(
         .offset(offset)
     )
     requests_result = await session.execute(requests_query)
-    items = [
-        DashboardRequestItem(
-            timestamp=as_utc_datetime(timestamp),
-            method=event_method,
-            path=path,
-            status_code=status_code,
-            latency_ms=latency_ms,
-            service_name=service_name,
-            environment=environment,
-            request_id=request_id,
-            log_message=dashboard_request_log_message(event_type, payload),
+    items = []
+    for (
+        event_id,
+        timestamp,
+        event_method,
+        path,
+        status_code,
+        latency_ms,
+        service_name,
+        environment,
+        request_id,
+        event_type,
+        received_at,
+        sdk_version,
+        payload,
+    ) in requests_result:
+        trace_id, span_id = _payload_trace_ids(payload)
+        items.append(
+            DashboardRequestItem(
+                timestamp=as_utc_datetime(timestamp),
+                method=event_method,
+                path=path,
+                status_code=status_code,
+                latency_ms=latency_ms,
+                service_name=service_name,
+                environment=environment,
+                request_id=request_id,
+                log_message=dashboard_request_log_message(event_type, payload),
+                event_id=int(event_id),
+                received_at=as_utc_datetime(received_at),
+                sdk_version=str(sdk_version) if sdk_version else None,
+                event_kind=str(event_type) if event_type else None,
+                trace_id=trace_id,
+                span_id=span_id,
+            )
         )
-        for (
-            timestamp,
-            event_method,
-            path,
-            status_code,
-            latency_ms,
-            service_name,
-            environment,
-            request_id,
-            event_type,
-            payload,
-        ) in requests_result
-    ]
     return DashboardRequestsResponse(
         server_now=server_now,
         from_timestamp=resolved_from,

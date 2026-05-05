@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class DashboardOverviewBucket(BaseModel):
@@ -100,6 +100,12 @@ class DashboardRequestItem(BaseModel):
     environment: str
     request_id: str | None = None
     log_message: str | None = None
+    event_id: int | None = None
+    received_at: datetime | None = None
+    sdk_version: str | None = None
+    event_kind: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
 
 
 class DashboardRequestsResponse(BaseModel):
@@ -743,3 +749,156 @@ class DashboardInviteMemberRequest(BaseModel):
 
 class DashboardUpdateMemberRoleRequest(BaseModel):
     role: Literal["owner", "admin", "member", "viewer"]
+
+
+class DashboardBookmarkItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    pathname: str
+    query_string: str | None = None
+    hash_fragment: str | None = None
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DashboardBookmarksListResponse(BaseModel):
+    items: list[DashboardBookmarkItem]
+
+
+class DashboardBookmarkCreate(BaseModel):
+    title: str
+    pathname: str
+    query_string: str | None = None
+    hash_fragment: str | None = None
+    notes: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        t = value.strip()
+        if not t:
+            raise ValueError("title is required")
+        if len(t) > 200:
+            raise ValueError("title too long")
+        return t
+
+    @field_validator("pathname")
+    @classmethod
+    def validate_pathname(cls, value: str) -> str:
+        p = value.strip()
+        if not p.startswith("/") or len(p) > 512:
+            raise ValueError("invalid pathname")
+        if ".." in p or "//" in p or "\n" in p or "\r" in p:
+            raise ValueError("invalid pathname")
+        return p
+
+    @field_validator("query_string")
+    @classmethod
+    def validate_query_string(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        q = value.strip()
+        if not q:
+            return None
+        if len(q) > 8192:
+            raise ValueError("query_string too long")
+        return q
+
+    @field_validator("hash_fragment")
+    @classmethod
+    def validate_hash_fragment(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        h = value.strip()
+        if h.startswith("#"):
+            h = h[1:]
+        if not h:
+            return None
+        if len(h) > 2048:
+            raise ValueError("hash_fragment too long")
+        return h
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        n = value.strip()
+        if not n:
+            return None
+        if len(n) > 8000:
+            raise ValueError("notes too long")
+        return n
+
+
+class DashboardBookmarkUpdate(BaseModel):
+    title: str | None = None
+    pathname: str | None = None
+    query_string: str | None = None
+    hash_fragment: str | None = None
+    notes: str | None = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        t = value.strip()
+        if not t:
+            raise ValueError("title cannot be empty")
+        if len(t) > 200:
+            raise ValueError("title too long")
+        return t
+
+    @field_validator("pathname")
+    @classmethod
+    def validate_pathname_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        p = value.strip()
+        if not p.startswith("/") or len(p) > 512:
+            raise ValueError("invalid pathname")
+        if ".." in p or "//" in p or "\n" in p or "\r" in p:
+            raise ValueError("invalid pathname")
+        return p
+
+    @field_validator("query_string")
+    @classmethod
+    def validate_query_string_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        q = value.strip()
+        if not q:
+            return None
+        if len(q) > 8192:
+            raise ValueError("query_string too long")
+        return q
+
+    @field_validator("hash_fragment")
+    @classmethod
+    def validate_hash_fragment_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        h = value.strip()
+        if h.startswith("#"):
+            h = h[1:]
+        if not h:
+            return None
+        if len(h) > 2048:
+            raise ValueError("hash_fragment too long")
+        return h
+
+    @field_validator("notes")
+    @classmethod
+    def validate_notes_optional(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        n = value.strip()
+        if not n:
+            return None
+        if len(n) > 8000:
+            raise ValueError("notes too long")
+        return n

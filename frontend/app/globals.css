@@ -57,7 +57,7 @@ body {
 .ap-scope-facet-shell__inner {
   border-radius: calc(var(--ap-scope-rim-radius) - var(--ap-scope-rim-width));
   background: var(--ap-scope-inner-bg);
-  padding: 0.625rem 0.75rem;
+  padding: 0.875rem 1rem;
 }
 
 .dark .ap-scope-facet-shell__inner {

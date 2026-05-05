@@ -484,7 +484,12 @@ class DuckDbEventStore:
                 "CASE WHEN type = 'error' THEN json_object("
                 "'exception_message', json_extract_string(payload, '$.exception_message'), "
                 "'message', json_extract_string(payload, '$.message')"
-                ") ELSE CAST('{}' AS JSON) END AS payload"
+                ") ELSE CAST('{}' AS JSON) END AS payload, "
+                "received_at, sdk_version, "
+                "json_extract_string(payload, '$.trace_id') AS trace_id, "
+                "json_extract_string(payload, '$.traceId') AS trace_id_alt, "
+                "json_extract_string(payload, '$.span_id') AS span_id, "
+                "json_extract_string(payload, '$.spanId') AS span_id_alt"
             )
         elif columns is None:
             resolved_columns = (

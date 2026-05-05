@@ -87,6 +87,30 @@ def test_dashboard_reads_require_auth(backend_test_database_url: str) -> None:
     assert alert_settings_response.status_code == 401
 
 
+def test_dashboard_bookmarks_require_cookie_session(backend_test_database_url: str) -> None:
+    """Bookmarks are per signed-in user; API-key-only dashboard auth must not read them."""
+    _truncate_tables(backend_test_database_url)
+    key, _project_id = _seed_project_and_key(backend_test_database_url, "bookmark-auth-test")
+    app = create_app()
+    with TestClient(app) as client:
+        bookmarks = client.get(
+            "/dashboard/bookmarks",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        create = client.post(
+            "/dashboard/bookmarks",
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "title": "Test",
+                "pathname": "/requests",
+                "query_string": "window_minutes=60",
+                "hash_fragment": "request-row:abc",
+            },
+        )
+    assert bookmarks.status_code == 401
+    assert create.status_code == 401
+
+
 def test_dashboard_preflight_returns_cors_headers(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     app = create_app()

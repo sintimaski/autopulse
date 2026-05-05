@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   Bell,
+  Bookmark,
   History,
   LayoutDashboard,
   LayoutGrid,
@@ -30,6 +31,7 @@ const BASE_NAV: readonly NavItem[] = [
   { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/requests", label: "Requests", Icon: ScrollText },
+  { href: "/bookmarks", label: "Bookmarks", Icon: Bookmark },
   { href: "/query-explorer", label: "Query Explorer", Icon: ListChecks },
   { href: "/traces", label: "Traces (OTLP)", Icon: History },
   { href: "/alerts", label: "Alerts", Icon: Bell },
@@ -274,7 +276,7 @@ export function DashboardAppShell({
             ) : null}
           </header>
 
-          <main id="main-content" tabIndex={-1} className="flex-1 px-4 py-6 outline-none sm:px-6">
+          <main id="main-content" tabIndex={-1} className="flex-1 min-w-0 max-w-full px-4 py-6 outline-none sm:px-6">
             {children}
           </main>
 

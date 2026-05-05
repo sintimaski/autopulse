@@ -1,27 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 
-import { buildCurrentScopedState, buildDiagnosisPageHref, type DashboardScopedQueryState } from "../dashboardQueryState";
+import { DashboardDetailModal } from "../DashboardDetailModal";
+import { RequestEvidenceBody } from "../RequestEvidenceBody";
+import { SaveBookmarkModal } from "../SaveBookmarkModal";
+import { buildCurrentScopedState, type DashboardScopedQueryState } from "../dashboardQueryState";
+import { toDashboardRoutePath } from "../dashboardRoutePath";
 import {
   formatTimestamp,
+  formatTimestampCompact,
   GROUP_OPTIONS,
   isApiSubpathDashboard,
   statusTone,
   type GroupBy,
+  type RequestItem,
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardLogsSlice } from "../data/useDashboardSlices";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { ExpandableTableRow } from "../ExpandableTableRow";
+import { RowActionsMenu } from "../RowActionsMenu";
 import { TagSelector } from "../TagSelector";
+import { buildRequestEvidenceMenuItems } from "../requestRowEvidenceMenu";
 
 export function LogsContent() {
   const d = useDashboardData();
   const logsSlice = useDashboardLogsSlice();
+  const pathname = usePathname();
+  const routePath = useMemo(() => toDashboardRoutePath(pathname), [pathname]);
+  const searchParams = useSearchParams();
+  const queryStringForBookmarks = searchParams.toString();
   const [rowsPerGroup, setRowsPerGroup] = useState(100);
+  const [evidenceModal, setEvidenceModal] = useState<{ rowId: string; item: RequestItem } | null>(null);
+  const [bookmarkDraft, setBookmarkDraft] = useState<{ title: string; hashFragment: string } | null>(null);
   const scopedState = useMemo(
     (): DashboardScopedQueryState =>
       buildCurrentScopedState({
@@ -81,6 +96,55 @@ export function LogsContent() {
       p95LatencyMs: sorted[idx]?.latency_ms ?? 0,
     };
   }, [logsSlice.filteredSorted]);
+  const requestRowIdSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const group of d.grouped) {
+      for (const [rowIndex, item] of group.items.entries()) {
+        const rowId = [
+          group.key,
+          String(rowIndex),
+          item.event_id != null ? String(item.event_id) : "",
+          item.timestamp,
+          item.method,
+          item.path,
+          String(item.status_code),
+          String(item.latency_ms),
+          item.service_name,
+          item.environment,
+          item.log_message ?? "",
+        ].join("|");
+        set.add(rowId);
+      }
+    }
+    return set;
+  }, [d.grouped]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const hash = window.location.hash;
+    if (!hash.startsWith("#request-row:")) {
+      return;
+    }
+    const encoded = hash.slice("#request-row:".length);
+    if (!encoded) {
+      return;
+    }
+    let decodedRowId = "";
+    try {
+      decodedRowId = decodeURIComponent(encoded);
+    } catch {
+      return;
+    }
+    if (!requestRowIdSet.has(decodedRowId)) {
+      return;
+    }
+    if (!d.expandedRequestIds.has(decodedRowId)) {
+      d.toggleRequestRow(decodedRowId);
+    }
+  }, [d, requestRowIdSet]);
+
   const requests = logsSlice.requests;
   if (!requests) {
     if (d.loading && !d.errorMessage) {
@@ -273,18 +337,18 @@ export function LogsContent() {
                     </span>
                   </h3>
                 )}
-                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+                <div className="max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
+                  <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+                    <thead className="sticky top-0 z-[1] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
                       <tr>
                         <th className="w-10 px-2 py-2" aria-label="Expand row" />
                         {(
                           [
-                            ["timestamp", "Time"],
+                            ["status_code", "Status"],
                             ["method", "Method"],
                             ["path", "Path"],
                             ["log_message", "Message"],
-                            ["status_code", "Status"],
+                            ["timestamp", "Time"],
                             ["latency_ms", "Latency"],
                             ["service_name", "Service"],
                             ["environment", "Env"],
@@ -292,7 +356,7 @@ export function LogsContent() {
                         ).map(([key, label]) => (
                           <th
                             key={key}
-                            className="px-3 py-2"
+                            className={`px-2 py-2 ${key === "path" ? "min-w-[12rem] max-w-md" : key === "log_message" ? "min-w-[10rem] max-w-sm" : key === "timestamp" ? "w-[9.5rem] shrink-0 whitespace-nowrap" : key === "service_name" ? "min-w-[7rem] max-w-[10rem]" : ""}`}
                             aria-sort={
                               d.sortKey === key ? (d.sortDir === "asc" ? "ascending" : "descending") : "none"
                             }
@@ -300,11 +364,11 @@ export function LogsContent() {
                             <button
                               type="button"
                               onClick={() => d.onSortHeader(key)}
-                              className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
+                              className="inline-flex min-h-8 w-full max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
                             >
-                              {label}
+                              <span className="min-w-0 truncate">{label}</span>
                               {d.sortKey === key && (
-                                <span className="text-orange-600 dark:text-orange-400" aria-hidden>
+                                <span className="shrink-0 text-orange-600 dark:text-orange-400" aria-hidden>
                                   {d.sortDir === "asc" ? "↑" : "↓"}
                                 </span>
                               )}
@@ -318,6 +382,7 @@ export function LogsContent() {
                         const rowId = [
                           group.key,
                           String(rowIndex),
+                          item.event_id != null ? String(item.event_id) : "",
                           item.timestamp,
                           item.method,
                           item.path,
@@ -337,125 +402,71 @@ export function LogsContent() {
                             colSpan={9}
                             summaryClassName="cursor-pointer border-l-2 border-transparent hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
                             detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
-                            detailsCellClassName="px-4 py-3 text-xs text-slate-700 dark:text-neutral-300"
+                            detailsCellClassName="px-4 py-3 text-sm text-slate-700 dark:text-neutral-300"
                             renderSummary={() => (
                               <>
-                              <td className="whitespace-nowrap px-3 py-2 text-slate-600 dark:text-neutral-300">
-                                {formatTimestamp(item.timestamp)}
-                              </td>
-                              <td className="px-3 py-2">
-                                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800 dark:bg-neutral-800 dark:text-neutral-100">
-                                  {item.method}
-                                </span>
-                              </td>
-                              <td className="max-w-[220px] truncate px-3 py-2 font-mono text-xs text-slate-800 dark:text-neutral-200 sm:max-w-md">
-                                {item.path}
-                              </td>
-                              <td className="max-w-[180px] truncate px-3 py-2 text-xs text-slate-600 dark:text-neutral-300 sm:max-w-sm">
-                                {item.log_message?.trim()
-                                  ? item.log_message.length > 120
-                                    ? `${item.log_message.slice(0, 120)}…`
-                                    : item.log_message
-                                  : "—"}
-                              </td>
-                              <td className="px-3 py-2">
-                                <span
-                                  className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${statusTone(item.status_code)}`}
-                                >
-                                  {item.status_code}
-                                </span>
-                              </td>
-                              <td className="whitespace-nowrap px-3 py-2 tabular-nums text-slate-700 dark:text-neutral-300">
-                                {item.latency_ms.toFixed(1)} ms
-                              </td>
-                              <td className="px-3 py-2 text-slate-700 dark:text-neutral-300">{item.service_name}</td>
-                              <td className="px-3 py-2">
-                                <span className="rounded-full bg-neutral-200/80 px-2 py-0.5 text-xs font-medium text-neutral-900 ring-1 ring-neutral-400/35 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/50">
-                                  {item.environment}
-                                </span>
-                              </td>
+                                <td className="px-2 py-2 align-middle">
+                                  <span
+                                    className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${statusTone(item.status_code)}`}
+                                  >
+                                    {item.status_code}
+                                  </span>
+                                </td>
+                                <td className="whitespace-nowrap px-2 py-2 align-middle">
+                                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800 dark:bg-neutral-800 dark:text-neutral-100">
+                                    {item.method}
+                                  </span>
+                                </td>
+                                <td className="min-w-0 max-w-md px-2 py-2 align-middle">
+                                  <p className="truncate font-mono text-sm font-medium text-slate-900 dark:text-neutral-100" title={item.path}>
+                                    {item.path}
+                                  </p>
+                                </td>
+                                <td className="min-w-0 max-w-sm px-2 py-2 align-middle">
+                                  <p className="line-clamp-2 text-sm leading-snug text-slate-600 dark:text-neutral-300" title={item.log_message ?? undefined}>
+                                    {item.log_message?.trim()
+                                      ? item.log_message.length > 160
+                                        ? `${item.log_message.slice(0, 160)}…`
+                                        : item.log_message
+                                      : "—"}
+                                  </p>
+                                </td>
+                                <td className="w-[9.5rem] shrink-0 whitespace-nowrap px-2 py-2 align-middle text-xs tabular-nums text-slate-600 dark:text-neutral-300">
+                                  <span title={formatTimestamp(item.timestamp)}>{formatTimestampCompact(item.timestamp)}</span>
+                                </td>
+                                <td className="whitespace-nowrap px-2 py-2 align-middle tabular-nums text-sm text-slate-700 dark:text-neutral-300">
+                                  {item.latency_ms.toFixed(1)} ms
+                                </td>
+                                <td className="min-w-0 max-w-[10rem] px-2 py-2 align-middle" title={item.service_name}>
+                                  <p className="truncate text-sm text-slate-700 dark:text-neutral-300">{item.service_name}</p>
+                                </td>
+                                <td className="px-2 py-2 align-middle">
+                                  <span className="inline-flex max-w-[6.5rem] truncate rounded-full bg-neutral-200/80 px-2 py-0.5 text-xs font-medium text-neutral-900 ring-1 ring-neutral-400/35 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/50">
+                                    {item.environment}
+                                  </span>
+                                </td>
                               </>
                             )}
                             renderDetails={() => {
-                              const statusClassForDiagnosis =
-                                item.status_code >= 500 ? "5" : item.status_code >= 400 ? "4" : "ALL";
-                              const diagnosisHref = buildDiagnosisPageHref(
-                                scopedState,
-                                {
-                                  pathQuery: item.path,
-                                  statusClass: statusClassForDiagnosis,
-                                },
-                                "#grouped-errors",
-                              );
+                              const bookmarkFragment = `request-row:${encodeURIComponent(rowId)}`;
+                              const defaultBookmarkTitle = `${item.method} ${item.path}`.slice(0, 200);
+                              const menuItems = buildRequestEvidenceMenuItems({
+                                item,
+                                rowId,
+                                onOpenInModal: () => setEvidenceModal({ rowId, item }),
+                                onSaveBookmark: () =>
+                                  setBookmarkDraft({
+                                    title: defaultBookmarkTitle,
+                                    hashFragment: bookmarkFragment,
+                                  }),
+                              });
                               return (
-                              <>
-                                <dl className="grid gap-3 sm:grid-cols-2">
-                                  <div>
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                      Request id
-                                    </dt>
-                                    <dd className="mt-0.5 break-all font-mono text-slate-900 dark:text-neutral-100">
-                                      {item.request_id ?? "— (not reported by SDK)"}
-                                    </dd>
+                                <>
+                                  <div className="mb-3 flex justify-end">
+                                    <RowActionsMenu items={menuItems} />
                                   </div>
-                                  <div>
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                      Timestamp (ISO)
-                                    </dt>
-                                    <dd className="mt-0.5 break-all font-mono text-slate-900 dark:text-neutral-100">
-                                      {item.timestamp}
-                                    </dd>
-                                  </div>
-                                  <div className="sm:col-span-2">
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Path</dt>
-                                    <dd className="mt-0.5 break-all font-mono text-[13px] text-slate-900 dark:text-neutral-100">
-                                      {item.path}
-                                    </dd>
-                                  </div>
-                                  <div className="sm:col-span-2">
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                      Log / error message
-                                    </dt>
-                                    <dd className="mt-0.5 break-words text-slate-900 dark:text-neutral-100">
-                                      {item.log_message?.trim() ? item.log_message : "—"}
-                                    </dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Status</dt>
-                                    <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
-                                      {item.status_code}
-                                    </dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Latency</dt>
-                                    <dd className="mt-0.5 tabular-nums text-slate-900 dark:text-neutral-100">
-                                      {item.latency_ms.toFixed(3)} ms
-                                    </dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">Service</dt>
-                                    <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.service_name}</dd>
-                                  </div>
-                                  <div>
-                                    <dt className="font-semibold text-slate-500 dark:text-neutral-400">
-                                      Environment
-                                    </dt>
-                                    <dd className="mt-0.5 text-slate-900 dark:text-neutral-100">{item.environment}</dd>
-                                  </div>
-                                </dl>
-                                <div className="mt-4 border-t border-slate-200 pt-3 dark:border-neutral-700">
-                                  <Link
-                                    href={diagnosisHref}
-                                    className="text-sm font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
-                                  >
-                                    {item.status_code >= 500
-                                      ? "Open errors and diagnosis (5xx on this route)"
-                                      : item.status_code >= 400
-                                        ? "Open errors and diagnosis (4xx on this route)"
-                                        : "Open errors and diagnosis for this route"}
-                                  </Link>
-                                </div>
-                              </>
+                                  <RequestEvidenceBody item={item} scopedState={scopedState} />
+                                </>
                               );
                             }}
                           />
@@ -503,6 +514,41 @@ export function LogsContent() {
           </div>
         </div>
       </section>
+      <DashboardDetailModal
+        open={evidenceModal !== null}
+        title={
+          evidenceModal ? `Request · ${evidenceModal.item.method} ${evidenceModal.item.path}` : ""
+        }
+        onClose={() => setEvidenceModal(null)}
+      >
+        {evidenceModal ? (
+          <>
+            <div className="mb-4 flex justify-end border-b border-slate-200 pb-3 dark:border-neutral-700">
+              <RowActionsMenu
+                items={buildRequestEvidenceMenuItems({
+                  item: evidenceModal.item,
+                  rowId: evidenceModal.rowId,
+                  onOpenInModal: () => undefined,
+                  onSaveBookmark: () =>
+                    setBookmarkDraft({
+                      title: `${evidenceModal.item.method} ${evidenceModal.item.path}`.slice(0, 200),
+                      hashFragment: `request-row:${encodeURIComponent(evidenceModal.rowId)}`,
+                    }),
+                }).filter((i) => i.id !== "open-modal")}
+              />
+            </div>
+            <RequestEvidenceBody item={evidenceModal.item} scopedState={scopedState} />
+          </>
+        ) : null}
+      </DashboardDetailModal>
+      <SaveBookmarkModal
+        open={bookmarkDraft !== null}
+        onClose={() => setBookmarkDraft(null)}
+        defaultTitle={bookmarkDraft?.title ?? ""}
+        pathname={routePath}
+        queryString={queryStringForBookmarks}
+        hashFragment={bookmarkDraft?.hashFragment ?? ""}
+      />
     </>
   );
 }

@@ -1083,6 +1083,33 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setRequestPage(0);
     setErrorGroupPage(0);
   }, []);
+
+  /** Pause live refresh and freeze the current scope; preserves scroll when the table remounts on page 0. */
+  const pauseLiveAtCurrentScope = useCallback(() => {
+    if (liveRefreshPausedRef.current) {
+      return;
+    }
+    liveRefreshPausedRef.current = true;
+    setLiveDataPaused(true);
+    const fromTs = effectiveScopeFromTs;
+    const toTs = effectiveScopeToTs;
+    const fromMs = new Date(fromTs).getTime();
+    const toMs = new Date(toTs).getTime();
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+      return;
+    }
+    const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
+    setAbsoluteWindow(fromTs, toTs);
+    const restoreScroll = () => {
+      if (typeof window === "undefined") {
+        return;
+      }
+      window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
+    };
+    queueMicrotask(restoreScroll);
+    requestAnimationFrame(restoreScroll);
+  }, [effectiveScopeFromTs, effectiveScopeToTs, setAbsoluteWindow]);
+
   const clearAbsoluteWindow = useCallback(() => {
     setAbsoluteWindowState((prev) => {
       if (prev !== null && typeof window !== "undefined") {
@@ -1096,21 +1123,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const toggleLiveDataPaused = useCallback(() => {
     const nextPaused = !liveRefreshPausedRef.current;
-    liveRefreshPausedRef.current = nextPaused;
-    setLiveDataPaused(nextPaused);
     if (nextPaused) {
-      const fromTs = effectiveScopeFromTs;
-      const toTs = effectiveScopeToTs;
-      const fromMs = new Date(fromTs).getTime();
-      const toMs = new Date(toTs).getTime();
-      if (Number.isFinite(fromMs) && Number.isFinite(toMs) && fromMs < toMs) {
-        setAbsoluteWindow(fromTs, toTs);
-      }
+      pauseLiveAtCurrentScope();
     } else {
+      liveRefreshPausedRef.current = false;
+      setLiveDataPaused(false);
       stretchAbsoluteEndAfterResumeRef.current = true;
       setRefreshToken((t) => t + 1);
     }
-  }, [effectiveScopeFromTs, effectiveScopeToTs, setAbsoluteWindow]);
+  }, [pauseLiveAtCurrentScope]);
 
   const onServerMethodChange = useCallback((value: string) => {
     setMethod(value);
@@ -1965,17 +1986,25 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setErrorGroupPage(0);
   }, []);
 
-  const toggleRequestRow = useCallback((id: string) => {
-    setExpandedRequestIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+  const toggleRequestRow = useCallback(
+    (id: string) => {
+      let opened = false;
+      setExpandedRequestIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+          opened = true;
+        }
+        return next;
+      });
+      if (opened) {
+        queueMicrotask(() => pauseLiveAtCurrentScope());
       }
-      return next;
-    });
-  }, []);
+    },
+    [pauseLiveAtCurrentScope],
+  );
 
   useEffect(() => {
     const visibleRequestIds = new Set(

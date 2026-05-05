@@ -279,3 +279,28 @@ export function parseScopedQuery(
   }
   return base;
 }
+
+/** URL keys omitted when persisting or sharing bookmarks — the time window follows the user's current session. */
+export const DASHBOARD_BOOKMARK_STRIP_KEYS = [
+  "window_minutes",
+  "from_timestamp",
+  "to_timestamp",
+  "request_page",
+  "error_group_page",
+] as const;
+
+/** Strip window and pagination from a raw query string (no leading `?`). */
+export function stripDashboardBookmarkQueryString(raw: string): string {
+  const params = new URLSearchParams(raw);
+  for (const k of DASHBOARD_BOOKMARK_STRIP_KEYS) {
+    params.delete(k);
+  }
+  return params.toString();
+}
+
+/** Same as {@link stripDashboardBookmarkQueryString} for `location.search` (with optional leading `?`). */
+export function stripDashboardBookmarkLocationSearch(search: string): string {
+  const raw = search.startsWith("?") ? search.slice(1) : search;
+  const stripped = stripDashboardBookmarkQueryString(raw);
+  return stripped ? `?${stripped}` : "";
+}

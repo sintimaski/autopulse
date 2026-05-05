@@ -97,6 +97,14 @@ export type RequestItem = {
   request_id: string | null;
   /** Error / diagnostic text from the stored event payload (e.g. `exception_message`). */
   log_message: string | null;
+  /** Storage row id (DuckDB / Postgres); stable for deep links when present. */
+  event_id?: number | null;
+  received_at?: string | null;
+  sdk_version?: string | null;
+  /** Ingest event type, e.g. `request` or `error`. */
+  event_kind?: string | null;
+  trace_id?: string | null;
+  span_id?: string | null;
 };
 
 export type RequestsResponse = {
@@ -659,6 +667,22 @@ export const RUNBOOK_RETENTION_CMD = "uv run python -m autopulse_backend.jobs re
 
 export function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+/** Shorter table cell timestamp (avoids crowding next to service/env). */
+export function formatTimestampCompact(value: string): string {
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) {
+    return value;
+  }
+  return d.toLocaleString(undefined, {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export function statusTone(code: number): string {
