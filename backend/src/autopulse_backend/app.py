@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -45,6 +45,12 @@ def create_app(*, for_submount: bool = False) -> FastAPI:
         from autopulse_backend.routes.dev_scenarios import router as dev_scenarios_router
 
         app.include_router(dev_scenarios_router)
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def _favicon_placeholder() -> Response:
+        # Prevent noisy 404 logs in local/dev when no favicon asset is packaged.
+        return Response(status_code=204)
+
     maybe_mount_dashboard_static_export(app, settings, for_submount=for_submount)
     return app
 

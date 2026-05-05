@@ -105,5 +105,17 @@ echo "AUTOPULSE_DATA_DIR=${AUTOPULSE_DATA_DIR}"
 echo "AUTOPULSE_DUCKDB_PATH=${AUTOPULSE_DUCKDB_PATH}"
 echo "AUTOPULSE_FRONTEND_MODE=${AUTOPULSE_FRONTEND_MODE}"
 echo "AUTOPULSE_INGEST_URL=${AUTOPULSE_INGEST_URL}"
+_backend_ui_url=""
+if curl -sf "http://127.0.0.1:8000/autopulse/ui/" >/dev/null 2>&1; then
+  _backend_ui_url="http://127.0.0.1:8000/autopulse/ui/"
+elif curl -sf "http://127.0.0.1:8000/ui/" >/dev/null 2>&1; then
+  _backend_ui_url="http://127.0.0.1:8000/ui/"
+fi
+if [[ -n "$_backend_ui_url" ]]; then
+  echo "Dashboard UI (backend static): ${_backend_ui_url}"
+else
+  echo "Dashboard UI (backend static): not mounted (expected in sidecar-only setups)."
+  echo "  If you open /autopulse/ui/ on :8000 in this state, backend access logs will show 404."
+fi
 echo "Starting synthetic app: uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info"
 uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info
