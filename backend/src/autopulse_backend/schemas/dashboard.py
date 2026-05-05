@@ -160,6 +160,25 @@ class DashboardDiagnosisFailureRoutesResponse(BaseModel):
     items: list[DashboardDiagnosisFailureRouteItem]
 
 
+class DashboardRecentJobFailureItem(BaseModel):
+    timestamp: datetime
+    job_name: str
+    trigger: str
+    status_code: int
+    latency_ms: float
+    service_name: str
+    environment: str
+    message: str | None = None
+    correlated_request_id: str | None = None
+
+
+class DashboardRecentJobFailuresResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    items: list[DashboardRecentJobFailureItem]
+
+
 class DashboardDiagnosisErrorGroupEventItem(BaseModel):
     id: int
     timestamp: datetime
@@ -206,6 +225,7 @@ class DashboardDataQueryRequest(BaseModel):
     include_error_groups: bool = False
     include_diagnosis: bool = False
     include_alert_dispatches: bool = False
+    include_recent_job_failures: bool = False
     requests: DashboardDataQueryPagination = DashboardDataQueryPagination()
     error_groups: DashboardDataQueryPagination = DashboardDataQueryPagination(limit=25, offset=0)
     alert_dispatches: DashboardDataQueryPagination = DashboardDataQueryPagination(
@@ -257,6 +277,7 @@ class DashboardDataQueryResponse(BaseModel):
     diagnosis_timeline: DashboardDiagnosisTimelineResponse | None = None
     diagnosis_failures: DashboardDiagnosisFailureRoutesResponse | None = None
     diagnosis_error_group_events: DashboardDiagnosisErrorGroupEventsResponse | None = None
+    recent_job_failures: DashboardRecentJobFailuresResponse | None = None
     alert_dispatches: DashboardAlertDispatchesResponse | None = None
 
 

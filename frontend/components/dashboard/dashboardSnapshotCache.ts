@@ -4,6 +4,7 @@ import type {
   AlertDispatchesResponse,
   DiagnosisFailureRoutesResponse,
   DiagnosisTimelineResponse,
+  RecentJobFailuresResponse,
   ErrorGroupsResponse,
   OverviewExtendedResponse,
   OverviewResponse,
@@ -22,6 +23,7 @@ export type DashboardSnapshotPayload = {
   /** Omitted on newer home snapshots (diagnosis is fetched only on `/diagnosis`). */
   diagnosisTimeline?: DiagnosisTimelineResponse;
   diagnosisFailures?: DiagnosisFailureRoutesResponse;
+  recentJobFailures?: RecentJobFailuresResponse;
   alertDispatches?: AlertDispatchesResponse;
 };
 

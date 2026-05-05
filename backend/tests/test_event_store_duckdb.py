@@ -100,6 +100,62 @@ def test_duckdb_fetch_events_with_total_slim_pagination(tmp_path) -> None:
     assert len(page2) == 2
 
 
+def test_duckdb_http_events_only_excludes_job_rows(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events_job.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    store.insert_rows(
+        [
+            {
+                "project_id": project_id,
+                "timestamp": now - timedelta(minutes=1),
+                "received_at": now - timedelta(minutes=1),
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/ok",
+                "status_code": 200,
+                "latency_ms": 1.0,
+                "payload": {},
+                "request_id": "r-1",
+            },
+            {
+                "project_id": project_id,
+                "timestamp": now - timedelta(minutes=1),
+                "received_at": now - timedelta(minutes=1),
+                "sdk_version": "0.1.0",
+                "type": "job",
+                "service_name": "api",
+                "environment": "test",
+                "method": "JOB",
+                "path": "task_a",
+                "status_code": 500,
+                "latency_ms": 9.0,
+                "payload": {"exception_message": "x"},
+                "request_id": None,
+            },
+        ]
+    )
+    filters = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(minutes=5),
+        to_timestamp=now,
+        http_events_only=True,
+    )
+    assert store.count_events(filters) == 1
+    job_filters = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(minutes=5),
+        to_timestamp=now,
+        http_events_only=False,
+        require_event_types=("job",),
+        status_class=5,
+    )
+    assert store.count_events(job_filters) == 1
+
+
 def test_duckdb_widget_point_rotation_helpers(tmp_path) -> None:
     store = DuckDbEventStore(str(tmp_path / "events3.duckdb"))
     project_id = uuid4()

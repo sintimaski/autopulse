@@ -62,7 +62,7 @@ async def _ingest_websocket_fanout(
                 project_id=project_id,
                 version=dashboard_version,
                 reason="ingest",
-                updated_slices=("overview", "requests", "errors", "widgets"),
+                updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
                 updated_at=received_at,
             )
         )

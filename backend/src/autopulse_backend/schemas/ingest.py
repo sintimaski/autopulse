@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class IngestEvent(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    type: Literal["request", "error"]
+    type: Literal["request", "error", "job"]
     timestamp: datetime
     service_name: str = Field(min_length=1, max_length=120)
     environment: str = Field(min_length=1, max_length=120)
@@ -27,7 +27,11 @@ class IngestEvent(BaseModel):
         return value.astimezone(UTC)
 
     @model_validator(mode="after")
-    def limit_extra_fields(self) -> IngestEvent:
+    def validate_job_and_extra_limits(self) -> IngestEvent:
+        if self.type == "job":
+            label = self.method.strip().upper()
+            if label not in {"JOB", "CRON"}:
+                raise ValueError("job events must use method JOB or CRON (cron vs ad-hoc work)")
         if len(self.model_extra or {}) > 32:
             raise ValueError("event contains too many additional fields")
         return self

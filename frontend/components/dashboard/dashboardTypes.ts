@@ -401,11 +401,31 @@ export type DashboardDataQueryRequest = {
   include_error_groups?: boolean;
   include_diagnosis?: boolean;
   include_alert_dispatches?: boolean;
+  include_recent_job_failures?: boolean;
   requests: { limit: number; offset: number };
   error_groups: { limit: number; offset: number };
   alert_dispatches?: { limit: number; offset: number };
   diagnosis_error_group_key?: string;
   diagnosis_error_group_events?: { limit: number; offset: number };
+};
+
+export type RecentJobFailureItem = {
+  timestamp: string;
+  job_name: string;
+  trigger: string;
+  status_code: number;
+  latency_ms: number;
+  service_name: string;
+  environment: string;
+  message?: string | null;
+  correlated_request_id?: string | null;
+};
+
+export type RecentJobFailuresResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  items: RecentJobFailureItem[];
 };
 
 export type DashboardDataQueryResponse = {
@@ -417,6 +437,7 @@ export type DashboardDataQueryResponse = {
   diagnosis_timeline: DiagnosisTimelineResponse | null;
   diagnosis_failures: DiagnosisFailureRoutesResponse | null;
   diagnosis_error_group_events: DiagnosisErrorGroupEventsResponse | null;
+  recent_job_failures?: RecentJobFailuresResponse | null;
   alert_dispatches: AlertDispatchesResponse | null;
 };
 

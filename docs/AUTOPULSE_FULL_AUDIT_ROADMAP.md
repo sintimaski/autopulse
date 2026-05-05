@@ -100,7 +100,7 @@ Legend: **Done** = implemented and user-visible · **Partial** = exists but inco
 | Error spike + outage heuristics | **Done** | `alert_service.py` |
 | Email + webhook + Slack + Discord | **Done** | Ahead of “email MVP” text |
 | Retention cleanup + scheduler / leases | **Done** | `jobs/`, `maintenance/` |
-| Cron/job observability | **Missing** | “Build soon” in doc — not a dashboard feature |
+| Cron/job observability | **Partial** | Minimal: `type=job` ingest + overview/diagnosis failure strip + SDK helper; not a full cron scheduler product |
 
 ### 3.5 Frontend — pages & chrome
 
@@ -268,6 +268,8 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 | Health/noise ignore list (SDK path prefixes) | SDK | ✅ Done | 2026-05-05 | Added `ignore_path_prefixes` / `AUTOPULSE_IGNORE_PATH_PREFIXES` (default `/health,/ready`) |
 | Unify scope UX story (phase 2: overview labeling + documented pattern) | Frontend UX | ✅ Done | 2026-05-05 | Overview facet bar labeled “Overview scope” with tooltip linking mental model to Diagnosis/Requests; §7.1 pattern note |
 | Saved views (light) | Frontend UX | ✅ Done | 2026-05-05 | Added per-project saved scope views (save/apply/remove) in `ServerQueryToolbar` backed by `DashboardDataContext` local persistence |
+| Job/cron events (minimal ingest + UI strip) | SDK + backend + frontend | ✅ Done | 2026-05-05 | `type=job` ingest (`JOB`/`CRON` methods), metrics exclude jobs, DuckDB/SQL HTTP scopes exclude jobs from charts, `recent_job_failures` in `/dashboard/query`, `RecentJobFailuresStrip` on overview + diagnosis, SDK `capture_background_job` |
+| WebSocket slice hints for diagnosis refresh | Backend realtime | ✅ Done | 2026-05-05 | `updated_slices` from ingest + live tick now include `diagnosis` alongside overview/requests/errors/widgets (UI already coalesced on `dashboard_update`) |
 
 ### 7.1 Now (0–4 weeks) — trust, clarity, golden path
 
@@ -287,8 +289,8 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 |------|--------|-------------------------------|
 | Sampling (SDK) | ✅ Done | Default safe sampling for high-RPM routes; errors at full fidelity where feasible |
 | Health / noise ignore list | ✅ Done | Configurable prefixes; sane defaults (`/health`, `/ready`) |
-| Job/cron events (minimal) | ⬜ Planned | New event type + dashboard strip “async work” failures linked to HTTP context when present |
-| WebSocket-driven UI | ⬜ Planned | Live overview/diagnosis counters where it materially reduces TTD (time to detect) |
+| Job/cron events (minimal) | ✅ Done | Ingest `type=job` (SDK `capture_background_job`); failures strip on overview/diagnosis; optional `correlated_request_id` / payload fields; HTTP charts unchanged |
+| WebSocket-driven UI | ✅ Done (incremental) | Ingest + live tick fan-out now tags `diagnosis` slice; full bundle refresh on WS already applied on `/diagnosis` — granular counter push still optional later |
 | Saved views (light) | ✅ Done | Named filter presets per project — not a full Grafana library |
 
 ### 7.3 Later — platform expansion (gated)

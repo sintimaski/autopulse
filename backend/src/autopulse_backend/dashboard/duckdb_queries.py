@@ -75,6 +75,8 @@ def build_filters(
     min_latency_ms: float | None = None,
     max_latency_ms: float | None = None,
     event_sql_filter: str | None = None,
+    http_events_only: bool = True,
+    require_event_types: tuple[str, ...] | None = None,
 ) -> EventStoreFilters:
     return EventStoreFilters(
         project_id=project_id,
@@ -89,6 +91,8 @@ def build_filters(
         min_latency_ms=min_latency_ms,
         max_latency_ms=max_latency_ms,
         event_sql_filter=event_sql_filter,
+        http_events_only=http_events_only,
+        require_event_types=require_event_types,
     )
 
 
@@ -543,3 +547,76 @@ def overview_extended(
         "service_breakdown": fetch_breakdown("service_name"),
         "route_breakdown": fetch_breakdown("path"),
     }
+
+
+def recent_job_failures(filters: EventStoreFilters, *, limit: int = 12) -> list[dict[str, Any]]:
+    """Recent failed background job rows (``type=job``, HTTP status in 5xx range)."""
+    store = get_duckdb_event_store()
+    job_filters = EventStoreFilters(
+        project_id=filters.project_id,
+        from_timestamp=filters.from_timestamp,
+        to_timestamp=filters.to_timestamp,
+        exclude_autopulse_traffic=filters.exclude_autopulse_traffic,
+        method=filters.method,
+        status_class=5,
+        path_contains=filters.path_contains,
+        environments=filters.environments,
+        services=filters.services,
+        min_latency_ms=filters.min_latency_ms,
+        max_latency_ms=filters.max_latency_ms,
+        event_sql_filter=filters.event_sql_filter,
+        http_events_only=False,
+        require_event_types=("job",),
+    )
+    cap = max(1, min(int(limit), 50))
+    rows = store.fetch_events(
+        job_filters,
+        columns=(
+            "timestamp, method, path, status_code, latency_ms, "
+            "service_name, environment, request_id, type, payload"
+        ),
+        limit=cap,
+    )
+    items: list[dict[str, Any]] = []
+    for (
+        timestamp,
+        method,
+        path,
+        status_code,
+        latency_ms,
+        service_name,
+        environment,
+        request_id,
+        _event_type,
+        payload,
+    ) in rows:
+        cell = _dashboard_list_payload_cell(payload)
+        trigger = str(method or "").upper() or "JOB"
+        job_trigger = cell.get("job_trigger")
+        if isinstance(job_trigger, str) and job_trigger.strip():
+            trigger = job_trigger.strip()[:32]
+        exc_msg = cell.get("exception_message")
+        if not isinstance(exc_msg, str) or not exc_msg.strip():
+            exc_msg = cell.get("message")
+        message = str(exc_msg).strip()[:500] if isinstance(exc_msg, str) else None
+        correlated = cell.get("correlated_request_id")
+        correlated_request_id = (
+            str(correlated).strip()[:128]
+            if isinstance(correlated, str) and correlated.strip()
+            else None
+        )
+        rid = str(request_id).strip()[:128] if request_id else None
+        items.append(
+            {
+                "timestamp": as_utc_datetime(timestamp),
+                "job_name": str(path or "")[:2048],
+                "trigger": trigger,
+                "status_code": int(status_code or 0),
+                "latency_ms": float(latency_ms or 0.0),
+                "service_name": str(service_name or ""),
+                "environment": str(environment or ""),
+                "message": message,
+                "correlated_request_id": correlated_request_id or rid,
+            }
+        )
+    return items

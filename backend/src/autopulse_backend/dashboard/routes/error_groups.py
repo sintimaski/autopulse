@@ -111,6 +111,7 @@ async def get_dashboard_error_groups(
             max_latency_ms=max_latency_ms,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         total, items = await run_duckdb_read_sync(
             error_groups, duckdb_filters, limit=limit, offset=offset

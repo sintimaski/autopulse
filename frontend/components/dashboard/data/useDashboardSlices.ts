@@ -38,6 +38,7 @@ export function useDashboardHomeSlice() {
       sqlFilterApplied: d.sqlFilterApplied,
       sqlFilterEnabled: d.sqlFilterEnabled,
       errorMessage: d.errorMessage,
+      recentJobFailures: d.recentJobFailures,
     }),
     [
       d.overview,
@@ -65,6 +66,7 @@ export function useDashboardHomeSlice() {
       d.sqlFilterApplied,
       d.sqlFilterEnabled,
       d.errorMessage,
+      d.recentJobFailures,
     ],
   );
 }
@@ -77,8 +79,9 @@ export function useDashboardDiagnosisSlice() {
       diagnosisFailures: d.diagnosisFailures,
       diagnosisErrorGroupEvents: d.diagnosisErrorGroupEvents,
       errorGroups: d.errorGroups,
+      recentJobFailures: d.recentJobFailures,
     }),
-    [d.diagnosisTimeline, d.diagnosisFailures, d.diagnosisErrorGroupEvents, d.errorGroups],
+    [d.diagnosisTimeline, d.diagnosisFailures, d.diagnosisErrorGroupEvents, d.errorGroups, d.recentJobFailures],
   );
 }
 

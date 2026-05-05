@@ -18,6 +18,7 @@ from autopulse_backend.dashboard.error_grouping import (
     derived_error_group_key,
     error_like_events_predicate,
 )
+from autopulse_backend.dashboard.event_scope import http_scoped_event_types_clause
 from autopulse_backend.dashboard.log_query import append_event_sql_filters
 from autopulse_backend.dashboard.params import (
     EVENT_SQL_FILTER_QUERY,
@@ -87,6 +88,7 @@ async def get_dashboard_diagnosis_timeline(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
+        http_scoped_event_types_clause(),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -99,6 +101,7 @@ async def get_dashboard_diagnosis_timeline(
             to_timestamp=resolved_to,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         timeline = await run_duckdb_read_sync(
             diagnosis_timeline,
@@ -159,6 +162,7 @@ async def get_dashboard_diagnosis_failures_by_route(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
+        http_scoped_event_types_clause(),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -171,6 +175,7 @@ async def get_dashboard_diagnosis_failures_by_route(
             to_timestamp=resolved_to,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         items = await run_duckdb_read_sync(failures_by_route, duckdb_filters)
         return DashboardDiagnosisFailureRoutesResponse(
@@ -248,6 +253,7 @@ async def get_dashboard_diagnosis_error_group_events(
             to_timestamp=resolved_to,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         total, items = await run_duckdb_read_sync(
             error_group_events,

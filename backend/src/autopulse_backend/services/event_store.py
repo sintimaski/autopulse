@@ -33,6 +33,10 @@ class EventStoreFilters:
     max_latency_ms: float | None = None
     exclude_autopulse_traffic: bool = False
     event_sql_filter: str | None = None
+    #: When True (default), dashboard aggregations only include HTTP-shaped rows.
+    http_events_only: bool = True
+    #: If set, restricts to these ``type`` values (``http_events_only`` is ignored).
+    require_event_types: tuple[str, ...] | None = None
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -342,6 +346,12 @@ class DuckDbEventStore:
         if filters.max_latency_ms is not None:
             clauses.append("latency_ms <= ?")
             params.append(filters.max_latency_ms)
+        if filters.require_event_types:
+            placeholders = ",".join("?" for _ in filters.require_event_types)
+            clauses.append(f"type IN ({placeholders})")
+            params.extend(filters.require_event_types)
+        elif filters.http_events_only:
+            clauses.append("type IN ('request', 'error')")
         if filters.event_sql_filter and filters.event_sql_filter.strip():
             wrapped = (
                 "SELECT * FROM events WHERE "

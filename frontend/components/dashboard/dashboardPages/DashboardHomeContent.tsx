@@ -28,6 +28,7 @@ import {
 } from "../charts";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
+import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
 import { buildScopedQuery } from "../dashboardQueryState";
@@ -189,6 +190,7 @@ export function DashboardHomeContent() {
             />
           ))}
         </div>
+        <RecentJobFailuresStrip data={homeSlice.recentJobFailures} moreHref={diagnosisBaseHref} />
         <div className="w-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
           <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic volume</h3>
           <VolumeChart

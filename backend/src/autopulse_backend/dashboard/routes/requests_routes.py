@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.auth import ProjectContext, authenticate_dashboard_project
 from autopulse_backend.dashboard.duckdb_queries import build_filters, request_items
+from autopulse_backend.dashboard.event_scope import http_scoped_event_types_clause
 from autopulse_backend.dashboard.log_query import append_event_sql_filters
 from autopulse_backend.dashboard.messages import dashboard_request_log_message
 from autopulse_backend.dashboard.params import (
@@ -68,6 +69,7 @@ async def get_dashboard_requests(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
+        http_scoped_event_types_clause(),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -104,6 +106,7 @@ async def get_dashboard_requests(
             max_latency_ms=max_latency_ms,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         total, items = await run_duckdb_read_sync(
             request_items, duckdb_filters, limit=limit, offset=offset

@@ -771,4 +771,5 @@ def monitor(app: Any, **kwargs: Any) -> None:
     if not _add_event_handler(app, "shutdown", dispatcher.stop):
         return
     app.state._autopulse_config = config
+    app.state._autopulse_dispatcher = dispatcher
     app.state._autopulse_configured = True

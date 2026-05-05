@@ -52,7 +52,7 @@ async def run_dashboard_ws_live_tick_loop(*, interval_seconds: float) -> None:
                         project_id=project_id,
                         version=version,
                         reason="live_tick",
-                        updated_slices=("overview", "requests", "errors", "widgets"),
+                        updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
                         updated_at=at,
                     )
                 )

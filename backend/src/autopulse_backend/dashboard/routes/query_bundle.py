@@ -34,6 +34,7 @@ from autopulse_backend.dashboard.routes.diagnosis import (
     get_dashboard_diagnosis_timeline,
 )
 from autopulse_backend.dashboard.routes.error_groups import get_dashboard_error_groups
+from autopulse_backend.dashboard.routes.job_events import get_dashboard_recent_job_failures
 from autopulse_backend.dashboard.routes.overview import (
     get_dashboard_overview,
     get_dashboard_overview_extended,
@@ -175,6 +176,7 @@ def _select_bundle_tier(payload: DashboardDataQueryRequest) -> Literal["light", 
         or payload.include_widgets
         or payload.include_error_groups
         or payload.include_diagnosis
+        or payload.include_recent_job_failures
         or payload.include_alert_dispatches
         or bool(payload.diagnosis_error_group_key)
     ):
@@ -416,6 +418,25 @@ async def _run_bundle_query(
         if payload.include_diagnosis
         else None
     )
+    recent_job_failures_task = (
+        run_with_session(
+            lambda isolated_session: get_dashboard_recent_job_failures(
+                context=context,
+                session=isolated_session,
+                from_timestamp=scope.from_timestamp,
+                to_timestamp=scope.to_timestamp,
+                window_minutes=scope.window_minutes,
+                path_contains=scope.path_contains,
+                environments=scope.environments,
+                services=scope.services,
+                min_latency_ms=scope.min_latency_ms,
+                max_latency_ms=scope.max_latency_ms,
+                event_sql_filter=scope.event_sql_filter,
+            )
+        )
+        if payload.include_recent_job_failures
+        else None
+    )
     diagnosis_error_group_events_task = (
         run_with_session(
             lambda isolated_session: get_dashboard_diagnosis_error_group_events(
@@ -456,6 +477,7 @@ async def _run_bundle_query(
         error_groups_task,
         diagnosis_timeline_task,
         diagnosis_failures_task,
+        recent_job_failures_task,
         diagnosis_error_group_events_task,
         alert_dispatches_task,
     ]
@@ -470,6 +492,7 @@ async def _run_bundle_query(
     error_groups = next(optional_iter) if error_groups_task is not None else None
     diagnosis_timeline = next(optional_iter) if diagnosis_timeline_task is not None else None
     diagnosis_failures = next(optional_iter) if diagnosis_failures_task is not None else None
+    recent_job_failures = next(optional_iter) if recent_job_failures_task is not None else None
     diagnosis_error_group_events = (
         next(optional_iter) if diagnosis_error_group_events_task is not None else None
     )
@@ -483,5 +506,6 @@ async def _run_bundle_query(
         diagnosis_timeline=diagnosis_timeline,
         diagnosis_failures=diagnosis_failures,
         diagnosis_error_group_events=diagnosis_error_group_events,
+        recent_job_failures=recent_job_failures,
         alert_dispatches=alert_dispatches,
     )

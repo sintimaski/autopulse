@@ -97,6 +97,7 @@ async def execute_dashboard_log_query(
             to_timestamp=resolved_to,
             exclude_autopulse_traffic=bool(ui_settings.exclude_autopulse_traffic),
             event_sql_filter=" AND ".join(parsed.where_clauses) if parsed.where_clauses else None,
+            http_events_only=False,
         )
         order_by = "id DESC" if parsed.order_by == "id" and parsed.order_desc else None
         if parsed.order_by == "id" and not parsed.order_desc:

@@ -2,6 +2,7 @@
 
 import os
 
+from autopulse._jobs import capture_background_job
 from autopulse._monitor import monitor
 from autopulse.widgets import (
     BarChartWidget,
@@ -42,6 +43,7 @@ def autopulse(app: object, **kwargs: object) -> None:
 __all__ = [
     "monitor",
     "autopulse",
+    "capture_background_job",
     "BaseDashboardWidget",
     "CardWidget",
     "LineChartWidget",

@@ -15,6 +15,7 @@ import type {
   DiagnosisErrorGroupEventsResponse,
   DiagnosisFailureRoutesResponse,
   DiagnosisTimelineResponse,
+  RecentJobFailuresResponse,
   ErrorGroupItem,
   ErrorGroupsResponse,
   GroupBy,
@@ -131,6 +132,7 @@ export type DashboardDataContextValue = {
   diagnosisTimeline: DiagnosisTimelineResponse | null;
   diagnosisFailures: DiagnosisFailureRoutesResponse | null;
   diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
+  recentJobFailures: RecentJobFailuresResponse | null;
   alertSettings: AlertSettings | null;
   apiKeys: DashboardApiKeyItem[];
   lastIssuedApiKey: string | null;
@@ -278,6 +280,7 @@ export type DashboardHomeSliceValue = {
   sqlFilterApplied: string;
   sqlFilterEnabled: boolean;
   errorMessage: string | null;
+  recentJobFailures: RecentJobFailuresResponse | null;
 };
 
 export type DashboardDiagnosisSliceValue = {
@@ -285,6 +288,7 @@ export type DashboardDiagnosisSliceValue = {
   diagnosisFailures: DiagnosisFailureRoutesResponse | null;
   diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
   errorGroups: ErrorGroupsResponse | null;
+  recentJobFailures: RecentJobFailuresResponse | null;
 };
 
 export type DashboardAlertsSliceValue = {

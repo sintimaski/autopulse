@@ -15,6 +15,7 @@ import { useDashboardDiagnosisSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
+import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { MetricCard } from "../MetricCard";
 
@@ -150,6 +151,7 @@ export function DiagnosisContent() {
           Some diagnosis widgets may be stale: {d.errorMessage}
         </section>
       ) : null}
+      <RecentJobFailuresStrip data={diagnosisSlice.recentJobFailures} />
       <section className="grid gap-4 lg:grid-cols-3">
         <MetricCard
           label="Incident summary"

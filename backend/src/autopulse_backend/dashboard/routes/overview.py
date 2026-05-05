@@ -14,6 +14,7 @@ from autopulse_backend.dashboard.duckdb_queries import (
     overview_extended,
     overview_series,
 )
+from autopulse_backend.dashboard.event_scope import http_scoped_event_types_clause
 from autopulse_backend.dashboard.log_query import append_event_sql_filters, percentile
 from autopulse_backend.dashboard.params import (
     EVENT_SQL_FILTER_QUERY,
@@ -131,6 +132,7 @@ async def get_dashboard_overview(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
+        http_scoped_event_types_clause(),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -143,6 +145,7 @@ async def get_dashboard_overview(
             to_timestamp=resolved_to,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         request_total, error_total, avg_latency_ms, series = await run_duckdb_read_sync(
             overview_series,
@@ -379,6 +382,7 @@ async def get_dashboard_overview_extended(
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
+        http_scoped_event_types_clause(),
     ]
     append_exclude_autopulse_event_filters(
         filters, exclude_autopulse_traffic=exclude_autopulse_traffic
@@ -391,6 +395,7 @@ async def get_dashboard_overview_extended(
             to_timestamp=resolved_to,
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
+            http_events_only=True,
         )
         data = await run_duckdb_read_sync(
             overview_extended,

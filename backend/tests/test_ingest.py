@@ -692,3 +692,58 @@ def test_ingest_distributed_rate_limit_db_error_fails_open_and_increments_metric
     assert response.json() == {"accepted": 1}
     after = service_metrics.snapshot().get("ingest.rate_limit.distributed_fallback", 0)
     assert after == baseline + 1
+
+
+def test_ingest_accepts_job_event(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, project_id = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "sdk_version": "0.1.0",
+        "events": [
+            {
+                "type": "job",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "JOB",
+                "path": "digest_send",
+                "status_code": 500,
+                "latency_ms": 120.0,
+                "request_id": "http-req-xyz",
+                "exception_message": "SMTP down",
+            }
+        ],
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 200
+    rows = _query_event_rows(backend_test_database_url)
+    assert len(rows) == 1
+    assert rows[0]["type"] == "job"
+    assert rows[0]["project_id"] == project_id
+    assert rows[0]["status_code"] == 500
+
+
+def test_ingest_rejects_job_with_invalid_method(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "job",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "bad_job",
+                "status_code": 500,
+                "latency_ms": 1.0,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 422
+    assert _count_events(backend_test_database_url) == 0

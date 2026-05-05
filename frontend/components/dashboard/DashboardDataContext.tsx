@@ -58,6 +58,7 @@ import {
   type GroupBy,
   type OverviewResponse,
   type OverviewExtendedResponse,
+  type RecentJobFailuresResponse,
   type RequestItem,
   type RequestsResponse,
   type RetentionSettings,
@@ -243,6 +244,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [diagnosisTimeline, setDiagnosisTimeline] = useState<DiagnosisTimelineResponse | null>(null);
   const [diagnosisFailures, setDiagnosisFailures] = useState<DiagnosisFailureRoutesResponse | null>(null);
   const [diagnosisErrorGroupEvents, setDiagnosisErrorGroupEvents] = useState<DiagnosisErrorGroupEventsResponse | null>(null);
+  const [recentJobFailures, setRecentJobFailures] = useState<RecentJobFailuresResponse | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [apiKeys, setApiKeys] = useState<DashboardApiKeyItem[]>([]);
   const [lastIssuedApiKey, setLastIssuedApiKey] = useState<string | null>(null);
@@ -533,6 +535,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       const includeErrorGroups = routePath === "/diagnosis" || routePath === "/dashboard";
       const includeDiagnosis = routePath === "/diagnosis";
+      const includeRecentJobFailures = routePath === "/dashboard" || routePath === "/diagnosis";
       const includeAlertDispatches = routePath === "/alerts" || routePath === "/diagnosis";
       const useSnapshot = routePath === "/dashboard";
       const requestsLimitForRoute =
@@ -592,6 +595,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setDiagnosisTimeline(cached.diagnosisTimeline ?? null);
           setDiagnosisFailures(cached.diagnosisFailures ?? null);
           setAlertDispatches(cached.alertDispatches ?? null);
+          setRecentJobFailures(cached.recentJobFailures ?? null);
         }
 
         const scopeRequest: DashboardDataQueryRequest = {
@@ -619,6 +623,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           include_widgets: includeWidgets,
           include_error_groups: includeErrorGroups,
           include_diagnosis: includeDiagnosis,
+          include_recent_job_failures: includeRecentJobFailures,
           include_alert_dispatches: includeAlertDispatches,
           requests: { limit: requestsLimitForRoute, offset: requestsOffsetForRoute },
           error_groups: { limit: errorGroupsLimitForRoute, offset: errorGroupsOffsetForRoute },
@@ -704,6 +709,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setAlertDispatches(null);
         }
         setDiagnosisErrorGroupEvents(data.diagnosis_error_group_events ?? null);
+        if (includeRecentJobFailures && data.recent_job_failures) {
+          setRecentJobFailures(data.recent_job_failures);
+        } else {
+          setRecentJobFailures(null);
+        }
 
         if (
           useSnapshot &&
@@ -717,6 +727,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             overviewExtended: data.overview_extended,
             requests: requestsData,
             errorGroups: data.error_groups ?? undefined,
+            recentJobFailures: includeRecentJobFailures ? data.recent_job_failures ?? undefined : undefined,
           });
         }
         if (overviewData || requestsData) {
@@ -2220,6 +2231,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sparklineSeries,
       operationalSignals,
       rawItems,
+      recentJobFailures,
       windowMinutes,
       isAbsoluteWindow: absoluteWindow !== null,
       windowFromTimestamp: toIsoWindow?.from ?? overview?.from_timestamp ?? requests?.from_timestamp ?? "",
@@ -2247,6 +2259,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sparklineSeries,
       operationalSignals,
       rawItems,
+      recentJobFailures,
       windowMinutes,
       absoluteWindow,
       toIsoWindow,
@@ -2272,8 +2285,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       diagnosisFailures,
       diagnosisErrorGroupEvents,
       errorGroups,
+      recentJobFailures,
     }),
-    [diagnosisTimeline, diagnosisFailures, diagnosisErrorGroupEvents, errorGroups],
+    [diagnosisTimeline, diagnosisFailures, diagnosisErrorGroupEvents, errorGroups, recentJobFailures],
   );
 
   const alertsSliceValue = useMemo(
@@ -2337,6 +2351,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       diagnosisTimeline,
       diagnosisFailures,
       diagnosisErrorGroupEvents,
+      recentJobFailures,
       alertSettings,
       apiKeys,
       lastIssuedApiKey,
@@ -2456,6 +2471,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       diagnosisTimeline,
       diagnosisFailures,
       diagnosisErrorGroupEvents,
+      recentJobFailures,
       serverNowTimestamp,
       method,
       statusClass,

@@ -173,6 +173,8 @@ def _build_aggregate_deltas(
     metric_by_key: dict[tuple[datetime, str, str], MetricBucketDelta] = {}
     error_group_by_key: dict[str, ErrorGroupAggregateDelta] = {}
     for row in rows:
+        if row.type == "job":
+            continue
         bucket_key = (
             minute_bucket(row.timestamp),
             row.service_name or "unknown",
