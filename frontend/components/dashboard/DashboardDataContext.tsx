@@ -261,6 +261,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const liveRefreshPausedRef = useRef(false);
   const [liveDataPaused, setLiveDataPaused] = useState(false);
   const stretchAbsoluteEndAfterResumeRef = useRef(false);
+  /** After dropping custom window, restore viewport Y (header toolbar remount can shift layout). */
+  const scrollYBeforeClearAbsoluteWindowRef = useRef<number | null>(null);
 
   const {
     hasSession: hasDashboardSession,
@@ -338,6 +340,25 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       return null;
     }
     return absoluteWindow;
+  }, [absoluteWindow]);
+
+  useLayoutEffect(() => {
+    const y = scrollYBeforeClearAbsoluteWindowRef.current;
+    if (y === null) {
+      return;
+    }
+    if (absoluteWindow !== null) {
+      return;
+    }
+    scrollYBeforeClearAbsoluteWindowRef.current = null;
+    if (typeof window === "undefined") {
+      return;
+    }
+    const top = y;
+    window.scrollTo({ top, left: 0, behavior: "auto" });
+    queueMicrotask(() => {
+      window.scrollTo({ top, left: 0, behavior: "auto" });
+    });
   }, [absoluteWindow]);
 
   const effectiveScopeFromTs = useMemo(
@@ -1045,7 +1066,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setErrorGroupPage(0);
   }, []);
   const clearAbsoluteWindow = useCallback(() => {
-    setAbsoluteWindowState(null);
+    setAbsoluteWindowState((prev) => {
+      if (prev !== null && typeof window !== "undefined") {
+        scrollYBeforeClearAbsoluteWindowRef.current = window.scrollY;
+      }
+      return null;
+    });
     setRequestPage(0);
     setErrorGroupPage(0);
   }, []);
