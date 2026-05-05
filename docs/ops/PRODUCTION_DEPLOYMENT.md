@@ -214,6 +214,7 @@ AutoPulse ships an official `Dockerfile` at repo root that:
 - Builds the Next static export (`frontend/out`) in a Node build stage.
 - Installs backend dependencies and runs `uvicorn` for `autopulse_backend.main:app`.
 - Serves the static dashboard from `AUTOPULSE_FRONTEND_STATIC_DIR=/app/frontend/out`.
+- Root [`.dockerignore`](../../.dockerignore) limits build context (for example `.git`, local `node_modules`, `.venv`, `.autopulse`, and trees not used by the Dockerfile) so `docker build` stays fast.
 
 ### Build and smoke test
 

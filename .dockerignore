@@ -1,0 +1,53 @@
+# Shrink `docker build` context: only frontend/ and backend/ are COPY’d (see root Dockerfile).
+
+# VCS and automation (not used in image)
+.git
+.github
+
+# Other repo trees not referenced by the Dockerfile
+sdk
+docs
+agents
+scripts
+
+# Local / editor / agent state
+.autopulse
+.cursor
+.idea
+.vscode
+**/.DS_Store
+
+# Repo-root Python env and caches (not copied explicitly but bloat context scan)
+.venv
+venv
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+coverage.xml
+*.egg-info
+dist
+
+# Frontend: install and build happen inside the image
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/.turbo
+frontend/playwright-report
+frontend/test-results
+frontend/tests
+
+# Backend: wheel only ships `src/autopulse_backend`; tests are not needed to install
+backend/**/__pycache__
+backend/**/*.py[cod]
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+backend/tests
+backend/htmlcov
+backend/.venv
+backend/.coverage
