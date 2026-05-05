@@ -124,6 +124,16 @@ export function VolumeChart({
   const totalErrors = displayed.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0);
   const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
+  /** Remount Chart.js when server scope or bucket timeline changes (avoids stale canvas after scope changes). */
+  const chartScopeKey = [
+    fromTimestamp,
+    toTimestamp,
+    String(globalWindowMinutes),
+    String(series.length),
+    series[0]?.minute ?? "",
+    series[series.length - 1]?.minute ?? "",
+  ].join("|");
+
   const onBucketClick = useCallback(
     (bucket: OverviewBucket) => {
       const bucketStart = parseIsoTimestamp(bucket.minute).toISOString();
@@ -299,11 +309,12 @@ export function VolumeChart({
               aria-label="Request volume by time bucket"
             >
               <div className="w-full" style={{ height: barChartHeight }}>
-                <CanvasBar data={volumeBarData} options={volumeBarOptions} />
+                <CanvasBar key={chartScopeKey} data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <TimeSeriesLineChart
+                key={`${chartScopeKey}-req-vol`}
                 title="Request Volume Trend"
                 values={displayed.map((bucket) => Number(bucket.request_count || 0))}
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
@@ -314,6 +325,7 @@ export function VolumeChart({
                 chartAreaHeightClass={volumeLineChartHeightClass}
               />
               <TimeSeriesLineChart
+                key={`${chartScopeKey}-err-rate`}
                 title="Error Rate Trend"
                 values={displayed.map((bucket) => {
                   const req = Number(bucket.request_count || 0);
@@ -328,6 +340,7 @@ export function VolumeChart({
                 chartAreaHeightClass={volumeLineChartHeightClass}
               />
               <TimeSeriesLineChart
+                key={`${chartScopeKey}-err-cnt`}
                 title="Error Count Trend"
                 values={displayed.map((bucket) => Number(bucket.error_count || 0))}
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
@@ -338,6 +351,7 @@ export function VolumeChart({
                 chartAreaHeightClass={volumeLineChartHeightClass}
               />
               <TimeSeriesLineChart
+                key={`${chartScopeKey}-lat`}
                 title="Latency Trend"
                 values={displayed.map((bucket) => Number(bucket.avg_latency_ms || 0))}
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}

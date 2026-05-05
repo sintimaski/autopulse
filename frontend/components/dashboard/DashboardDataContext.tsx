@@ -80,6 +80,10 @@ import {
   readDashboardSnapshot,
   writeDashboardSnapshot,
 } from "./dashboardSnapshotCache";
+import {
+  readStoredDashboardThemePreference,
+  writeStoredDashboardThemePreference,
+} from "./dashboardThemeStorage";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { createBootstrapFailureOnboardingFallback } from "./dashboardBootstrapFallback";
 import { dashboardMagicLinkHref, toDashboardRoutePath } from "./dashboardRoutePath";
@@ -254,7 +258,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [workspaceBootstrapError, setWorkspaceBootstrapError] = useState<string | null>(null);
   const [bootstrapRetryToken, setBootstrapRetryToken] = useState(0);
   const [retentionSettings, setRetentionSettings] = useState<RetentionSettings | null>(null);
-  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    () => readStoredDashboardThemePreference() ?? "system",
+  );
   const [excludeAutopulseTraffic, setExcludeAutopulseTraffic] = useState(true);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
@@ -479,6 +485,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setRetentionSettings(bootstrapData.retention_settings);
         setAlertSettings(bootstrapData.alert_settings);
         setThemePreference(bootstrapData.theme_settings.theme_preference);
+        writeStoredDashboardThemePreference(bootstrapData.theme_settings.theme_preference);
         setExcludeAutopulseTraffic(bootstrapData.theme_settings.exclude_autopulse_traffic);
         setApiKeys(bootstrapData.api_keys.items ?? []);
         setAlertCapabilities(bootstrapData.alert_capabilities.channels ?? []);
@@ -1304,6 +1311,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         }
         const updated = (await response.json()) as ThemeSettings;
         setThemePreference(updated.theme_preference);
+        writeStoredDashboardThemePreference(updated.theme_preference);
         setExcludeAutopulseTraffic(updated.exclude_autopulse_traffic);
         return true;
       } catch {
@@ -1338,6 +1346,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         }
         const updated = (await response.json()) as ThemeSettings;
         setThemePreference(updated.theme_preference);
+        writeStoredDashboardThemePreference(updated.theme_preference);
         setExcludeAutopulseTraffic(updated.exclude_autopulse_traffic);
         setRefreshToken((n) => n + 1);
         return true;

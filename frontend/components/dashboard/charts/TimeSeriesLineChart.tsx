@@ -118,7 +118,7 @@ export function TimeSeriesLineChart({
         },
       },
     }),
-    [formatValue, labels, maxY, title, values.length],
+    [formatValue, labels, maxY, title, values],
   );
 
   return (

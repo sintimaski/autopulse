@@ -165,7 +165,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const d = useDashboardData();
-  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)").matches : false,
+  );
   const lastAppliedQueryRef = useRef<string>("");
   const scopedStateRef = useRef<Record<string, ScopedServerState>>({});
   const previousPathRef = useRef(pathname);
@@ -263,13 +265,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
       buildLiveDashboardSearchString("/logs", scopedServerStateForUrl, logsClientForUrl),
     [scopedServerStateForUrl, logsClientForUrl],
   );
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      setSystemPrefersDark(window.matchMedia("(prefers-color-scheme: dark)").matches);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");

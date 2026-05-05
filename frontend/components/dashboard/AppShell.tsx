@@ -90,9 +90,8 @@ export function DashboardAppShell({
       return;
     }
     document.documentElement.classList.toggle("dark", isDark);
-    return () => {
-      document.documentElement.classList.remove("dark");
-    };
+    // Do not remove `dark` on cleanup: paint-blocking script in `app/layout.tsx` owns first paint;
+    // stripping here caused flashes (StrictMode re-mount, brief unmounts) and white reload frames.
   }, [isDark]);
 
   const toggleSidebar = useCallback(() => {
