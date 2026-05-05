@@ -22,7 +22,11 @@ def test_ready_endpoint_returns_ready_when_database_is_available(
     with TestClient(app) as client:
         response = client.get("/ready")
     assert response.status_code == 200
-    assert response.json() == {"status": "ready"}
+    body = response.json()
+    assert body["status"] == "ready"
+    assert "jobs_enable_scheduler" in body
+    assert "scheduler_running" in body
+    assert "database_run_migrations_on_startup" in body
 
 
 def test_internal_metrics_includes_ingest_pressure_view(

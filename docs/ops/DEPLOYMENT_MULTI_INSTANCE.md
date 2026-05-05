@@ -20,6 +20,14 @@ The default limiter is process-local. Enable `INGEST_DISTRIBUTED_RATE_LIMIT_ENAB
 
 The in-process scheduler uses leases for some tasks, but you should still treat “multiple pods all running schedulers” as an operational choice: verify lease TTL and DB clock skew.
 
+## Migrations and replica startup
+
+Do not rely on every API replica running Alembic on boot. For production rollouts:
+
+- Run a one-shot migration step (`uv run alembic upgrade head`) before scaling replicas.
+- Set `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false` on steady-state API replicas.
+- Keep migrate-on-boot enabled only for single-replica/dev contexts.
+
 ## Readiness
 
 `/ready` checks SQL metadata connectivity and (when DuckDB is enabled) pings the configured DuckDB file. It does not prove end-to-end SMTP or external OIDC availability—cover those in synthetic checks or external probes.

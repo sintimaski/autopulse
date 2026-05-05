@@ -143,8 +143,9 @@ async def health() -> dict[str, str]:
 
 
 @router.get("/ready")
-async def ready() -> dict[str, str]:
+async def ready(request: Request) -> dict[str, object]:
     settings = get_settings()
+    scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
     engine = get_engine(settings.database_url)
     try:
         async with engine.connect() as connection:
@@ -168,7 +169,12 @@ async def ready() -> dict[str, str]:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="DuckDB event store ping failed",
             ) from exc
-    return {"status": "ready"}
+    return {
+        "status": "ready",
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "scheduler_running": isinstance(scheduler, SchedulerHandle),
+        "database_run_migrations_on_startup": settings.database_run_migrations_on_startup,
+    }
 
 
 @router.get("/internal/metrics")

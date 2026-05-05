@@ -33,8 +33,19 @@ This document is the **single entry point** for shipping AutoPulse to production
 
 ## 5. Jobs, retention, and aggregation
 
-- Enable `JOBS_ENABLE_SCHEDULER=true` where you need scheduled alerts + retention (local SQLite dev filenames may auto-enable the scheduler when unset—see `core/config.py`).
+- Enable `JOBS_ENABLE_SCHEDULER=true` where you need scheduled alerts + retention.
+- Auto-enable on unset `JOBS_ENABLE_SCHEDULER` only applies to local default SQLite metadata files under `.autopulse/` (`autopulse.db` / `autopulse_embedded.db`).
+- For non-default SQLite paths and Postgres metadata, treat missing scheduler as a release **No-Go** unless you run equivalent external cron jobs for alerts/retention.
+- Validate scheduler state after deploy:
+  - `GET /ready` should report `jobs_enable_scheduler=true` and `scheduler_running=true` (or your documented external-cron mode).
+  - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
+
+## 5.1 Migration strategy for multi-replica API
+
+- Prefer a one-shot migration step in deploy orchestration (`uv run alembic upgrade head`) before scaling API replicas.
+- Set `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false` on steady-state API replicas to avoid concurrent DDL races.
+- Keep startup migrations enabled (`true`) only for single-replica/dev environments where one process controls schema upgrades.
 
 ## 6. Observability (golden signals)
 

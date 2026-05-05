@@ -126,3 +126,16 @@ def test_custom_sqlite_filename_does_not_auto_enable_scheduler(
     assert settings.jobs_enable_scheduler is False
     assert settings.sqlite_max_db_file_mb is None
     assert settings.retention_pressure_poll_seconds == 0.0
+
+
+def test_database_run_migrations_on_startup_defaults_true_but_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+    monkeypatch.delenv("DATABASE_RUN_MIGRATIONS_ON_STARTUP", raising=False)
+    from autopulse_backend.core.config import get_settings
+
+    assert get_settings().database_run_migrations_on_startup is True
+
+    monkeypatch.setenv("DATABASE_RUN_MIGRATIONS_ON_STARTUP", "false")
+    assert get_settings().database_run_migrations_on_startup is False

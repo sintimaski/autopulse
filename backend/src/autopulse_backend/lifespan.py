@@ -115,9 +115,11 @@ def _log_grouped_startup_settings() -> None:
         settings.dashboard_auth_magic_link_ttl_minutes,
     )
     log.info(
-        "Startup settings [deployment]: autopulse_env=%s aggregate_max_retries=%d",
+        "Startup settings [deployment]: autopulse_env=%s aggregate_max_retries=%d "
+        "run_migrations_on_startup=%s",
         settings.autopulse_env,
         settings.ingest_aggregate_worker_max_retries,
+        settings.database_run_migrations_on_startup,
     )
     log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "
@@ -154,10 +156,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Alembic must run for SQLite too: ``create_all`` only creates missing tables and does not
     # ALTER existing tables when ORM columns are added (otherwise startup hits "no such column").
-    from autopulse_backend.database.migrations import upgrade_to_head
+    if settings.database_run_migrations_on_startup:
+        from autopulse_backend.database.migrations import upgrade_to_head
 
-    upgrade_to_head()
-    logger.info("Applied Alembic migrations to head")
+        upgrade_to_head()
+        logger.info("Applied Alembic migrations to head")
+    else:
+        logger.info(
+            "Skipping Alembic migrations on startup (DATABASE_RUN_MIGRATIONS_ON_STARTUP=false)"
+        )
 
     if settings.database_url.startswith("sqlite"):
         engine = get_engine(settings.database_url)

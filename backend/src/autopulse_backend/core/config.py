@@ -179,6 +179,7 @@ class Settings:
     dashboard_oidc_cookie_name: str = "autopulse_oidc_state"
     dashboard_oidc_post_login_redirect: str | None = None
     dashboard_enforce_origin_for_mutations: bool = False
+    database_run_migrations_on_startup: bool = True
 
 
 def _parse_email_domains(raw: str | None) -> tuple[str, ...]:
@@ -621,6 +622,7 @@ def get_settings() -> Settings:
         dashboard_enforce_origin_for_mutations=_env_bool(
             "DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS", False
         ),
+        database_run_migrations_on_startup=_env_bool("DATABASE_RUN_MIGRATIONS_ON_STARTUP", True),
     )
     validate_deployment_settings(settings)
     return settings

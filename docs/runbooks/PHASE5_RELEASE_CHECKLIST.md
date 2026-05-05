@@ -22,6 +22,7 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 - [ ] `/metrics` exposes ingest and job counters in Prometheus text format.
 - [ ] Latest job execution telemetry appears for alerts and retention.
 - [ ] Scheduler lease mode (`JOBS_SCHEDULER_LEASE_ENABLED=1`) is validated in multi-instance staging.
+- [ ] For non-default SQLite or Postgres metadata DBs, deployment sets `JOBS_ENABLE_SCHEDULER=true` (or equivalent external cron); scheduler mode is visible in `/ready`.
 
 ## SLO Gate
 
@@ -41,3 +42,4 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 - [ ] Run incident drills from `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`.
 - [ ] Capture rollback command sequence and escalation owner in release notes.
 - [ ] Attach evidence links to PR before merge.
+- [ ] Multi-replica rollout uses one-shot migration (`alembic upgrade head`) and API replicas run with `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false`.
