@@ -52,6 +52,14 @@ const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Alerts",
     subtitle: "Alert heuristics, settings, and runbook shortcuts.",
   },
+  "/query-explorer": {
+    title: "Query Explorer",
+    subtitle: "Run full SQL against project-scoped events with guardrails.",
+  },
+  "/traces": {
+    title: "Traces (OTLP)",
+    subtitle: "Search and inspect spans ingested via OTLP HTTP.",
+  },
   "/settings": {
     title: "Settings",
     subtitle: "Project defaults, theme, and delivery channels.",
@@ -512,9 +520,15 @@ function ShellWithData({ children }: { children: ReactNode }) {
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const subpathStaticUi = isApiSubpathDashboard();
+  /** Hide the onboarding/status strip once workspace + onboarding are OK and every tile is on the success path. */
   const statusStripAllHealthy =
-    d.hasDashboardSession && hasIssuedApiKey && hasFirstEvent && alertDeliveryHealthy;
-  const statusStrip = (
+    d.hasDashboardSession &&
+    hasIssuedApiKey &&
+    hasFirstEvent &&
+    alertDeliveryHealthy &&
+    onboardingCompleted &&
+    d.workspaceBootstrapError === null;
+  const statusStrip = !statusStripAllHealthy ? (
     <div className="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
       <div className="rounded-lg border border-slate-200 bg-slate-50/80 px-2.5 py-1.5 dark:border-neutral-700 dark:bg-neutral-800/70">
         <p className="font-medium text-slate-700 dark:text-neutral-200">Session access</p>
@@ -557,7 +571,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         </p>
       </div>
     </div>
-  );
+  ) : null;
   const resetDiagnosisScope = () =>
     resetServerScope(
       {
@@ -623,7 +637,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       pathname={pathname}
       title={meta.title}
       subtitle={meta.subtitle}
-      statusStrip={statusStripAllHealthy ? undefined : statusStrip}
+      statusStrip={statusStrip ?? undefined}
       topBanner={workspaceBootstrapBanner}
       isDark={isDark}
       diagnosisNavQuery={diagnosisNavQueryComputed}
