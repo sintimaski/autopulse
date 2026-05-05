@@ -79,6 +79,26 @@ Recommended validation:
 
 If dashboard ingress is externally reachable, `DASHBOARD_AUTH_ENABLED=false` is a release **No-Go** unless protected by an equivalent upstream auth gateway with documented enforcement evidence.
 
+## 2.2 Reverse proxy, forwarded headers, and HTTPS trust
+
+Route **all browser and SDK traffic through TLS** at the edge. The backend relies on correct **request scheme** for secure cookies, CSRF-style origin checks on mutations, and optional `INGEST_REQUIRE_HTTPS` enforcement.
+
+| Check | Why it matters |
+|-------|----------------|
+| **`X-Forwarded-Proto: https`** (or terminate TLS at the proxy and speak HTTP only to the app on a private socket) | Ensure the ASGI stack sees HTTPS when clients use it (forward proto/host through your LB; use Starlette/FastAPI forwarded-header / trusted-proxy configuration appropriate for your deployment). Wrong scheme → insecure cookies, blocked ingest, or broken redirects. |
+| **`X-Forwarded-For`** (optional, for logs only by default) | Preserve client IP when needed; do not treat as auth. |
+| **Cookie `Secure` behavior** | Dashboard session cookies must be issued for HTTPS in production; verify in browser devtools after deploy. |
+
+**Misconfiguration symptoms**
+
+| Symptom | Likely cause |
+|---------|----------------|
+| Ingest rejected with HTTPS / scheme errors while clients use `https://` | Missing or wrong `X-Forwarded-Proto`; TLS terminated at LB but headers not set. |
+| Redirect loops or wrong OAuth/OIDC redirect base URL | Host/proto headers inconsistent with `DASHBOARD_OIDC_REDIRECT_URI` / public URL. |
+| Session works over HTTP in prod | TLS not enforced at edge or scheme forwarded as `http`. |
+
+Validate in staging: issue a real dashboard login and one SDK ingest batch through the **same** LB/proxy path you use in production; confirm `GET /ready` is healthy and `/internal/metrics` `ingest_pressure` shows no unexpected `non_https_rejected_total` spikes.
+
 ## 3. Health checks and load balancers
 
 | Endpoint | Purpose |
@@ -125,6 +145,21 @@ If you move metadata off SQLite:
 - Prefer a one-shot migration step in deploy orchestration (`uv run alembic upgrade head`) before scaling API replicas.
 - Set `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false` on steady-state API replicas to avoid concurrent DDL races.
 - Keep startup migrations enabled (`true`) only for single-replica/dev environments where one process controls schema upgrades.
+
+## 5.3 Cross-store consistency (DuckDB events vs SQL aggregates/widgets)
+
+In typical deployments, **raw events** land in DuckDB (when enabled) while **rollups, error-group aggregates, and dashboard widget metadata** update in the metadata SQL database. Those writes are **not a single distributed transaction** across engines.
+
+**Operational model**
+
+1. **Happy path:** ingest commits DuckDB inserts (when enabled), then applies SQL-side widget + aggregate updates — inline or via the async aggregate worker queue (`INGEST_ASYNC_AGGREGATE_ENABLED`).
+2. **Partial failure:** if SQL-side persistence fails after DuckDB succeeded, the request may still return `200` with accepted events while aggregates lag; the service increments `ingest.persist_sql_tail_failed` and logs `ingest_persist_sql_tail_failed`.
+3. **Async aggregate backlog:** if the aggregate worker queue drops work (`ingest.aggregate_worker.enqueue_failed`) or repeatedly fails (`ingest.aggregate_worker.failed`), payloads can land in aggregate dead letters for replay (`replay-aggregate-dead-letters-once`). Watch **`ingest_pressure`** on `/internal/metrics`: `aggregate_worker_sync_fallback_total`, `aggregate_worker_enqueue_failed_total`, `aggregate_worker_failed_total`, `persist_sql_tail_failed_total`, and **`ingest_aggregate_queue`** depth vs max.
+
+**Recovery**
+
+- Fix underlying SQL connectivity or disk pressure, then replay dead-letter rows when appropriate.
+- Expect **event timeline** in DuckDB to remain authoritative for raw rows; SQL aggregates catch up as retries/replays succeed.
 
 ## 6. Observability (golden signals)
 

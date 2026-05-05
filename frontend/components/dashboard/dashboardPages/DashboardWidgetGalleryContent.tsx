@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import { useDashboardData } from "../DashboardDataContext";
+import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { DashboardChartShowcaseGrid } from "./DashboardChartShowcaseGrid";
 import { DashboardCustomWidgetCharts } from "./DashboardCustomWidgetCharts";
 import { WidgetsMockPreviewSection } from "./WidgetsMockPreviewSection";
@@ -70,6 +71,8 @@ export function DashboardWidgetGalleryContent() {
           layout checks without traffic. Uses the same time window and filters as the rest of the console.
         </p>
       </div>
+
+      <GuidedTroubleshootingPanel />
 
       {overview && requests ? (
         <DashboardWidgetGalleryBody d={d} homeSlice={homeSlice} overview={overview} requests={requests} />

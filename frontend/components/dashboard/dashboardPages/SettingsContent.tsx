@@ -578,6 +578,9 @@ export function SettingsContent() {
             <div className="mt-4 flex flex-wrap items-end gap-6 border-t border-slate-200/80 pt-4 dark:border-neutral-800">
               <label className="block w-full max-w-xs text-sm text-slate-700 dark:text-neutral-200">
                 Retention tier
+                <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-neutral-400">
+                  Preset labels for rotation policy in this build — not a billing plan or paid upgrade.
+                </span>
                 <select
                   value={effectiveRetentionDraft.retention_plan}
                   disabled={!canEditRetention}

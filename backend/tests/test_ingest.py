@@ -711,6 +711,47 @@ def test_ingest_distributed_rate_limit_db_error_fails_open_and_increments_metric
     assert after == baseline + 1
 
 
+def test_ingest_async_aggregate_sync_fallback_when_enqueue_returns_false(
+    backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enqueue failure falls back to inline SQL aggregate upserts."""
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("INGEST_ASYNC_AGGREGATE_ENABLED", "true")
+    app = create_app()
+
+    def enqueue_denied(_payload: object) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        "autopulse_backend.routes.ingest.enqueue_ingest_aggregate_payload",
+        enqueue_denied,
+    )
+    baseline = service_metrics.snapshot().get("ingest.aggregate_worker.sync_fallback", 0)
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/sync-fallback",
+                "status_code": 200,
+                "latency_ms": 1.0,
+            }
+        ]
+    }
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    after = service_metrics.snapshot().get("ingest.aggregate_worker.sync_fallback", 0)
+    assert after == baseline + 1
+
+
 def test_ingest_accepts_job_event(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, project_id = _seed_project_and_key(backend_test_database_url)

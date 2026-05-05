@@ -36,7 +36,8 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 
 ## UI and Guided Troubleshooting
 
-- [ ] Guided troubleshooting panel renders on Dashboard and Diagnosis.
+- [ ] Guided troubleshooting panel renders on the home Dashboard (Widgets) view and on Diagnosis.
+- [ ] Release evidence includes before/after screenshots of guided troubleshooting on Diagnosis (signals → hints → linked drill-down) after any UX change to that panel.
 - [ ] Settings page shows retention tiering/archival state and org governance tools.
 - [ ] Role-aware UI behavior is validated with owner and member accounts.
 - [ ] Multi-replica WS deployment validates sticky sessions (or single WS replica) with fresh live updates in staging.

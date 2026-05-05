@@ -48,6 +48,8 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
       ingest still served, but the async path is not keeping up.
     - ``aggregate_worker_failed_total`` > 0: inspect logs for the accompanying
       ``ingest_aggregate_worker_failed`` exception traceback.
+    - ``persist_sql_tail_failed_total`` > 0: SQL tail failed after DuckDB writes; verify DB health.
+      See ops docs on cross-store consistency.
     """
     accepted_batches = int(counters.get("ingest.accepted.batches", 0))
     accepted_events = int(counters.get("ingest.accepted.events", 0))
@@ -62,6 +64,7 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
     sync_fallback = int(counters.get("ingest.aggregate_worker.sync_fallback", 0))
     worker_succeeded = int(counters.get("ingest.aggregate_worker.succeeded", 0))
     worker_failed = int(counters.get("ingest.aggregate_worker.failed", 0))
+    persist_sql_tail_failed = int(counters.get("ingest.persist_sql_tail_failed", 0))
     return {
         "accepted_batches_total": accepted_batches,
         "accepted_events_total": accepted_events,
@@ -77,6 +80,7 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
         "aggregate_worker_sync_fallback_total": sync_fallback,
         "aggregate_worker_succeeded_total": worker_succeeded,
         "aggregate_worker_failed_total": worker_failed,
+        "persist_sql_tail_failed_total": persist_sql_tail_failed,
     }
 
 

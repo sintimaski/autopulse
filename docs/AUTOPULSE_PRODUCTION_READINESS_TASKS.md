@@ -301,7 +301,7 @@ Each task includes:
 ### TSK-P1-01 — Distributed rate-limit race hardening
 
 - **Priority:** P1
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Backend
 - **Source findings:** #8 (Top 15), B5
 - **Description:** Remove first-hit race condition that can surface as server errors under concurrent distributed rate limit inserts.
@@ -313,13 +313,14 @@ Each task includes:
   - 5xx rate on ingest under concurrent bursts.
   - Error logs for unique constraint collisions.
 - **Related files/docs:**
-  - `backend/src/autopulse_backend/services/distributed_rate_limit.py`
-  - `backend/tests/ingestion/`
+  - `backend/src/autopulse_backend/repositories/runtime_controls.py` (implementation; replaces obsolete `distributed_rate_limit.py` reference)
+  - `backend/tests/test_runtime_controls.py`
+- **Completed (2026-05-05):** `allow_distributed_ingest_request` retries on `IntegrityError`, runs expiry cleanup each attempt after rollback, and raises only after a bounded budget (surfacing as ingest fail-open to the in-memory limiter). Added concurrent SQLite integration test plus `Base.metadata.create_all` bootstrap for tables managed outside Alembic alone.
 
 ### TSK-P1-02 — Ingest cross-store consistency strategy
 
 - **Priority:** P1
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Backend
 - **Source findings:** #9 (Top 15), B4
 - **Description:** Define and implement recovery/compensation for partial failures between DuckDB event writes and SQL aggregate/widget updates.
@@ -334,11 +335,12 @@ Each task includes:
   - `backend/src/autopulse_backend/services/ingest_service.py`
   - `backend/src/autopulse_backend/services/ingest_aggregate_worker.py`
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
+- **Completed (2026-05-05):** Documented §5.3 cross-store model (DuckDB vs SQL), recovery, and operator signals in `PRODUCTION_DEPLOYMENT.md`. `/internal/metrics` ingest pressure view now includes `persist_sql_tail_failed_total` alongside existing aggregate-queue counters. Added ingest test proving async aggregate enqueue failure triggers synchronous SQL fallback (`ingest.aggregate_worker.sync_fallback`).
 
 ### TSK-P1-03 — Guided troubleshooting panel parity check
 
 - **Priority:** P1
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Product + Frontend
 - **Source findings:** F2
 - **Description:** Verify and align dashboard troubleshooting UX with documented runbook expectations to preserve fast diagnosis flow.
@@ -353,11 +355,12 @@ Each task includes:
   - `frontend/components/dashboard/`
   - `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`
   - `docs/AUTOPULSE_FULL_AUDIT_ROADMAP.md`
+- **Completed (2026-05-05):** Render `GuidedTroubleshootingPanel` on the home Dashboard (Widgets) route as well as Diagnosis; updated Phase 5 checklist wording and added explicit screenshot evidence bullet for guided troubleshooting releases.
 
 ### TSK-P1-04 — Forwarded header and HTTPS trust checklist
 
 - **Priority:** P1
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** SRE
 - **Source findings:** B8
 - **Description:** Document and validate reverse-proxy requirements for `X-Forwarded-Proto`, secure cookies, and ingest HTTPS enforcement.
@@ -372,11 +375,12 @@ Each task includes:
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `backend/src/autopulse_backend/middleware/`
   - `backend/src/autopulse_backend/core/config.py`
+- **Completed (2026-05-05):** Added §2.2 to `PRODUCTION_DEPLOYMENT.md` with forwarded-header checks, staging validation expectations, and a misconfiguration symptom matrix (operators complete staging TLS evidence per checklist).
 
 ### TSK-P1-05 — MVP scope narrative alignment
 
 - **Priority:** P1
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Product + Docs
 - **Source findings:** #12 (Top 15), §3.1, §11
 - **Description:** Align documentation and UI copy with current shipped capabilities without re-opening billing scope, reducing confusion between MVP promise and advanced surfaces.
@@ -391,6 +395,7 @@ Each task includes:
   - `DEVELOPMENT.md`
   - `docs/AUTOPULSE_FULL_AUDIT_ROADMAP.md`
   - `frontend/components/dashboard/dashboardPages/SettingsContent.tsx`
+- **Completed (2026-05-05):** Added “layered capabilities” framing under Dashboard MVP bullets in `DEVELOPMENT.md`; clarified Settings “Retention tier” copy as configuration presets, not billing plans; readiness gates unchanged.
 
 ---
 

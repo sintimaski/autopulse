@@ -84,6 +84,8 @@ Alerts:
 - Email alert on error spikes.
 - Email alert on possible service outage using a simple heuristic.
 
+**Layered capabilities:** The shipped codebase may expose organization governance, OIDC sign-in, extended retention presets, SQL-scoped filters, or multi-channel alerts. Treat these as **progressive disclosure** on the default diagnosis path; they extend the MVP goal above rather than replacing it, unless maintainers explicitly widen scope.
+
 ### Build Soon After MVP
 
 - Background job tracking.
