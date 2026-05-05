@@ -43,7 +43,14 @@ export function OverviewScopeFacetBoard() {
         <select
           value={d.windowMinutes}
           onChange={(e) => {
-            d.onServerWindowChange(Number(e.target.value));
+            const next = Number(e.target.value);
+            if (!Number.isFinite(next)) {
+              return;
+            }
+            d.onServerWindowChange(next);
+            queueMicrotask(() => {
+              e.currentTarget.blur();
+            });
           }}
           className={selectClass}
           aria-label="Time window for all dashboard metrics"

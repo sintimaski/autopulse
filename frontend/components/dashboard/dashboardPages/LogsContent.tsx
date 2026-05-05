@@ -310,8 +310,9 @@ export function LogsContent() {
           </p>
         </div>
 
+        <div className="mt-4 min-w-0" data-ap-dashboard-scope-anchor>
         {d.rawItems.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-600 dark:text-neutral-300">
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
             No requests in this time window yet. Send traffic to{" "}
             <code className="rounded bg-slate-100 px-1 dark:bg-neutral-800 dark:text-neutral-200">
               POST /ingest
@@ -319,11 +320,11 @@ export function LogsContent() {
             then refresh.
           </p>
         ) : d.filteredSorted.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-600 dark:text-neutral-300">
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
             No rows match your client filters. Clear filters or widen the time window.
           </p>
         ) : (
-          <div className="mt-4 space-y-6">
+          <div className="space-y-6">
             {d.grouped.map((group) => (
               <div key={group.key}>
                 {d.groupBy !== "none" && (
@@ -483,6 +484,7 @@ export function LogsContent() {
             ))}
           </div>
         )}
+        </div>
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
           <p>
             Page {d.requestPage + 1} · Offset {d.requestPage * d.requestLimit}

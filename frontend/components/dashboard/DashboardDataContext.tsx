@@ -84,7 +84,11 @@ import {
   readStoredDashboardThemePreference,
   writeStoredDashboardThemePreference,
 } from "./dashboardThemeStorage";
-import { pinDashboardViewportScroll, scheduleDashboardViewportScrollRestore } from "./dashboardViewportScroll";
+import {
+  pinDashboardViewportScroll,
+  scheduleDashboardScopeAnchorRepair,
+  scheduleDashboardViewportScrollRestore,
+} from "./dashboardViewportScroll";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { createBootstrapFailureOnboardingFallback } from "./dashboardBootstrapFallback";
 import { dashboardMagicLinkHref, toDashboardRoutePath } from "./dashboardRoutePath";
@@ -1054,12 +1058,19 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const onServerWindowChange = useCallback((minutes: number) => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    const anchorEl =
+      typeof document !== "undefined" ? document.querySelector("[data-ap-dashboard-scope-anchor]") : null;
+    const anchorTopBefore =
+      anchorEl instanceof Element ? anchorEl.getBoundingClientRect().top : null;
     pinDashboardViewportScroll(viewportY);
     setAbsoluteWindowState(null);
     setWindowMinutes(minutes);
     setRequestPage(0);
     setErrorGroupPage(0);
     scheduleDashboardViewportScrollRestore(viewportY);
+    if (anchorTopBefore != null) {
+      scheduleDashboardScopeAnchorRepair(anchorTopBefore);
+    }
   }, []);
   const setAbsoluteWindow = useCallback((fromIso: string, toIso: string, scrollYHint?: number) => {
     const viewportY =

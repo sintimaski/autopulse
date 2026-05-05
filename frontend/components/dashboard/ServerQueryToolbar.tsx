@@ -449,7 +449,16 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           Quick range
           <select
             value={d.windowMinutes}
-            onChange={(e) => d.onServerWindowChange(Number(e.target.value))}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              if (!Number.isFinite(next)) {
+                return;
+              }
+              d.onServerWindowChange(next);
+              queueMicrotask(() => {
+                e.currentTarget.blur();
+              });
+            }}
             className="ap-select"
           >
             {d.WINDOW_OPTIONS.map((minutes) => (

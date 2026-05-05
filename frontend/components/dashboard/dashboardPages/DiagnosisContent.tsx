@@ -334,12 +334,13 @@ export function DiagnosisContent() {
             </button>
           </div>
         ) : null}
+        <div className="mt-4 min-w-0" data-ap-dashboard-scope-anchor>
         {errorGroups.items.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-600 dark:text-neutral-300">
+          <p className="text-sm text-slate-600 dark:text-neutral-300">
             No grouped errors in this time window.
           </p>
         ) : (
-          <div className="mt-4 max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
+          <div className="max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
             <table className="w-full min-w-[680px] table-fixed border-collapse text-left text-sm">
               <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-300">
                 <tr>
@@ -417,6 +418,7 @@ export function DiagnosisContent() {
             </table>
           </div>
         )}
+        </div>
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
           <p>
             Page {d.errorGroupPage + 1} · Offset {d.errorGroupPage * d.errorGroupLimit}
