@@ -340,7 +340,7 @@ export function DiagnosisContent() {
           </p>
         ) : (
           <div className="mt-4 max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-            <table className="w-full min-w-[640px] table-fixed border-collapse text-left text-sm">
+            <table className="w-full min-w-[680px] table-fixed border-collapse text-left text-sm">
               <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-300">
                 <tr>
                   <th className="w-10 px-2 py-2" aria-label="Expand row" />
@@ -350,22 +350,35 @@ export function DiagnosisContent() {
                   <th className="w-[28%] min-w-0 px-2 py-2">Message</th>
                   <th className="w-36 px-2 py-2">Last seen</th>
                   <th className="min-w-0 px-2 py-2">Stack</th>
+                  <th className="w-12 px-1 py-2 text-right font-normal normal-case tracking-normal" aria-label="Row actions">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
                 {d.displayedErrorGroups.map((item) => {
                   const rowId = `error-group|${item.group_key}`;
                   const open = d.expandedRequestIds.has(rowId);
+                  const menuItems = buildErrorGroupEvidenceMenuItems({
+                    item,
+                    onOpenInModal: () => setErrorModalItem(item),
+                    onSaveBookmark: () =>
+                      setBookmarkDraft({
+                        title: `${item.exception_type ?? "Error"} · ${item.path}`.slice(0, 200),
+                        hashFragment: `error-group:${encodeURIComponent(item.group_key)}`,
+                      }),
+                  });
                   return (
                     <ExpandableTableRow
                       key={item.group_key}
                       rowId={rowId}
                       open={open}
                       onToggle={d.toggleRequestRow}
-                      colSpan={7}
+                      colSpan={8}
                       summaryClassName="cursor-pointer border-l-2 border-transparent align-middle hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-orange-400/50 dark:hover:bg-neutral-800/90"
                       detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
                       detailsCellClassName="px-4 py-3 text-sm text-slate-700 dark:text-neutral-300"
+                      renderTrailing={() => <RowActionsMenu items={menuItems} />}
                       renderSummary={() => (
                         <>
                           <td className="px-2 py-2 align-middle">
@@ -396,26 +409,7 @@ export function DiagnosisContent() {
                           </td>
                         </>
                       )}
-                      renderDetails={() => {
-                        const bookmarkFragment = `error-group:${encodeURIComponent(item.group_key)}`;
-                        const defaultTitle = `${item.exception_type ?? "Error"} · ${item.path}`.slice(0, 200);
-                        const menuItems = buildErrorGroupEvidenceMenuItems({
-                          item,
-                          onOpenInModal: () => setErrorModalItem(item),
-                          onSaveBookmark: () =>
-                            setBookmarkDraft({
-                              title: defaultTitle,
-                              hashFragment: bookmarkFragment,
-                            }),
-                        });
-                        return (
-                          <ErrorGroupEvidenceBody
-                            item={item}
-                            scopedState={scopedState}
-                            headerActions={<RowActionsMenu items={menuItems} />}
-                          />
-                        );
-                      }}
+                      renderDetails={() => <ErrorGroupEvidenceBody item={item} scopedState={scopedState} />}
                     />
                   );
                 })}

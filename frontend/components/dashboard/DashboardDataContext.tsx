@@ -84,7 +84,7 @@ import {
   readStoredDashboardThemePreference,
   writeStoredDashboardThemePreference,
 } from "./dashboardThemeStorage";
-import { scheduleDashboardViewportScrollRestore } from "./dashboardViewportScroll";
+import { pinDashboardViewportScroll, scheduleDashboardViewportScrollRestore } from "./dashboardViewportScroll";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { createBootstrapFailureOnboardingFallback } from "./dashboardBootstrapFallback";
 import { dashboardMagicLinkHref, toDashboardRoutePath } from "./dashboardRoutePath";
@@ -327,6 +327,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [dashboardRoutePath]);
 
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<string>>(() => new Set());
+  /** Same as `expandedRequestIds` for synchronous reads inside toggle (before next paint). */
+  const expandedRequestIdsRef = useRef<Set<string>>(new Set());
+  useLayoutEffect(() => {
+    expandedRequestIdsRef.current = expandedRequestIds;
+  }, [expandedRequestIds]);
   /** Snapshot of request_id values from the last `requests` payload; used to prune stale row expansion only. */
   const prevVisibleRequestIdSetRef = useRef<Set<string>>(new Set());
   const hasHydratedPersistedScope = useRef(false);
@@ -1049,19 +1054,22 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const onServerWindowChange = useCallback((minutes: number) => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    pinDashboardViewportScroll(viewportY);
     setAbsoluteWindowState(null);
     setWindowMinutes(minutes);
     setRequestPage(0);
     setErrorGroupPage(0);
     scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
-  const setAbsoluteWindow = useCallback((fromIso: string, toIso: string) => {
-    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+  const setAbsoluteWindow = useCallback((fromIso: string, toIso: string, scrollYHint?: number) => {
+    const viewportY =
+      scrollYHint ?? (typeof window !== "undefined" ? window.scrollY : 0);
     const fromMs = new Date(fromIso).getTime();
     const toMs = new Date(toIso).getTime();
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
       return;
     }
+    pinDashboardViewportScroll(viewportY);
     setAbsoluteWindowState({ from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() });
     setRequestPage(0);
     setErrorGroupPage(0);
@@ -1069,34 +1077,45 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** Pause live refresh and freeze the current scope; preserves scroll when the table remounts on page 0. */
-  const pauseLiveAtCurrentScope = useCallback(() => {
-    if (liveRefreshPausedRef.current) {
-      return;
-    }
-    liveRefreshPausedRef.current = true;
-    setLiveDataPaused(true);
-    const fromTs = effectiveScopeFromTs;
-    const toTs = effectiveScopeToTs;
-    const fromMs = new Date(fromTs).getTime();
-    const toMs = new Date(toTs).getTime();
-    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-      return;
-    }
-    setAbsoluteWindow(fromTs, toTs);
-  }, [effectiveScopeFromTs, effectiveScopeToTs, setAbsoluteWindow]);
+  const pauseLiveAtCurrentScope = useCallback(
+    (scrollYHint?: number) => {
+      if (liveRefreshPausedRef.current) {
+        return;
+      }
+      liveRefreshPausedRef.current = true;
+      setLiveDataPaused(true);
+      const fromTs = effectiveScopeFromTs;
+      const toTs = effectiveScopeToTs;
+      const fromMs = new Date(fromTs).getTime();
+      const toMs = new Date(toTs).getTime();
+      if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+        return;
+      }
+      setAbsoluteWindow(fromTs, toTs, scrollYHint);
+    },
+    [effectiveScopeFromTs, effectiveScopeToTs, setAbsoluteWindow],
+  );
 
   const clearAbsoluteWindow = useCallback(() => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    pinDashboardViewportScroll(viewportY);
     setAbsoluteWindowState(null);
     setRequestPage(0);
     setErrorGroupPage(0);
+    if (liveRefreshPausedRef.current) {
+      liveRefreshPausedRef.current = false;
+      setLiveDataPaused(false);
+      stretchAbsoluteEndAfterResumeRef.current = true;
+      setRefreshToken((t) => t + 1);
+    }
     scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   const toggleLiveDataPaused = useCallback(() => {
     const nextPaused = !liveRefreshPausedRef.current;
     if (nextPaused) {
-      pauseLiveAtCurrentScope();
+      const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+      pauseLiveAtCurrentScope(viewportY);
     } else {
       liveRefreshPausedRef.current = false;
       setLiveDataPaused(false);
@@ -1107,6 +1126,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const onServerMethodChange = useCallback((value: string) => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    pinDashboardViewportScroll(viewportY);
     setMethod(value);
     setRequestPage(0);
     setErrorGroupPage(0);
@@ -1115,6 +1135,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const onServerStatusClassChange = useCallback((value: string) => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    pinDashboardViewportScroll(viewportY);
     setStatusClass(value);
     setRequestPage(0);
     setErrorGroupPage(0);
@@ -1181,6 +1202,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const setServerEnvironmentTags = useCallback((tags: string[]) => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    pinDashboardViewportScroll(viewportY);
     setServerEnvironmentQuery(normalizeCommaSeparated(tags.join(",")));
     setRequestPage(0);
     setErrorGroupPage(0);
@@ -1189,6 +1211,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const setServerServiceTags = useCallback((tags: string[]) => {
     const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    pinDashboardViewportScroll(viewportY);
     setServerServiceQuery(normalizeCommaSeparated(tags.join(",")));
     setRequestPage(0);
     setErrorGroupPage(0);
@@ -1968,19 +1991,19 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const toggleRequestRow = useCallback(
     (id: string) => {
-      let opened = false;
+      const wasExpanded = expandedRequestIdsRef.current.has(id);
+      const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
       setExpandedRequestIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) {
           next.delete(id);
         } else {
           next.add(id);
-          opened = true;
         }
         return next;
       });
-      if (opened) {
-        queueMicrotask(() => pauseLiveAtCurrentScope());
+      if (!wasExpanded) {
+        queueMicrotask(() => pauseLiveAtCurrentScope(scrollY));
       }
     },
     [pauseLiveAtCurrentScope],

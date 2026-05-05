@@ -338,7 +338,7 @@ export function LogsContent() {
                   </h3>
                 )}
                 <div className="max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-                  <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[960px] border-collapse text-left text-sm">
                     <thead className="sticky top-0 z-[1] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
                       <tr>
                         <th className="w-10 px-2 py-2" aria-label="Expand row" />
@@ -375,6 +375,9 @@ export function LogsContent() {
                             </button>
                           </th>
                         ))}
+                        <th className="w-12 px-1 py-2 text-right font-normal normal-case tracking-normal" aria-label="Row actions">
+                          <span className="sr-only">Actions</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-950">
@@ -393,16 +396,27 @@ export function LogsContent() {
                           item.log_message ?? "",
                         ].join("|");
                         const open = d.expandedRequestIds.has(rowId);
+                        const menuItems = buildRequestEvidenceMenuItems({
+                          item,
+                          rowId,
+                          onOpenInModal: () => setEvidenceModal({ rowId, item }),
+                          onSaveBookmark: () =>
+                            setBookmarkDraft({
+                              title: `${item.method} ${item.path}`.slice(0, 200),
+                              hashFragment: `request-row:${encodeURIComponent(rowId)}`,
+                            }),
+                        });
                         return (
                           <ExpandableTableRow
                             key={rowId}
                             rowId={rowId}
                             open={open}
                             onToggle={d.toggleRequestRow}
-                            colSpan={9}
+                            colSpan={10}
                             summaryClassName="cursor-pointer border-l-2 border-transparent hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-neutral-500 dark:hover:bg-neutral-800/90"
                             detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
                             detailsCellClassName="px-4 py-3 text-sm text-slate-700 dark:text-neutral-300"
+                            renderTrailing={() => <RowActionsMenu items={menuItems} />}
                             renderSummary={() => (
                               <>
                                 <td className="px-2 py-2 align-middle">
@@ -447,27 +461,7 @@ export function LogsContent() {
                                 </td>
                               </>
                             )}
-                            renderDetails={() => {
-                              const bookmarkFragment = `request-row:${encodeURIComponent(rowId)}`;
-                              const defaultBookmarkTitle = `${item.method} ${item.path}`.slice(0, 200);
-                              const menuItems = buildRequestEvidenceMenuItems({
-                                item,
-                                rowId,
-                                onOpenInModal: () => setEvidenceModal({ rowId, item }),
-                                onSaveBookmark: () =>
-                                  setBookmarkDraft({
-                                    title: defaultBookmarkTitle,
-                                    hashFragment: bookmarkFragment,
-                                  }),
-                              });
-                              return (
-                                <RequestEvidenceBody
-                                  item={item}
-                                  scopedState={scopedState}
-                                  headerActions={<RowActionsMenu items={menuItems} />}
-                                />
-                              );
-                            }}
+                            renderDetails={() => <RequestEvidenceBody item={item} scopedState={scopedState} />}
                           />
                         );
                       })}

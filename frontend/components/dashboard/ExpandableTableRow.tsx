@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { type ReactNode } from "react";
 
 import { ChevronRight } from "../../lib/icons";
 
@@ -11,6 +11,8 @@ type ExpandableTableRowProps = {
   colSpan: number;
   renderSummary: () => ReactNode;
   renderDetails: () => ReactNode;
+  /** Optional trailing cell (e.g. row actions); clicks do not toggle the row. */
+  renderTrailing?: () => ReactNode;
   summaryClassName?: string;
   detailsRowClassName?: string;
   detailsCellClassName?: string;
@@ -23,29 +25,16 @@ export function ExpandableTableRow({
   colSpan,
   renderSummary,
   renderDetails,
+  renderTrailing,
   summaryClassName,
   detailsRowClassName,
   detailsCellClassName,
 }: ExpandableTableRowProps) {
   const detailsId = `${rowId}-details`;
-  const summaryRef = useRef<HTMLTableRowElement>(null);
-  const detailsCellRef = useRef<HTMLTableCellElement>(null);
-
-  useLayoutEffect(() => {
-    if (!open || !summaryRef.current) {
-      return;
-    }
-    const summaryRow = summaryRef.current;
-    const detailsCell = detailsCellRef.current;
-    queueMicrotask(() => {
-      summaryRow.scrollIntoView({ block: "nearest", inline: "nearest" });
-    });
-  }, [open]);
 
   return (
     <>
       <tr
-        ref={summaryRef}
         className={`cursor-pointer outline-none transition-colors focus-within:ring-2 focus-within:ring-sky-400/50 active:brightness-95 dark:focus-within:ring-neutral-500/50 ${summaryClassName ?? ""}`}
         onClick={() => onToggle(rowId)}
       >
@@ -68,11 +57,15 @@ export function ExpandableTableRow({
           </button>
         </td>
         {renderSummary()}
+        {renderTrailing ? (
+          <td className="w-12 px-1 py-2 align-middle text-right" onClick={(e) => e.stopPropagation()}>
+            {renderTrailing()}
+          </td>
+        ) : null}
       </tr>
       {open ? (
         <tr id={detailsId} className={detailsRowClassName} onClick={(e) => e.stopPropagation()}>
           <td
-            ref={detailsCellRef}
             tabIndex={-1}
             colSpan={colSpan}
             className={`scroll-mt-24 max-w-full min-w-0 overflow-x-auto outline-none focus:outline-none ${detailsCellClassName ?? ""}`}

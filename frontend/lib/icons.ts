@@ -20,6 +20,7 @@ export {
   LayoutTemplate,
   ListChecks,
   LogOut,
+  MoreVertical,
   Pencil,
   PanelLeft,
   PanelLeftClose,

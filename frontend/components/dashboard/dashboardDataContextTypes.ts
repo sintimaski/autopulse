@@ -175,7 +175,7 @@ export type DashboardDataContextValue = {
   setErrorGroupSort: (s: "last_seen" | "count") => void;
   setRefreshToken: Dispatch<SetStateAction<number>>;
   onServerWindowChange: (minutes: number) => void;
-  setAbsoluteWindow: (fromIso: string, toIso: string) => void;
+  setAbsoluteWindow: (fromIso: string, toIso: string, scrollYHint?: number) => void;
   clearAbsoluteWindow: () => void;
   onServerMethodChange: (value: string) => void;
   onServerStatusClassChange: (value: string) => void;

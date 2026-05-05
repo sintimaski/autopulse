@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { MoreVertical } from "../../lib/icons";
+
 export type RowActionItem = {
   id: string;
   label: string;
@@ -69,9 +71,9 @@ export function RowActionsMenu({ items }: RowActionsMenuProps) {
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-base font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800 dark:focus-visible:ring-neutral-500/50"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/50"
       >
-        <span aria-hidden>...</span>
+        <MoreVertical className="size-4 shrink-0" strokeWidth={2} aria-hidden />
         <span className="sr-only">Open row actions</span>
       </button>
       {open ? (
