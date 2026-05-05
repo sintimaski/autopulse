@@ -97,7 +97,11 @@ export function RowActionsMenu({ items }: RowActionsMenuProps) {
         </div>
       ) : null}
       {message ? (
-        <span className="ml-2 text-sm text-slate-600 dark:text-neutral-300" role="status" aria-live="polite">
+        <span
+          className="absolute right-0 top-full z-[121] mt-1 max-w-[min(18rem,calc(100vw-2rem)))] rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 shadow-md dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200"
+          role="status"
+          aria-live="polite"
+        >
           {message}
         </span>
       ) : null}

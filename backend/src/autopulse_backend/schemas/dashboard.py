@@ -762,6 +762,8 @@ class DashboardBookmarkItem(BaseModel):
     notes: str | None = None
     created_at: datetime
     updated_at: datetime
+    project_id: UUID
+    project_name: str = ""
 
 
 class DashboardBookmarksListResponse(BaseModel):

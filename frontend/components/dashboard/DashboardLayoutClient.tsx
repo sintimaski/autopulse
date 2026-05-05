@@ -24,6 +24,7 @@ import {
 } from "./dashboardQueryState";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { resetServerScope } from "./dashboardScopeReset";
+import { scheduleDashboardViewportScrollRestore } from "./dashboardViewportScroll";
 import { isApiSubpathDashboard } from "./dashboardTypes";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
@@ -385,7 +386,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
     if (!scopedQueryStringsEqual(normalized, search)) {
       const hash = typeof window !== "undefined" ? window.location.hash : "";
       const nextHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
+      const scrollTop = typeof window !== "undefined" ? window.scrollY : 0;
       router.replace(nextHref, { scroll: false });
+      scheduleDashboardViewportScrollRestore(scrollTop);
     }
     lastAppliedQueryRef.current = `${pathname}?${normalized}`;
     queueMicrotask(() => {
@@ -418,7 +421,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
     }
     const hash = typeof window !== "undefined" ? window.location.hash : "";
     const nextHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
+    const scrollTop = typeof window !== "undefined" ? window.scrollY : 0;
     router.replace(nextHref, { scroll: false });
+    scheduleDashboardViewportScrollRestore(scrollTop);
   }, [
     scopedServerStateForUrl,
     d.groupBy,

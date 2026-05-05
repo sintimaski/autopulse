@@ -14,7 +14,7 @@ from autopulse_backend.auth import (
     require_dashboard_auth_session,
 )
 from autopulse_backend.database import get_db_session
-from autopulse_backend.models import DashboardUserBookmark
+from autopulse_backend.models import DashboardUserBookmark, Project
 from autopulse_backend.schemas import (
     DashboardBookmarkCreate,
     DashboardBookmarkItem,
@@ -23,6 +23,24 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
+
+
+async def _bookmark_item(
+    session: AsyncSession, row: DashboardUserBookmark
+) -> DashboardBookmarkItem:
+    project_name = await session.scalar(select(Project.name).where(Project.id == row.project_id))
+    return DashboardBookmarkItem(
+        id=row.id,
+        title=row.title,
+        pathname=row.pathname,
+        query_string=row.query_string,
+        hash_fragment=row.hash_fragment,
+        notes=row.notes,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        project_id=row.project_id,
+        project_name=str(project_name or ""),
+    )
 
 
 def _ensure_session_project_matches(context: ProjectContext, auth: DashboardAuthSession) -> None:
@@ -40,20 +58,30 @@ async def list_dashboard_bookmarks(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardBookmarksListResponse:
     _ensure_session_project_matches(context, auth)
-    rows = (
-        await session.scalars(
-            select(DashboardUserBookmark)
-            .where(
-                DashboardUserBookmark.user_id == auth.user_id,
-                DashboardUserBookmark.project_id == context.project_id,
-            )
-            .order_by(DashboardUserBookmark.updated_at.desc())
-            .limit(500)
-        )
-    ).all()
-    return DashboardBookmarksListResponse(
-        items=[DashboardBookmarkItem.model_validate(r) for r in rows]
+    result = await session.execute(
+        select(DashboardUserBookmark, Project.name)
+        .join(Project, DashboardUserBookmark.project_id == Project.id)
+        .where(DashboardUserBookmark.user_id == auth.user_id)
+        .order_by(DashboardUserBookmark.updated_at.desc())
+        .limit(500)
     )
+    items: list[DashboardBookmarkItem] = []
+    for row, project_name in result.all():
+        items.append(
+            DashboardBookmarkItem(
+                id=row.id,
+                title=row.title,
+                pathname=row.pathname,
+                query_string=row.query_string,
+                hash_fragment=row.hash_fragment,
+                notes=row.notes,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                project_id=row.project_id,
+                project_name=str(project_name or ""),
+            )
+        )
+    return DashboardBookmarksListResponse(items=items)
 
 
 @router.post("/bookmarks", response_model=DashboardBookmarkItem)
@@ -76,7 +104,7 @@ async def create_dashboard_bookmark(
     session.add(row)
     await session.commit()
     await session.refresh(row)
-    return DashboardBookmarkItem.model_validate(row)
+    return await _bookmark_item(session, row)
 
 
 @router.put("/bookmarks/{bookmark_id}", response_model=DashboardBookmarkItem)
@@ -92,7 +120,6 @@ async def update_dashboard_bookmark(
         select(DashboardUserBookmark).where(
             DashboardUserBookmark.id == bookmark_id,
             DashboardUserBookmark.user_id == auth.user_id,
-            DashboardUserBookmark.project_id == context.project_id,
         )
     )
     if row is None:
@@ -102,7 +129,7 @@ async def update_dashboard_bookmark(
         setattr(row, field_name, value)
     await session.commit()
     await session.refresh(row)
-    return DashboardBookmarkItem.model_validate(row)
+    return await _bookmark_item(session, row)
 
 
 @router.delete("/bookmarks/{bookmark_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -117,7 +144,6 @@ async def delete_dashboard_bookmark(
         select(DashboardUserBookmark).where(
             DashboardUserBookmark.id == bookmark_id,
             DashboardUserBookmark.user_id == auth.user_id,
-            DashboardUserBookmark.project_id == context.project_id,
         )
     )
     if row is None:

@@ -409,12 +409,11 @@ export function DiagnosisContent() {
                             }),
                         });
                         return (
-                          <>
-                            <div className="mb-3 flex justify-end">
-                              <RowActionsMenu items={menuItems} />
-                            </div>
-                            <ErrorGroupEvidenceBody item={item} scopedState={scopedState} />
-                          </>
+                          <ErrorGroupEvidenceBody
+                            item={item}
+                            scopedState={scopedState}
+                            headerActions={<RowActionsMenu items={menuItems} />}
+                          />
                         );
                       }}
                     />
@@ -481,8 +480,10 @@ export function DiagnosisContent() {
         onClose={() => setErrorModalItem(null)}
       >
         {errorModalItem ? (
-          <>
-            <div className="mb-4 flex justify-end border-b border-slate-200 pb-3 dark:border-neutral-700">
+          <ErrorGroupEvidenceBody
+            item={errorModalItem}
+            scopedState={scopedState}
+            headerActions={
               <RowActionsMenu
                 items={buildErrorGroupEvidenceMenuItems({
                   item: errorModalItem,
@@ -494,9 +495,8 @@ export function DiagnosisContent() {
                     }),
                 }).filter((i) => i.id !== "open-modal")}
               />
-            </div>
-            <ErrorGroupEvidenceBody item={errorModalItem} scopedState={scopedState} />
-          </>
+            }
+          />
         ) : null}
       </DashboardDetailModal>
       <SaveBookmarkModal

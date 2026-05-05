@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { buildDiagnosisPageHref, type DashboardScopedQueryState } from "./dashboardQueryState";
 import type { RequestItem } from "./dashboardTypes";
@@ -8,9 +9,12 @@ import type { RequestItem } from "./dashboardTypes";
 export function RequestEvidenceBody({
   item,
   scopedState,
+  headerActions,
 }: {
   item: RequestItem;
   scopedState: DashboardScopedQueryState;
+  /** e.g. row “…” menu — positioned in the summary card corner (no extra full-width row). */
+  headerActions?: ReactNode;
 }) {
   const statusClassForDiagnosis = item.status_code >= 500 ? "5" : item.status_code >= 400 ? "4" : "ALL";
   const diagnosisHref = buildDiagnosisPageHref(
@@ -25,7 +29,10 @@ export function RequestEvidenceBody({
   return (
     <>
       <dl className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 dark:border-neutral-700 dark:bg-neutral-950/50">
+        <div className="relative sm:col-span-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 pr-11 dark:border-neutral-700 dark:bg-neutral-950/50">
+          {headerActions ? (
+            <div className="absolute right-2 top-2 z-10 flex items-start justify-end">{headerActions}</div>
+          ) : null}
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-500">Request</p>
           <p className="mt-1 break-all font-mono text-sm font-semibold text-slate-900 dark:text-neutral-50">
             <span className="text-orange-600 dark:text-orange-400">{item.method}</span>{" "}

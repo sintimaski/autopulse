@@ -10,7 +10,6 @@ import {
   updateDashboardBookmark,
   type DashboardBookmarkItem,
 } from "../bookmarkClient";
-import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 
 function bookmarkHref(b: DashboardBookmarkItem): string {
@@ -99,24 +98,17 @@ export function BookmarksContent() {
   };
 
   if (items === null) {
-    return (
-      <>
-        <DiagnosisRequestsStickyScopeBar />
-        <InlineDataSpinner label="Loading bookmarks…" className="rounded-2xl" />
-      </>
-    );
+    return <InlineDataSpinner label="Loading bookmarks…" className="rounded-2xl" />;
   }
 
   return (
-    <>
-      <DiagnosisRequestsStickyScopeBar />
-      <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
+    <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Bookmarks</h2>
             <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-neutral-400">
-              Saved deep links for this project (same account as magic-link sign-in). Open a row on Requests or Diagnosis,
-              use the row menu, then <span className="font-medium text-slate-800 dark:text-neutral-200">Save bookmark…</span>.
+              Every saved deep link for your account (all projects). Create one from Requests or Diagnosis via the row
+              menu → <span className="font-medium text-slate-800 dark:text-neutral-200">Save bookmark…</span>.
             </p>
           </div>
         </div>
@@ -154,6 +146,11 @@ export function BookmarksContent() {
                       ) : (
                         <h3 className="text-sm font-semibold text-slate-900 dark:text-neutral-50">{b.title}</h3>
                       )}
+                      {b.project_name?.trim() ? (
+                        <p className="mt-1 text-xs font-medium text-slate-500 dark:text-neutral-400">
+                          Project: <span className="text-slate-800 dark:text-neutral-200">{b.project_name}</span>
+                        </p>
+                      ) : null}
                       <p className="mt-1 break-all font-mono text-xs text-slate-500 dark:text-neutral-500">{bookmarkHref(b)}</p>
                     </div>
                   </div>
@@ -215,7 +212,6 @@ export function BookmarksContent() {
             })}
           </ul>
         )}
-      </section>
-    </>
+    </section>
   );
 }

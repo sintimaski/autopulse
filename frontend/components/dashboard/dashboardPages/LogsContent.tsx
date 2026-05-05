@@ -461,12 +461,11 @@ export function LogsContent() {
                                   }),
                               });
                               return (
-                                <>
-                                  <div className="mb-3 flex justify-end">
-                                    <RowActionsMenu items={menuItems} />
-                                  </div>
-                                  <RequestEvidenceBody item={item} scopedState={scopedState} />
-                                </>
+                                <RequestEvidenceBody
+                                  item={item}
+                                  scopedState={scopedState}
+                                  headerActions={<RowActionsMenu items={menuItems} />}
+                                />
                               );
                             }}
                           />
@@ -522,8 +521,10 @@ export function LogsContent() {
         onClose={() => setEvidenceModal(null)}
       >
         {evidenceModal ? (
-          <>
-            <div className="mb-4 flex justify-end border-b border-slate-200 pb-3 dark:border-neutral-700">
+          <RequestEvidenceBody
+            item={evidenceModal.item}
+            scopedState={scopedState}
+            headerActions={
               <RowActionsMenu
                 items={buildRequestEvidenceMenuItems({
                   item: evidenceModal.item,
@@ -536,9 +537,8 @@ export function LogsContent() {
                     }),
                 }).filter((i) => i.id !== "open-modal")}
               />
-            </div>
-            <RequestEvidenceBody item={evidenceModal.item} scopedState={scopedState} />
-          </>
+            }
+          />
         ) : null}
       </DashboardDetailModal>
       <SaveBookmarkModal

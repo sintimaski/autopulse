@@ -84,6 +84,7 @@ import {
   readStoredDashboardThemePreference,
   writeStoredDashboardThemePreference,
 } from "./dashboardThemeStorage";
+import { scheduleDashboardViewportScrollRestore } from "./dashboardViewportScroll";
 import { wrapEventSqlWhereForValidate } from "./eventSqlFilter";
 import { createBootstrapFailureOnboardingFallback } from "./dashboardBootstrapFallback";
 import { dashboardMagicLinkHref, toDashboardRoutePath } from "./dashboardRoutePath";
@@ -269,8 +270,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const liveRefreshPausedRef = useRef(false);
   const [liveDataPaused, setLiveDataPaused] = useState(false);
   const stretchAbsoluteEndAfterResumeRef = useRef(false);
-  /** After dropping custom window, restore viewport Y (header toolbar remount can shift layout). */
-  const scrollYBeforeClearAbsoluteWindowRef = useRef<number | null>(null);
 
   const {
     hasSession: hasDashboardSession,
@@ -348,25 +347,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       return null;
     }
     return absoluteWindow;
-  }, [absoluteWindow]);
-
-  useLayoutEffect(() => {
-    const y = scrollYBeforeClearAbsoluteWindowRef.current;
-    if (y === null) {
-      return;
-    }
-    if (absoluteWindow !== null) {
-      return;
-    }
-    scrollYBeforeClearAbsoluteWindowRef.current = null;
-    if (typeof window === "undefined") {
-      return;
-    }
-    const top = y;
-    window.scrollTo({ top, left: 0, behavior: "auto" });
-    queueMicrotask(() => {
-      window.scrollTo({ top, left: 0, behavior: "auto" });
-    });
   }, [absoluteWindow]);
 
   const effectiveScopeFromTs = useMemo(
@@ -1068,12 +1048,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   );
 
   const onServerWindowChange = useCallback((minutes: number) => {
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
     setAbsoluteWindowState(null);
     setWindowMinutes(minutes);
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
   const setAbsoluteWindow = useCallback((fromIso: string, toIso: string) => {
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
     const fromMs = new Date(fromIso).getTime();
     const toMs = new Date(toIso).getTime();
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
@@ -1082,6 +1065,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     setAbsoluteWindowState({ from: new Date(fromMs).toISOString(), to: new Date(toMs).toISOString() });
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   /** Pause live refresh and freeze the current scope; preserves scroll when the table remounts on page 0. */
@@ -1098,27 +1082,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
       return;
     }
-    const scrollY = typeof window !== "undefined" ? window.scrollY : 0;
     setAbsoluteWindow(fromTs, toTs);
-    const restoreScroll = () => {
-      if (typeof window === "undefined") {
-        return;
-      }
-      window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
-    };
-    queueMicrotask(restoreScroll);
-    requestAnimationFrame(restoreScroll);
   }, [effectiveScopeFromTs, effectiveScopeToTs, setAbsoluteWindow]);
 
   const clearAbsoluteWindow = useCallback(() => {
-    setAbsoluteWindowState((prev) => {
-      if (prev !== null && typeof window !== "undefined") {
-        scrollYBeforeClearAbsoluteWindowRef.current = window.scrollY;
-      }
-      return null;
-    });
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
+    setAbsoluteWindowState(null);
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   const toggleLiveDataPaused = useCallback(() => {
@@ -1134,15 +1106,19 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [pauseLiveAtCurrentScope]);
 
   const onServerMethodChange = useCallback((value: string) => {
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
     setMethod(value);
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   const onServerStatusClassChange = useCallback((value: string) => {
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
     setStatusClass(value);
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   useLayoutEffect(() => {
@@ -1204,15 +1180,19 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   );
 
   const setServerEnvironmentTags = useCallback((tags: string[]) => {
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
     setServerEnvironmentQuery(normalizeCommaSeparated(tags.join(",")));
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   const setServerServiceTags = useCallback((tags: string[]) => {
+    const viewportY = typeof window !== "undefined" ? window.scrollY : 0;
     setServerServiceQuery(normalizeCommaSeparated(tags.join(",")));
     setRequestPage(0);
     setErrorGroupPage(0);
+    scheduleDashboardViewportScrollRestore(viewportY);
   }, []);
 
   const toggleValueInSet = useCallback(

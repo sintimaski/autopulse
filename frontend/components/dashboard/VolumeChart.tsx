@@ -125,12 +125,10 @@ export function VolumeChart({
   const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
   /**
-   * Remount Chart.js only when the *layout* changes (window, span, step), not on every bucket
-   * value refresh — otherwise react-chartjs-2 can update datasets in place.
+   * Remount Chart.js only when chart controls change — not on rolling `from`/`to` drift from live
+   * polls (those would remount the bar chart every refresh and kill the tooltip).
    */
   const chartLayoutKey = [
-    fromTimestamp,
-    toTimestamp,
     String(globalWindowMinutes),
     String(effectiveChartSpanMinutes),
     String(effectiveStepMinutes),

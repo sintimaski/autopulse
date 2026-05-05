@@ -11,6 +11,8 @@ export type DashboardBookmarkItem = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  project_id: string;
+  project_name: string;
 };
 
 export type DashboardBookmarksListResponse = {
