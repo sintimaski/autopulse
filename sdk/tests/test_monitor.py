@@ -104,6 +104,7 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "dashboard_widgets": tuple(),
         "infrastructure_sampler": None,
         "infrastructure_probe_interval_s": 0.0,
+        "dashboard_widgets_attach_interval_s": 0.0,
     }
     values.update(overrides)
     return _MonitorConfig(**values)
@@ -123,6 +124,32 @@ class _StaticInfrastructureSampler:
 
     def sample(self) -> dict[str, Any]:
         return dict(self.payload)
+
+
+def test_middleware_dashboard_widgets_attach_throttles() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config(
+        infrastructure_sampler=_StaticInfrastructureSampler({"host_cpu_percent": 1.0}),
+        dashboard_widgets_attach_interval_s=3600.0,
+    )
+    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/a")
+    async def a() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.get("/b")
+    async def b() -> dict[str, bool]:
+        return {"ok": True}
+
+    with lifespan_test_client(app) as client:
+        assert client.get("/a").status_code == 200
+        assert client.get("/b").status_code == 200
+
+    assert len(dispatcher.events) == 2
+    assert "dashboard_widgets" in dispatcher.events[0]
+    assert "dashboard_widgets" not in dispatcher.events[1]
 
 
 @dataclass

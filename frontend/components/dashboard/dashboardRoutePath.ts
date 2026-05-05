@@ -39,3 +39,38 @@ export function toDashboardRoutePath(pathname: string): string {
   }
   return normalized === "" ? "/" : normalized;
 }
+
+/**
+ * Pure mapping from a logical dashboard href to the browser location path (prefix + trailing
+ * slash before query), used by {@link logicalDashboardLocationHref} and unit-tested directly.
+ */
+export function logicalDashboardLocationHrefWithPrefix(logicalHref: string, uiPrefix: string): string {
+  const prefix = uiPrefix.replace(/\/$/, "");
+  const full = logicalHref.startsWith("/") ? logicalHref : `/${logicalHref}`;
+  if (!prefix) {
+    return full;
+  }
+
+  const q = full.indexOf("?");
+  const h = full.indexOf("#");
+  const meta = [q, h].filter((i) => i >= 0);
+  const cut = meta.length === 0 ? Infinity : Math.min(...meta);
+  const pathPart = cut === Infinity ? full : full.slice(0, cut);
+  const suffix = cut === Infinity ? "" : full.slice(cut);
+
+  if (pathPart === "/" || pathPart === "") {
+    return `${prefix}/${suffix}`;
+  }
+  const withSlash = pathPart.endsWith("/") ? pathPart : `${pathPart}/`;
+  return `${prefix}${withSlash}${suffix}`;
+}
+
+/**
+ * Turn a logical dashboard URL (no `basePath`) into the path+search+hash string the browser
+ * should show after `history.replaceState`, e.g. `/dashboard?…` → `/autopulse/ui/dashboard/?…`
+ * when the bundle is served under `/autopulse/ui` (see `next.config.ts`). Without this, a path
+ * starting with `/` is resolved from the site root and drops the UI prefix.
+ */
+export function logicalDashboardLocationHref(logicalHref: string): string {
+  return logicalDashboardLocationHrefWithPrefix(logicalHref, resolveDashboardUiPrefix());
+}

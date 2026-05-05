@@ -627,7 +627,7 @@ export function buildUpdatesWebsocketUrl(): string {
   return httpToWebsocketUrl(buildApiUrl("/dashboard/updates"));
 }
 
-export const WINDOW_OPTIONS = [15, 60, 240, 1440];
+export const WINDOW_OPTIONS = [15, 60, 240, 1440, 2880, 10080];
 export const METHOD_OPTIONS = ["ALL", "GET", "POST", "PUT", "PATCH", "DELETE"];
 export const STATUS_CLASS_OPTIONS = ["ALL", "2", "4", "5"];
 export const REQUEST_LIMIT_OPTIONS = [50, 100, 200];

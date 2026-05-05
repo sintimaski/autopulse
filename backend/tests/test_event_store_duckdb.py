@@ -206,6 +206,35 @@ def test_duckdb_http_events_only_excludes_job_rows(tmp_path) -> None:
     assert store.count_events(job_filters) == 1
 
 
+def test_duckdb_delete_widget_points_before_cutoff(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events_wp_cutoff.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    store.insert_widget_points(
+        [
+            {
+                "project_id": project_id,
+                "widget_id": "w1",
+                "timestamp": now - timedelta(hours=2),
+                "label": None,
+                "value": 1.0,
+            },
+            {
+                "project_id": project_id,
+                "widget_id": "w1",
+                "timestamp": now - timedelta(minutes=5),
+                "label": None,
+                "value": 2.0,
+            },
+        ]
+    )
+    deleted = store.delete_widget_points_before(
+        cutoff=now - timedelta(hours=1), project_id=project_id
+    )
+    assert deleted == 1
+    assert store.count_widget_points_for_project(project_id) == 1
+
+
 def test_duckdb_widget_point_rotation_helpers(tmp_path) -> None:
     store = DuckDbEventStore(str(tmp_path / "events3.duckdb"))
     project_id = uuid4()

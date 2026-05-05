@@ -12,6 +12,7 @@ from autopulse_backend.dashboard.error_grouping import (
     derived_error_group_key,
     error_group_labels,
 )
+from autopulse_backend.dashboard.payload_limits import MAX_WIDGET_POINTS_PER_INGEST_BATCH
 from autopulse_backend.dashboard.time_window import minute_bucket
 from autopulse_backend.ingestion.exclude_autopulse import is_autopulse_internal_path
 from autopulse_backend.metrics import service_metrics
@@ -107,7 +108,9 @@ async def persist_ingest_batch(
         rows=rows,
     )
     widget_definitions, widget_points = _extract_dashboard_widget_rows(
-        project_id=project_id, rows=rows
+        project_id=project_id,
+        rows=rows,
+        max_points=MAX_WIDGET_POINTS_PER_INGEST_BATCH,
     )
     has_infrastructure_points = any(
         isinstance(point.get("widget_id"), str) and str(point["widget_id"]).startswith("infra_")
@@ -115,32 +118,44 @@ async def persist_ingest_batch(
     )
     if not has_infrastructure_points:
         sampled = await _infrastructure_sampler.sample()
-        fallback_definitions, fallback_points = infrastructure_to_widget_payload(sampled)
-        widget_definitions.extend(
-            [
-                {"project_id": project_id, "updated_at": received_at, **definition}
-                for definition in fallback_definitions
-            ]
-        )
-        # Stagger timestamps by microseconds so each metric is a distinct instant in DuckDB/SQL.
-        # Without this, fallback rows share `received_at` and roll-up charts show one x bucket.
-        widget_points.extend(
-            [
-                {
-                    "project_id": project_id,
-                    "timestamp": received_at + timedelta(microseconds=idx),
-                    **point,
-                }
-                for idx, point in enumerate(fallback_points)
-            ]
-        )
+        # Only persist synthesized infra points when psutil actually refreshed; otherwise every
+        # ingest batch would duplicate the same host snapshot into DuckDB.
+        if _infrastructure_sampler.should_persist_fallback_widget_points():
+            fallback_definitions, fallback_points = infrastructure_to_widget_payload(sampled)
+            if fallback_definitions or fallback_points:
+                room = max(0, MAX_WIDGET_POINTS_PER_INGEST_BATCH - len(widget_points))
+                fb_pts = fallback_points[:room] if room else []
+                if fallback_definitions:
+                    widget_definitions.extend(
+                        [
+                            {"project_id": project_id, "updated_at": received_at, **definition}
+                            for definition in fallback_definitions
+                        ]
+                    )
+                # Stagger timestamps by microseconds so each metric is a distinct instant in
+                # DuckDB/SQL. Without this, fallback rows share `received_at` and roll-up charts
+                # show one x bucket.
+                if fb_pts:
+                    widget_points.extend(
+                        [
+                            {
+                                "project_id": project_id,
+                                "timestamp": received_at + timedelta(microseconds=idx),
+                                **point,
+                            }
+                            for idx, point in enumerate(fb_pts)
+                        ]
+                    )
+            _infrastructure_sampler.mark_fallback_widget_points_persisted()
     operational_definitions, operational_points = _extract_operational_widget_rows(
         project_id=project_id,
         timestamp=received_at,
         rows=rows,
     )
     widget_definitions.extend(operational_definitions)
-    widget_points.extend(operational_points)
+    op_room = max(0, MAX_WIDGET_POINTS_PER_INGEST_BATCH - len(widget_points))
+    if op_room > 0:
+        widget_points.extend(operational_points[:op_room])
     # Widget payload persistence must not depend on metric aggregate mode.
     # Some deployments disable inline aggregate writes and rely on workers.
     try:
@@ -290,10 +305,15 @@ def _as_utc_datetime(raw: object, *, fallback: datetime) -> datetime:
 
 
 def _extract_dashboard_widget_rows(
-    *, project_id: UUID, rows: list[Event]
+    *,
+    project_id: UUID,
+    rows: list[Event],
+    max_points: int | None = None,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     definitions_by_id: dict[str, dict[str, object]] = {}
     points: list[dict[str, object]] = []
+    point_cap = max_points if max_points is not None else MAX_WIDGET_POINTS_PER_INGEST_BATCH
+    remaining = max(0, int(point_cap))
     for row in rows:
         payload = row.payload if isinstance(row.payload, dict) else {}
         widget_payload = payload.get("dashboard_widgets")
@@ -338,6 +358,8 @@ def _extract_dashboard_widget_rows(
         datapoints = widget_payload.get("points")
         if isinstance(datapoints, list):
             for point in datapoints:
+                if remaining <= 0:
+                    break
                 if not isinstance(point, dict):
                     continue
                 widget_id = point.get("widget_id")
@@ -359,8 +381,9 @@ def _extract_dashboard_widget_rows(
                         "value": float(value),
                     }
                 )
+                remaining -= 1
         infra_payload = payload.get("infrastructure_metrics")
-        if isinstance(infra_payload, dict):
+        if isinstance(infra_payload, dict) and remaining > 0:
             infra_definitions, infra_points = _extract_infrastructure_widget_rows(
                 project_id=project_id,
                 timestamp=row.timestamp,
@@ -368,7 +391,11 @@ def _extract_dashboard_widget_rows(
             )
             for definition in infra_definitions:
                 definitions_by_id[str(definition["widget_id"])] = definition
-            points.extend(infra_points)
+            for ip in infra_points:
+                if remaining <= 0:
+                    break
+                points.append(ip)
+                remaining -= 1
     return list(definitions_by_id.values()), points
 
 

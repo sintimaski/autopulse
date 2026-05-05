@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
-from time import perf_counter
+from time import monotonic, perf_counter
 from typing import Any
 
 import httpx
@@ -71,6 +71,8 @@ class _MonitorConfig:
     dashboard_widgets: tuple[BaseDashboardWidget, ...]
     infrastructure_sampler: InfrastructureSampler | None
     infrastructure_probe_interval_s: float
+    # Min seconds between attaching widget payloads to each captured HTTP event (0 = every event).
+    dashboard_widgets_attach_interval_s: float
 
 
 def _utc_now_iso() -> str:
@@ -535,30 +537,30 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._dispatcher = dispatcher
         self._config = config
+        self._last_dashboard_widgets_attach_monotonic = 0.0
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        started_at = perf_counter()
-        resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
-        common: dict[str, Any] = {
-            "timestamp": _utc_now_iso(),
-            "service_name": self._config.service_name,
-            "environment": self._config.environment,
-            "method": request.method,
-            "request_id": request.headers.get("x-request-id"),
-        }
-        send_ok = getattr(
-            self._dispatcher,
-            "_send_enabled",
-            bool(self._config.api_key and self._config.ingest_url),
-        )
-        if send_ok and self._config.dashboard_widgets:
-            widget_payload = serialize_dashboard_widgets(list(self._config.dashboard_widgets))
+    def _attach_dashboard_widgets_if_due(self, common: dict[str, Any]) -> None:
+        """Attach widget + infrastructure payloads at a bounded rate to avoid DB blowups."""
+        cfg = self._config
+        if not cfg.dashboard_widgets and cfg.infrastructure_sampler is None:
+            return
+        now = monotonic()
+        interval = cfg.dashboard_widgets_attach_interval_s
+        if (
+            interval > 0
+            and self._last_dashboard_widgets_attach_monotonic > 0.0
+            and now - self._last_dashboard_widgets_attach_monotonic < interval
+        ):
+            return
+        self._last_dashboard_widgets_attach_monotonic = now
+
+        if cfg.dashboard_widgets:
+            widget_payload = serialize_dashboard_widgets(list(cfg.dashboard_widgets))
             if widget_payload["definitions"] or widget_payload["points"]:
                 common["dashboard_widgets"] = widget_payload
-        if send_ok and self._config.infrastructure_sampler is not None:
-            infrastructure_metrics = self._config.infrastructure_sampler.sample()
+
+        if cfg.infrastructure_sampler is not None:
+            infrastructure_metrics = cfg.infrastructure_sampler.sample()
             if infrastructure_metrics:
                 common["infrastructure_metrics"] = infrastructure_metrics
                 infra_widget_payload = _build_infrastructure_widget_payload(infrastructure_metrics)
@@ -573,6 +575,25 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
                     )
                 else:
                     common["dashboard_widgets"] = infra_widget_payload
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        started_at = perf_counter()
+        common: dict[str, Any] = {
+            "timestamp": _utc_now_iso(),
+            "service_name": self._config.service_name,
+            "environment": self._config.environment,
+            "method": request.method,
+            "request_id": request.headers.get("x-request-id"),
+        }
+        send_ok = getattr(
+            self._dispatcher,
+            "_send_enabled",
+            bool(self._config.api_key and self._config.ingest_url),
+        )
+        if send_ok:
+            self._attach_dashboard_widgets_if_due(common)
         if send_ok and self._config.capture_headers:
             common["headers"] = dict(request.headers.items())
         if send_ok and self._config.capture_query_params:
@@ -580,6 +601,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as exc:
+            resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
             if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
                 raise
             latency_ms = (perf_counter() - started_at) * 1000
@@ -612,6 +634,7 @@ class _AutoPulseMiddleware(BaseHTTPMiddleware):
                 }
             )
             raise
+        resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
         if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
             return response
         latency_ms = (perf_counter() - started_at) * 1000
@@ -752,6 +775,15 @@ def monitor(app: Any, **kwargs: Any) -> None:
                 ),
             )
             / 1000.0
+        ),
+        dashboard_widgets_attach_interval_s=max(
+            0.0,
+            float(
+                resolved_kwargs.get(
+                    "dashboard_widgets_attach_interval_s",
+                    _env_float("AUTOPULSE_DASHBOARD_WIDGET_ATTACH_INTERVAL_S", 15.0),
+                )
+            ),
         ),
     )
     dispatcher = _EventDispatcher(

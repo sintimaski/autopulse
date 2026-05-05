@@ -23,6 +23,9 @@ class InfrastructureMetricsSampler:
     _last_sample: dict[str, float] = field(default_factory=dict)
     _last_sampled_at: float = 0.0
     _sample_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Increments only after a fresh psutil sample (not TTL cache hits).
+    _fresh_sample_generation: int = 0
+    _fallback_persisted_generation: int = 0
 
     def _sample_uncached(self) -> dict[str, float]:
         if psutil is None:
@@ -78,7 +81,15 @@ class InfrastructureMetricsSampler:
             now = monotonic()
         self._last_sample = sample
         self._last_sampled_at = now
+        self._fresh_sample_generation += 1
         return dict(sample)
+
+    def should_persist_fallback_widget_points(self) -> bool:
+        """True when a new host sample was taken since the last successful fallback persist."""
+        return self._fresh_sample_generation > self._fallback_persisted_generation
+
+    def mark_fallback_widget_points_persisted(self) -> None:
+        self._fallback_persisted_generation = self._fresh_sample_generation
 
 
 def to_widget_payload(metrics: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:

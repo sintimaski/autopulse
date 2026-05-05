@@ -72,6 +72,18 @@ function formatRelativeToUserTime(serverIso: string): string {
   return `${Math.abs(diffMinutes)}m behind your local time`;
 }
 
+function formatWindowMinutes(minutes: number): string {
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return days === 1 ? "1 day" : `${days} days`;
+  }
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return hours === 1 ? "1 hour" : `${hours} hours`;
+  }
+  return `${minutes} minutes`;
+}
+
 export type ServerScopeToolbarVariant = "diagnosis" | "logs" | "requests";
 
 function gatherToolbarScopeSaveDraft(
@@ -463,7 +475,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           >
             {d.WINDOW_OPTIONS.map((minutes) => (
               <option key={minutes} value={minutes}>
-                Last {minutes}m
+                Last {formatWindowMinutes(minutes)}
               </option>
             ))}
           </select>

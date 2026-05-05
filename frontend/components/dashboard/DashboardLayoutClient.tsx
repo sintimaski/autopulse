@@ -22,7 +22,7 @@ import {
   scopedQueryStringsEqual,
   type DashboardScopedQueryState,
 } from "./dashboardQueryState";
-import { toDashboardRoutePath } from "./dashboardRoutePath";
+import { logicalDashboardLocationHref, toDashboardRoutePath } from "./dashboardRoutePath";
 import { resetServerScope } from "./dashboardScopeReset";
 import { isApiSubpathDashboard } from "./dashboardTypes";
 
@@ -395,8 +395,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
     const normalized = buildLiveDashboardSearchString(pathname, parsed, logsParsed);
     if (!scopedQueryStringsEqual(normalized, search)) {
       const hash = typeof window !== "undefined" ? window.location.hash : "";
-      const nextHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
-      replaceScopedUrlInPlace(nextHref);
+      const logicalHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
+      replaceScopedUrlInPlace(logicalDashboardLocationHref(logicalHref));
     }
     lastAppliedQueryRef.current = `${pathname}?${normalized}`;
     queueMicrotask(() => {
@@ -429,8 +429,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
       return;
     }
     const hash = typeof window !== "undefined" ? window.location.hash : "";
-    const nextHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
-    replaceScopedUrlInPlace(nextHref);
+    const logicalHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
+    replaceScopedUrlInPlace(logicalDashboardLocationHref(logicalHref));
   }, [
     scopedServerStateForUrl,
     d.groupBy,

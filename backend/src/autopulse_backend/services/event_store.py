@@ -540,6 +540,24 @@ class DuckDbEventStore:
             self._write_conn.execute(sql, params)
         return int(deleted[0] if deleted else 0)
 
+    def delete_widget_points_before(
+        self, *, cutoff: datetime, project_id: UUID | None = None
+    ) -> int:
+        """Delete widget samples at or before ``cutoff`` (same horizon as event retention)."""
+        sql = "DELETE FROM dashboard_widget_points WHERE timestamp < ?"
+        params: list[Any] = [_as_duckdb_timestamp(cutoff)]
+        if project_id is not None:
+            sql += " AND project_id = ?"
+            params.append(str(project_id))
+        with self._write_lock:
+            count_predicate = sql.removeprefix("DELETE FROM dashboard_widget_points WHERE ")
+            deleted = self._write_conn.execute(
+                f"SELECT COUNT(*) FROM dashboard_widget_points WHERE {count_predicate}",  # nosec B608
+                params,
+            ).fetchone()
+            self._write_conn.execute(sql, params)
+        return int(deleted[0] if deleted else 0)
+
     def max_timestamp(self) -> datetime | None:
         row = self._fetchone_read("SELECT MAX(timestamp) FROM events")
         value = row[0] if row else None

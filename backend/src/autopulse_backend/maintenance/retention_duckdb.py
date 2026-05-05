@@ -100,7 +100,13 @@ async def _apply_duckdb_retention(
                     project_id=project_id,
                 )
                 deleted_total += deleted_for_project
-                if deleted_for_project > 0:
+                deleted_widgets = await run_duckdb_write_sync(
+                    store.delete_widget_points_before,
+                    cutoff=cutoff,
+                    project_id=project_id,
+                )
+                deleted_total += deleted_widgets
+                if deleted_for_project > 0 or deleted_widgets > 0:
                     touched_project_ids.add(project_id)
 
     rotation_settings = (

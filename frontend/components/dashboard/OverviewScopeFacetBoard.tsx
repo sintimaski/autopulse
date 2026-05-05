@@ -11,6 +11,18 @@ const selectClass =
 
 const labelClass = "text-sm text-slate-600 dark:text-neutral-400";
 
+function windowOptionLabel(minutes: number): string {
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return days === 1 ? "1d" : `${days}d`;
+  }
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return hours === 1 ? "1h" : `${hours}h`;
+  }
+  return `${minutes}m`;
+}
+
 export function OverviewScopeFacetBoard() {
   const d = useDashboardData();
 
@@ -57,7 +69,7 @@ export function OverviewScopeFacetBoard() {
         >
           {WINDOW_OPTIONS.map((minutes) => (
             <option key={minutes} value={minutes}>
-              {minutes >= 60 ? `${Math.round(minutes / 60)}h` : `${minutes}m`}
+              {windowOptionLabel(minutes)}
             </option>
           ))}
         </select>
