@@ -19,6 +19,8 @@ from autopulse_backend.auth import (
     authenticate_dashboard_project,
     require_dashboard_auth_session,
 )
+from autopulse_backend.core.config import get_settings
+from autopulse_backend.dashboard.read_rate_limit import enforce_dashboard_read_rate_limit
 from autopulse_backend.dashboard.routes.alert_routes import (
     get_dashboard_alert_capabilities,
     get_dashboard_alert_dispatches,
@@ -279,6 +281,11 @@ async def post_dashboard_query(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardDataQueryResponse:
     _ = session
+    enforce_dashboard_read_rate_limit(
+        settings=get_settings(),
+        project_id=context.project_id,
+        endpoint="query_bundle",
+    )
     version = await get_project_dashboard_version(context.project_id)
     payload_cache_json = json.dumps(
         payload.model_dump(mode="json", exclude_none=True), sort_keys=True, separators=(",", ":")

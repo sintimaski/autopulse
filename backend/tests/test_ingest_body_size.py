@@ -113,3 +113,17 @@ def test_middleware_ignores_non_ingest_paths() -> None:
 
     status, _ = _run_asgi(middleware, scope, [b"x" * 64])
     assert status == 200
+
+
+def test_middleware_rejects_oversize_otlp_trace_body_without_content_length() -> None:
+    middleware = IngestBodySizeLimitMiddleware(_app_ok, max_bytes_getter=lambda: 32)
+    scope = _make_scope(path="/otlp/v1/traces")
+    scope["headers"] = [(b"content-type", b"application/json"), (b"transfer-encoding", b"chunked")]
+
+    status, body = _run_asgi(
+        middleware,
+        scope,
+        [b"a" * 16, b"b" * 16, b"c" * 16],
+    )
+    assert status == 413
+    assert b"Ingest payload exceeds max request size" in body

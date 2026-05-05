@@ -1,0 +1,26 @@
+services:
+  autopulse:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: autopulse:local
+    ports:
+      - "8000:8000"
+    environment:
+      AUTOPULSE_ENV: production
+      DATABASE_URL: sqlite+aiosqlite:///./.autopulse/autopulse.db
+      AUTOPULSE_EVENT_STORE: duckdb
+      AUTOPULSE_DUCKDB_PATH: .autopulse/events.duckdb
+      AUTOPULSE_DATA_DIR: /data
+      DASHBOARD_AUTH_ENABLED: "true"
+      DASHBOARD_AUTH_ALLOWED_EMAIL: you@example.com
+      DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "true"
+      INTERNAL_METRICS_BEARER_TOKEN: change-me
+      JOBS_ENABLE_SCHEDULER: "true"
+      DATABASE_RUN_MIGRATIONS_ON_STARTUP: "true"
+    volumes:
+      - autopulse_data:/data
+    restart: unless-stopped
+
+volumes:
+  autopulse_data:

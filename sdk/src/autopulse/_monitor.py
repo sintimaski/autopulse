@@ -12,9 +12,11 @@ import traceback
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from importlib import metadata
 from time import monotonic, perf_counter
 from typing import Any
+from uuid import uuid4
 
 import httpx
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -277,6 +279,19 @@ def _add_event_handler(app: Any, event: str, handler: Callable[[], Awaitable[Non
     return False
 
 
+def _remove_event_handler(app: Any, event: str, handler: Callable[[], Awaitable[None]]) -> None:
+    """Best-effort rollback for previously added startup/shutdown handlers."""
+    handlers_attr = "on_startup" if event == "startup" else "on_shutdown"
+    candidates = [
+        getattr(app, handlers_attr, None),
+        getattr(getattr(app, "router", None), handlers_attr, None),
+    ]
+    for handlers in candidates:
+        if isinstance(handlers, list):
+            while handler in handlers:
+                handlers.remove(handler)
+
+
 def _build_infrastructure_widget_payload(metrics: Mapping[str, Any]) -> dict[str, Any]:
     specs: tuple[tuple[str, str, str, str, int], ...] = (
         ("host_cpu_percent", "infra_host_cpu_percent", "Host CPU", "%", 500),
@@ -330,6 +345,24 @@ def _merge_widget_payloads(primary: dict[str, Any], secondary: dict[str, Any]) -
             if isinstance(point, dict):
                 points.append(point)
     return {"definitions": list(definitions_by_id.values()), "points": points}
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    raw = (response.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+    try:
+        dt = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    now = datetime.now(tz=UTC)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return max(0.0, (dt - now).total_seconds())
 
 
 class _EventDispatcher:
@@ -442,7 +475,11 @@ class _EventDispatcher:
             return
         if self._client is None or self._config.ingest_url is None or self._config.api_key is None:
             return
-        headers = {"Authorization": f"Bearer {self._config.api_key}"}
+        # One key per batch send; retries reuse the same key to enable backend dedup.
+        headers = {
+            "Authorization": f"Bearer {self._config.api_key}",
+            "Idempotency-Key": uuid4().hex,
+        }
         payload = {"events": batch, "sdk_version": _sdk_version()}
         body_json = json.dumps(payload).encode("utf-8")
         post_headers = dict(headers)
@@ -474,10 +511,12 @@ class _EventDispatcher:
                 return
             except httpx.HTTPStatusError as exc:
                 code = exc.response.status_code
-                if code == 401:
+                retryable_4xx = {408, 409, 425, 429}
+                should_retry = code >= 500 or code in retryable_4xx
+                if not should_retry:
                     _debug_log(
                         self._config.debug,
-                        "batch send got 401; not retrying (credentials or API key issue)",
+                        f"batch send got non-retryable status={code}; not retrying",
                     )
                     return
                 _debug_log(
@@ -487,7 +526,12 @@ class _EventDispatcher:
                 if attempt >= self._config.max_retries:
                     _debug_log(self._config.debug, "dropping batch after retries exhausted")
                     return
-                sleep_seconds = self._config.retry_backoff_s * (2**attempt)
+                retry_after = _retry_after_seconds(exc.response) if code == 429 else None
+                sleep_seconds = (
+                    retry_after
+                    if retry_after is not None
+                    else self._config.retry_backoff_s * (2**attempt)
+                )
                 await asyncio.sleep(sleep_seconds)
             except Exception as exc:
                 _debug_log(
@@ -797,10 +841,22 @@ def monitor(app: Any, **kwargs: Any) -> None:
             "AUTOPULSE_API_KEY are not both set; middleware is attached but events will not "
             "be sent."
         )
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
     if not _add_event_handler(app, "startup", dispatcher.start):
         return
+    startup_registered = True
+    shutdown_registered = False
     if not _add_event_handler(app, "shutdown", dispatcher.stop):
+        if startup_registered:
+            _remove_event_handler(app, "startup", dispatcher.start)
+        return
+    shutdown_registered = True
+    try:
+        app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    except Exception:
+        if shutdown_registered:
+            _remove_event_handler(app, "shutdown", dispatcher.stop)
+        if startup_registered:
+            _remove_event_handler(app, "startup", dispatcher.start)
         return
     app.state._autopulse_config = config
     app.state._autopulse_dispatcher = dispatcher

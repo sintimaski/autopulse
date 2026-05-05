@@ -12,9 +12,55 @@ AutoPulse can run multiple API processes behind a load balancer. A few subsystem
 - **Single replica** for deployments that rely on live WebSocket updates.
 - **Proper fix**: shared pub/sub (for example Redis) between ingest handlers and WebSocket workers (post-MVP engineering).
 
+### Load balancer requirement
+
+For multi-replica deployments that keep in-process WS, configure one of:
+
+- LB stickiness for dashboard WS traffic (`/dashboard/ws` path family), or
+- Dedicated single WS-serving replica and route all WS traffic there.
+
+If neither is configured, stale/partial live updates are expected and deployment is No-Go for live-dashboard correctness.
+
+### Staging validation (WS freshness)
+
+1. Deploy with target replica count and final LB policy (stickiness or single WS replica).
+2. Open dashboard in two independent browser sessions and keep Overview visible.
+3. Generate ingest traffic continuously for 5-10 minutes.
+4. Verify live timestamps/counters continue advancing in both sessions through page refreshes.
+5. Confirm no stale-live drift when requests are routed across replicas (or intentionally pinned).
+
+### Troubleshooting stale live updates
+
+- **Symptom:** Overview/diagnosis "live" counters stop advancing while ingest continues.
+  - **Likely cause:** non-sticky WS requests are landing on a replica that does not receive local ingest-triggered pushes.
+  - **Remediation:** enable LB stickiness for WS or route WS traffic to a single dedicated replica.
+- **Symptom:** Live updates resume only after full page reload.
+  - **Likely cause:** WS reconnect lands on a different replica with no shared realtime bus.
+  - **Remediation:** enforce sticky affinity across reconnects or move to single WS replica.
+
 ## Ingest rate limiting
 
 The default limiter is process-local. Enable `INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED` when running multiple replicas so limits approximate the configured window across hosts. The limiter **fails open** to the in-memory limiter if the SQL-backed window is unhealthy—document expected behavior for operators.
+
+## DuckDB event-writer topology (production requirement)
+
+DuckDB is not a shared multi-writer backend for concurrent API replicas.
+
+Supported production patterns:
+
+- **Single API writer replica + DuckDB file** (recommended embedded pattern).
+- **External event plane** (future/shared transport architecture) if you need concurrent writers.
+
+Unsupported / No-Go pattern:
+
+- Multiple API replicas writing events to the same DuckDB file.
+
+Validation for staging before go-live:
+
+1. Deploy the intended replica count and storage wiring.
+2. Run sustained ingest load for at least one retention window.
+3. Confirm no DuckDB lock/corruption errors in logs.
+4. Confirm `/ready` remains healthy across replicas and ingest success remains within SLO budget.
 
 ## Background jobs
 

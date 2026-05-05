@@ -73,7 +73,7 @@ Each task includes:
 ### TSK-P0-03 — DuckDB topology enforcement for production
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** SRE
 - **Source findings:** #3 (Top 15), B2
 - **Description:** Make single-writer DuckDB operation explicit and enforceable in deployment guidance to prevent multi-writer corruption/lock failure modes.
@@ -88,11 +88,12 @@ Each task includes:
   - `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `docs/AUTOPULSE_PRODUCTION_READINESS_MASTER_AUDIT.md`
+- **Completed (2026-05-05):** Deployment runbooks now define DuckDB as a single-writer production pattern and mark multi-replica writers against one DuckDB file as No-Go. Phase 5 release checklist includes topology and staging lock/corruption validation gates; multi-instance doc includes explicit staging validation steps.
 
 ### TSK-P0-04 — WebSocket + load balancer correctness
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** SRE + Frontend
 - **Source findings:** #4 (Top 15), B6
 - **Description:** Ensure live dashboard updates remain correct under multi-replica deployments via sticky sessions or a single WebSocket-serving replica.
@@ -107,11 +108,12 @@ Each task includes:
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `backend/src/autopulse_backend/realtime/connection_hub.py`
   - `frontend/components/dashboard/dashboardPages/OverviewContent.tsx`
+- **Completed (2026-05-05):** Multi-instance runbooks now require sticky LB behavior for WS or a dedicated single WS replica, include a staging WS freshness validation procedure, and document stale-live symptoms with concrete remediation steps. Phase 5 release checklist now gates WS correctness evidence for target topology.
 
 ### TSK-P0-05 — SDK idempotency + retry behavior hardening
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** SDK + Backend
 - **Source findings:** #5 (Top 15), S2/S3
 - **Description:** Add per-batch `Idempotency-Key` from SDK and tighten retry policy to avoid retry storms and duplicate ingest on timeout/retry.
@@ -124,15 +126,16 @@ Each task includes:
   - Ingest dedup hit rates in internal metrics.
   - SDK send logs/telemetry indicating retry decision class.
 - **Related files/docs:**
-  - `sdk/src/autopulse/transport/http_sender.py`
-  - `sdk/src/autopulse/config.py`
+  - `sdk/src/autopulse/_monitor.py`
+  - `sdk/tests/test_monitor.py`
   - `backend/src/autopulse_backend/routes/ingest.py`
-  - `backend/tests/test_idempotency.py`
+  - `backend/tests/test_ingest.py`
+- **Completed (2026-05-05):** SDK now sends per-batch `Idempotency-Key` and reuses it across retries, does not retry non-retryable 4xx responses (for example 413/422), and honors `Retry-After` on 429 before retrying. Existing backend idempotency integration coverage plus new SDK retry/idempotency tests verify dedup/retry behavior end-to-end.
 
 ### TSK-P0-06 — Prevent half-configured SDK monitor lifecycle
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** SDK
 - **Source findings:** S1
 - **Description:** Ensure `monitor()` either completes lifecycle setup fully or fails cleanly without leaving partially attached middleware/background sender state.
@@ -145,12 +148,13 @@ Each task includes:
   - No residual background sender threads/tasks after failure path.
 - **Related files/docs:**
   - `sdk/src/autopulse/_monitor.py`
-  - `sdk/tests/test_monitor_lifecycle.py`
+  - `sdk/tests/test_monitor.py`
+- **Completed (2026-05-05):** `monitor()` now applies lifecycle setup transactionally: startup/shutdown handler registration and middleware attachment either all succeed or are rolled back. New SDK tests cover startup registration failure, shutdown registration failure, and middleware attach failure to ensure no partial monitor state is left behind.
 
 ### TSK-P0-07 — Uniform body-size protection for OTLP + ingest
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Backend
 - **Source findings:** #6 (Top 15), S4
 - **Description:** Apply consistent request-size guardrails across ingestion surfaces so OTLP cannot bypass protections that exist on `/ingest`.
@@ -165,6 +169,7 @@ Each task includes:
   - `backend/src/autopulse_backend/ingestion/body_size.py`
   - `backend/src/autopulse_backend/app.py`
   - `backend/tests/ingestion/`
+- **Completed (2026-05-05):** Ingest body-size middleware now enforces `INGEST_MAX_REQUEST_BYTES` across both `/ingest` and OTLP trace endpoints (`/otlp/v1/traces`, `/ingest/otlp/v1/traces`) including chunked/no-Content-Length bodies. Added OTLP oversize regression coverage alongside ingest body-size tests.
 
 ### TSK-P0-08 — Decouple Alembic migration from multi-replica API boot
 
@@ -192,7 +197,7 @@ Each task includes:
 ### TSK-P0-09 — Official container artifact for repeatable self-hosting
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Platform + SRE
 - **Source findings:** #10 (Top 15), O1
 - **Description:** Provide a supported container build for backend + static dashboard mount to reduce deployment drift and onboarding friction.
@@ -207,11 +212,12 @@ Each task includes:
   - `Dockerfile`
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `frontend/` build artifact integration path
+- **Completed (2026-05-05):** Official multi-stage `Dockerfile`, `docs/ops/docker-compose.autopulse.yml`, and production doc §11 cover build and manual smoke. `scripts/docker_smoke.sh` automates build plus `/health` and `/ready` checks with a production-shaped env; run it where Docker is available and attach logs for release evidence.
 
 ### TSK-P0-10 — CI browser smoke for core journey
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Frontend + Delivery
 - **Source findings:** #11 (Top 15), F1/O2
 - **Description:** Add minimal browser smoke coverage in CI for sign-in and diagnosis-critical flows to catch regressions currently missed by static/unit checks.
@@ -226,11 +232,12 @@ Each task includes:
   - `.github/workflows/ci.yml`
   - `docs/testing/E2E_CORE_JOURNEY.md`
   - `frontend/tests/e2e/`
+- **Completed (2026-05-05):** Added Playwright smoke suite (`frontend/tests/e2e/core-journey.spec.ts`) plus config and npm scripts. CI now includes blocking `browser-smoke` job that builds static UI, starts backend, waits for `/ready`, and runs Playwright. Local maintenance/run instructions are documented in `docs/testing/E2E_CORE_JOURNEY.md`.
 
 ### TSK-P0-11 — Auth modes clarity and validation (basic vs host-integrated)
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Product + Backend + Docs
 - **Source findings:** #13 (Top 15), B7
 - **Description:** Clarify and validate both accepted production auth modes: first-party basic auth path and host/SSO-integrated path, including misconfiguration guardrails.
@@ -245,11 +252,12 @@ Each task includes:
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `docs/AUTOPULSE_PRODUCTION_READINESS_MASTER_AUDIT.md`
   - `backend/src/autopulse_backend/core/config.py`
+- **Completed (2026-05-05):** Production deployment docs now define two explicit auth mode checklists (first-party magic-link and host/OIDC-integrated), including required env configuration and staging validation steps. Release checklist now includes auth-mode evidence and warns that externally exposed dashboard with `DASHBOARD_AUTH_ENABLED=false` is No-Go unless upstream auth protection is documented.
 
 ### TSK-P0-12 — Read-path rate limits for expensive dashboard endpoints
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Backend
 - **Source findings:** #14 (Top 15), §4.3
 - **Description:** Protect metadata DB and API responsiveness by introducing rate limits or equivalent controls on high-cost dashboard read/query endpoints.
@@ -264,11 +272,12 @@ Each task includes:
   - `backend/src/autopulse_backend/routes/`
   - `backend/src/autopulse_backend/services/`
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
+- **Completed (2026-05-05):** Added configurable per-project dashboard read rate limiting on expensive endpoints (`/dashboard/query`, `/dashboard/query-explorer/execute`) with `429` + `Retry-After` responses. Introduced `DASHBOARD_READ_RATE_LIMIT_REQUESTS_PER_WINDOW` and `DASHBOARD_READ_RATE_LIMIT_WINDOW_SECONDS` settings and documented them for production. Added abuse tests proving graceful rejection under load.
 
 ### TSK-P0-13 — Postgres optional-path CI policy parity
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Delivery + Backend
 - **Source findings:** #15 (Top 15), §8.5
 - **Description:** Define and enforce policy for non-default metadata DB quality signals (full parity or explicit subset) so upgrade users are not operating on unknown risk.
@@ -283,6 +292,7 @@ Each task includes:
   - `.github/workflows/ci.yml`
   - `scripts/release_gates.sh`
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
+- **Completed (2026-05-05):** Defined explicit CI policy: SQLite is full baseline gate, Postgres is required optional-path backend gate. CI workflow now annotates this policy, production deployment docs publish it, and `scripts/release_gates.sh` supports explicit local Postgres optional-path verification via `AUTOPULSE_RELEASE_GATES_POSTGRES=1`.
 
 ---
 

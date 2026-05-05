@@ -11,6 +11,7 @@ from autopulse_backend.auth import ProjectContext, authenticate_dashboard_projec
 from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.duckdb_queries import build_filters
 from autopulse_backend.dashboard.params import DEFAULT_WINDOW_MINUTES
+from autopulse_backend.dashboard.read_rate_limit import enforce_dashboard_read_rate_limit
 from autopulse_backend.dashboard.repositories.project_ui import get_or_create_project_ui_settings
 from autopulse_backend.dashboard.time_window import resolve_time_window
 from autopulse_backend.database import get_db_session
@@ -64,6 +65,12 @@ async def execute_dashboard_query_explorer(
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardQueryExplorerResponse:
+    settings = get_settings()
+    enforce_dashboard_read_rate_limit(
+        settings=settings,
+        project_id=context.project_id,
+        endpoint="query_explorer",
+    )
     if not event_store_enabled():
         raise HTTPException(
             status_code=400,
@@ -71,7 +78,6 @@ async def execute_dashboard_query_explorer(
         )
     query = _validate_query(payload.query)
     server_now = datetime.now(tz=UTC)
-    settings = get_settings()
     ui_settings = await get_or_create_project_ui_settings(session, context.project_id)
     max_minutes = max(
         1,

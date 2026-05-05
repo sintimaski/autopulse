@@ -180,6 +180,8 @@ class Settings:
     dashboard_oidc_post_login_redirect: str | None = None
     dashboard_enforce_origin_for_mutations: bool = False
     database_run_migrations_on_startup: bool = True
+    dashboard_read_rate_limit_requests_per_window: int = 120
+    dashboard_read_rate_limit_window_seconds: int = 60
 
 
 def _parse_email_domains(raw: str | None) -> tuple[str, ...]:
@@ -623,6 +625,16 @@ def get_settings() -> Settings:
             "DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS", False
         ),
         database_run_migrations_on_startup=_env_bool("DATABASE_RUN_MIGRATIONS_ON_STARTUP", True),
+        dashboard_read_rate_limit_requests_per_window=_env_int(
+            "DASHBOARD_READ_RATE_LIMIT_REQUESTS_PER_WINDOW",
+            120,
+            minimum=0,
+        ),
+        dashboard_read_rate_limit_window_seconds=_env_int(
+            "DASHBOARD_READ_RATE_LIMIT_WINDOW_SECONDS",
+            60,
+            minimum=1,
+        ),
     )
     validate_deployment_settings(settings)
     return settings

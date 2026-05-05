@@ -35,6 +35,50 @@ Operational assumptions for this embedded mode:
 2. Never commit real secrets. Use your platform’s secret manager for `DATABASE_URL`, OIDC client secrets, SMTP, and `INTERNAL_METRICS_BEARER_TOKEN`.
 3. **SDK (remote ingest):** set `AUTOPULSE_API_KEY` and `AUTOPULSE_INGEST_URL`. Production-safe capture defaults are **off** for full headers/query strings unless you opt in (`capture_headers` / `capture_query_params` or `AUTOPULSE_CAPTURE_HEADERS` / `AUTOPULSE_CAPTURE_QUERY_PARAMS`). See [sdk/README.md](../../sdk/README.md).
 
+## 2.1 Dashboard auth modes (production)
+
+AutoPulse supports two production-ready dashboard auth modes:
+
+### Mode A — Basic first-party magic-link auth
+
+Use this when AutoPulse owns sign-in directly.
+
+Required:
+
+- `DASHBOARD_AUTH_ENABLED=true`
+- At least one identity gate:
+  - `DASHBOARD_AUTH_ALLOWED_EMAIL=<exact-address>`, or
+  - `DASHBOARD_ALLOWED_EMAIL_DOMAINS=<comma-separated-domains>`
+- `DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true`
+
+Recommended validation:
+
+1. Request magic link for an allowed address and confirm successful dashboard session.
+2. Attempt sign-in with a disallowed address and confirm rejection.
+3. Confirm protected routes (`/dashboard/...`) reject unauthenticated access.
+
+### Mode B — Host-integrated / OIDC auth
+
+Use this when your IdP/host controls identity.
+
+Required:
+
+- `DASHBOARD_AUTH_ENABLED=true`
+- `DASHBOARD_OIDC_ENABLED=true`
+- `DASHBOARD_OIDC_ISSUER_URL`, `DASHBOARD_OIDC_CLIENT_ID`, `DASHBOARD_OIDC_CLIENT_SECRET`
+- `DASHBOARD_OIDC_REDIRECT_URI`, `DASHBOARD_OIDC_STATE_SECRET`
+- `DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true`
+
+Recommended validation:
+
+1. Complete login through IdP and verify dashboard session issuance.
+2. Verify unauthorized users cannot access protected dashboard routes.
+3. Verify logout clears dashboard session cookie and access is revoked.
+
+### Auth No-Go warning
+
+If dashboard ingress is externally reachable, `DASHBOARD_AUTH_ENABLED=false` is a release **No-Go** unless protected by an equivalent upstream auth gateway with documented enforcement evidence.
+
 ## 3. Health checks and load balancers
 
 | Endpoint | Purpose |
@@ -48,6 +92,8 @@ Operational assumptions for this embedded mode:
 
 - **WebSockets:** The dashboard WebSocket hub is in-process; multiple replicas require **sticky sessions**, a **single replica** for WS, or a future shared pub/sub design. See [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md).
 - **Distributed ingest rate limits:** Enable `INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED` when running multiple API processes; understand **fail-open** behavior to the in-memory limiter if the rate-limit table is unhealthy (documented in code + [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md)).
+- **DuckDB writer rule:** treat DuckDB as **single-writer**. Running multiple API replicas that write to the same DuckDB file is a production **No-Go**.
+- **WS correctness rule:** for multi-replica live dashboard correctness, require LB stickiness for WS traffic or route WS to one dedicated replica.
 
 ## 5. Jobs, retention, and aggregation
 
@@ -92,6 +138,20 @@ Monitor at minimum:
 
 Tune alerts on **ingest 429 rate**, **aggregate worker dead-letter growth**, and **dashboard `/ready` failures**.
 
+## 6.1 Dashboard read-path protection (expensive queries)
+
+High-cost read endpoints are protected by an app-level per-project rate limiter:
+
+- `POST /dashboard/query`
+- `POST /dashboard/query-explorer/execute`
+
+Configuration:
+
+- `DASHBOARD_READ_RATE_LIMIT_REQUESTS_PER_WINDOW` (default `120`, set `0` to disable)
+- `DASHBOARD_READ_RATE_LIMIT_WINDOW_SECONDS` (default `60`)
+
+When exceeded, endpoints return `429` with `Retry-After`.
+
 ## 7. SLO / SLI targets (initial release gates)
 
 Treat these as **starting budgets**; tighten per customer tier and measured baseline after two weeks of production traffic.
@@ -105,6 +165,19 @@ Treat these as **starting budgets**; tighten per customer tier and measured base
 | Alert delivery | Successful dispatch for configured email/webhook test | ≥ 98% per rolling 7 days (provider outages documented) |
 
 Record your **actual** p50/p95 after launch; gates above are **release minimums**, not marketing SLAs.
+
+## 7.1 SQLite/Postgres CI policy parity
+
+Policy for metadata DB confidence signals:
+
+- **SQLite path is full gate baseline** (linters, typing, security checks, full pytest/coverage, frontend gates).
+- **Postgres path is required optional-path gate** for backend behavior (`backend/tests` in CI).
+- If Postgres gate scope changes from this policy, document the exact delta in the same PR (no silent coverage drift).
+
+References:
+
+- CI matrix: `.github/workflows/ci.yml` (`python-sqlite`, `python-postgres`).
+- Local release gate script: `scripts/release_gates.sh` (set `AUTOPULSE_RELEASE_GATES_POSTGRES=1` to run optional-path Postgres backend tests locally).
 
 ## 8. Backup, restore, and drills
 
@@ -120,7 +193,53 @@ Follow [BACKUP_RESTORE.md](./BACKUP_RESTORE.md). Before GA:
 - [PHASE5_RELEASE_CHECKLIST.md](../runbooks/PHASE5_RELEASE_CHECKLIST.md) — broader product/release gate list.
 - [agents/security-privacy.md](../../agents/security-privacy.md) — security review checklist.
 - [docs/contracts/ingest-api.md](../contracts/ingest-api.md) — ingest contract and status codes.
+- [`../../Dockerfile`](../../Dockerfile) and [`./docker-compose.autopulse.yml`](./docker-compose.autopulse.yml) — official container artifact and minimal compose example.
+
+## 9.1 No-Go triggers (topology)
+
+Do not promote to production if any of the following are true:
+
+- Planned topology has multiple API replicas writing events to one DuckDB file.
+- Staging load validation shows DuckDB lock/corruption-class errors.
+- You cannot demonstrate the supported writer pattern for your chosen event plane.
 
 ## 10. Documentation precedence
 
 If another doc conflicts with product scope, **[DEVELOPMENT.md](../../DEVELOPMENT.md)** wins for MVP boundaries; this file wins for **production topology and rollout ordering**.
+
+## 11. Official container artifact (backend + static dashboard)
+
+AutoPulse ships an official `Dockerfile` at repo root that:
+
+- Builds the Next static export (`frontend/out`) in a Node build stage.
+- Installs backend dependencies and runs `uvicorn` for `autopulse_backend.main:app`.
+- Serves the static dashboard from `AUTOPULSE_FRONTEND_STATIC_DIR=/app/frontend/out`.
+
+### Build and smoke test
+
+```bash
+docker build -t autopulse:local .
+docker run --rm -p 8000:8000 \
+  -e AUTOPULSE_ENV=production \
+  -e DASHBOARD_AUTH_ENABLED=true \
+  -e DASHBOARD_AUTH_ALLOWED_EMAIL=you@example.com \
+  -e DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true \
+  -e INTERNAL_METRICS_BEARER_TOKEN=change-me \
+  autopulse:local
+```
+
+In another terminal:
+
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s http://127.0.0.1:8000/ready
+```
+
+Expected:
+
+- `/health` returns `{"status":"ok"}`
+- `/ready` returns `{"status":"ready", ...}` when DB/event store are reachable
+
+From repo root, a non-interactive equivalent is `bash scripts/docker_smoke.sh` (requires Docker running).
+
+For a persistent local deployment example, use `docs/ops/docker-compose.autopulse.yml`.

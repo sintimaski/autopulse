@@ -4,9 +4,10 @@ Content-Length is optional in HTTP; clients using chunked or streaming uploads c
 omit it entirely, bypassing a handler-level check. This middleware fully drains
 the ingest request body into memory with an explicit cap and responds with 413
 when the cap is exceeded, before the application code allocates anything bigger.
-It only activates for the ``POST /ingest`` endpoint so other paths keep their
-own semantics. Ingest payloads are already small by design (capped batches of
-JSON events), so buffering the whole body is acceptable and predictable.
+It only activates for ingest surfaces (``POST /ingest`` and OTLP trace
+endpoints) so other paths keep their own semantics. Ingest payloads are already
+small by design (capped batches of JSON events), so buffering the whole body is
+acceptable and predictable.
 """
 
 from __future__ import annotations
@@ -33,8 +34,13 @@ def _is_ingest_request(scope: dict[str, Any]) -> bool:
     path = scope.get("path") or ""
     if not isinstance(path, str):
         return False
-    # Match both bare `/ingest` and any mounted prefix ending with `/ingest`.
-    return path == "/ingest" or path.endswith("/ingest")
+    ingest_paths = (
+        "/ingest",
+        "/otlp/v1/traces",
+        "/ingest/otlp/v1/traces",
+    )
+    # Match bare API paths and mounted variants ending with known ingest surfaces.
+    return any(path == candidate or path.endswith(candidate) for candidate in ingest_paths)
 
 
 async def _send_413(send: ASGISend, max_bytes: int) -> None:

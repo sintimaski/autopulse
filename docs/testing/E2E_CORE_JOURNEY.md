@@ -1,6 +1,6 @@
 # Core user journey — browser E2E (Playwright)
 
-Automated browser coverage is optional today (Vitest handles most dashboard logic). Use this checklist when adding **Playwright** in CI or before a major release.
+Core Playwright smoke now lives in `frontend/tests/e2e/core-journey.spec.ts` and runs in CI (`browser-smoke` job). This doc is the operator checklist for local maintenance and extension.
 
 ## Preconditions
 
@@ -8,33 +8,49 @@ Automated browser coverage is optional today (Vitest handles most dashboard logi
 2. Frontend dev or production build with `NEXT_PUBLIC_AUTOPULSE_*` pointing at that API.
 3. Test user email allowed for magic link (`DASHBOARD_AUTH_ALLOWED_EMAIL` or domain policy).
 
-## Install Playwright (frontend)
+## Local run
 
-From `frontend/`:
+From repo root:
 
 ```bash
-npm install -D @playwright/test
-npx playwright install
+uv sync --group dev
+npm --prefix frontend ci
+npx --prefix frontend playwright install chromium
+npm --prefix frontend run build
+
+export DATABASE_URL=sqlite+aiosqlite:///./autopulse_e2e.db
+export AUTOPULSE_EVENT_STORE=duckdb
+export AUTOPULSE_DUCKDB_PATH=./.autopulse/e2e-events.duckdb
+export AUTOPULSE_FRONTEND_STATIC_DIR=frontend/out
+export DASHBOARD_AUTH_ENABLED=true
+export DASHBOARD_AUTH_ALLOWED_EMAIL=e2e@example.com
+export DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN=true
+export E2E_BASE_URL=http://127.0.0.1:8000/autopulse/ui
+export E2E_DASHBOARD_EMAIL=e2e@example.com
+
+uv run uvicorn autopulse_backend.main:app --app-dir backend/src --host 127.0.0.1 --port 8000
 ```
 
-Add `frontend/playwright.config.ts` with `baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:3000'`.
+In another terminal:
 
-## Minimal journey (script outline)
+```bash
+npm --prefix frontend run test:e2e
+```
 
-1. `page.goto('/auth/magic-link')` — request link for allowed email (or use dev token flow in non-prod).
-2. Complete sign-in (dev link or test inbox integration).
-3. Assert redirect to `/onboarding` or `/dashboard` per onboarding state.
-4. `page.goto('/dashboard')` — overview charts or loading boundary visible.
-5. `page.goto('/diagnosis')` — grouped errors section present.
-6. `page.goto('/alerts')` — settings card visible.
-7. `page.goto('/requests')` — table or empty state without crash.
+## Covered journey (current smoke)
+
+1. Request dev magic-link token from `/dashboard/auth/magic-link/request`.
+2. Verify sign-in via `/autopulse/ui/auth/magic-link?token=...`.
+3. Load `/autopulse/ui/dashboard` and assert shell navigation appears.
+4. Navigate to `/autopulse/ui/diagnosis` and assert route + nav stability.
 
 Record HAR or video on failure (`trace: 'retain-on-failure'` in config).
 
-## CI wiring (suggested)
+## CI wiring (implemented)
 
-- Job sets `E2E_BASE_URL`, starts backend + `npm run start` for frontend, waits on `/ready`.
-- Run `npx playwright test` with **shard** parallelization if the suite grows.
+- `.github/workflows/ci.yml` job `browser-smoke` builds static frontend export and starts backend with `AUTOPULSE_FRONTEND_STATIC_DIR=frontend/out`.
+- Job waits for `/ready` then runs `npm run test:e2e` in `frontend/`.
+- Failures block merges on protected branches.
 
 ## Manual smoke (no Playwright)
 

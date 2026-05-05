@@ -230,8 +230,108 @@ class _UnauthorizedStatusClient:
         return httpx.Response(401, request=request, json={"detail": "Invalid API key"})
 
 
+@dataclass
+class _PayloadTooLargeStatusClient:
+    calls: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        headers: dict[str, str],
+        **_: Any,
+    ) -> httpx.Response:
+        self.calls += 1
+        request = httpx.Request("POST", url)
+        return httpx.Response(413, request=request, json={"detail": "too large"})
+
+
+@dataclass
+class _RetryAfterStatusClient:
+    calls: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        headers: dict[str, str],
+        **_: Any,
+    ) -> httpx.Response:
+        self.calls += 1
+        request = httpx.Request("POST", url)
+        if self.calls == 1:
+            return httpx.Response(
+                429,
+                request=request,
+                headers={"Retry-After": "4"},
+                json={"detail": "rate limited"},
+            )
+        return httpx.Response(200, request=request, json={"accepted": 1})
+
+
 def test_monitor_is_noop_for_non_fastapi_object() -> None:
     monitor(object())
+
+
+def test_monitor_rolls_back_when_startup_handler_registration_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = FastAPI()
+    middleware_before = len(app.user_middleware)
+    startup_before = len(app.router.on_startup)
+    shutdown_before = len(app.router.on_shutdown)
+
+    monkeypatch.setattr("autopulse._monitor._add_event_handler", lambda *_args, **_kwargs: False)
+    monitor(app, api_key="k", ingest_url="https://example.test/ingest")
+
+    assert len(app.user_middleware) == middleware_before
+    assert len(app.router.on_startup) == startup_before
+    assert len(app.router.on_shutdown) == shutdown_before
+    assert getattr(app.state, "_autopulse_configured", False) is False
+
+
+def test_monitor_rolls_back_when_shutdown_handler_registration_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = FastAPI()
+    middleware_before = len(app.user_middleware)
+    startup_before = len(app.router.on_startup)
+    shutdown_before = len(app.router.on_shutdown)
+    calls = {"n": 0}
+
+    def _add_event_handler_once_then_fail(*_args: Any, **_kwargs: Any) -> bool:
+        calls["n"] += 1
+        return calls["n"] == 1
+
+    monkeypatch.setattr("autopulse._monitor._add_event_handler", _add_event_handler_once_then_fail)
+    monitor(app, api_key="k", ingest_url="https://example.test/ingest")
+
+    assert len(app.user_middleware) == middleware_before
+    assert len(app.router.on_startup) == startup_before
+    assert len(app.router.on_shutdown) == shutdown_before
+    assert getattr(app.state, "_autopulse_configured", False) is False
+
+
+def test_monitor_rolls_back_handlers_when_middleware_attach_fails() -> None:
+    app = FastAPI()
+    middleware_before = len(app.user_middleware)
+    startup_before = len(app.router.on_startup)
+    shutdown_before = len(app.router.on_shutdown)
+
+    def _boom(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("middleware attach failed")
+
+    app.add_middleware = _boom  # type: ignore[method-assign]
+    monitor(app, api_key="k", ingest_url="https://example.test/ingest")
+
+    assert len(app.user_middleware) == middleware_before
+    assert len(app.router.on_startup) == startup_before
+    assert len(app.router.on_shutdown) == shutdown_before
+    assert getattr(app.state, "_autopulse_configured", False) is False
 
 
 def test_middleware_records_wire_path_when_request_is_under_mount_prefix() -> None:
@@ -492,6 +592,9 @@ def test_send_batch_retries_then_succeeds() -> None:
         await dispatcher._send_batch([{"type": "request"}])
         assert client.calls == 3
         assert client.sent_payloads[-1]["headers"]["Authorization"] == "Bearer ap_test_key"
+        assert "Idempotency-Key" in client.sent_payloads[-1]["headers"]
+        idem_values = [payload["headers"]["Idempotency-Key"] for payload in client.sent_payloads]
+        assert len(set(idem_values)) == 1
         assert "sdk_version" in client.sent_payloads[-1]["json"]
 
     asyncio.run(run())
@@ -528,6 +631,36 @@ def test_send_batch_does_not_retry_on_401() -> None:
         assert client.calls == 1
 
     asyncio.run(run())
+
+
+def test_send_batch_does_not_retry_on_non_retryable_4xx() -> None:
+    async def run() -> None:
+        config = _make_config(max_retries=3, retry_backoff_s=0.0)
+        client = _PayloadTooLargeStatusClient()
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert client.calls == 1
+
+    asyncio.run(run())
+
+
+def test_send_batch_honors_retry_after_for_429(monkeypatch: pytest.MonkeyPatch) -> None:
+    slept: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", _fake_sleep)
+
+    async def run() -> None:
+        config = _make_config(max_retries=2, retry_backoff_s=0.0)
+        client = _RetryAfterStatusClient()
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert client.calls == 2
+
+    asyncio.run(run())
+    assert slept == [4.0]
 
 
 def test_sender_loop_flushes_on_batch_size() -> None:

@@ -8,12 +8,16 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 - [ ] Dashboard session endpoint returns `project_id`, `organization_id`, and `membership_role`.
 - [ ] Owner/member authorization is enforced for organization governance endpoints.
 - [ ] Governance actions create audit events.
+- [ ] Production auth mode validation evidence captured for at least one path: first-party magic-link mode or host/OIDC-integrated mode.
+- [ ] Externally reachable dashboard is never deployed with `DASHBOARD_AUTH_ENABLED=false` unless upstream auth controls are documented and verified.
 
 ## Ingest and Data Lifecycle
 
 - [ ] Ingest remains healthy (`/health` and `/ready`) under retention/archive load.
 - [ ] Retention settings updates validate plan and archival options.
 - [ ] Archival-before-delete behavior is verified with replay-safe retries.
+- [ ] DuckDB topology validation passed: no deployment plans with multi-replica writers targeting the same DuckDB file.
+- [ ] Staging load run for intended topology shows no DuckDB lock/corruption-class errors.
 
 ## Alerts and Jobs
 
@@ -35,6 +39,8 @@ Note: this runbook "Phase 5" label maps to the post-MVP roadmap release-hardenin
 - [ ] Guided troubleshooting panel renders on Dashboard and Diagnosis.
 - [ ] Settings page shows retention tiering/archival state and org governance tools.
 - [ ] Role-aware UI behavior is validated with owner and member accounts.
+- [ ] Multi-replica WS deployment validates sticky sessions (or single WS replica) with fresh live updates in staging.
+- [ ] Stale-live symptom remediation (stickiness/single WS replica) is documented in release evidence.
 
 ## Final Gate
 
