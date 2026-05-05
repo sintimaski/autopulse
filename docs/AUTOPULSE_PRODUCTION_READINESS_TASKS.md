@@ -30,7 +30,7 @@ Each task includes:
 ### TSK-P0-01 — Golden path runbook for SQLite + DuckDB
 
 - **Priority:** P0
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** SRE + Docs
 - **Source findings:** #1, #2 (Top 15), B1/B2
 - **Description:** Publish a single canonical runbook for the default embedded topology: SQLite metadata + DuckDB events, including file locations, backup/restore of both stores, scheduler behavior, and constraints (single process/single writer assumptions).
@@ -46,6 +46,7 @@ Each task includes:
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `docs/ops/BACKUP_RESTORE.md`
   - `backend/src/autopulse_backend/core/config.py`
+- **Completed (2026-05-05):** Added canonical golden-path section for embedded SQLite metadata + DuckDB events, including default paths and `AUTOPULSE_DATA_DIR` anchoring. Backup/restore now explicitly requires both metadata (`.db`/WAL/SHM) and DuckDB files. Docs now state scheduler auto-enable applies only to default SQLite filenames and include concrete guidance on when to migrate metadata DB off SQLite.
 
 ### TSK-P0-02 — Explicit scheduler requirement outside default SQLite path
 

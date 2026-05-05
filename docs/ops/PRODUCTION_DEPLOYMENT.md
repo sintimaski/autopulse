@@ -11,6 +11,24 @@ This document is the **single entry point** for shipping AutoPulse to production
 
 **Storage note:** Metadata (projects, API key hashes, aggregates, sessions) lives in the **SQL database** (`DATABASE_URL`). Raw request/error events for the MVP stack typically use **DuckDB** when enabled (`AUTOPULSE_DUCKDB_*`), not “Postgres-only raw rows” unless you operate a custom deployment. Set **`AUTOPULSE_DATA_DIR`** (or an absolute `AUTOPULSE_DUCKDB_PATH`) in production so every process agrees on the DuckDB file regardless of cwd. Align backup procedures with both stores ([BACKUP_RESTORE.md](./BACKUP_RESTORE.md)).
 
+## 1.1 Golden path: embedded SQLite metadata + DuckDB events
+
+Use this as the default single-node topology unless your expected traffic/ops profile requires a remote metadata DB:
+
+| Component | Default setting | Effective default path |
+|----------|------------------|------------------------|
+| Metadata DB (SQLite) | `DATABASE_URL=sqlite+aiosqlite:///./.autopulse/autopulse.db` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/autopulse.db` |
+| Event store (DuckDB) | `AUTOPULSE_EVENT_STORE=duckdb`, `AUTOPULSE_DUCKDB_PATH=.autopulse/events.duckdb` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events.duckdb` |
+| File alert outbox (optional) | `ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/emails` |
+
+`AUTOPULSE_DATA_DIR` re-anchors relative metadata/event paths so API, jobs, and restore tooling all target the same files independent of process cwd.
+
+Operational assumptions for this embedded mode:
+
+- SQLite metadata is a single-writer design in practice; avoid active-active metadata writers.
+- DuckDB event writes must follow the documented single-writer pattern.
+- Prefer one API writer process per DuckDB file unless/until you move to a shared event transport/store architecture.
+
 ## 2. Environment and secrets
 
 1. Set `AUTOPULSE_ENV=production` and run through production guardrails (dashboard auth, HTTPS ingest, origin enforcement). See [test_deployment_settings.py](../../backend/tests/test_deployment_settings.py) and `validate_deployment_settings` in [`backend/src/autopulse_backend/core/config.py`](../../backend/src/autopulse_backend/core/config.py).
@@ -41,7 +59,22 @@ This document is the **single entry point** for shipping AutoPulse to production
   - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
 
-## 5.1 Migration strategy for multi-replica API
+## 5.1 When to move metadata DB off SQLite
+
+Move metadata from SQLite to Postgres (or equivalent managed SQL) when any of these become true:
+
+- You are running multiple API replicas that need consistent metadata writes.
+- You need stronger write concurrency than a single host-local SQLite file can provide.
+- Your operational model requires remote managed backups/failover for metadata.
+- Deployment constraints make shared durable local disk for SQLite impractical.
+
+If you move metadata off SQLite:
+
+- Keep DuckDB single-writer constraints explicit in your deployment runbook.
+- Set `JOBS_ENABLE_SCHEDULER=true` (or document/operate equivalent external cron).
+- Use one-shot migrations (`alembic upgrade head`) and disable migrate-on-boot on steady-state replicas (`DATABASE_RUN_MIGRATIONS_ON_STARTUP=false`).
+
+## 5.2 Migration strategy for multi-replica API
 
 - Prefer a one-shot migration step in deploy orchestration (`uv run alembic upgrade head`) before scaling API replicas.
 - Set `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false` on steady-state API replicas to avoid concurrent DDL races.

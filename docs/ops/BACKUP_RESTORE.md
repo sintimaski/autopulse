@@ -5,6 +5,14 @@ AutoPulse durable state may include:
 - **SQL metadata** (`DATABASE_URL`): projects, API key hashes, dashboard sessions, aggregate tables, idempotency keys, dead-letter rows, etc.
 - **DuckDB event store** (`AUTOPULSE_EVENT_STORE=duckdb`, path from `AUTOPULSE_DUCKDB_PATH` / settings): raw request/error payloads used by dashboard queries. Relative paths resolve under the **data root** (`AUTOPULSE_DATA_DIR`, `AUTOPULSE_PROJECT_ROOT`, or monorepo parent of `backend/`—see `resolve_autopulse_data_root` in `backend/src/autopulse_backend/core/config.py`), never raw process cwd.
 
+Default embedded topology path map:
+
+- Metadata DB (SQLite default): `{data_root}/.autopulse/autopulse.db`
+- DuckDB event store default: `{data_root}/.autopulse/events.duckdb`
+- SQLite sidecars when present: `{data_root}/.autopulse/autopulse.db-wal`, `{data_root}/.autopulse/autopulse.db-shm`
+
+`data_root` is `AUTOPULSE_DATA_DIR` when set; otherwise the monorepo root in checkout layouts.
+
 ### Migrating from cwd-relative DuckDB files
 
 If you previously ran the API or tools from different directories, you may have **multiple** `.autopulse/events.duckdb` files (for example under `backend/.autopulse/` and repo root `.autopulse/`). After upgrading:
@@ -17,7 +25,7 @@ If you previously ran the API or tools from different directories, you may have 
 ## Backup
 
 1. **Pause writes** (stop app workers or put the service in maintenance) for a crash-consistent snapshot, **or** use engine-native backup tools while accepting best-effort consistency for dev environments.
-2. Copy the **SQL database file(s)** and the **DuckDB file** together; label the pair with a timestamp and schema revision (`alembic_version` / migration id).
+2. Copy the **SQL metadata file(s)** (`.db` + `-wal` + `-shm` where present) and the **DuckDB file** together; label the pair with a timestamp and schema revision (`alembic_version` / migration id).
 3. Export any **email outbox** directory if you rely on file-based alert delivery (`ALERT_EMAIL_FILE_OUTBOX_DIR`).
 
 ## Restore
