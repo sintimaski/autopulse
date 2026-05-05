@@ -124,14 +124,16 @@ export function VolumeChart({
   const totalErrors = displayed.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0);
   const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
-  /** Remount Chart.js when server scope or bucket timeline changes (avoids stale canvas after scope changes). */
-  const chartScopeKey = [
+  /**
+   * Remount Chart.js only when the *layout* changes (window, span, step), not on every bucket
+   * value refresh — otherwise react-chartjs-2 can update datasets in place.
+   */
+  const chartLayoutKey = [
     fromTimestamp,
     toTimestamp,
     String(globalWindowMinutes),
-    String(series.length),
-    series[0]?.minute ?? "",
-    series[series.length - 1]?.minute ?? "",
+    String(effectiveChartSpanMinutes),
+    String(effectiveStepMinutes),
   ].join("|");
 
   const onBucketClick = useCallback(
@@ -172,7 +174,7 @@ export function VolumeChart({
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: displayed.length > 80 ? 0 : 380 },
+      animation: { duration: 0 },
       // Hover the full time column (not only the painted bar) so sparse buckets stay easy to inspect.
       interaction: {
         mode: "index",
@@ -247,7 +249,7 @@ export function VolumeChart({
         },
       },
     }),
-    [displayed, max, onBucketClick],
+    [max, onBucketClick],
   );
 
   const barChartHeight = Math.round(120 * 1.25);
@@ -309,12 +311,11 @@ export function VolumeChart({
               aria-label="Request volume by time bucket"
             >
               <div className="w-full" style={{ height: barChartHeight }}>
-                <CanvasBar key={chartScopeKey} data={volumeBarData} options={volumeBarOptions} />
+                <CanvasBar key={chartLayoutKey} data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <TimeSeriesLineChart
-                key={`${chartScopeKey}-req-vol`}
                 title="Request Volume Trend"
                 values={displayed.map((bucket) => Number(bucket.request_count || 0))}
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
@@ -323,9 +324,9 @@ export function VolumeChart({
                 summaryLabel="Total"
                 summaryValue={totalRequests}
                 chartAreaHeightClass={volumeLineChartHeightClass}
+                live
               />
               <TimeSeriesLineChart
-                key={`${chartScopeKey}-err-rate`}
                 title="Error Rate Trend"
                 values={displayed.map((bucket) => {
                   const req = Number(bucket.request_count || 0);
@@ -338,9 +339,9 @@ export function VolumeChart({
                 summaryLabel="Window avg"
                 summaryValue={overallErrorRatePct}
                 chartAreaHeightClass={volumeLineChartHeightClass}
+                live
               />
               <TimeSeriesLineChart
-                key={`${chartScopeKey}-err-cnt`}
                 title="Error Count Trend"
                 values={displayed.map((bucket) => Number(bucket.error_count || 0))}
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
@@ -349,9 +350,9 @@ export function VolumeChart({
                 summaryLabel="Total"
                 summaryValue={totalErrors}
                 chartAreaHeightClass={volumeLineChartHeightClass}
+                live
               />
               <TimeSeriesLineChart
-                key={`${chartScopeKey}-lat`}
                 title="Latency Trend"
                 values={displayed.map((bucket) => Number(bucket.avg_latency_ms || 0))}
                 labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
@@ -359,6 +360,7 @@ export function VolumeChart({
                 formatValue={(value) => `${value.toFixed(1)} ms`}
                 summaryLabel="Latest"
                 chartAreaHeightClass={volumeLineChartHeightClass}
+                live
               />
             </div>
           </>

@@ -495,6 +495,77 @@ class DashboardLogQueryPageResponse(BaseModel):
     items: list[DashboardLogQueryItem]
 
 
+class DashboardQueryExplorerRequest(BaseModel):
+    query: str
+    from_timestamp: datetime | None = None
+    to_timestamp: datetime | None = None
+    window_minutes: int = 60
+    row_limit: int = 200
+
+    @field_validator("window_minutes")
+    @classmethod
+    def validate_window_minutes(cls, value: int) -> int:
+        return max(1, min(value, 10_080))
+
+    @field_validator("row_limit")
+    @classmethod
+    def validate_row_limit(cls, value: int) -> int:
+        return max(1, min(value, 500))
+
+
+class DashboardQueryExplorerResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    query: str
+    columns: list[str]
+    rows: list[list[Any]]
+    truncated: bool
+
+
+class DashboardTraceSpanItem(BaseModel):
+    timestamp: datetime
+    service_name: str
+    environment: str
+    span_name: str
+    path: str
+    method: str
+    status_code: int
+    latency_ms: float
+    trace_id: str
+    span_id: str | None = None
+    parent_span_id: str | None = None
+    request_id: str | None = None
+    otlp_status_code: int | None = None
+
+
+class DashboardTraceSummaryItem(BaseModel):
+    trace_id: str
+    first_seen: datetime
+    last_seen: datetime
+    span_count: int
+    error_count: int
+    services: list[str]
+    root_span_name: str | None = None
+
+
+class DashboardTraceSearchResponse(BaseModel):
+    server_now: datetime
+    from_timestamp: datetime
+    to_timestamp: datetime
+    project_id: UUID
+    total: int
+    items: list[DashboardTraceSummaryItem]
+
+
+class DashboardTraceDetailResponse(BaseModel):
+    trace_id: str
+    first_seen: datetime | None = None
+    last_seen: datetime | None = None
+    error_count: int
+    items: list[DashboardTraceSpanItem]
+
+
 class DashboardMagicLinkRequest(BaseModel):
     email: str
 

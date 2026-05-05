@@ -23,6 +23,8 @@ type StackedAreaChartProps = {
   /** `stacked` (default): summed layers. `overlay`: shared Y axis, semi-transparent fills (e.g. % utilization). */
   variant?: "stacked" | "overlay";
   onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
+  /** Skip Chart.js tween on data updates (live dashboard refresh). */
+  live?: boolean;
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -44,6 +46,7 @@ export function StackedAreaChart({
   height = 124,
   variant = "stacked",
   onPointClick,
+  live = false,
 }: StackedAreaChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
@@ -94,7 +97,7 @@ export function StackedAreaChart({
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: !hasData || labels.length > 120 ? 0 : 400 },
+      animation: { duration: !hasData || labels.length > 120 || live ? 0 : 400 },
       interaction: { mode: "index", intersect: false },
       onClick: (_event, elements) => {
         if (!hasData || !onPointClick || !elements.length) {
@@ -171,7 +174,7 @@ export function StackedAreaChart({
         },
       },
     }),
-    [hasData, isOverlay, labels, maxStack, onPointClick, series],
+    [hasData, isOverlay, labels, live, maxStack, onPointClick, series],
   );
 
   if (!hasData) {

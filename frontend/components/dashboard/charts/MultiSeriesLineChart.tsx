@@ -25,6 +25,8 @@ type MultiSeriesLineChartProps = {
   pointRadius?: number;
   emptyMessage?: string;
   onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
+  /** Skip Chart.js tween on data updates (live dashboard refresh). */
+  live?: boolean;
 };
 
 export function MultiSeriesLineChart({
@@ -35,6 +37,7 @@ export function MultiSeriesLineChart({
   pointRadius = 0,
   emptyMessage = "No series data in this range.",
   onPointClick,
+  live = false,
 }: MultiSeriesLineChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
@@ -84,7 +87,7 @@ export function MultiSeriesLineChart({
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: !hasData || labels.length > 120 ? 0 : 400 },
+      animation: { duration: !hasData || labels.length > 120 || live ? 0 : 400 },
       interaction: { mode: "index", intersect: false },
         onClick: (_event, elements) => {
         if (!hasData || !onPointClick || !elements.length) {
@@ -168,7 +171,7 @@ export function MultiSeriesLineChart({
         },
       },
     }),
-    [hasData, labels, onPointClick, series, ySuggestedMax],
+    [hasData, labels, live, onPointClick, series, ySuggestedMax],
   );
 
   if (!hasData) {

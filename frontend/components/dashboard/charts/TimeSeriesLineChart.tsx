@@ -16,6 +16,8 @@ type TimeSeriesLineChartProps = {
   emptyMessage?: string;
   /** Tailwind height class for the plot area (default matches compact dashboard cards). */
   chartAreaHeightClass?: string;
+  /** When true, Chart.js skips tween on data changes (live polling / in-place updates). */
+  live?: boolean;
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -41,6 +43,7 @@ export function TimeSeriesLineChart({
   summaryLabel = "Latest",
   emptyMessage = "No data for this graph range.",
   chartAreaHeightClass = "h-[5.25rem]",
+  live = false,
 }: TimeSeriesLineChartProps) {
   const latest = values.length ? values[values.length - 1] : 0;
   const displayValue = summaryValue ?? latest;
@@ -73,7 +76,7 @@ export function TimeSeriesLineChart({
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: values.length > 120 ? 0 : 400 },
+      animation: { duration: live || values.length > 120 ? 0 : 400 },
       interaction: { mode: "index", intersect: false },
       plugins: {
         legend: { display: false },
@@ -118,7 +121,7 @@ export function TimeSeriesLineChart({
         },
       },
     }),
-    [formatValue, labels, maxY, title, values],
+    [formatValue, labels, live, maxY, title, values],
   );
 
   return (

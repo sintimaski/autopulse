@@ -845,6 +845,7 @@ export function DashboardHomeContent() {
                       values={points.map((point) => point.value)}
                       color={typeof widget.config?.color === "string" ? widget.config.color : "#38bdf8"}
                       formatValue={(value) => value.toFixed(2)}
+                      live
                     />
                   </ChartPanel>
                 );
@@ -863,7 +864,7 @@ export function DashboardHomeContent() {
                   .sort((a, b) => b.value - a.value);
                 return (
                   <ChartPanel key={widget.widget_id} title={widget.title} description={widget.description ?? undefined}>
-                    <BreakdownBarChart items={collapsedBars} />
+                    <BreakdownBarChart items={collapsedBars} live />
                   </ChartPanel>
                 );
               }
@@ -939,7 +940,7 @@ export function DashboardHomeContent() {
                 }));
                 return (
                   <ChartPanel key={widget.widget_id} title={widget.title} description={widget.description ?? undefined}>
-                    <StackedAreaChart labels={timestampLabels} series={stackedSeries} />
+                    <StackedAreaChart labels={timestampLabels} series={stackedSeries} live />
                   </ChartPanel>
                 );
               }
@@ -1061,6 +1062,7 @@ export function DashboardHomeContent() {
               values={apdexTrendValues}
               color="#14b8a6"
               formatValue={(value) => `${value.toFixed(2)}%`}
+              live
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">No request sample available for Apdex trend.</p>
@@ -1074,6 +1076,7 @@ export function DashboardHomeContent() {
             items={errorBreakdownBars}
             valueLabel="errors"
             emptyMessage="No error events in this window."
+            live
           />
         </ChartPanel>
         <ChartPanel
@@ -1087,6 +1090,7 @@ export function DashboardHomeContent() {
               values={alertTimelineValues}
               color="#a78bfa"
               formatValue={(value) => value.toFixed(0)}
+              live
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">
@@ -1159,6 +1163,7 @@ export function DashboardHomeContent() {
           <StackedAreaChart
             labels={statusClassLabels}
             series={outcomeStackedSeries}
+            live
             onPointClick={(index, _label, values) => {
               const bucket = d.sparklineSeries[index];
               const dominant =
@@ -1378,9 +1383,10 @@ export function DashboardHomeContent() {
               }))}
               valueLabel="req"
               emptyMessage="No service-level data yet."
-            onItemClick={(item) => {
-              pushRequestsWithScope({ services: item.key });
-            }}
+              live
+              onItemClick={(item) => {
+                pushRequestsWithScope({ services: item.key });
+              }}
             />
           </ChartPanel>
         ) : null}
@@ -1396,6 +1402,7 @@ export function DashboardHomeContent() {
           <MultiSeriesLineChart
             labels={statusClassLabels}
             series={statusClassSeries}
+            live
             onPointClick={(index, _label, values) => {
               const bucket = d.sparklineSeries[index];
               const statusPairs: Array<[string, number]> = [
@@ -1432,6 +1439,7 @@ export function DashboardHomeContent() {
             }))}
             valueLabel="req"
             emptyMessage="No route breakdown available."
+            live
             onItemClick={(item) => {
               pushRequestsWithScope({ path_contains: item.key });
             }}

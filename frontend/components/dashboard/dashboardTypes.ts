@@ -283,6 +283,67 @@ export type LogQueryPageResponse = {
   items: LogQueryItem[];
 };
 
+export type QueryExplorerRequest = {
+  query: string;
+  from_timestamp?: string;
+  to_timestamp?: string;
+  window_minutes?: number;
+  row_limit?: number;
+};
+
+export type QueryExplorerResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  query: string;
+  columns: string[];
+  rows: Array<Array<string | number | boolean | null>>;
+  truncated: boolean;
+};
+
+export type TraceSummaryItem = {
+  trace_id: string;
+  first_seen: string;
+  last_seen: string;
+  span_count: number;
+  error_count: number;
+  services: string[];
+  root_span_name: string | null;
+};
+
+export type TraceSearchResponse = {
+  server_now: string;
+  from_timestamp: string;
+  to_timestamp: string;
+  project_id: string;
+  total: number;
+  items: TraceSummaryItem[];
+};
+
+export type TraceSpanItem = {
+  timestamp: string;
+  service_name: string;
+  environment: string;
+  span_name: string;
+  path: string;
+  method: string;
+  status_code: number;
+  latency_ms: number;
+  trace_id: string;
+  span_id: string | null;
+  parent_span_id: string | null;
+  request_id: string | null;
+  otlp_status_code: number | null;
+};
+
+export type TraceDetailResponse = {
+  trace_id: string;
+  first_seen: string | null;
+  last_seen: string | null;
+  error_count: number;
+  items: TraceSpanItem[];
+};
+
 export type DashboardSessionResponse = {
   authenticated: boolean;
   email: string | null;

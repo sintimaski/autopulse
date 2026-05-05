@@ -97,6 +97,7 @@ export function DashboardCustomWidgetCharts({
                   values={widgetPoints.map((point) => point.value)}
                   color={typeof widget.config?.color === "string" ? widget.config.color : "#38bdf8"}
                   formatValue={(value) => value.toFixed(2)}
+                  live
                 />
               </ChartPanel>
             );
@@ -115,7 +116,7 @@ export function DashboardCustomWidgetCharts({
               .sort((a, b) => b.value - a.value);
             return (
               <ChartPanel key={widget.widget_id} title={widget.title} description={widget.description ?? undefined}>
-                <BreakdownBarChart items={collapsedBars} />
+                <BreakdownBarChart items={collapsedBars} live />
               </ChartPanel>
             );
           }
@@ -187,7 +188,7 @@ export function DashboardCustomWidgetCharts({
             }));
             return (
               <ChartPanel key={widget.widget_id} title={widget.title} description={widget.description ?? undefined}>
-                <StackedAreaChart labels={timestampLabels} series={stackedSeries} />
+                <StackedAreaChart labels={timestampLabels} series={stackedSeries} live />
               </ChartPanel>
             );
           }

@@ -15,6 +15,7 @@ from autopulse_backend.core.config import get_settings
 from autopulse_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
 from autopulse_backend.database import get_db_session, get_session_maker
 from autopulse_backend.ingestion.limits import ingest_rate_limiter
+from autopulse_backend.ingestion.otlp_traces import convert_otlp_json_to_ingest_batch
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.realtime import (
     DashboardUpdateMessage,
@@ -306,3 +307,36 @@ async def ingest_events(
                 accepted_events=accepted,
             )
     return IngestBatchResponse(accepted=accepted)
+
+
+@router.post("/otlp/v1/traces", response_model=IngestBatchResponse, status_code=status.HTTP_200_OK)
+@router.post(
+    "/ingest/otlp/v1/traces", response_model=IngestBatchResponse, status_code=status.HTTP_200_OK
+)
+async def ingest_otlp_traces(
+    request: Request,
+    context: Annotated[ProjectContext, Depends(authenticate_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> IngestBatchResponse:
+    try:
+        payload_raw = await request.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid JSON body"
+        ) from exc
+    if not isinstance(payload_raw, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="OTLP payload must be a JSON object",
+        )
+    settings = get_settings()
+    try:
+        batch = convert_otlp_json_to_ingest_batch(
+            payload_raw,
+            max_events=settings.ingest_max_events_per_batch,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return await ingest_events(batch=batch, request=request, context=context, session=session)

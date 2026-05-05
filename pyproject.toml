@@ -37,6 +37,10 @@ src = ["sdk/src", "backend/src"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# FastAPI dependency defaults use `Query(...)` / `Depends(...)` calls (B008); keep explicit here.
+"backend/src/autopulse_backend/dashboard/routes/traces.py" = ["B008"]
+
 [tool.ruff.format]
 quote-style = "double"
 

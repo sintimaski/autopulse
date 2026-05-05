@@ -1195,6 +1195,7 @@ export function DashboardInfrastructureSection({
                 ySuggestedMaxCap={100}
                 pointRadius={effectiveHostChartBucketMinutes <= 0 ? 2.25 : 0}
                 emptyMessage="No infrastructure samples in this chart window."
+                live
               />
             ) : hasInfraSignals ? (
               <p className="text-sm text-slate-600 dark:text-neutral-300">
@@ -1207,6 +1208,7 @@ export function DashboardInfrastructureSection({
                   height={196}
                   labels={statusClassFallbackStack.labels}
                   series={statusClassFallbackStack.series}
+                  live
                 />
                 <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
                   Showing request volume by HTTP status class until infrastructure widget samples arrive.
@@ -1225,6 +1227,7 @@ export function DashboardInfrastructureSection({
             items={dbBars.length ? dbBars : dbFallbackBars}
             valueLabel="value"
             emptyMessage="No DB query widget data yet."
+            live
           />
           {!dbBars.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
@@ -1237,6 +1240,7 @@ export function DashboardInfrastructureSection({
             items={cacheBars.length ? cacheBars : cacheFallbackBars}
             valueLabel="value"
             emptyMessage="No cache widget data yet."
+            live
           />
           {!cacheBars.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">

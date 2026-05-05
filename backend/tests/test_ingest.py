@@ -60,6 +60,23 @@ def _query_event_rows(database_url: str) -> list[dict[str, object]]:
     return asyncio.run(run())
 
 
+def _query_latest_payload(database_url: str) -> dict[str, object] | None:
+    async def run() -> dict[str, object] | None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                result = await session.execute(
+                    text("SELECT payload FROM events ORDER BY id DESC LIMIT 1")
+                )
+                payload = result.scalar_one_or_none()
+                return payload if isinstance(payload, dict) else None
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
 def _count_events(database_url: str) -> int:
     async def run() -> int:
         engine = create_async_engine(database_url, pool_pre_ping=True)
@@ -747,3 +764,56 @@ def test_ingest_rejects_job_with_invalid_method(backend_test_database_url: str) 
         response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
     assert response.status_code == 422
     assert _count_events(backend_test_database_url) == 0
+
+
+def test_ingest_otlp_traces_maps_span_context_to_events(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    otlp_payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {"key": "service.name", "value": {"stringValue": "checkout-api"}},
+                        {"key": "deployment.environment", "value": {"stringValue": "prod"}},
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "scope": {"name": "fastapi"},
+                        "spans": [
+                            {
+                                "traceId": "0123456789abcdef0123456789abcdef",
+                                "spanId": "1111111111111111",
+                                "parentSpanId": "0000000000000000",
+                                "name": "GET /checkout",
+                                "kind": 2,
+                                "startTimeUnixNano": "1715000000000000000",
+                                "endTimeUnixNano": "1715000000500000000",
+                                "attributes": [
+                                    {"key": "http.method", "value": {"stringValue": "GET"}},
+                                    {"key": "http.route", "value": {"stringValue": "/checkout"}},
+                                    {"key": "http.status_code", "value": {"intValue": "503"}},
+                                ],
+                                "status": {"code": 2, "message": "upstream timeout"},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            "/otlp/v1/traces",
+            json=otlp_payload,
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    latest = _query_latest_payload(backend_test_database_url)
+    assert latest is not None
+    assert latest.get("trace_id") == "0123456789abcdef0123456789abcdef"
+    assert latest.get("span_id") == "1111111111111111"
+    assert latest.get("span_name") == "GET /checkout"

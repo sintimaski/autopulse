@@ -1209,3 +1209,79 @@ def test_dashboard_log_query_validate_execute_and_retention_settings(
         )
         assert retention_update.status_code == 200
         assert retention_update.json()["raw_events_days"] == 7
+
+
+def test_dashboard_query_explorer_executes_scoped_sql(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Query Explorer")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/orders")
+        _ingest(client, key, base_time + timedelta(seconds=10), 503, "GET", "/orders")
+        response = client.post(
+            "/dashboard/query-explorer/execute",
+            json={
+                "query": (
+                    "SELECT service_name, COUNT(*) AS c "
+                    "FROM scoped_events GROUP BY service_name ORDER BY c DESC"
+                ),
+                "row_limit": 100,
+            },
+            headers=headers,
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["columns"] == ["service_name", "c"]
+    assert len(payload["rows"]) == 1
+    assert payload["rows"][0][1] == 2
+
+
+def test_dashboard_traces_search_and_detail(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, project_id = _seed_project_and_key(backend_test_database_url, "Project Traces")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
+    trace_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            200,
+            "GET",
+            "/checkout",
+            payload_overrides={
+                "trace_id": trace_id,
+                "span_id": "1111111111111111",
+                "span_name": "GET /checkout",
+            },
+        )
+        _ingest(
+            client,
+            key,
+            base_time + timedelta(milliseconds=300),
+            503,
+            "GET",
+            "/checkout",
+            payload_overrides={
+                "trace_id": trace_id,
+                "span_id": "2222222222222222",
+                "parent_span_id": "1111111111111111",
+                "span_name": "db.query checkout",
+            },
+        )
+        search = client.get("/dashboard/traces/search", params={"q": "checkout"}, headers=headers)
+        detail = client.get(f"/dashboard/traces/{trace_id}", headers=headers)
+    assert search.status_code == 200
+    search_payload = search.json()
+    assert search_payload["total"] >= 1
+    assert search_payload.get("project_id") == project_id
+    assert any(item["trace_id"] == trace_id for item in search_payload["items"])
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["trace_id"] == trace_id
+    assert len(detail_payload["items"]) == 2
+    assert detail_payload["error_count"] == 1

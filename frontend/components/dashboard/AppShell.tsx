@@ -6,8 +6,10 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Activity,
   Bell,
+  History,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   PanelLeft,
   PanelLeftClose,
   RotateCw,
@@ -28,6 +30,8 @@ const BASE_NAV: readonly NavItem[] = [
   { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
   { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
   { href: "/requests", label: "Requests", Icon: ScrollText },
+  { href: "/query-explorer", label: "Query Explorer", Icon: ListChecks },
+  { href: "/traces", label: "Traces (OTLP)", Icon: History },
   { href: "/alerts", label: "Alerts", Icon: Bell },
   { href: "/settings", label: "Settings", Icon: Settings },
 ] as const;

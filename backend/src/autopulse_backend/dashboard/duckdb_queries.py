@@ -77,6 +77,7 @@ def build_filters(
     event_sql_filter: str | None = None,
     http_events_only: bool = True,
     require_event_types: tuple[str, ...] | None = None,
+    include_received_at_in_time_window: bool = False,
 ) -> EventStoreFilters:
     return EventStoreFilters(
         project_id=project_id,
@@ -93,6 +94,7 @@ def build_filters(
         event_sql_filter=event_sql_filter,
         http_events_only=http_events_only,
         require_event_types=require_event_types,
+        include_received_at_in_time_window=include_received_at_in_time_window,
     )
 
 
@@ -567,6 +569,7 @@ def recent_job_failures(filters: EventStoreFilters, *, limit: int = 12) -> list[
         event_sql_filter=filters.event_sql_filter,
         http_events_only=False,
         require_event_types=("job",),
+        include_received_at_in_time_window=filters.include_received_at_in_time_window,
     )
     cap = max(1, min(int(limit), 50))
     rows = store.fetch_events(

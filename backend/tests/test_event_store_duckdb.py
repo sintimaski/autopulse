@@ -59,6 +59,56 @@ def test_duckdb_event_store_insert_filter_and_delete(tmp_path) -> None:
     assert deleted == 1
 
 
+def test_duckdb_include_received_at_in_time_window_matches_recent_ingest(tmp_path) -> None:
+    """Stale span ``timestamp`` (e.g. demo OTLP) must still match when ``received_at`` is recent."""
+    store = DuckDbEventStore(str(tmp_path / "recv_window.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    stale_span_ts = now - timedelta(days=400)
+    store.insert_rows(
+        [
+            {
+                "project_id": project_id,
+                "timestamp": stale_span_ts,
+                "received_at": now - timedelta(seconds=20),
+                "sdk_version": "otlp-http-json",
+                "type": "request",
+                "service_name": "api",
+                "environment": "prod",
+                "method": "GET",
+                "path": "/checkout",
+                "status_code": 503,
+                "latency_ms": 50.0,
+                "payload": {"trace_id": "0" * 32, "span_id": "1" * 16},
+                "request_id": "0" * 32,
+            },
+        ]
+    )
+    window_from = now - timedelta(hours=1)
+    window_to = now
+    assert (
+        store.count_events(
+            EventStoreFilters(
+                project_id=project_id,
+                from_timestamp=window_from,
+                to_timestamp=window_to,
+            )
+        )
+        == 0
+    )
+    assert (
+        store.count_events(
+            EventStoreFilters(
+                project_id=project_id,
+                from_timestamp=window_from,
+                to_timestamp=window_to,
+                include_received_at_in_time_window=True,
+            )
+        )
+        == 1
+    )
+
+
 def test_duckdb_fetch_events_with_total_slim_pagination(tmp_path) -> None:
     store = DuckDbEventStore(str(tmp_path / "events2.duckdb"))
     project_id = uuid4()

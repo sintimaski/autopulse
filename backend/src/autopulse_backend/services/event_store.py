@@ -37,6 +37,10 @@ class EventStoreFilters:
     http_events_only: bool = True
     #: If set, restricts to these ``type`` values (``http_events_only`` is ignored).
     require_event_types: tuple[str, ...] | None = None
+    #: When True, rows match the window if either ``timestamp`` or ``received_at`` falls
+    #: inside ``[from_timestamp, to_timestamp]``. Used by trace explorer so OTLP spans
+    #: with stale or synthetic clock times still appear after ingest.
+    include_received_at_in_time_window: bool = False
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -144,6 +148,17 @@ class DuckDbEventStore:
             tuple[Any, ...] | None,
             conn.execute(sql, params_list).fetchone(),
         )
+
+    def _query_with_columns_read(
+        self, sql: str, params: list[Any] | None = None
+    ) -> tuple[list[str], list[tuple[Any, ...]]]:
+        params_list = params or []
+        conn = self._get_thread_read_connection()
+        cursor = conn.execute(sql, params_list)
+        description = cursor.description or []
+        columns = [str(col[0]) for col in description]
+        rows = cast(list[tuple[Any, ...]], cursor.fetchall())
+        return columns, rows
 
     def ping_sync(self) -> None:
         """Synchronous health probe for readiness checks (uses the writer connection)."""
@@ -310,16 +325,23 @@ class DuckDbEventStore:
         )
 
     def _compile_filters(self, filters: EventStoreFilters) -> tuple[str, list[Any]]:
-        clauses = [
-            "project_id = ?",
-            "timestamp >= CAST(? AS TIMESTAMP)",
-            "timestamp <= CAST(? AS TIMESTAMP)",
-        ]
-        params: list[Any] = [
-            str(filters.project_id),
-            _as_duckdb_timestamp(filters.from_timestamp),
-            _as_duckdb_timestamp(filters.to_timestamp),
-        ]
+        clauses = ["project_id = ?"]
+        params: list[Any] = [str(filters.project_id)]
+        from_ts = _as_duckdb_timestamp(filters.from_timestamp)
+        to_ts = _as_duckdb_timestamp(filters.to_timestamp)
+        if filters.include_received_at_in_time_window:
+            clauses.append(
+                "("
+                "(timestamp >= CAST(? AS TIMESTAMP) AND timestamp <= CAST(? AS TIMESTAMP))"
+                " OR "
+                "(received_at >= CAST(? AS TIMESTAMP) AND received_at <= CAST(? AS TIMESTAMP))"
+                ")"
+            )
+            params.extend([from_ts, to_ts, from_ts, to_ts])
+        else:
+            clauses.append("timestamp >= CAST(? AS TIMESTAMP)")
+            clauses.append("timestamp <= CAST(? AS TIMESTAMP)")
+            params.extend([from_ts, to_ts])
         if filters.exclude_autopulse_traffic:
             clauses.append("path NOT LIKE '/autopulse/%'")
         if filters.method:
@@ -426,6 +448,24 @@ class DuckDbEventStore:
         if extra_params:
             params.extend(extra_params)
         return self._fetchall_read(sql, params)
+
+    def query_scoped_events_sql(
+        self,
+        filters: EventStoreFilters,
+        query_sql: str,
+        max_rows: int,
+        extra_params: list[Any] | None = None,
+    ) -> tuple[list[str], list[tuple[Any, ...]]]:
+        where_sql, params = self._compile_filters(filters)
+        sql = (
+            f"WITH scoped_events AS MATERIALIZED ("
+            f"SELECT * FROM events WHERE {where_sql}"
+            f") SELECT * FROM ({query_sql}) AS user_query LIMIT ?"  # nosec B608
+        )
+        if extra_params:
+            params.extend(extra_params)
+        params.append(max_rows)
+        return self._query_with_columns_read(sql, params)
 
     def fetch_events_with_total(
         self,

@@ -270,6 +270,8 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 | Saved views (light) | Frontend UX | ✅ Done | 2026-05-05 | Added per-project saved scope views (save/apply/remove) in `ServerQueryToolbar` backed by `DashboardDataContext` local persistence |
 | Job/cron events (minimal ingest + UI strip) | SDK + backend + frontend | ✅ Done | 2026-05-05 | `type=job` ingest (`JOB`/`CRON` methods), metrics exclude jobs, DuckDB/SQL HTTP scopes exclude jobs from charts, `recent_job_failures` in `/dashboard/query`, `RecentJobFailuresStrip` on overview + diagnosis, SDK `capture_background_job` |
 | WebSocket slice hints for diagnosis refresh | Backend realtime | ✅ Done | 2026-05-05 | `updated_slices` from ingest + live tick now include `diagnosis` alongside overview/requests/errors/widgets (UI already coalesced on `dashboard_update`) |
+| Full query explorer | Backend + frontend | ✅ Done | 2026-05-05 | Added `/dashboard/query-explorer/execute` (DuckDB scoped SQL with guardrails over `scoped_events`) and new `/query-explorer` UI page with tabular results |
+| Full tracing (OTLP) | Backend + frontend | ✅ Done | 2026-05-05 | Added OTLP HTTP ingest (`/otlp/v1/traces`, `/ingest/otlp/v1/traces`) mapping spans to correlated events (`trace_id`/`span_id`), plus `/dashboard/traces/search`, `/dashboard/traces/{trace_id}`, and new `/traces` UI |
 
 ### 7.1 Now (0–4 weeks) — trust, clarity, golden path
 
@@ -297,8 +299,8 @@ Use this table to track roadmap execution incrementally. Add one row per complet
 
 | Item | Status | Notes |
 |------|--------|--------|
-| Full tracing (OTLP) | ⬜ Planned | Strategic bet; infra + UI + privacy model |
-| Full query explorer | ⬜ Planned | Conflicts with “no SQL for users” positioning unless strictly internal |
+| Full tracing (OTLP) | ✅ Done | OTLP HTTP trace ingest + scoped trace search/detail explorer shipped; payload correlation stays project-scoped |
+| Full query explorer | ✅ Done | Full SQL explorer shipped as scoped `scoped_events` query surface with read-only guardrails |
 | Billing / quotas / plans UI | ⬜ Planned | If `plan_limits` grows, needs end-to-end product |
 | K8s operator / agents | ⬜ Planned | Only with clear segment demand |
 

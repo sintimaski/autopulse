@@ -19,6 +19,8 @@ type BreakdownBarChartProps = {
   formatPrimaryValue?: (value: number) => string;
   className?: string;
   onItemClick?: (item: BreakdownBarDatum) => void;
+  /** Skip Chart.js tween on data updates (live dashboard refresh). */
+  live?: boolean;
 };
 
 export function BreakdownBarChart({
@@ -28,6 +30,7 @@ export function BreakdownBarChart({
   formatPrimaryValue = (value) => `${Math.round(value)}`,
   className,
   onItemClick,
+  live = false,
 }: BreakdownBarChartProps) {
   const hasData = items.length > 0;
   const maxValue = useMemo(
@@ -58,7 +61,7 @@ export function BreakdownBarChart({
       indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
-      animation: { duration: hasData ? 350 : 0 },
+      animation: { duration: live ? 0 : hasData ? 350 : 0 },
       onClick: (_event, elements) => {
         if (!hasData || !onItemClick || !elements.length) {
           return;
@@ -114,7 +117,7 @@ export function BreakdownBarChart({
         },
       },
     }),
-    [formatPrimaryValue, hasData, items, maxValue, onItemClick, valueLabel],
+    [formatPrimaryValue, hasData, items, live, maxValue, onItemClick, valueLabel],
   );
 
   if (!hasData) {
