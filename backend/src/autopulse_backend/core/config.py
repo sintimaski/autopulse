@@ -336,6 +336,28 @@ def normalize_event_store_duckdb_path(raw: str, *, data_root: Path | None = None
     return str(anchored)
 
 
+def normalize_alert_email_file_outbox_dir(raw: str | None, *, data_root: Path | None = None) -> str:
+    """Resolve ``ALERT_EMAIL_FILE_OUTBOX_DIR`` to an absolute path.
+
+    Relative values are anchored under ``data_root`` (default: :func:`resolve_autopulse_data_root`)
+    so magic-link and alert ``file`` delivery lands beside other workspace data regardless of
+    process ``cwd`` when starting uvicorn (monorepo uses repo ``.autopulse/emails``).
+    """
+    text = (raw or "").strip() or "./.autopulse/emails"
+    root = (data_root or resolve_autopulse_data_root()).resolve()
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    anchored = (root / text).resolve()
+    try:
+        anchored.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"ALERT_EMAIL_FILE_OUTBOX_DIR={raw!r} resolves outside data root {root}: {anchored}"
+        ) from exc
+    return str(anchored)
+
+
 def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
     """Filesystem path for a file-backed SQLite URL already normalized, or None."""
     if not normalized_sqlite_url.startswith("sqlite"):
@@ -559,9 +581,8 @@ def get_settings() -> Settings:
         alert_email_provider=getenv("ALERT_EMAIL_PROVIDER", "resend").strip().lower() or "resend",
         alert_email_api_key=getenv("ALERT_EMAIL_API_KEY"),
         alert_email_from=getenv("ALERT_EMAIL_FROM"),
-        alert_email_file_outbox_dir=(
-            getenv("ALERT_EMAIL_FILE_OUTBOX_DIR", "./.autopulse/emails").strip()
-            or "./.autopulse/emails"
+        alert_email_file_outbox_dir=normalize_alert_email_file_outbox_dir(
+            getenv("ALERT_EMAIL_FILE_OUTBOX_DIR", "").strip() or None
         ),
         alert_email_smtp_host=getenv("ALERT_EMAIL_SMTP_HOST"),
         alert_email_smtp_port=_env_int("ALERT_EMAIL_SMTP_PORT", 25, minimum=1),

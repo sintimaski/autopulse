@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from autopulse_backend.core.config import (
+    normalize_alert_email_file_outbox_dir,
     normalize_event_store_duckdb_path,
     resolve_autopulse_data_root,
 )
@@ -50,3 +51,29 @@ def test_resolve_autopulse_data_root_project_root_alias(
     monkeypatch.delenv("AUTOPULSE_DATA_DIR", raising=False)
     monkeypatch.setenv("AUTOPULSE_PROJECT_ROOT", str(tmp_path / "p"))
     assert resolve_autopulse_data_root() == (tmp_path / "p").resolve()
+
+
+def test_normalize_alert_email_file_outbox_dir_relative_under_root(tmp_path: Path) -> None:
+    root = tmp_path / "proj"
+    root.mkdir()
+    out = normalize_alert_email_file_outbox_dir("./.autopulse/emails", data_root=root)
+    assert out == str((root / ".autopulse" / "emails").resolve())
+
+
+def test_normalize_alert_email_file_outbox_default(tmp_path: Path) -> None:
+    out = normalize_alert_email_file_outbox_dir(None, data_root=tmp_path)
+    assert out == str((tmp_path / ".autopulse" / "emails").resolve())
+
+
+def test_normalize_alert_email_file_outbox_absolute_ignores_root(tmp_path: Path) -> None:
+    abs_dir = tmp_path / "outbox"
+    abs_dir.mkdir()
+    out = normalize_alert_email_file_outbox_dir(str(abs_dir), data_root=tmp_path / "ignored")
+    assert out == str(abs_dir.resolve())
+
+
+def test_normalize_alert_email_file_outbox_rejects_escape(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    root.mkdir()
+    with pytest.raises(ValueError, match="outside data root"):
+        normalize_alert_email_file_outbox_dir("../evil-emails", data_root=root)
