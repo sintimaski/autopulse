@@ -24,7 +24,6 @@ import {
 } from "./dashboardQueryState";
 import { toDashboardRoutePath } from "./dashboardRoutePath";
 import { resetServerScope } from "./dashboardScopeReset";
-import { scheduleDashboardViewportScrollRestore } from "./dashboardViewportScroll";
 import { isApiSubpathDashboard } from "./dashboardTypes";
 
 const PAGE_META: Record<string, { title: string; subtitle: string }> = {
@@ -170,6 +169,17 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
     return () => window.clearTimeout(timer);
   }, [delayMs, value]);
   return debounced;
+}
+
+function replaceScopedUrlInPlace(nextHref: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (current === nextHref) {
+    return;
+  }
+  window.history.replaceState(window.history.state, "", nextHref);
 }
 
 function ShellWithData({ children }: { children: ReactNode }) {
@@ -386,9 +396,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     if (!scopedQueryStringsEqual(normalized, search)) {
       const hash = typeof window !== "undefined" ? window.location.hash : "";
       const nextHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
-      const scrollTop = typeof window !== "undefined" ? window.scrollY : 0;
-      router.replace(nextHref, { scroll: false });
-      scheduleDashboardViewportScrollRestore(scrollTop);
+      replaceScopedUrlInPlace(nextHref);
     }
     lastAppliedQueryRef.current = `${pathname}?${normalized}`;
     queueMicrotask(() => {
@@ -404,7 +412,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
     if (applyingScopedQueryFromUrlRef.current) {
       return;
     }
-    const currentQuery = searchKey;
+    const currentQuery =
+      typeof window !== "undefined" ? window.location.search.replace(/^\?/, "") : searchKey;
     const logsClientSlice: PersistedLogsClientSlice =
       pathname === "/logs"
         ? {
@@ -421,9 +430,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     }
     const hash = typeof window !== "undefined" ? window.location.hash : "";
     const nextHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
-    const scrollTop = typeof window !== "undefined" ? window.scrollY : 0;
-    router.replace(nextHref, { scroll: false });
-    scheduleDashboardViewportScrollRestore(scrollTop);
+    replaceScopedUrlInPlace(nextHref);
   }, [
     scopedServerStateForUrl,
     d.groupBy,

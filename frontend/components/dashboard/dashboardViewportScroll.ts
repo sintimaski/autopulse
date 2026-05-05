@@ -8,7 +8,11 @@
 let pinnedScrollTop: number | null = null;
 /** Browser timer id (`window.setTimeout`); avoid `ReturnType<typeof setTimeout>` (Node vs DOM mismatch). */
 let pinClearTimer: number | null = null;
-const PIN_MS = 420;
+/**
+ * URL-sync can be deferred by debounce + React scheduling; keep the captured viewport long
+ * enough for follow-up `router.replace` effects to still restore the original position.
+ */
+const PIN_MS = 1500;
 
 export function pinDashboardViewportScroll(scrollY: number): void {
   if (typeof window === "undefined") {
