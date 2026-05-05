@@ -449,6 +449,12 @@ export type DashboardBootstrapResponse = {
   onboarding_status: DashboardOnboardingStatusResponse | null;
 };
 
+export type DashboardInternalMetricsResponse = {
+  enabled: boolean;
+  reason: string | null;
+  metrics: Record<string, unknown> | null;
+};
+
 export type DashboardDataQueryScope = {
   from_timestamp?: string;
   to_timestamp?: string;

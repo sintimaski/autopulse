@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from autopulse_backend.api.routes.health import _build_metrics_snapshot
 from autopulse_backend.auth import (
     DashboardAuthSession,
     ProjectContext,
@@ -21,6 +22,7 @@ from autopulse_backend.dashboard.serializers import (
 )
 from autopulse_backend.database import get_db_session
 from autopulse_backend.schemas import (
+    DashboardInternalMetricsResponse,
     DashboardRetentionSettings,
     DashboardRetentionSettingsUpdate,
     DashboardThemeSettings,
@@ -112,4 +114,24 @@ async def update_dashboard_retention_settings(
         ui_settings,
         settings.retention_raw_events_days,
         settings.logs_query_max_window_minutes,
+    )
+
+
+@router.get("/internal-metrics", response_model=DashboardInternalMetricsResponse)
+async def get_dashboard_internal_metrics(
+    request: Request,
+    _: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    __: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardInternalMetricsResponse:
+    settings = get_settings()
+    if not settings.internal_metrics_bearer_token:
+        return DashboardInternalMetricsResponse(
+            enabled=False,
+            reason="INTERNAL_METRICS_BEARER_TOKEN is not configured on the server.",
+            metrics=None,
+        )
+    return DashboardInternalMetricsResponse(
+        enabled=True,
+        reason=None,
+        metrics=_build_metrics_snapshot(request),
     )

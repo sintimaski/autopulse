@@ -296,6 +296,12 @@ class DashboardBootstrapResponse(BaseModel):
     onboarding_status: DashboardOnboardingStatusResponse | None = None
 
 
+class DashboardInternalMetricsResponse(BaseModel):
+    enabled: bool
+    reason: str | None = None
+    metrics: dict[str, Any] | None = None
+
+
 class DashboardAlertSettings(BaseModel):
     enabled: bool
     destination_email: str | None = None

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { LogOut } from "../../../lib/icons";
 import type {
+  DashboardInternalMetricsResponse,
   DashboardMembershipItem,
   DashboardOrganizationListResponse,
   DashboardOrganizationSummary,
@@ -69,6 +70,19 @@ type AlertTestResult = {
   destination_email: string | null;
 };
 
+type InternalMetricsSnapshot = {
+  dashboard_ws_tick_running?: boolean;
+  dashboard_realtime_bus_subscriber_running?: boolean;
+  scheduler_running?: boolean;
+  retention_pressure_poll_running?: boolean;
+  ingest_pressure?: Record<string, number>;
+  ingest_aggregate_queue?: {
+    enabled?: boolean;
+    depth?: number | null;
+    max_size?: number | null;
+  };
+};
+
 export function SettingsContent() {
   const d = useDashboardData();
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
@@ -106,6 +120,12 @@ export function SettingsContent() {
   const [testAlertError, setTestAlertError] = useState<string | null>(null);
   const [activeProjectBusy, setActiveProjectBusy] = useState(false);
   const [activeProjectMessage, setActiveProjectMessage] = useState<string | null>(null);
+  const [internalMetricsLoadState, setInternalMetricsLoadState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [internalMetricsEnabled, setInternalMetricsEnabled] = useState(false);
+  const [internalMetricsReason, setInternalMetricsReason] = useState<string | null>(null);
+  const [internalMetricsSnapshot, setInternalMetricsSnapshot] = useState<InternalMetricsSnapshot | null>(null);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
   const canEditRetention = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canMutateApiKeys = canManageIngestApiKeys(d.sessionMembershipRole);
@@ -409,6 +429,81 @@ export function SettingsContent() {
   const orgOwnerAccess = selectedOrganization?.role === "owner";
   const alertDeliveryDraft = d.alertSettings;
   const canEditAlertDelivery = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
+  const canViewInternalMetrics = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
+  const aggregateQueueDepth = internalMetricsSnapshot?.ingest_aggregate_queue?.depth ?? null;
+  const aggregateQueueMax = internalMetricsSnapshot?.ingest_aggregate_queue?.max_size ?? null;
+  const aggregateQueueEnabled = Boolean(internalMetricsSnapshot?.ingest_aggregate_queue?.enabled);
+  const queueUsageRatio =
+    typeof aggregateQueueDepth === "number" &&
+    typeof aggregateQueueMax === "number" &&
+    aggregateQueueMax > 0
+      ? aggregateQueueDepth / aggregateQueueMax
+      : null;
+  const aggregateQueueHealthy = queueUsageRatio === null ? null : queueUsageRatio < 0.8;
+  const aggregateWorkerHealthy = aggregateQueueEnabled ? aggregateQueueHealthy : null;
+  const metricStatusClass = (ok: boolean | null): string => {
+    if (ok === true) {
+      return "border-emerald-300 bg-emerald-50/90 dark:border-emerald-900/70 dark:bg-emerald-950/35";
+    }
+    if (ok === false) {
+      return "border-rose-300 bg-rose-50/90 dark:border-rose-900/70 dark:bg-rose-950/35";
+    }
+    return "border-slate-200 bg-slate-50/70 dark:border-neutral-700 dark:bg-neutral-800/60";
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!canViewInternalMetrics) {
+      queueMicrotask(() => {
+        if (cancelled) {
+          return;
+        }
+        setInternalMetricsLoadState("idle");
+        setInternalMetricsEnabled(false);
+        setInternalMetricsReason(null);
+        setInternalMetricsSnapshot(null);
+      });
+      return;
+    }
+    queueMicrotask(() => {
+      if (cancelled) {
+        return;
+      }
+      setInternalMetricsLoadState("loading");
+    });
+    void (async () => {
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/internal-metrics"), {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          throw new Error(`internal-metrics failed (${response.status})`);
+        }
+        const payload = (await response.json()) as DashboardInternalMetricsResponse;
+        if (cancelled) {
+          return;
+        }
+        const metrics =
+          payload.metrics && typeof payload.metrics === "object"
+            ? (payload.metrics as InternalMetricsSnapshot)
+            : null;
+        setInternalMetricsEnabled(Boolean(payload.enabled));
+        setInternalMetricsReason(payload.reason ?? null);
+        setInternalMetricsSnapshot(metrics);
+        setInternalMetricsLoadState("ready");
+      } catch {
+        if (!cancelled) {
+          setInternalMetricsLoadState("error");
+          setInternalMetricsEnabled(false);
+          setInternalMetricsReason("Could not load internal metrics from the server.");
+          setInternalMetricsSnapshot(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewInternalMetrics]);
 
   const sendTestAlert = async () => {
     setTestAlertSending(true);
@@ -657,6 +752,126 @@ export function SettingsContent() {
         ) : (
           <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
             {d.errorMessage ?? "Retention settings are not available."}
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Internal metrics</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Operator-only health snapshot mirrored from the server&apos;s internal metrics endpoint.
+        </p>
+        {!canViewInternalMetrics ? (
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            Only organization owners and admins can view internal metrics.
+          </p>
+        ) : internalMetricsLoadState === "loading" ? (
+          <div className="mt-4">
+            <InlineDataSpinner label="Loading internal metrics…" />
+          </div>
+        ) : internalMetricsLoadState === "error" ? (
+          <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
+            {internalMetricsReason ?? "Could not load internal metrics."}
+          </p>
+        ) : !internalMetricsEnabled ? (
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            {internalMetricsReason ??
+              "Internal metrics are disabled on this server. Set INTERNAL_METRICS_BEARER_TOKEN to enable."}
+          </p>
+        ) : internalMetricsSnapshot ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(Boolean(internalMetricsSnapshot.scheduler_running))}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Scheduler
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.scheduler_running ? "running" : "stopped"}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(Boolean(internalMetricsSnapshot.retention_pressure_poll_running))}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Retention poll
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.retention_pressure_poll_running ? "running" : "stopped"}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(Boolean(internalMetricsSnapshot.dashboard_ws_tick_running))}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  WS tick loop
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.dashboard_ws_tick_running ? "running" : "stopped"}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(Boolean(internalMetricsSnapshot.dashboard_realtime_bus_subscriber_running))}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Realtime subscriber
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.dashboard_realtime_bus_subscriber_running ? "running" : "stopped"}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(aggregateQueueHealthy)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Aggregate queue depth
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.ingest_aggregate_queue?.depth ?? "n/a"}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(aggregateQueueHealthy)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Aggregate queue max
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.ingest_aggregate_queue?.max_size ?? "n/a"}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(aggregateWorkerHealthy)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Aggregate worker
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {internalMetricsSnapshot.ingest_aggregate_queue?.enabled ? "enabled" : "disabled"}
+                  {queueUsageRatio !== null ? ` · ${(queueUsageRatio * 100).toFixed(1)}% full` : ""}
+                </p>
+              </div>
+            </div>
+            {internalMetricsSnapshot.ingest_pressure ? (
+              <details className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-neutral-700">
+                <summary className="cursor-pointer bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
+                  Ingest pressure signals ({Object.keys(internalMetricsSnapshot.ingest_pressure).length})
+                </summary>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Ingest pressure signal</th>
+                        <th className="px-3 py-2 font-semibold">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
+                      {Object.entries(internalMetricsSnapshot.ingest_pressure)
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([key, value]) => (
+                          <tr key={key}>
+                            <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-200">{key}</td>
+                            <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{value}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            ) : null}
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            Internal metrics are enabled, but no snapshot is currently available.
           </p>
         )}
       </section>

@@ -8,7 +8,6 @@ from sqlalchemy import text
 
 from autopulse_backend.core.config import get_settings
 from autopulse_backend.database import get_engine
-from autopulse_backend.jobs import RetentionPressurePollHandle, SchedulerHandle
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
 from autopulse_backend.services.event_store import (
@@ -95,6 +94,16 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     realtime_bus_subscriber_running = (
         isinstance(realtime_bus_task, asyncio.Task) and not realtime_bus_task.done()
     )
+    scheduler_running = bool(
+        scheduler is not None
+        and isinstance(getattr(scheduler, "tasks", None), list)
+        and any(isinstance(task, asyncio.Task) and not task.done() for task in scheduler.tasks)
+    )
+    retention_pressure_poll_running = bool(
+        pressure is not None
+        and isinstance(getattr(pressure, "task", None), asyncio.Task)
+        and not pressure.task.done()
+    )
     duckdb_metrics: dict[str, object] = {}
     if event_store_enabled(settings):
         store = try_get_duckdb_event_store()
@@ -129,9 +138,8 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
         "dashboard_realtime_bus_channel": settings.dashboard_realtime_bus_channel,
         "dashboard_realtime_bus_subscriber_running": realtime_bus_subscriber_running,
-        "scheduler_running": isinstance(scheduler, SchedulerHandle),
-        "retention_pressure_poll_running": isinstance(pressure, RetentionPressurePollHandle)
-        and not pressure.task.done(),
+        "scheduler_running": scheduler_running,
+        "retention_pressure_poll_running": retention_pressure_poll_running,
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
         "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
         "jobs_retention_interval_seconds": settings.jobs_retention_interval_seconds,
@@ -183,7 +191,14 @@ async def ready(request: Request) -> dict[str, object]:
     return {
         "status": "ready",
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
-        "scheduler_running": isinstance(scheduler, SchedulerHandle),
+        "scheduler_running": bool(
+            scheduler is not None
+            and isinstance(getattr(scheduler, "tasks", None), list)
+            and any(
+                isinstance(task, asyncio.Task) and not task.done()
+                for task in getattr(scheduler, "tasks", [])
+            )
+        ),
         "database_run_migrations_on_startup": settings.database_run_migrations_on_startup,
         "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
     }

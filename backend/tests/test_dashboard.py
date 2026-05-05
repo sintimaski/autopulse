@@ -1111,6 +1111,54 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
         assert overview_filtered.json()["request_count"] == 1
 
 
+def test_dashboard_internal_metrics_requires_server_token_flag(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Internal Metrics Disabled")
+    monkeypatch.delenv("INTERNAL_METRICS_BEARER_TOKEN", raising=False)
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/internal-metrics",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled"] is False
+    assert payload["metrics"] is None
+    assert "INTERNAL_METRICS_BEARER_TOKEN" in (payload["reason"] or "")
+
+
+def test_dashboard_internal_metrics_returns_snapshot_for_admin_scope(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Internal Metrics Enabled")
+    monkeypatch.setenv("INTERNAL_METRICS_BEARER_TOKEN", "test-dashboard-internal-metrics")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/internal-metrics",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled"] is True
+    assert payload["reason"] is None
+    metrics = payload["metrics"]
+    assert isinstance(metrics, dict)
+    assert metrics.get("service") == "autopulse-backend"
+    assert isinstance(metrics.get("ingest_pressure"), dict)
+    assert isinstance(metrics.get("ingest_aggregate_queue"), dict)
+
+
 def test_dashboard_overview_extended_and_diagnosis_endpoints(
     backend_test_database_url: str,
 ) -> None:
