@@ -12,7 +12,7 @@ import {
   StackedAreaChart,
   TimeSeriesLineChart,
   type ScatterPlotPoint,
-} from "../charts";
+} from "../charts/lazyCharts";
 import type { DashboardWidgetDefinition, DashboardWidgetPoint } from "../dashboardTypes";
 
 const widgetSeriesPalette = ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#818cf8", "#a78bfa"];

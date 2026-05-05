@@ -80,6 +80,7 @@ from autopulse_backend.schemas.ingest import (
     IngestEvent,
     event_payload,
 )
+from autopulse_backend.schemas.rum import DashboardRumEvent, DashboardRumIngestResponse
 
 __all__ = [
     "DashboardAlertDispatchItem",
@@ -140,6 +141,8 @@ __all__ = [
     "DashboardWidgetDefinition",
     "DashboardWidgetPoint",
     "DashboardWidgetsResponse",
+    "DashboardRumEvent",
+    "DashboardRumIngestResponse",
     "DashboardInviteMemberRequest",
     "DashboardMembershipItem",
     "DashboardMembershipListResponse",

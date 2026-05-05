@@ -4,13 +4,14 @@ AutoPulse can run multiple API processes behind a load balancer. A few subsystem
 
 ## WebSocket dashboard updates
 
-`project_websocket_hub` is in-memory. Clients connected to instance **A** will not receive ingest-triggered pushes from instance **B**.
+`project_websocket_hub` is in-memory by default. Clients connected to instance **A** will not receive ingest-triggered pushes from instance **B** unless a shared realtime bus is enabled.
 
 **Mitigations**
 
 - **Sticky sessions** (same client IP → same worker) as a short-term bridge.
 - **Single replica** for deployments that rely on live WebSocket updates.
-- **Proper fix**: shared pub/sub (for example Redis) between ingest handlers and WebSocket workers (post-MVP engineering).
+- **Shared realtime bus (implemented):** set `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` on Postgres deployments so ingest-triggered realtime messages propagate across replicas via `LISTEN/NOTIFY`.
+- **Future scale path:** external pub/sub (for example Redis/NATS) when Postgres-notify semantics are no longer sufficient.
 
 ### Load balancer requirement
 
@@ -20,6 +21,19 @@ For multi-replica deployments that keep in-process WS, configure one of:
 - Dedicated single WS-serving replica and route all WS traffic there.
 
 If neither is configured, stale/partial live updates are expected and deployment is No-Go for live-dashboard correctness.
+
+### Shared realtime bus configuration (Postgres)
+
+Required for cross-replica WS freshness without stickiness:
+
+- `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify`
+- optional `DASHBOARD_REALTIME_BUS_CHANNEL=autopulse_dashboard_realtime` (letters/digits/underscore only)
+
+Behavior/fallback:
+
+- Bus publish/subscribe is enabled only when `DATABASE_URL` is Postgres.
+- If backend is `postgres_notify` but DB is non-Postgres, the app logs a warning and continues with local in-process WS behavior (no crash).
+- Large realtime payloads beyond NOTIFY limits are dropped with internal metrics increments (`dashboard.realtime_bus.publish.skipped_payload_too_large`).
 
 ### Staging validation (WS freshness)
 

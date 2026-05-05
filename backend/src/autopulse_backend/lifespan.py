@@ -23,6 +23,7 @@ from autopulse_backend.jobs import (
     start_scheduler,
 )
 from autopulse_backend.models import Base
+from autopulse_backend.realtime.bus import run_postgres_realtime_subscriber
 from autopulse_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
 from autopulse_backend.services.duckdb_async import shutdown_duckdb_executors
 from autopulse_backend.services.event_store import (
@@ -135,8 +136,13 @@ def _log_grouped_startup_settings() -> None:
         bool(settings.alert_discord_webhook_url),
     )
     log.info(
-        "Startup settings [realtime]: dashboard_ws_live_tick_seconds=%.2f",
+        (
+            "Startup settings [realtime]: dashboard_ws_live_tick_seconds=%.2f "
+            "realtime_bus_backend=%s realtime_bus_channel=%s"
+        ),
         settings.dashboard_ws_live_tick_seconds,
+        settings.dashboard_realtime_bus_backend,
+        settings.dashboard_realtime_bus_channel,
     )
     if settings.event_store == "duckdb":
         log.info(
@@ -228,6 +234,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state._autopulse_dashboard_ws_tick_task = None
 
+    if settings.dashboard_realtime_bus_backend == "postgres_notify":
+        app.state._autopulse_realtime_bus_subscriber_task = asyncio.create_task(
+            run_postgres_realtime_subscriber(settings=settings),
+            name="autopulse-realtime-bus-subscriber",
+        )
+        logger.info(
+            "Realtime bus subscriber enabled (backend=%s channel=%s)",
+            settings.dashboard_realtime_bus_backend,
+            settings.dashboard_realtime_bus_channel,
+        )
+    else:
+        app.state._autopulse_realtime_bus_subscriber_task = None
+
     yield
 
     scheduler = getattr(app.state, "_autopulse_scheduler", None)
@@ -248,5 +267,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await tick_task
     app.state._autopulse_dashboard_ws_tick_task = None
+    bus_task = getattr(app.state, "_autopulse_realtime_bus_subscriber_task", None)
+    if isinstance(bus_task, asyncio.Task) and not bus_task.done():
+        bus_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await bus_task
+    app.state._autopulse_realtime_bus_subscriber_task = None
     shutdown_duckdb_executors(wait=True)
     shutdown_duckdb_event_store()

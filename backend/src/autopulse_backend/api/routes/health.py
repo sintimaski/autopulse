@@ -90,7 +90,11 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     pressure = getattr(request.app.state, "_autopulse_retention_pressure_poll", None)
     tick_task = getattr(request.app.state, "_autopulse_dashboard_ws_tick_task", None)
     aggregate_worker = getattr(request.app.state, "_autopulse_ingest_aggregate_worker", None)
+    realtime_bus_task = getattr(request.app.state, "_autopulse_realtime_bus_subscriber_task", None)
     dashboard_ws_tick_running = isinstance(tick_task, asyncio.Task) and not tick_task.done()
+    realtime_bus_subscriber_running = (
+        isinstance(realtime_bus_task, asyncio.Task) and not realtime_bus_task.done()
+    )
     duckdb_metrics: dict[str, object] = {}
     if event_store_enabled(settings):
         store = try_get_duckdb_event_store()
@@ -122,6 +126,9 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         "service": "autopulse-backend",
         "dashboard_ws_live_tick_seconds": settings.dashboard_ws_live_tick_seconds,
         "dashboard_ws_tick_running": dashboard_ws_tick_running,
+        "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
+        "dashboard_realtime_bus_channel": settings.dashboard_realtime_bus_channel,
+        "dashboard_realtime_bus_subscriber_running": realtime_bus_subscriber_running,
         "scheduler_running": isinstance(scheduler, SchedulerHandle),
         "retention_pressure_poll_running": isinstance(pressure, RetentionPressurePollHandle)
         and not pressure.task.done(),
@@ -178,6 +185,7 @@ async def ready(request: Request) -> dict[str, object]:
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
         "scheduler_running": isinstance(scheduler, SchedulerHandle),
         "database_run_migrations_on_startup": settings.database_run_migrations_on_startup,
+        "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
     }
 
 

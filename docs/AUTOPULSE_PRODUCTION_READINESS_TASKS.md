@@ -404,7 +404,7 @@ Each task includes:
 ### TSK-P2-01 — Shared realtime bus for multi-replica correctness
 
 - **Priority:** P2
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Backend
 - **Source findings:** §10 P2 roadmap
 - **Description:** Introduce a cross-replica realtime propagation path (for example Redis/NATS) to remove sticky-session dependence for live dashboard updates.
@@ -418,6 +418,7 @@ Each task includes:
 - **Related files/docs:**
   - `backend/src/autopulse_backend/realtime/`
   - `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
+- **Completed (2026-05-05):** Added optional shared realtime propagation via Postgres `LISTEN/NOTIFY` (`DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify`) with guarded publish/subscribe wiring in ingest fanout and lifespan startup/shutdown. Remote realtime payloads now fan out into local WebSocket subscribers across replicas, with sender-loop prevention, channel safety validation, payload-size guardrails, and internal metrics for publish/receive failures. Added realtime bus tests (`backend/tests/test_realtime_bus.py`) and updated multi-instance/production deployment docs plus env templates.
 
 ### TSK-P2-02 — Scaled event-store strategy beyond single DuckDB writer
 
@@ -440,7 +441,7 @@ Each task includes:
 ### TSK-P2-03 — Frontend bundle budget and chart loading optimization
 
 - **Priority:** P2
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Frontend
 - **Source findings:** F5
 - **Description:** Add explicit performance budget and lazy-load strategy for heavy dashboard visualizations to preserve fast diagnosis on constrained environments.
@@ -455,11 +456,12 @@ Each task includes:
   - `frontend/next.config.js`
   - `frontend/components/dashboard/`
   - `.github/workflows/ci.yml`
+- **Completed (2026-05-05):** Added lazy-loaded chart wrappers (`frontend/components/dashboard/charts/lazyCharts.tsx`) and switched chart-heavy dashboard pages to use deferred chart imports so chart bundles load on demand. Added route bundle budget checks via `frontend/scripts/checkRouteBundleBudgets.mjs`, wired into `npm run check:bundle-budget` and CI frontend job after build. Documented local budget-check workflow and thresholds in `frontend/README.md`.
 
 ### TSK-P2-04 — Optional frontend RUM with privacy guardrails
 
 - **Priority:** P2
-- **Status:** Todo
+- **Status:** Done
 - **Owner:** Frontend + Ops
 - **Source findings:** F4
 - **Description:** Add opt-in client-side telemetry for dashboard runtime errors/perf, gated by environment and aligned with privacy defaults.
@@ -474,6 +476,7 @@ Each task includes:
   - `frontend/`
   - `docs/ops/PRODUCTION_DEPLOYMENT.md`
   - `DEVELOPMENT.md`
+- **Completed (2026-05-05):** Added opt-in frontend RUM client (`frontend/app/RumClient.tsx`) that is env-gated, disabled by default, and sampled per session, with default sink `POST /autopulse/rum`. Backend now includes validated RUM ingest route (`backend/src/autopulse_backend/routes/rum.py`) with payload-size guardrails (`DASHBOARD_RUM_MAX_REQUEST_BYTES`) and optional temporary payload logging (`DASHBOARD_RUM_LOG_PAYLOADS`). Telemetry payloads are scrubbed via `frontend/lib/rumSanitize.ts` (query/hash removed from paths, id-like segment masking, email/token redaction, short stack truncation) with unit/integration coverage; docs now include enable/disable/runbook validation and privacy boundaries.
 
 ---
 

@@ -182,6 +182,10 @@ class Settings:
     database_run_migrations_on_startup: bool = True
     dashboard_read_rate_limit_requests_per_window: int = 120
     dashboard_read_rate_limit_window_seconds: int = 60
+    dashboard_realtime_bus_backend: str = "none"
+    dashboard_realtime_bus_channel: str = "autopulse_dashboard_realtime"
+    dashboard_rum_max_request_bytes: int = 8192
+    dashboard_rum_log_payloads: bool = False
 
 
 def _parse_email_domains(raw: str | None) -> tuple[str, ...]:
@@ -476,6 +480,15 @@ def get_settings() -> Settings:
     dashboard_oidc_post_login_redirect = (
         getenv("DASHBOARD_OIDC_POST_LOGIN_REDIRECT", "").strip() or None
     )
+    dashboard_realtime_bus_backend = (
+        getenv("DASHBOARD_REALTIME_BUS_BACKEND", "none").strip().lower() or "none"
+    )
+    if dashboard_realtime_bus_backend not in {"none", "postgres_notify"}:
+        dashboard_realtime_bus_backend = "none"
+    dashboard_realtime_bus_channel = (
+        getenv("DASHBOARD_REALTIME_BUS_CHANNEL", "autopulse_dashboard_realtime").strip()
+        or "autopulse_dashboard_realtime"
+    )
     autopulse_env = getenv("AUTOPULSE_ENV", "development").strip().lower() or "development"
     settings = Settings(
         database_url=database_url,
@@ -656,6 +669,14 @@ def get_settings() -> Settings:
             60,
             minimum=1,
         ),
+        dashboard_realtime_bus_backend=dashboard_realtime_bus_backend,
+        dashboard_realtime_bus_channel=dashboard_realtime_bus_channel,
+        dashboard_rum_max_request_bytes=_env_int(
+            "DASHBOARD_RUM_MAX_REQUEST_BYTES",
+            8192,
+            minimum=256,
+        ),
+        dashboard_rum_log_payloads=_env_bool("DASHBOARD_RUM_LOG_PAYLOADS", False),
     )
     validate_deployment_settings(settings)
     return settings

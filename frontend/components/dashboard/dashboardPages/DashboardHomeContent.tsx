@@ -25,7 +25,7 @@ import {
   type MultiSeriesLineChartSeries,
   type ScatterPlotPoint,
   type StackedAreaSeries,
-} from "../charts";
+} from "../charts/lazyCharts";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";

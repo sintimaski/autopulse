@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { DASHBOARD_THEME_PREFERENCE_STORAGE_KEY } from "../lib/dashboardThemeConstants";
+import { RumClient } from "./RumClient";
 
 import "./globals.css";
 
@@ -26,7 +27,10 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: DASHBOARD_THEME_BOOT_SCRIPT }} />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        <RumClient />
+        {children}
+      </body>
     </html>
   );
 }

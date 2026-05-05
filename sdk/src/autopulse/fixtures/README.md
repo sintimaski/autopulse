@@ -27,7 +27,12 @@ uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8
 Load generator (point at the synthetic app port you use):
 
 ```bash
-uv run python -m autopulse.fixtures.synthetic_load --base-url http://127.0.0.1:8001 --duration-seconds 120 --rps 8 --role-mode mixed
+uv run python -m autopulse.fixtures.synthetic_load \
+  --base-url http://127.0.0.1:8001 \
+  --duration-minutes 5 \
+  --target-requests 200 \
+  --role-mode mixed \
+  --scenario realistic
 ```
 
 ## Environment Variables

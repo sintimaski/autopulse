@@ -10,7 +10,7 @@ import {
   TimeSeriesLineChart,
   type ScatterPlotPoint,
   type StackedAreaSeries,
-} from "../charts";
+} from "../charts/lazyCharts";
 
 export type DashboardChartShowcaseGridProps = {
   lineLabels: string[];

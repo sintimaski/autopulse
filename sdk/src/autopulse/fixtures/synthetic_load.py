@@ -13,6 +13,7 @@ import httpx
 _KEEP_RUNNING = True
 RoleMode = Literal["viewer", "editor", "admin", "mixed"]
 Scenario = Literal["steady", "realistic"]
+ErrorTag = Literal["auth", "validation", "upstream", "timeout", "not_found", "server"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,31 +22,36 @@ class RequestSpec:
     method: str
     path_template: str
     weight: int
+    error_tags: tuple[ErrorTag, ...] = ()
 
 
 _REQUEST_SPECS: tuple[RequestSpec, ...] = (
     RequestSpec("health", "GET", "/health", 5),
-    RequestSpec("users-read", "GET", "/users/{user_id}", 7),
-    RequestSpec("users-create", "POST", "/users", 2),
-    RequestSpec("users-patch", "PATCH", "/users/{user_id}", 2),
-    RequestSpec("users-delete", "DELETE", "/users/{user_id}", 1),
-    RequestSpec("orders-read", "GET", "/orders/{order_id}", 6),
-    RequestSpec("orders-create", "POST", "/orders", 3),
-    RequestSpec("search", "GET", "/search", 6),
-    RequestSpec("auth-login", "POST", "/auth/login", 2),
-    RequestSpec("reports", "GET", "/reports/daily", 1),
-    RequestSpec("inventory", "GET", "/inventory/{sku}", 6),
-    RequestSpec("payments", "POST", "/payments/intents", 3),
-    RequestSpec("dispatch", "POST", "/integrations/dispatch", 2),
-    RequestSpec("analytics", "GET", "/analytics/summary", 5),
-    RequestSpec("quote", "GET", "/upstream/quote", 5),
-    RequestSpec("quota", "GET", "/quota/status", 3),
-    RequestSpec("checkout-preview", "GET", "/checkout/preview", 5),
-    RequestSpec("feedback", "POST", "/feedback", 3),
-    RequestSpec("errors-key", "GET", "/errors/key-missing", 1),
-    RequestSpec("errors-type", "GET", "/errors/type-mismatch", 1),
-    RequestSpec("errors-deadline", "GET", "/errors/deadline", 1),
-    RequestSpec("boom", "GET", "/boom", 1),
+    RequestSpec("users-read", "GET", "/users/{user_id}", 7, ("auth", "not_found")),
+    RequestSpec("users-create", "POST", "/users", 2, ("validation", "auth")),
+    RequestSpec("users-patch", "PATCH", "/users/{user_id}", 2, ("validation", "not_found")),
+    RequestSpec(
+        "users-delete", "DELETE", "/users/{user_id}", 1, ("auth", "validation", "not_found")
+    ),
+    RequestSpec("orders-read", "GET", "/orders/{order_id}", 6, ("auth", "not_found")),
+    RequestSpec("orders-create", "POST", "/orders", 3, ("validation", "upstream")),
+    RequestSpec("search", "GET", "/search", 6, ("auth",)),
+    RequestSpec("auth-login", "POST", "/auth/login", 2, ("auth",)),
+    RequestSpec("reports", "GET", "/reports/daily", 1, ("auth", "timeout")),
+    RequestSpec("inventory", "GET", "/inventory/{sku}", 6, ("upstream", "not_found")),
+    RequestSpec("payments", "POST", "/payments/intents", 3, ("validation",)),
+    RequestSpec(
+        "dispatch", "POST", "/integrations/dispatch", 2, ("auth", "validation", "upstream")
+    ),
+    RequestSpec("analytics", "GET", "/analytics/summary", 5, ("server",)),
+    RequestSpec("quote", "GET", "/upstream/quote", 5, ("upstream",)),
+    RequestSpec("quota", "GET", "/quota/status", 3, ("validation",)),
+    RequestSpec("checkout-preview", "GET", "/checkout/preview", 5, ("timeout",)),
+    RequestSpec("feedback", "POST", "/feedback", 3, ("validation",)),
+    RequestSpec("errors-key", "GET", "/errors/key-missing", 1, ("server",)),
+    RequestSpec("errors-type", "GET", "/errors/type-mismatch", 1, ("server",)),
+    RequestSpec("errors-deadline", "GET", "/errors/deadline", 1, ("timeout", "server")),
+    RequestSpec("boom", "GET", "/boom", 1, ("server", "auth")),
 )
 
 
@@ -82,17 +88,45 @@ _ERROR_BURST_NAMES = frozenset(
 )
 
 
+def _generated_burst_targets(
+    weighted_specs: list[RequestSpec],
+    *,
+    rng: random.Random,
+) -> frozenset[str]:
+    plans: tuple[tuple[ErrorTag, ...], ...] = (
+        ("server", "timeout"),
+        ("auth", "validation"),
+        ("upstream", "not_found"),
+        ("server", "upstream", "auth"),
+        ("validation", "timeout"),
+    )
+    selected_plan = rng.choice(plans)
+    names: set[str] = set()
+    for spec in weighted_specs:
+        if not spec.error_tags:
+            continue
+        if any(tag in selected_plan for tag in spec.error_tags) and rng.random() < 0.72:
+            names.add(spec.name)
+    # Keep at least a few generated targets so bursts are visible.
+    if len(names) < 4:
+        fallback = [spec.name for spec in weighted_specs if spec.name in _ERROR_BURST_NAMES]
+        if fallback:
+            names.update(rng.sample(fallback, k=min(4, len(fallback))))
+    return frozenset(names)
+
+
 def _burst_biased_pool(
     base: list[RequestSpec],
     *,
     in_error_burst: bool,
     rng: random.Random,
+    burst_targets: frozenset[str],
 ) -> list[RequestSpec]:
     if not in_error_burst:
         return base
     extra: list[RequestSpec] = []
     for spec in base:
-        if spec.name in _ERROR_BURST_NAMES and rng.random() < 0.35:
+        if spec.name in burst_targets and rng.random() < 0.5:
             extra.extend([spec] * rng.randint(1, 2))
     return base + extra
 
@@ -263,7 +297,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Generate synthetic traffic for the SDK test app.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--duration-seconds", type=int, default=90)
+    parser.add_argument(
+        "--duration-minutes",
+        type=float,
+        default=None,
+        help="Preferred run interval in minutes (takes precedence over --duration-seconds).",
+    )
     parser.add_argument("--rps", type=int, default=6)
+    parser.add_argument(
+        "--target-requests",
+        type=int,
+        default=200,
+        help="Total requests to generate during the selected run interval.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--role-mode",
@@ -289,10 +335,24 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=12.0)
     args = parser.parse_args()
 
-    if args.duration_seconds <= 0:
+    duration_seconds = args.duration_seconds
+    if args.duration_minutes is not None:
+        duration_seconds = max(1, int(round(args.duration_minutes * 60)))
+
+    # Keep the generator in "target mode" by default: ~200 requests over chosen interval.
+    if args.target_requests > 0:
+        computed_rps = max(1, math.ceil(args.target_requests / max(1, duration_seconds)))
+    else:
+        computed_rps = args.rps
+
+    if args.duration_minutes is None and args.duration_seconds <= 0:
         raise SystemExit("--duration-seconds must be > 0")
+    if duration_seconds <= 0:
+        raise SystemExit("duration must be > 0")
     if args.rps <= 0:
         raise SystemExit("--rps must be > 0")
+    if args.target_requests < 0:
+        raise SystemExit("--target-requests must be >= 0")
     if args.spike_interval_seconds <= 0:
         raise SystemExit("--spike-interval-seconds must be > 0")
     if args.spike_multiplier < 1.0:
@@ -316,19 +376,24 @@ def main() -> int:
     transport_errors = 0
     total_requests = 0
     start_time = time.monotonic()
-    end_time = start_time + args.duration_seconds
     tick = 0
+    burst_targets = _generated_burst_targets(weighted, rng=rng)
 
     print("synthetic_load: starting")
     print(f"- base_url: {base_url}")
-    print(f"- duration_seconds: {args.duration_seconds}")
-    print(f"- rps: {args.rps}")
+    print(f"- duration_seconds: {duration_seconds}")
+    print(f"- target_requests: {args.target_requests}")
+    print(f"- computed_rps: {computed_rps}")
     print(f"- role_mode: {args.role_mode}")
     print(f"- scenario: {args.scenario}")
     print(f"- seed: {args.seed}")
+    print(f"- burst_targets: {sorted(burst_targets)}")
 
     with httpx.Client(timeout=args.timeout_seconds) as client:
+        end_time = start_time + duration_seconds
         while _KEEP_RUNNING and time.monotonic() < end_time:
+            if args.target_requests > 0 and total_requests >= args.target_requests:
+                break
             tick += 1
             elapsed_seconds = int(time.monotonic() - start_time)
             in_spike = elapsed_seconds > 0 and elapsed_seconds % args.spike_interval_seconds == 0
@@ -337,12 +402,22 @@ def main() -> int:
                 and elapsed_seconds % args.error_burst_interval_seconds
                 < args.error_burst_duration_seconds
             )
-            pool = _burst_biased_pool(weighted, in_error_burst=in_error_burst, rng=rng)
+            pool = _burst_biased_pool(
+                weighted,
+                in_error_burst=in_error_burst,
+                rng=rng,
+                burst_targets=burst_targets,
+            )
 
             curve = 1.0 if args.scenario == "steady" else _realistic_rps_curve(elapsed_seconds)
-            current_rps = max(1, int(round(args.rps * curve)))
+            current_rps = max(1, int(round(computed_rps * curve)))
             if in_spike:
                 current_rps = max(1, int(round(current_rps * args.spike_multiplier)))
+            if args.target_requests > 0:
+                remaining = max(0, args.target_requests - total_requests)
+                current_rps = min(current_rps, remaining)
+                if current_rps == 0:
+                    break
 
             for req_index in range(current_rps):
                 spec = rng.choice(pool)

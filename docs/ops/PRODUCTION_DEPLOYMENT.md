@@ -110,7 +110,7 @@ Validate in staging: issue a real dashboard login and one SDK ingest batch throu
 
 ## 4. Multi-instance and realtime
 
-- **WebSockets:** The dashboard WebSocket hub is in-process; multiple replicas require **sticky sessions**, a **single replica** for WS, or a future shared pub/sub design. See [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md).
+- **WebSockets:** Default hub is in-process. For multi-replica freshness, either enable shared bus (`DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` on Postgres), configure LB stickiness, or route WS to a single replica. See [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md).
 - **Distributed ingest rate limits:** Enable `INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED` when running multiple API processes; understand **fail-open** behavior to the in-memory limiter if the rate-limit table is unhealthy (documented in code + [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md)).
 - **DuckDB writer rule:** treat DuckDB as **single-writer**. Running multiple API replicas that write to the same DuckDB file is a production **No-Go**.
 - **WS correctness rule:** for multi-replica live dashboard correctness, require LB stickiness for WS traffic or route WS to one dedicated replica.
@@ -186,6 +186,38 @@ Configuration:
 - `DASHBOARD_READ_RATE_LIMIT_WINDOW_SECONDS` (default `60`)
 
 When exceeded, endpoints return `429` with `Retry-After`.
+
+## 6.2 Optional frontend RUM (privacy-first)
+
+Dashboard client telemetry is **opt-in** and disabled by default.
+
+Enable only when you need browser-side runtime/perf visibility:
+
+- `NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED=1`
+- `NEXT_PUBLIC_AUTOPULSE_RUM_ENDPOINT=<URL>` (optional override; default is backend `POST /autopulse/rum`)
+- `NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE=<0..1>` (default `1`)
+- `NEXT_PUBLIC_AUTOPULSE_RUM_DEBUG=1` (optional debug logging; keep `0` in production)
+
+Backend endpoint defaults:
+
+- `POST /autopulse/rum` (also reachable at `/rum` on the unprefixed router)
+- `DASHBOARD_RUM_MAX_REQUEST_BYTES` (default `8192`, minimum clamp `256`)
+- `DASHBOARD_RUM_LOG_PAYLOADS=true` for temporary staging validation only
+
+Default capture is intentionally conservative:
+
+- Route path only (query/hash stripped, id-like segments masked)
+- Runtime error message + short stack preview (scrubbed for emails/token-like fragments)
+- Session-level navigation timings (`dom_content_loaded_ms`, `load_event_ms`)
+
+No cookies, local storage values, full URLs with query strings, request/response bodies, or auth tokens are collected by this path.
+
+Operator validation:
+
+1. Deploy with RUM disabled and confirm no RUM requests are emitted from dashboard sessions.
+2. Enable RUM and set `NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE=1` (default sink `/autopulse/rum` unless overridden).
+3. Trigger one handled page load and one synthetic browser error (`throw new Error("rum-smoke")` in devtools).
+4. Verify endpoint receives scrubbed payloads (no raw emails/tokens/query strings), then disable debug mode.
 
 ## 7. SLO / SLI targets (initial release gates)
 

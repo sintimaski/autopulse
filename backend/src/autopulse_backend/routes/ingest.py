@@ -22,6 +22,10 @@ from autopulse_backend.realtime import (
     IngestBroadcastMessage,
     project_websocket_hub,
 )
+from autopulse_backend.realtime.bus import (
+    publish_realtime_dashboard_update,
+    publish_realtime_ingest,
+)
 from autopulse_backend.repositories import ingest_reliability as ingest_reliability_repo
 from autopulse_backend.repositories.aggregates import (
     upsert_error_group_aggregates,
@@ -50,23 +54,23 @@ async def _ingest_websocket_fanout(
     Slow or stalled WebSocket clients must not delay ``POST /ingest`` or the live tick loop.
     """
     try:
-        await project_websocket_hub.publish_ingest(
-            message=IngestBroadcastMessage(
-                project_id=project_id,
-                accepted=accepted,
-                received_at=received_at,
-            )
+        ingest_message = IngestBroadcastMessage(
+            project_id=project_id,
+            accepted=accepted,
+            received_at=received_at,
         )
+        await project_websocket_hub.publish_ingest(message=ingest_message)
+        await publish_realtime_ingest(ingest_message, settings=get_settings())
         dashboard_version = await mark_project_dashboard_dirty(project_id)
-        await project_websocket_hub.publish_dashboard_update(
-            message=DashboardUpdateMessage(
-                project_id=project_id,
-                version=dashboard_version,
-                reason="ingest",
-                updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
-                updated_at=received_at,
-            )
+        update_message = DashboardUpdateMessage(
+            project_id=project_id,
+            version=dashboard_version,
+            reason="ingest",
+            updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
+            updated_at=received_at,
         )
+        await project_websocket_hub.publish_dashboard_update(message=update_message)
+        await publish_realtime_dashboard_update(update_message, settings=get_settings())
     except Exception:
         logger.exception(
             "ingest_websocket_fanout_failed",
