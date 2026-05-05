@@ -270,6 +270,19 @@ Do not promote to production if any of the following are true:
 - Staging load validation shows DuckDB lock/corruption-class errors.
 - You cannot demonstrate the supported writer pattern for your chosen event plane.
 
+## 9.2 Event-store scaling decision triggers
+
+When single-writer DuckDB constraints become operationally limiting, follow the ADR for scaled event storage:
+
+- [ADR_EVENT_STORE_SCALING.md](./ADR_EVENT_STORE_SCALING.md)
+
+Adopt the scaled path when either:
+
+- Any **hard trigger** is met (for example multi-writer HA requirement or repeated Sev2+ DuckDB writer incidents), or
+- At least two **soft triggers** are sustained (for example ingest latency pressure tied to writer contention plus restore/file-growth pressure).
+
+Keep DuckDB as the default path unless measured thresholds justify migration.
+
 ## 10. Documentation precedence
 
 If another doc conflicts with product scope, **[DEVELOPMENT.md](../../DEVELOPMENT.md)** wins for MVP boundaries; this file wins for **production topology and rollout ordering**.

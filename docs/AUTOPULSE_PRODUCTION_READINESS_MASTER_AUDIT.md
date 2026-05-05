@@ -307,7 +307,7 @@ Grouped by pillar. Items marked **MVP doc** come from [DEVELOPMENT.md](../DEVELO
 | Item | Owner | Acceptance criteria |
 |------|-------|---------------------|
 | Shared realtime bus | Backend | WS updates correct with N replicas without stickiness requirement |
-| Alternative / scaled event store | Platform | HA story beyond single DuckDB file if multi-region or high volume |
+| Alternative / scaled event store | Platform | ADR published with migration phases, MVP compatibility/cost analysis, and explicit hard/soft adoption triggers (see [ADR_EVENT_STORE_SCALING.md](./ops/ADR_EVENT_STORE_SCALING.md)) |
 | Bundle budget + lazy charts | FE | p95 JS budget on overview path measured |
 | Optional RUM | FE / Ops | Env-gated, privacy-reviewed |
 | Postgres CI parity | Delivery | Same linters + expanded pytest on PG job OR documented policy |
