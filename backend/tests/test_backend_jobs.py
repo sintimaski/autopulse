@@ -312,3 +312,47 @@ def test_jobs_cli_parquet_lifecycle_once(
     assert export_exit_code == 0
     assert lifecycle_exit_code == 0
     assert capsys.readouterr().out.strip().splitlines()[-1].isdigit()
+
+
+def test_jobs_cli_parquet_object_sync_and_restore_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "events.duckdb"
+    meta_db = tmp_path / "meta.db"
+    _seed_duckdb_events(db_path)
+    parquet_root = tmp_path / "parquet-out"
+    object_store_root = tmp_path / "object-store"
+    restore_root = tmp_path / "restored"
+    database_url = f"sqlite+aiosqlite:///{meta_db}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTOPULSE_ENV", "development")
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer")
+    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(db_path.resolve()))
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ENABLED", "true")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_ENABLED", "true")
+    monkeypatch.setenv(
+        "AUTOPULSE_PARQUET_OBJECT_STORAGE_URI",
+        f"file://{object_store_root.resolve()}",
+    )
+    monkeypatch.setenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_PREFIX", "snapshots")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT", str(restore_root))
+    try:
+        export_exit_code = jobs.main(["parquet-export-once"])
+        sync_exit_code = jobs.main(["parquet-object-sync-once"])
+        restore_exit_code = jobs.main(["parquet-object-restore-once"])
+    finally:
+        asyncio.run(dispose_engine_for_url(database_url))
+
+    assert export_exit_code == 0
+    assert sync_exit_code == 0
+    assert restore_exit_code == 0
+    lines = [line for line in capsys.readouterr().out.strip().splitlines() if line]
+    assert lines[-2] == "2"
+    assert lines[-1] == "2"
+    assert any(restore_root.glob("date=*/service=*/environment=*/part-*.parquet"))

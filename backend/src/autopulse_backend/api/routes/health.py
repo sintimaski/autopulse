@@ -190,6 +190,12 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
             "lifecycle_interval_seconds": settings.parquet_lifecycle_interval_seconds,
             "lifecycle_retention_days": settings.parquet_lifecycle_retention_days,
             "lifecycle_dry_run": settings.parquet_lifecycle_dry_run,
+            "object_storage_enabled": settings.parquet_object_storage_enabled,
+            "object_storage_interval_seconds": settings.parquet_object_storage_interval_seconds,
+            "object_storage_uri": settings.parquet_object_storage_uri,
+            "object_storage_prefix": settings.parquet_object_storage_prefix,
+            "object_storage_verify_upload": settings.parquet_object_storage_verify_upload,
+            "object_storage_restore_root": settings.parquet_object_storage_restore_root,
         },
     }
 

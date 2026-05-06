@@ -338,9 +338,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: immutable object keys and manifest versioning.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-07 (added optional object-storage sync + manifest continuity checks + restore CLI path with checksum verification and job wiring)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/BACKUP_RESTORE.md`, `docs/ops/EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md`, `docs/ops/PRODUCTION_DEPLOYMENT.md`
 - **References / examples:** current backup/restore process and DR drill templates.

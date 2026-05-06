@@ -66,6 +66,18 @@ class Settings:
     parquet_lifecycle_dry_run: bool = False
     parquet_lifecycle_compaction_min_files: int = 4
     parquet_lifecycle_verify_sample_size: int = 5
+    parquet_object_storage_enabled: bool = False
+    parquet_object_storage_uri: str | None = None
+    parquet_object_storage_prefix: str = "autopulse-parquet"
+    parquet_object_storage_interval_seconds: float = 900.0
+    parquet_object_storage_verify_upload: bool = True
+    parquet_object_storage_endpoint_url: str | None = None
+    parquet_object_storage_region: str | None = None
+    parquet_object_storage_access_key_id: str | None = None
+    parquet_object_storage_secret_access_key: str | None = None
+    parquet_object_storage_session_token: str | None = None
+    parquet_object_storage_restore_root: str = "./.autopulse/parquet/restore"
+    parquet_object_storage_restore_manifest_key: str | None = None
     ingest_idempotency_ttl_hours: int = 24
     ingest_idempotency_stale_seconds: int = 45
     ingest_require_https: bool = True
@@ -384,6 +396,24 @@ def normalize_parquet_export_root(raw: str | None, *, data_root: Path | None = N
     return str(anchored)
 
 
+def normalize_parquet_restore_root(raw: str | None, *, data_root: Path | None = None) -> str:
+    """Resolve ``AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT`` to absolute path."""
+    text = (raw or "").strip() or "./.autopulse/parquet/restore"
+    root = (data_root or resolve_autopulse_data_root()).resolve()
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    anchored = (root / text).resolve()
+    try:
+        anchored.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT="
+            f"{raw!r} resolves outside data root {root}: {anchored}"
+        ) from exc
+    return str(anchored)
+
+
 def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
     """Filesystem path for a file-backed SQLite URL already normalized, or None."""
     if not normalized_sqlite_url.startswith("sqlite"):
@@ -680,6 +710,57 @@ def get_settings() -> Settings:
             5,
             minimum=1,
         ),
+        parquet_object_storage_enabled=_env_bool(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_ENABLED",
+            False,
+        ),
+        parquet_object_storage_uri=getenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_URI", "").strip()
+        or None,
+        parquet_object_storage_prefix=getenv(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_PREFIX",
+            "autopulse-parquet",
+        ).strip()
+        or "autopulse-parquet",
+        parquet_object_storage_interval_seconds=_env_float(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_INTERVAL_SECONDS",
+            900.0,
+            minimum=5.0,
+        ),
+        parquet_object_storage_verify_upload=_env_bool(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_VERIFY_UPLOAD",
+            True,
+        ),
+        parquet_object_storage_endpoint_url=getenv(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_ENDPOINT_URL",
+            "",
+        ).strip()
+        or None,
+        parquet_object_storage_region=getenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_REGION", "").strip()
+        or None,
+        parquet_object_storage_access_key_id=getenv(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_ACCESS_KEY_ID",
+            "",
+        ).strip()
+        or None,
+        parquet_object_storage_secret_access_key=getenv(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_SECRET_ACCESS_KEY",
+            "",
+        ).strip()
+        or None,
+        parquet_object_storage_session_token=getenv(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_SESSION_TOKEN",
+            "",
+        ).strip()
+        or None,
+        parquet_object_storage_restore_root=normalize_parquet_restore_root(
+            getenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT", "").strip() or None,
+            data_root=_data_root,
+        ),
+        parquet_object_storage_restore_manifest_key=getenv(
+            "AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_MANIFEST_KEY",
+            "",
+        ).strip()
+        or None,
         ingest_idempotency_ttl_hours=_env_int("INGEST_IDEMPOTENCY_TTL_HOURS", 24, minimum=1),
         ingest_idempotency_stale_seconds=_env_int(
             "INGEST_IDEMPOTENCY_STALE_SECONDS", 45, minimum=5

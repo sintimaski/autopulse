@@ -132,7 +132,9 @@ def _log_grouped_startup_settings() -> None:
         "parquet_export_interval_seconds=%.2f parquet_export_window_seconds=%d "
         "parquet_export_root=%s parquet_query_enabled=%s parquet_hot_window_hours=%d "
         "parquet_lifecycle_enabled=%s parquet_lifecycle_interval_seconds=%.2f "
-        "parquet_lifecycle_retention_days=%d parquet_lifecycle_dry_run=%s",
+        "parquet_lifecycle_retention_days=%d parquet_lifecycle_dry_run=%s "
+        "parquet_object_storage_enabled=%s parquet_object_storage_interval_seconds=%.2f "
+        "parquet_object_storage_uri_set=%s parquet_object_storage_prefix=%s",
         settings.autopulse_env,
         settings.ingest_aggregate_worker_max_retries,
         settings.database_run_migrations_on_startup,
@@ -146,6 +148,10 @@ def _log_grouped_startup_settings() -> None:
         settings.parquet_lifecycle_interval_seconds,
         settings.parquet_lifecycle_retention_days,
         settings.parquet_lifecycle_dry_run,
+        settings.parquet_object_storage_enabled,
+        settings.parquet_object_storage_interval_seconds,
+        bool(settings.parquet_object_storage_uri),
+        settings.parquet_object_storage_prefix,
     )
     log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "

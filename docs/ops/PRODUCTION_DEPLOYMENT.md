@@ -186,6 +186,19 @@ Staging evidence before go-live:
     - `AUTOPULSE_PARQUET_LIFECYCLE_DRY_RUN` (stage-first safety mode)
   - Manual run: `uv run python -m autopulse_backend.jobs parquet-lifecycle-once`.
   - Verify lifecycle counters in `/internal/metrics`: `parquet.lifecycle.*` (compaction, retention, verify, reclaimed bytes).
+- Parquet phase-4 object storage + DR restore (optional):
+  - Enable with `AUTOPULSE_PARQUET_OBJECT_STORAGE_ENABLED=true`.
+  - Configure target with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI` (`s3://bucket/prefix` or `file:///...`).
+  - Optional tuning:
+    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_PREFIX`
+    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_INTERVAL_SECONDS`
+    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_VERIFY_UPLOAD`
+    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_ENDPOINT_URL` (S3-compatible providers)
+  - Manual sync run: `uv run python -m autopulse_backend.jobs parquet-object-sync-once`.
+  - Restore latest manifest into local restore root:
+    - Set `AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT`
+    - Run `uv run python -m autopulse_backend.jobs parquet-object-restore-once`
+  - Verify `/internal/metrics` counters: `parquet.object_storage.sync.*` and `parquet.object_storage.restore.*`.
 
 ## 5.1 When to move metadata DB off SQLite
 

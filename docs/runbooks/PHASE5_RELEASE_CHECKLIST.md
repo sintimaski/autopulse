@@ -18,6 +18,7 @@ Use this checklist before promoting any release-hardening changes.
 - [ ] Archival-before-delete behavior is verified with replay-safe retries.
 - [ ] If Parquet hybrid reads are enabled, validate mixed-window dashboard queries (recent=DuckDB hot, historical=Parquet cold) with stable response schema.
 - [ ] If Parquet lifecycle is enabled, validate one lifecycle run (compaction + retention dry-run/execute + readability verification) and attach lifecycle manifest evidence.
+- [ ] If Parquet object storage is enabled, validate one sync + restore drill from manifest and attach checksum verification evidence.
 - [ ] DuckDB topology validation passed: no deployment plans with multi-replica writers targeting the same DuckDB file.
 - [ ] Staging load run for intended topology shows no DuckDB lock/corruption-class errors.
 

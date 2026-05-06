@@ -117,7 +117,15 @@ def run_parquet_export_once(*, settings: Settings | None = None) -> ParquetExpor
         window_end = upper_bound
     else:
         window_end = min(upper_bound, current_watermark + max_window)
-    conn = duckdb.connect(str(source_path), read_only=True)
+    try:
+        conn = duckdb.connect(str(source_path), read_only=True)
+    except duckdb.IOException as exc:
+        raise RuntimeError(
+            "Parquet export cannot open the DuckDB events file: another process already "
+            "holds a lock (usually the API or another job using the same path). Stop that "
+            "process, or run export from a host where only this job opens the file, then retry. "
+            f"path={source_path}"
+        ) from exc
     total_rows = 0
     total_partitions = 0
     total_bytes = 0
