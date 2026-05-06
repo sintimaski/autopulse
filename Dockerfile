@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY backend/ /app/backend/
-RUN pip install --no-cache-dir -e /app/backend
+RUN pip install --no-cache-dir -e "/app/backend[parquet-s3]"
 
 COPY --from=frontend-builder /app/frontend/out /app/frontend/out
 

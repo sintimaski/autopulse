@@ -189,6 +189,7 @@ Staging evidence before go-live:
 - Parquet phase-4 object storage + DR restore (optional):
   - Enable with `AUTOPULSE_PARQUET_OBJECT_STORAGE_ENABLED=true`.
   - Configure target with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI` (`s3://bucket/prefix` or `file:///...`).
+  - **`s3://` requires `boto3` in the Python environment.** The repo Dockerfile installs `autopulse-backend[parquet-s3]` so the shipped runtime image includes it. Custom images or bare-metal installs must add the same extra (for example `pip install -e "./backend[parquet-s3]"` from the repository root, or `pip install boto3` equivalent). `file://` targets do not need `boto3`.
   - Optional tuning:
     - `AUTOPULSE_PARQUET_OBJECT_STORAGE_PREFIX`
     - `AUTOPULSE_PARQUET_OBJECT_STORAGE_INTERVAL_SECONDS`

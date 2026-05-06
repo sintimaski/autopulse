@@ -19,6 +19,12 @@ dependencies = [
     "httpx>=0.27.0",
 ]
 
+[project.optional-dependencies]
+# Parquet object storage with ``s3://`` URIs (``parquet_object_storage``); not needed for ``file://``.
+parquet-s3 = [
+    "boto3>=1.34.0",
+]
+
 [build-system]
 requires = ["hatchling>=1.26.0"]
 build-backend = "hatchling.build"

@@ -46,6 +46,8 @@ Backend defaults to `http://localhost:8000`.
 - `AUTOPULSE_SQLITE_MAX_DB_FILE_MB` (max SQLite log-store file size in MB; applies to DuckDB or SQLite when capped. For SQLite it includes main + `-wal` + `-shm`; deprecated alias `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`; default **512** on dev default SQLite filenames when unset)
 - `AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS` / `AUTOPULSE_RETENTION_PRESSURE_MIN_INTERVAL_SECONDS` (SQLite pressure poll; see `core/config.py`)
 
+Parquet **object storage** with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI=s3://...` needs **`boto3`**. Install the backend extra from this directory (`uv pip install -e ".[parquet-s3]"`) or add `boto3` to your environment. `file://` URIs do not use `boto3`.
+
 See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.
 
 ## Retention scheduling (FastAPI-optional)

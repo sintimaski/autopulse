@@ -13,3 +13,5 @@ ls -1 "$OUT"/*.whl
 echo
 echo "Install both wheels (backend + SDK for the same checkout or offline install):"
 echo "  pip install \"$OUT\"/autopulse_backend-*.whl \"$OUT\"/autopulse-*.whl"
+echo "Parquet object storage with s3:// also needs boto3 (optional extra on the backend wheel):"
+echo "  pip install \"$OUT\"/autopulse_backend-*.whl[parquet-s3] \"$OUT\"/autopulse-*.whl"
