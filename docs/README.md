@@ -6,6 +6,7 @@ This index keeps documentation focused on shipping and operating AutoPulse safel
 
 - Product scope and constraints: `DEVELOPMENT.md`
 - Repo usage and quickstart: `README.md`
+- Contributor workflow and root `make` commands: `CONTRIBUTING.md`
 - Production deployment: `docs/ops/PRODUCTION_DEPLOYMENT.md`
 
 ## Operations
@@ -23,6 +24,7 @@ This index keeps documentation focused on shipping and operating AutoPulse safel
 - Incident drills: `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`
 - E2E core journey: `docs/testing/E2E_CORE_JOURNEY.md`
 - Development plan/task template: `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`
+- Production+Parquet development plan: `docs/DEVELOPMENT_PLAN_AUTOPULSE_PRODUCTION_AND_PARQUET.md`
 
 ## Contracts and governance
 

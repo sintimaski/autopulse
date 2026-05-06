@@ -18,7 +18,7 @@ def test_validate_accepts_select_followed_by_newline() -> None:
 
 
 def test_validate_accepts_with_cte() -> None:
-    sql = "WITH t AS (SELECT id FROM scoped_events LIMIT 1)\n" "SELECT * FROM t"
+    sql = "WITH t AS (SELECT id FROM scoped_events LIMIT 1)\nSELECT * FROM t"
     assert _validate_query(sql) == sql
 
 

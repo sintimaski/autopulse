@@ -14,21 +14,19 @@ Thanks for contributing to AutoPulse.
 From repository root:
 
 ```bash
-uv sync --group dev
-npm --prefix frontend install
+make setup
 ```
 
 ## Validation before PR
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
-uv run pytest
-npm --prefix frontend run lint
-npm --prefix frontend run typecheck
-npm --prefix frontend run test
+make check
+```
+
+Release candidate validation:
+
+```bash
+make release-gates
 ```
 
 ## PR expectations
@@ -37,6 +35,12 @@ npm --prefix frontend run test
 - Include tests (or explicit manual verification notes) for behavior changes.
 - Call out security-sensitive changes (auth, keys, scrubbing, ingestion limits) in PR description.
 - Do not expand scope beyond requested task without explicit approval.
+
+## Ownership and dependency hygiene
+
+- Sensitive paths are protected by `.github/CODEOWNERS`; expect maintainer review on auth, ingest, ops/runbook, and release gate changes.
+- Dependabot creates weekly update PRs for Python, frontend npm, and GitHub Actions dependencies via `.github/dependabot.yml`.
+- Treat dependency PRs like normal code changes: CI must pass before merge.
 
 ## Scope guardrails
 

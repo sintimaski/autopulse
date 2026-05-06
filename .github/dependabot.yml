@@ -1,0 +1,51 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "python"
+    open-pull-requests-limit: 8
+    commit-message:
+      prefix: "deps"
+    groups:
+      python-runtime-and-tools:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "05:30"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "frontend"
+    open-pull-requests-limit: 8
+    commit-message:
+      prefix: "deps"
+    groups:
+      frontend-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    labels:
+      - "dependencies"
+      - "ci"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"

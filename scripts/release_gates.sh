@@ -21,10 +21,23 @@ else
 fi
 
 echo "[release-gates] frontend checks"
+npm --prefix frontend audit --audit-level=high
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run test
 npm --prefix frontend run build
+npm --prefix frontend run check:bundle-budget
+
+# Optional browser smoke path gate:
+# - CI policy runs browser smoke in a dedicated job (.github/workflows/ci.yml).
+# - Local release gate keeps browser smoke optional because Playwright browser install
+#   can be heavyweight on contributor machines.
+if [[ "${AUTOPULSE_RELEASE_GATES_E2E:-0}" == "1" ]]; then
+  echo "[release-gates] browser smoke e2e"
+  npm --prefix frontend run test:e2e
+else
+  echo "[release-gates] browser smoke e2e skipped (set AUTOPULSE_RELEASE_GATES_E2E=1 to run)"
+fi
 
 echo "[release-gates] phase5 smoke checks"
 uv run python -m autopulse_backend.jobs alerts-once >/dev/null

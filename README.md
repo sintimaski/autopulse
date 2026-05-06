@@ -183,6 +183,12 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 ./scripts/bootstrap_local.sh
 ```
 
+Or use the root task runner commands:
+
+```bash
+make setup
+```
+
 ▶️ One run line (backend + dashboard + synthetic FastAPI app):
 
 ```bash
@@ -195,6 +201,13 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 
 ```bash
 ./scripts/examples/synthetic_load_demo.sh
+```
+
+Core validation commands from repository root:
+
+```bash
+make check
+make release-gates
 ```
 
 **Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**.
