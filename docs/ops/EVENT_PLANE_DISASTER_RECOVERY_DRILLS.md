@@ -27,3 +27,5 @@ Modes:
 | Date (UTC) | Mode | Result | Notes |
 |------------|------|--------|-------|
 | 2026-05-06 | simulate | success | Restored `CURRENT` pointer and verified `restored_events=1` from recovered snapshot. |
+
+For broader release-hardening cadence (monthly/quarterly scheduling and shared evidence), see [PHASE5_DRILL_CYCLE.md](../runbooks/PHASE5_DRILL_CYCLE.md).

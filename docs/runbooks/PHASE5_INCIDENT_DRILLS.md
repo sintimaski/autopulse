@@ -2,6 +2,8 @@
 
 This document defines rehearsal drills required for release-hardening readiness.
 
+**Cadence and evidence:** use [PHASE5_DRILL_CYCLE.md](./PHASE5_DRILL_CYCLE.md) and append outcomes to [PHASE5_DRILL_EVIDENCE_LOG.md](./PHASE5_DRILL_EVIDENCE_LOG.md).
+
 ## Drill 1: Ingest Overload
 
 - Trigger: send sustained oversized or high-rate ingest requests.

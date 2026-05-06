@@ -51,7 +51,7 @@ Use this checklist before promoting any release-hardening changes.
 - [ ] Run `./scripts/release_gates.sh` from repository root.
 - [ ] If release touches Postgres-specific backend behavior, run release gates with `AUTOPULSE_RELEASE_GATES_POSTGRES=1`.
 - [ ] If release touches dashboard navigation/rendering/auth UX, run release gates with `AUTOPULSE_RELEASE_GATES_E2E=1`.
-- [ ] Run incident drills from `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`.
+- [ ] Run incident drills from `docs/runbooks/PHASE5_INCIDENT_DRILLS.md` and record outcomes per `docs/runbooks/PHASE5_DRILL_CYCLE.md` (evidence log: `docs/runbooks/PHASE5_DRILL_EVIDENCE_LOG.md`).
 - [ ] Capture rollback command sequence and escalation owner in release notes.
 - [ ] Attach evidence links to PR before merge.
 - [ ] Multi-replica rollout uses one-shot migration (`alembic upgrade head`) and API replicas run with `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false`.

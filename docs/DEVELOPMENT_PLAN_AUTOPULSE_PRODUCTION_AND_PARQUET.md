@@ -514,11 +514,11 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: isolate drill in staging/sandbox.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-07 (added recurring drill cadence, evidence template, shared evidence log, and cross-links from incident/Parquet runbooks)
   - Owner: Ops
-- **Related documents:** `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`, `docs/ops/BACKUP_RESTORE.md`, `docs/ops/EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md`
+- **Related documents:** `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`, `docs/runbooks/PHASE5_DRILL_CYCLE.md`, `docs/runbooks/PHASE5_DRILL_EVIDENCE_LOG.md`, `docs/ops/BACKUP_RESTORE.md`, `docs/ops/EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md`
 - **References / examples:** existing phase 5 runbook scenarios.
 - **Ambiguity handling:**
   - If requirement is unclear: favor most severe plausible failure scenario first.
