@@ -22,6 +22,7 @@ This index keeps documentation focused on shipping and operating AutoPulse safel
 - Release checklist: `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`
 - Incident drills: `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`
 - E2E core journey: `docs/testing/E2E_CORE_JOURNEY.md`
+- Development plan/task template: `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`
 
 ## Contracts and governance
 

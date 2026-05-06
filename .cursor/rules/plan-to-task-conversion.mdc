@@ -1,0 +1,52 @@
+---
+description: Convert multi-step plans into executable task cards with AC, verification, and progress tracking
+alwaysApply: true
+---
+# Plan to task conversion
+
+Apply this rule when the user asks to breakdown a plan, roadmap, or multi-step implementation. Do not use heavy decomposition for a obvious task/tasks.
+
+## Trigger
+
+Use task conversion when work has 2+ meaningful tasks, cross-team dependencies, or production risk.
+
+## Required task card fields
+
+For each task include:
+
+- Task name
+- Description
+- Acceptance criteria (AC)
+- Inputs
+- Outputs
+- Dependencies
+- Constraints
+- Tools available
+- Steps / plan
+- Error handling
+- Validation / verification
+- Context / background
+- Priority
+- Idempotency (re-run safety)
+- State / progress tracking
+- Related documents
+- References / examples
+- Domain rules
+- Ambiguity handling
+- Observability (logs/tracking)
+
+## Conversion behavior
+
+- Keep tasks outcome-focused and independently testable.
+- Keep AC measurable and tied to verification steps.
+- Include explicit rollback/backout notes for risky tasks.
+- Mark unresolved ambiguity with owner and next action, not silent assumptions.
+- Prefer minimal viable sequencing: unblock dependencies first, then parallelize.
+
+## Scope guardrail
+
+If user request is a single straightforward change, return a compact execution plan instead of full task-card decomposition. Do not use heavy decomposition for a simpler in-chat task/tasks.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.
