@@ -149,6 +149,9 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         aggregate_queue_depth = None
     return {
         "service": "autopulse-backend",
+        "autopulse_env": settings.autopulse_env,
+        "event_plane_mode": settings.event_plane_mode,
+        "dashboard_auth_enabled": settings.dashboard_auth_enabled,
         "dashboard_ws_live_tick_seconds": settings.dashboard_ws_live_tick_seconds,
         "dashboard_ws_tick_running": dashboard_ws_tick_running,
         "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
@@ -163,11 +166,24 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         "duckdb": duckdb_metrics if duckdb_metrics else None,
         "counters": counters,
         "jobs": service_metrics.job_snapshot(),
+        "topology_profile": {
+            "event_store": settings.event_store,
+            "event_plane_mode": settings.event_plane_mode,
+            "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+            "dashboard_auth_enabled": settings.dashboard_auth_enabled,
+            "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
+        },
         "ingest_pressure": _build_ingest_pressure_view(counters),
         "ingest_aggregate_queue": {
             "enabled": settings.ingest_async_aggregate_enabled,
             "depth": aggregate_queue_depth,
             "max_size": aggregate_queue_max_size,
+        },
+        "parquet_export": {
+            "enabled": settings.parquet_export_enabled,
+            "interval_seconds": settings.parquet_export_interval_seconds,
+            "window_seconds": settings.parquet_export_window_seconds,
+            "root": settings.parquet_export_root,
         },
     }
 
@@ -206,6 +222,9 @@ async def ready(request: Request) -> dict[str, object]:
             ) from exc
     return {
         "status": "ready",
+        "autopulse_env": settings.autopulse_env,
+        "event_plane_mode": settings.event_plane_mode,
+        "dashboard_auth_enabled": settings.dashboard_auth_enabled,
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
         "scheduler_running": bool(
             scheduler is not None

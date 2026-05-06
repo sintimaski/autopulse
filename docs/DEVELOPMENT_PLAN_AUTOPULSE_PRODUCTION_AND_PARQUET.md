@@ -74,9 +74,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-06 (added explicit production topology baseline in env/docs, topology verification contract in `/ready` + `/internal/metrics`, and pre-go-live release checklist step)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`
 - **References / examples:** Existing deployment section examples in ops docs.
@@ -162,9 +162,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: watermark checkpoint + atomic partition replace.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-06 (implemented watermark-based DuckDB->Parquet exporter, partitioned output layout, row-count reconciliation, scheduler/CLI wiring, and docs/tests)
   - Owner: Backend data plane
 - **Related documents:** `docs/ops/BACKUP_RESTORE.md`, `docs/ops/ADR_EVENT_STORE_SCALING.md`
 - **References / examples:** DuckDB external Parquet read/write patterns.

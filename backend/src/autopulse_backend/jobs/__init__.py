@@ -32,6 +32,7 @@ from autopulse_backend.repositories.aggregates import (
 from autopulse_backend.repositories.runtime_controls import acquire_scheduler_lease
 from autopulse_backend.services.aggregate_delta_codec import decode_aggregate_payload
 from autopulse_backend.services.ingest_sql_tail_codec import decode_ingest_sql_tail_payload
+from autopulse_backend.services.parquet_exporter import run_parquet_export_once
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +182,11 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
                 },
             )
     return repaired
+
+
+async def run_parquet_export_tick_once(*, settings: Settings | None = None) -> int:
+    result = await asyncio.to_thread(run_parquet_export_once, settings=settings)
+    return int(result.rows_exported)
 
 
 async def run_retention_once(
@@ -410,6 +416,12 @@ def start_scheduler(
             operation=lambda: run_replay_sql_tail_repairs_once(settings=resolved_settings),
         )
 
+    async def parquet_export_tick() -> None:
+        await _record_job_execution(
+            job_name="parquet_export",
+            operation=lambda: run_parquet_export_tick_once(settings=resolved_settings),
+        )
+
     tasks = [
         asyncio.create_task(
             _run_periodic(
@@ -442,6 +454,19 @@ def start_scheduler(
                     interval_seconds=resolved_settings.ingest_sql_tail_repair_interval_seconds,
                     stop_event=stop_event,
                     operation=sql_tail_repair_tick,
+                )
+            )
+        )
+    if resolved_settings.parquet_export_enabled:
+        tasks.append(
+            asyncio.create_task(
+                _run_periodic(
+                    job_name="parquet_export",
+                    settings=resolved_settings,
+                    scheduler_owner_token=scheduler_owner_token,
+                    interval_seconds=resolved_settings.parquet_export_interval_seconds,
+                    stop_event=stop_event,
+                    operation=parquet_export_tick,
                 )
             )
         )
@@ -547,6 +572,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "retention-once",
             "replay-aggregate-dead-letters-once",
             "replay-sql-tail-repairs-once",
+            "parquet-export-once",
         ),
         help="Which one-off job to run.",
     )
@@ -570,6 +596,11 @@ async def _run_command(command: str) -> int:
         return await _record_job_execution(
             job_name="sql_tail_repair",
             operation=run_replay_sql_tail_repairs_once,
+        )
+    if command == "parquet-export-once":
+        return await _record_job_execution(
+            job_name="parquet_export",
+            operation=run_parquet_export_tick_once,
         )
     raise ValueError(f"Unsupported command: {command}")
 

@@ -54,6 +54,10 @@ class Settings:
     ingest_sql_tail_repair_interval_seconds: float = 30.0
     ingest_sql_tail_repair_batch_size: int = 50
     ingest_sql_tail_repair_max_retries: int = 12
+    parquet_export_enabled: bool = False
+    parquet_export_root: str = "./.autopulse/parquet/events"
+    parquet_export_interval_seconds: float = 300.0
+    parquet_export_window_seconds: int = 900
     ingest_idempotency_ttl_hours: int = 24
     ingest_idempotency_stale_seconds: int = 45
     ingest_require_https: bool = True
@@ -355,6 +359,23 @@ def normalize_alert_email_file_outbox_dir(raw: str | None, *, data_root: Path | 
     return str(anchored)
 
 
+def normalize_parquet_export_root(raw: str | None, *, data_root: Path | None = None) -> str:
+    """Resolve ``AUTOPULSE_PARQUET_EXPORT_ROOT`` to an absolute path."""
+    text = (raw or "").strip() or "./.autopulse/parquet/events"
+    root = (data_root or resolve_autopulse_data_root()).resolve()
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    anchored = (root / text).resolve()
+    try:
+        anchored.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"AUTOPULSE_PARQUET_EXPORT_ROOT={raw!r} resolves outside data root {root}: {anchored}"
+        ) from exc
+    return str(anchored)
+
+
 def _sqlite_resolved_file_path(normalized_sqlite_url: str) -> Path | None:
     """Filesystem path for a file-backed SQLite URL already normalized, or None."""
     if not normalized_sqlite_url.startswith("sqlite"):
@@ -607,6 +628,21 @@ def get_settings() -> Settings:
             "INGEST_SQL_TAIL_REPAIR_MAX_RETRIES",
             12,
             minimum=1,
+        ),
+        parquet_export_enabled=_env_bool("AUTOPULSE_PARQUET_EXPORT_ENABLED", False),
+        parquet_export_root=normalize_parquet_export_root(
+            getenv("AUTOPULSE_PARQUET_EXPORT_ROOT", "").strip() or None,
+            data_root=_data_root,
+        ),
+        parquet_export_interval_seconds=_env_float(
+            "AUTOPULSE_PARQUET_EXPORT_INTERVAL_SECONDS",
+            300.0,
+            minimum=5.0,
+        ),
+        parquet_export_window_seconds=_env_int(
+            "AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS",
+            900,
+            minimum=60,
         ),
         ingest_idempotency_ttl_hours=_env_int("INGEST_IDEMPOTENCY_TTL_HOURS", 24, minimum=1),
         ingest_idempotency_stale_seconds=_env_int(

@@ -127,6 +127,28 @@ Validate in staging: issue a real dashboard login and one SDK ingest batch throu
 - **DuckDB writer rule:** treat DuckDB as **single-writer**. Running multiple API replicas that write to the same DuckDB file is a production **No-Go**.
 - **WS correctness rule:** for multi-replica live dashboard correctness, require LB stickiness for WS traffic or route WS to one dedicated replica.
 
+### 4.1 Production topology baseline (explicit settings)
+
+Set these explicitly in production deployment config (do not rely on implicit local defaults):
+
+- `AUTOPULSE_ENV=production`
+- `AUTOPULSE_EVENT_STORE=duckdb`
+- `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`
+- `JOBS_ENABLE_SCHEDULER=true` (or documented external cron ownership)
+- `DASHBOARD_AUTH_ENABLED=true`
+- `DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true`
+- `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` for multi-replica Postgres deployments; otherwise explicitly set `none` with sticky WS/single WS routing policy documented.
+
+Staging evidence before go-live:
+
+1. Capture startup logs for grouped settings sections (`dashboard_auth`, `realtime`, `event_store`, `jobs_retention`).
+2. Capture `/internal/metrics` `topology_profile` and verify expected values for:
+   - `event_plane_mode`
+   - `jobs_enable_scheduler`
+   - `dashboard_auth_enabled`
+   - `dashboard_realtime_bus_backend`
+3. Capture `/ready` confirming `autopulse_env`, `event_plane_mode`, scheduler status, and realtime backend.
+
 ## 5. Jobs, retention, and aggregation
 
 - Enable `JOBS_ENABLE_SCHEDULER=true` where you need scheduled alerts + retention.
@@ -141,6 +163,15 @@ Validate in staging: issue a real dashboard login and one SDK ingest batch throu
   - Tune cadence with `INGEST_SQL_TAIL_REPAIR_INTERVAL_SECONDS` and `INGEST_SQL_TAIL_REPAIR_BATCH_SIZE`.
   - Bound retry depth with `INGEST_SQL_TAIL_REPAIR_MAX_RETRIES`; dead letters expose via `ingest_pressure.sql_tail_repair_dead_lettered_total`.
   - Manual replay CLI: `uv run python -m autopulse_backend.jobs replay-sql-tail-repairs-once`.
+- Parquet phase-1 export (optional cold layer):
+  - Enable with `AUTOPULSE_PARQUET_EXPORT_ENABLED=true`.
+  - Set export target root: `AUTOPULSE_PARQUET_EXPORT_ROOT` (partitioned as `date=YYYY-MM-DD/service=.../environment=...`).
+  - Tune cadence and incremental window with:
+    - `AUTOPULSE_PARQUET_EXPORT_INTERVAL_SECONDS`
+    - `AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS`
+  - Manual run: `uv run python -m autopulse_backend.jobs parquet-export-once`.
+  - First export (no `watermark.json` or watermark before 1971-01-01 UTC): one catch-up tick exports through “now”; later ticks use `AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS` for incremental windows.
+  - Verify `/internal/metrics` counters: `parquet.export.rows`, `parquet.export.partitions`, `parquet.export.bytes`, and `parquet.export.runs.succeeded`.
 
 ## 5.1 When to move metadata DB off SQLite
 

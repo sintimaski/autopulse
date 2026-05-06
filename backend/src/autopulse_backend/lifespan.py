@@ -128,10 +128,16 @@ def _log_grouped_startup_settings() -> None:
     )
     log.info(
         "Startup settings [deployment]: autopulse_env=%s aggregate_max_retries=%d "
-        "run_migrations_on_startup=%s",
+        "run_migrations_on_startup=%s parquet_export_enabled=%s "
+        "parquet_export_interval_seconds=%.2f parquet_export_window_seconds=%d "
+        "parquet_export_root=%s",
         settings.autopulse_env,
         settings.ingest_aggregate_worker_max_retries,
         settings.database_run_migrations_on_startup,
+        settings.parquet_export_enabled,
+        settings.parquet_export_interval_seconds,
+        settings.parquet_export_window_seconds,
+        settings.parquet_export_root,
     )
     log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "

@@ -4,6 +4,7 @@ Use this checklist before promoting any release-hardening changes.
 
 ## Auth and Governance
 
+- [ ] Pre-go-live config verification captured from staging startup logs and `/internal/metrics` `topology_profile` (`event_plane_mode`, `jobs_enable_scheduler`, `dashboard_auth_enabled`, `dashboard_realtime_bus_backend`).
 - [ ] Dashboard session endpoint returns `project_id`, `organization_id`, and `membership_role`.
 - [ ] Owner/member authorization is enforced for organization governance endpoints.
 - [ ] Governance actions create audit events.

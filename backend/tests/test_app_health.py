@@ -24,6 +24,9 @@ def test_ready_endpoint_returns_ready_when_database_is_available(
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
+    assert "autopulse_env" in body
+    assert "event_plane_mode" in body
+    assert "dashboard_auth_enabled" in body
     assert "jobs_enable_scheduler" in body
     assert "scheduler_running" in body
     assert "database_run_migrations_on_startup" in body
@@ -44,6 +47,16 @@ def test_internal_metrics_includes_ingest_pressure_view(
     assert response.status_code == 200
     body = response.json()
     assert "ingest_pressure" in body
+    assert "topology_profile" in body
+    topology = body["topology_profile"]
+    for field in (
+        "event_store",
+        "event_plane_mode",
+        "jobs_enable_scheduler",
+        "dashboard_auth_enabled",
+        "dashboard_realtime_bus_backend",
+    ):
+        assert field in topology, f"missing topology field: {field}"
     pressure = body["ingest_pressure"]
     for field in (
         "accepted_events_total",
@@ -60,3 +73,5 @@ def test_internal_metrics_includes_ingest_pressure_view(
         assert field in pressure, f"missing pressure field: {field}"
     assert "ingest_aggregate_queue" in body
     assert "enabled" in body["ingest_aggregate_queue"]
+    assert "parquet_export" in body
+    assert "enabled" in body["parquet_export"]
