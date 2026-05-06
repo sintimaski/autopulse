@@ -452,11 +452,8 @@ class DuckDbEventStore:
         if not parquet_files:
             return "events", []
         parquet_files_sql = ",".join(self._sql_string_literal(str(path)) for path in parquet_files)
-        return self._hot_cold_events_union_sql(parquet_files_sql), [cutoff_naive, cutoff_naive]
-
-    def _hot_cold_events_union_sql(self, parquet_files_sql: str) -> str:
-        """Union hot `events` rows with Parquet files under export_root (paths SQL-escaped)."""
-        return (
+        # Parquet paths are filesystem-derived and SQL-escaped; filters bind separately.
+        source_sql = (
             "(SELECT "  # nosec B608
             + self._EVENT_SOURCE_COLUMNS
             + " FROM events WHERE timestamp > CAST(? AS TIMESTAMP) "  # nosec B608
@@ -466,6 +463,7 @@ class DuckDbEventStore:
             + parquet_files_sql
             + "], hive_partitioning=1) WHERE timestamp <= CAST(? AS TIMESTAMP))"  # nosec B608
         )
+        return source_sql, [cutoff_naive, cutoff_naive]
 
     def fetch_events(
         self,
