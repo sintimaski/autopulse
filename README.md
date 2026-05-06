@@ -8,17 +8,11 @@
 
 🛡️ Ship a working setup fast; keep **sampling**, **privacy controls**, **dashboard auth** (magic link, domains, OIDC), **multi-channel alerting**, **DuckDB-backed event storage**, and **optional host metrics** in your back pocket for larger installs.
 
-
-
-
 ---
 
 **🏭 Running in production?** Use the **[Production deployment guide](./docs/ops/PRODUCTION_DEPLOYMENT.md)** — TLS, databases, scaling, static UI export, scheduler/jobs, and operational defaults.
 
 ---
-
-
-
 
 ## Contents
 
@@ -28,9 +22,6 @@
 - 🔐 [Auth and options](#auth-and-options)
 - 🌍 [Environment reference](#environment-reference)
 - 🛠️ [Develop AutoPulse from this repo](#develop-autopulse-from-this-repo)
-
-
-
 
 ---
 
@@ -59,9 +50,6 @@ export AUTOPULSE_API_KEY="<project ingest key from dashboard>"
 
 🔑 Copy the ingest key from the dashboard (project settings / onboarding).
 
-
-
-
 ### Sanity-check ingest 🧪
 
 ```bash
@@ -70,9 +58,6 @@ export INGEST_KEY='<project ingest key>'
 ```
 
 ✅ Expect **HTTP 202**. Refresh the dashboard to see the event.
-
-
-
 
 ---
 
@@ -109,9 +94,6 @@ autopulse(
 - Rich demo fixture: `sdk/src/autopulse/fixtures/synthetic_test_app.py` (`_build_demo_dashboard_widgets`)
 - UI showcase: `/autopulse/ui/widgets-showcase`
 
-
-
-
 ---
 
 ## Runtime modes ⚙️
@@ -123,9 +105,6 @@ autopulse(
 | **🖥️ Backend only**              | `uv run python -m autopulse_backend.main`   | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
 | **🔥 API + Next with hot reload** | Backend + `npm --prefix frontend run dev`   | Frontend iteration: HMR on the dashboard while the API serves JSON; point `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (and related `NEXT_PUBLIC_`* vars) at the API origin. |
 | **📈 Synthetic load**             | `./scripts/examples/synthetic_load_demo.sh` | Generate realistic mixed traffic against the sample app; override `BASE_URL`, `DURATION_MINUTES`, `TARGET_REQUESTS`, `ROLE_MODE`, or `SCENARIO` as needed.           |
-
-
-
 
 
 ---
@@ -153,9 +132,6 @@ export ALERT_EMAIL_PROVIDER=file
 export ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails
 ```
 
-
-
-
 ### Multi-channel alerts 📣
 
 **Channels:** `file`, `smtp`, `smtp_localhost`, `sendmail`, `resend`, `postmark`, generic `webhook`, `slack`, `discord`, `composite`, and `stub`.
@@ -163,9 +139,6 @@ export ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails
 **Primary knobs:** `ALERT_SENDER_MODE`, `ALERT_EMAIL_PROVIDER` + `ALERT_EMAIL_`*, `ALERT_WEBHOOK_URL`, `ALERT_SLACK_WEBHOOK_URL`, `ALERT_DISCORD_WEBHOOK_URL`.
 
 Details: [backend/ALERT_DELIVERY_RUNBOOK.md](./backend/ALERT_DELIVERY_RUNBOOK.md).
-
-
-
 
 ### SDK: `autopulse(app, **kwargs)` 🎛️
 
@@ -184,9 +157,6 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 | `capture_infrastructure_metrics`, `infrastructure_probe_interval_ms`                | Optional host metrics                                                                     |
 
 
-
-
-
 ---
 
 ## Environment reference 🌍
@@ -195,14 +165,11 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 | Area                  | Highlights                                                                                                                                                                                                                                                                                                                       | Full lists                                                                               |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | **📘 SDK**            | `AUTOPULSE_API_KEY`, `AUTOPULSE_INGEST_URL` / `AUTOPULSE_ENDPOINT`, batching (`AUTOPULSE_BATCH_MAX_EVENTS`, `AUTOPULSE_FLUSH_INTERVAL_SECONDS`, `AUTOPULSE_MAX_QUEUE_SIZE`), `AUTOPULSE_DEBUG`, `AUTOPULSE_REQUEST_SAMPLE_RATE`, `AUTOPULSE_IGNORE_PATH_PREFIXES`, `AUTOPULSE_CAPTURE_HEADERS`, `AUTOPULSE_CAPTURE_QUERY_PARAMS` | [sdk/README.md](./sdk/README.md)                                                         |
-| **🗄️ Backend**       | `DATABASE_URL`, `AUTOPULSE_EVENT_STORE`, `AUTOPULSE_DUCKDB_PATH`, `AUTOPULSE_DATA_DIR`, `DASHBOARD_AUTH_`*, `ALERT_*`, `INGEST_*`, `JOBS_*`, dashboard rate limits                                                                                                                                                               | [backend/.env.example](./backend/.env.example), [backend/README.md](./backend/README.md) |
+| **🗄️ Backend**       | `DATABASE_URL`, `AUTOPULSE_EVENT_STORE`, `AUTOPULSE_DUCKDB_PATH`, `AUTOPULSE_DATA_DIR`, `DASHBOARD_AUTH_`*, `ALERT_`*, `INGEST_*`, `JOBS_*`, dashboard rate limits                                                                                                                                                               | [backend/.env.example](./backend/.env.example), [backend/README.md](./backend/README.md) |
 | **📱 Frontend build** | `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL`, `NEXT_PUBLIC_AUTOPULSE_FRONTEND_MODE`, related `NEXT_PUBLIC_`* toggles                                                                                                                                                                                                                     | [frontend/.env.example](./frontend/.env.example)                                         |
 
 
 📖 For architecture, event shapes, and scope boundaries: [DEVELOPMENT.md](./DEVELOPMENT.md).
-
-
-
 
 ---
 
@@ -210,16 +177,19 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 
 🔧 Fork or clone AutoPulse when you want to **shape it to your org** — extend widgets, ingest rules, retention, alert channels, or dashboard behavior without fighting a black-box SaaS installer.
 
-📦 Install dependencies and boot the whole product (backend, dashboard UI, synthetic FastAPI app) in one pass:
+📦 One install line:
 
 ```bash
-uv sync --group dev \
-  && npm --prefix frontend install \
-  && cp backend/.env.example backend/.env \
-  && ./scripts/run_synthetic_stack.sh
+./scripts/bootstrap_local.sh
 ```
 
-💡 Then open the dashboard (`**http://127.0.0.1:8000/autopulse/ui/dashboard/**` when serving the static export from the backend, or the Next dev URL printed if you run in sidecar mode), sign in, and copy an ingest key for experiments.
+▶️ One run line (backend + dashboard + synthetic FastAPI app):
+
+```bash
+./scripts/run_synthetic_stack.sh
+```
+
+💡 Then open the dashboard (`http://127.0.0.1:8000/autopulse/ui/dashboard/` when serving the static export from the backend, or the Next dev URL printed if you run in sidecar mode), sign in, and copy an ingest key for experiments.
 
 🚦 Optional traffic against the sample app (`:8001`):
 
@@ -227,4 +197,4 @@ uv sync --group dev \
 ./scripts/examples/synthetic_load_demo.sh
 ```
 
-**Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)**.
+**Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**.

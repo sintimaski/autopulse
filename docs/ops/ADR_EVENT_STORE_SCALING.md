@@ -3,7 +3,7 @@
 - **Status:** Accepted (strategic path, not yet implemented)
 - **Date:** 2026-05-05
 - **Owners:** Platform + Backend + SRE
-- **Related:** [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md), [AUTOPULSE_PRODUCTION_READINESS_MASTER_AUDIT.md](../AUTOPULSE_PRODUCTION_READINESS_MASTER_AUDIT.md)
+- **Related:** [PRODUCTION_DEPLOYMENT.md](./PRODUCTION_DEPLOYMENT.md)
 
 ## Context
 

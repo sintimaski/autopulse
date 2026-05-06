@@ -4,7 +4,7 @@ import json
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from os import getenv
 from pathlib import Path
 from threading import Lock, local
@@ -17,6 +17,11 @@ from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.dashboard.log_query import parse_log_query
 from autopulse_backend.dashboard.payload_limits import MAX_DASHBOARD_WIDGET_POINTS_RETURNED
 from autopulse_backend.services.duckdb_async import run_duckdb_write_sync
+from autopulse_backend.services.event_store_utils import (
+    as_duckdb_timestamp,
+    as_utc,
+    duckdb_connect_config,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,37 +48,11 @@ class EventStoreFilters:
     include_received_at_in_time_window: bool = False
 
 
-def _as_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value
-    return value.astimezone(UTC).replace(tzinfo=None)
-
-
-def _as_duckdb_timestamp(value: datetime) -> str:
-    return _as_utc(value).strftime("%Y-%m-%d %H:%M:%S.%f")
-
-
-def _duckdb_connect_config() -> dict[str, Any]:
-    """Per-connection DuckDB settings (see DuckDB configuration / pragmas docs)."""
-    cfg: dict[str, Any] = {}
-    raw_threads = getenv("AUTOPULSE_DUCKDB_THREADS")
-    if raw_threads and raw_threads.strip():
-        try:
-            threads = max(1, min(int(raw_threads.strip()), 128))
-            cfg["threads"] = str(threads)
-        except ValueError:
-            pass
-    raw_mem = getenv("AUTOPULSE_DUCKDB_MEMORY_LIMIT")
-    if raw_mem and raw_mem.strip():
-        cfg["memory_limit"] = raw_mem.strip()
-    return cfg
-
-
 class DuckDbEventStore:
     def __init__(self, db_path: str) -> None:
         self._path = Path(db_path).expanduser().resolve()
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        _cfg = _duckdb_connect_config()
+        _cfg = duckdb_connect_config()
         self._connect_config = _cfg
         self._write_conn = self._open_connection(str(self._path), _cfg)
         self._write_lock = Lock()
@@ -214,8 +193,8 @@ class DuckDbEventStore:
             (
                 idx,
                 row["project_id"],
-                _as_duckdb_timestamp(row["timestamp"]),
-                _as_duckdb_timestamp(row["received_at"]),
+                as_duckdb_timestamp(row["timestamp"]),
+                as_duckdb_timestamp(row["received_at"]),
                 row["sdk_version"],
                 row["type"],
                 row["service_name"],
@@ -275,7 +254,7 @@ class DuckDbEventStore:
                     idx,
                     str(project_id),
                     widget_id,
-                    _as_duckdb_timestamp(timestamp),
+                    as_duckdb_timestamp(timestamp),
                     label if isinstance(label, str) else None,
                     float(value),
                 )
@@ -318,8 +297,8 @@ class DuckDbEventStore:
             """,
             [
                 str(project_id),
-                _as_duckdb_timestamp(from_timestamp),
-                _as_duckdb_timestamp(to_timestamp),
+                as_duckdb_timestamp(from_timestamp),
+                as_duckdb_timestamp(to_timestamp),
                 cap,
             ],
         )
@@ -327,8 +306,8 @@ class DuckDbEventStore:
     def _compile_filters(self, filters: EventStoreFilters) -> tuple[str, list[Any]]:
         clauses = ["project_id = ?"]
         params: list[Any] = [str(filters.project_id)]
-        from_ts = _as_duckdb_timestamp(filters.from_timestamp)
-        to_ts = _as_duckdb_timestamp(filters.to_timestamp)
+        from_ts = as_duckdb_timestamp(filters.from_timestamp)
+        to_ts = as_duckdb_timestamp(filters.to_timestamp)
         if filters.include_received_at_in_time_window:
             clauses.append(
                 "("
@@ -527,7 +506,7 @@ class DuckDbEventStore:
 
     def delete_events_before(self, *, cutoff: datetime, project_id: UUID | None = None) -> int:
         sql = "DELETE FROM events WHERE received_at < ?"
-        params: list[Any] = [_as_duckdb_timestamp(cutoff)]
+        params: list[Any] = [as_duckdb_timestamp(cutoff)]
         if project_id is not None:
             sql += " AND project_id = ?"
             params.append(str(project_id))
@@ -545,7 +524,7 @@ class DuckDbEventStore:
     ) -> int:
         """Delete widget samples at or before ``cutoff`` (same horizon as event retention)."""
         sql = "DELETE FROM dashboard_widget_points WHERE timestamp < ?"
-        params: list[Any] = [_as_duckdb_timestamp(cutoff)]
+        params: list[Any] = [as_duckdb_timestamp(cutoff)]
         if project_id is not None:
             sql += " AND project_id = ?"
             params.append(str(project_id))
@@ -563,7 +542,7 @@ class DuckDbEventStore:
         value = row[0] if row else None
         if value is None:
             return None
-        return _as_utc(value)
+        return as_utc(value)
 
     def file_size_bytes(self) -> int:
         total = 0

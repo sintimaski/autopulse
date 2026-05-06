@@ -1,7 +1,6 @@
 # Phase 5 Incident Drills
 
-This document defines rehearsal drills required by Phase 5 readiness.
-This runbook phase name maps to the post-MVP roadmap release-hardening stage in `docs/POST_MVP_REAL_APP_ROADMAP.md`.
+This document defines rehearsal drills required for release-hardening readiness.
 
 ## Drill 1: Ingest Overload
 
