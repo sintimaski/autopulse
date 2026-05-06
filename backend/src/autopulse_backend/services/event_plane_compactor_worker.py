@@ -11,6 +11,7 @@ from autopulse_backend.services.event_plane_compactor import (
     CompactionTickResult,
     make_event_plane_compactor,
 )
+from autopulse_backend.services.event_plane_manifest import ShardManifestState
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,19 @@ class EventPlaneCompactorWorkerHandle:
 
 async def _run_compactor_tick_once(settings: Settings) -> CompactionTickResult:
     compactor = make_event_plane_compactor(settings=settings)
+    state_counts = compactor.count_shards_by_state()
+    service_metrics.set_value(
+        "event_plane.shards.open_count",
+        int(state_counts.get(ShardManifestState.OPEN, 0)),
+    )
+    service_metrics.set_value(
+        "event_plane.compaction.lag_seconds",
+        compactor.compaction_lag_seconds(),
+    )
+    service_metrics.set_value(
+        "event_plane.snapshot.age_seconds",
+        compactor.snapshot_age_seconds(),
+    )
     started = time.perf_counter()
     try:
         result = await asyncio.to_thread(compactor.compact_tick)
@@ -53,6 +67,19 @@ async def _run_compactor_tick_once(settings: Settings) -> CompactionTickResult:
             "event_plane.compaction.compacted_rows_total",
             amount=int(result.compacted_rows),
         )
+    state_counts = compactor.count_shards_by_state()
+    service_metrics.set_value(
+        "event_plane.shards.open_count",
+        int(state_counts.get(ShardManifestState.OPEN, 0)),
+    )
+    service_metrics.set_value(
+        "event_plane.compaction.lag_seconds",
+        compactor.compaction_lag_seconds(),
+    )
+    service_metrics.set_value(
+        "event_plane.snapshot.age_seconds",
+        compactor.snapshot_age_seconds(),
+    )
     return result
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -1141,6 +1142,32 @@ def test_dashboard_event_plane_cutover_toggle_can_enable_and_rollback(
         )
         assert disable.status_code == 200
         assert disable.json()["use_snapshot_read"] is False
+
+
+def test_dashboard_event_plane_cutover_enable_blocked_on_parity_mismatch(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Cutover Parity Gate")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_log_shards")
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setattr(
+        "autopulse_backend.dashboard.routes.ui_settings.build_cutover_decision",
+        lambda **_: (False, SimpleNamespace(mismatches=[object()])),
+    )
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        response = client.put(
+            "/dashboard/event-plane-cutover",
+            json={"use_snapshot_read": True},
+            headers=headers,
+        )
+    assert response.status_code == 409
+    assert "parity gate" in str(response.json().get("detail", "")).lower()
 
 
 def test_dashboard_internal_metrics_requires_server_token_flag(

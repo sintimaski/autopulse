@@ -21,6 +21,7 @@ class ServiceMetrics:
     def __init__(self) -> None:
         self._lock = Lock()
         self._counters: Counter[str] = Counter()
+        self._gauges: dict[str, int] = {}
         self._job_last_runs: dict[str, JobExecutionTelemetry] = {}
 
     def increment(self, name: str, amount: int = 1) -> None:
@@ -31,9 +32,13 @@ class ServiceMetrics:
         with self._lock:
             self._job_last_runs[telemetry.job_name] = telemetry
 
+    def set_value(self, name: str, value: int) -> None:
+        with self._lock:
+            self._gauges[name] = int(value)
+
     def snapshot(self) -> dict[str, int]:
         with self._lock:
-            return dict(self._counters)
+            return {**dict(self._counters), **dict(self._gauges)}
 
     def job_snapshot(self) -> dict[str, dict[str, int | str | None]]:
         with self._lock:

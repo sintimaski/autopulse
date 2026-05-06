@@ -37,6 +37,7 @@ def test_shadow_write_appends_and_increments_success_metric(monkeypatch) -> None
     def _append_events_to_shards(**_: object) -> ShardWriteResult:
         return ShardWriteResult(
             shard_path=Path("/tmp/shard.jsonl"),
+            shard_id="s1",
             records_appended=2,
             bytes_appended=42,
             rotated=False,
@@ -144,6 +145,7 @@ def test_shadow_write_tracks_count_mismatch_metric(monkeypatch) -> None:
     def _append_events_to_shards(**_: object) -> ShardWriteResult:
         return ShardWriteResult(
             shard_path=Path("/tmp/shard.jsonl"),
+            shard_id="s1",
             records_appended=1,
             bytes_appended=42,
             rotated=False,

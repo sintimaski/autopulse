@@ -13,6 +13,7 @@ from autopulse_backend.services.event_plane_shards import (
     LocalAppendOnlyShardWriter,
     ShardDurabilityMode,
     append_events_to_shards,
+    shutdown_event_plane_shard_writer,
 )
 
 
@@ -187,3 +188,59 @@ def test_append_events_to_shards_rejects_when_pending_shards_exceed_threshold(
             rows=[{"path": "/ok"}],
             settings=settings,
         )
+
+
+def test_append_events_to_shards_registers_manifest_and_seals_rotated_shard(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = Settings(
+        database_url="sqlite+aiosqlite:///./x.db",
+        event_store="duckdb",
+        event_store_duckdb_path=str(tmp_path / "legacy.duckdb"),
+        event_plane_mode="duckdb_log_shards",
+        event_plane_shards_path=str(tmp_path / "events-log"),
+        event_plane_shard_max_bytes=40,
+        event_plane_backpressure_min_free_bytes=1,
+        event_plane_backpressure_min_free_percent=0,
+        event_plane_backpressure_max_pending_shards=10_000,
+    )
+    monkeypatch.setattr(
+        "autopulse_backend.services.event_plane_shards.shutil.disk_usage",
+        lambda _: SimpleNamespace(total=10_000, used=1_000, free=9_000),
+    )
+    shutdown_event_plane_shard_writer()
+    try:
+        first = append_events_to_shards(
+            project_id="project-1",
+            received_at=datetime(2026, 5, 5, 21, 0, 0, tzinfo=UTC),
+            rows=[{"k": "A" * 40}],
+            settings=settings,
+        )
+        second = append_events_to_shards(
+            project_id="project-1",
+            received_at=datetime(2026, 5, 5, 21, 0, 1, tzinfo=UTC),
+            rows=[{"k": "B" * 40}],
+            settings=settings,
+        )
+        assert first is not None
+        assert second is not None
+        manifest_path = tmp_path / "events-index" / "manifest.sqlite"
+        assert manifest_path.is_file()
+        from autopulse_backend.services.event_plane_manifest import (
+            ShardManifestState,
+            SqliteShardManifest,
+        )
+
+        manifest = SqliteShardManifest(manifest_path)
+        try:
+            current = manifest.get_shard(second.shard_id)
+            assert current is not None
+            assert current.state == ShardManifestState.OPEN
+            assert second.sealed_shard_ids
+            sealed = manifest.get_shard(second.sealed_shard_ids[0])
+            assert sealed is not None
+            assert sealed.state == ShardManifestState.SEALED
+        finally:
+            manifest.close()
+    finally:
+        shutdown_event_plane_shard_writer()

@@ -13,6 +13,7 @@ from uuid import uuid4
 import duckdb
 
 from autopulse_backend.core.config import Settings, get_settings
+from autopulse_backend.metrics import service_metrics
 from autopulse_backend.services.event_plane_manifest import (
     ShardManifestRecord,
     ShardManifestState,
@@ -136,6 +137,8 @@ class EventPlaneCompactor:
             )
         except Exception:
             # Keep shards as "compacting" so retries can resume safely.
+            if publish_started > 0:
+                service_metrics.increment("event_plane.snapshot.publish_failed_total")
             if temp_snapshot_dir.exists():
                 shutil.rmtree(temp_snapshot_dir, ignore_errors=True)
             raise
@@ -173,6 +176,39 @@ class EventPlaneCompactor:
         if not (snapshot_path / "COMPLETE").is_file():
             return None
         return snapshot_path
+
+    def count_shards_by_state(self) -> dict[ShardManifestState, int]:
+        return {
+            ShardManifestState.OPEN: len(self._manifest.list_by_state(ShardManifestState.OPEN)),
+            ShardManifestState.SEALED: len(self._manifest.list_by_state(ShardManifestState.SEALED)),
+            ShardManifestState.COMPACTING: len(
+                self._manifest.list_by_state(ShardManifestState.COMPACTING)
+            ),
+            ShardManifestState.COMPACTED: len(
+                self._manifest.list_by_state(ShardManifestState.COMPACTED)
+            ),
+            ShardManifestState.FAILED: len(self._manifest.list_by_state(ShardManifestState.FAILED)),
+        }
+
+    def compaction_lag_seconds(self) -> int:
+        now = datetime.now(UTC)
+        backlog = self._manifest.list_by_state(
+            ShardManifestState.SEALED
+        ) + self._manifest.list_by_state(ShardManifestState.COMPACTING)
+        if not backlog:
+            return 0
+        oldest = min(backlog, key=lambda record: record.created_at)
+        return max(0, int((now - oldest.created_at).total_seconds()))
+
+    def snapshot_age_seconds(self) -> int:
+        payload = self._read_current_pointer()
+        if payload is None:
+            return 0
+        published_raw = payload.get("published_at")
+        if not isinstance(published_raw, str) or not published_raw.strip():
+            return 0
+        published_at = _parse_datetime(published_raw, fallback=datetime.now(UTC))
+        return max(0, int((datetime.now(UTC) - published_at).total_seconds()))
 
     def _reserve_candidates_for_compaction(self) -> list[ShardManifestRecord]:
         sealed = self._manifest.list_by_state(ShardManifestState.SEALED)
@@ -304,6 +340,7 @@ class EventPlaneCompactor:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS events (
+                    id BIGINT PRIMARY KEY,
                     project_id VARCHAR NOT NULL,
                     timestamp TIMESTAMP NOT NULL,
                     received_at TIMESTAMP NOT NULL,
@@ -323,63 +360,68 @@ class EventPlaneCompactor:
             )
             insert_rows: list[tuple[object, ...]] = []
             batch_size = 5000
+            next_row_id = 1
             for shard in candidates:
                 shard_path = Path(shard.shard_path)
                 if not shard_path.is_file():
                     raise FileNotFoundError(f"shard file missing: {shard_path}")
-                for line in shard_path.read_text(encoding="utf-8").splitlines():
-                    if not line.strip():
-                        continue
-                    parsed = json.loads(line)
-                    received_at = _parse_datetime(
-                        parsed.get("received_at"), fallback=shard.created_at
-                    )
-                    event_ts = _parse_datetime(parsed.get("timestamp"), fallback=received_at)
-                    payload = parsed.get("payload")
-                    payload_json = payload if isinstance(payload, dict) else {}
-                    insert_rows.append(
-                        (
-                            str(parsed.get("project_id") or shard.project_id),
-                            event_ts.replace(tzinfo=None),
-                            received_at.replace(tzinfo=None),
-                            str(parsed.get("sdk_version") or "unknown"),
-                            str(parsed.get("type") or "request"),
-                            str(parsed.get("service_name") or "unknown"),
-                            str(parsed.get("environment") or "unknown"),
-                            str(parsed.get("method") or "GET"),
-                            str(parsed.get("path") or "/unknown"),
-                            int(parsed.get("status_code") or 0),
-                            float(parsed.get("latency_ms") or 0.0),
-                            json.dumps(payload_json),
+                with shard_path.open("r", encoding="utf-8") as shard_file:
+                    for line in shard_file:
+                        if not line.strip():
+                            continue
+                        parsed = json.loads(line)
+                        received_at = _parse_datetime(
+                            parsed.get("received_at"), fallback=shard.created_at
+                        )
+                        event_ts = _parse_datetime(parsed.get("timestamp"), fallback=received_at)
+                        payload = parsed.get("payload")
+                        payload_json = payload if isinstance(payload, dict) else {}
+                        insert_rows.append(
                             (
-                                str(parsed.get("request_id"))
-                                if parsed.get("request_id") is not None
-                                else None
-                            ),
-                            shard.shard_id,
+                                next_row_id,
+                                str(parsed.get("project_id") or shard.project_id),
+                                event_ts.replace(tzinfo=None),
+                                received_at.replace(tzinfo=None),
+                                str(parsed.get("sdk_version") or "unknown"),
+                                str(parsed.get("type") or "request"),
+                                str(parsed.get("service_name") or "unknown"),
+                                str(parsed.get("environment") or "unknown"),
+                                str(parsed.get("method") or "GET"),
+                                str(parsed.get("path") or "/unknown"),
+                                int(parsed.get("status_code") or 0),
+                                float(parsed.get("latency_ms") or 0.0),
+                                json.dumps(payload_json),
+                                (
+                                    str(parsed.get("request_id"))
+                                    if parsed.get("request_id") is not None
+                                    else None
+                                ),
+                                shard.shard_id,
+                            )
                         )
-                    )
-                    if len(insert_rows) >= batch_size:
-                        conn.executemany(
-                            """
-                            INSERT INTO events (
-                                project_id, timestamp, received_at, sdk_version, type, service_name,
-                                environment, method, path, status_code, latency_ms, payload,
-                                request_id, shard_id
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            insert_rows,
-                        )
-                        rows_written += len(insert_rows)
-                        insert_rows.clear()
+                        next_row_id += 1
+                        if len(insert_rows) >= batch_size:
+                            conn.executemany(
+                                """
+                                INSERT INTO events (
+                                    id, project_id, timestamp, received_at, sdk_version,
+                                    type, service_name,
+                                    environment, method, path, status_code, latency_ms, payload,
+                                    request_id, shard_id
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                insert_rows,
+                            )
+                            rows_written += len(insert_rows)
+                            insert_rows.clear()
             if insert_rows:
                 conn.executemany(
                     """
                     INSERT INTO events (
-                        project_id, timestamp, received_at, sdk_version, type, service_name,
+                        id, project_id, timestamp, received_at, sdk_version, type, service_name,
                         environment, method, path, status_code, latency_ms, payload,
                         request_id, shard_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     insert_rows,
                 )

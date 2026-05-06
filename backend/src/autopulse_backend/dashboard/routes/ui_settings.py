@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.api.routes.health import _build_metrics_snapshot
@@ -32,9 +33,11 @@ from autopulse_backend.schemas import (
     DashboardThemeSettings,
     DashboardThemeSettingsUpdate,
 )
+from autopulse_backend.services.event_plane_parity import build_cutover_decision
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_CUTOVER_PARITY_WINDOW_MINUTES = 60
 
 
 async def _optional_dashboard_auth_session(
@@ -102,6 +105,33 @@ async def update_dashboard_event_plane_cutover_settings(
     auth_session: Annotated[DashboardAuthSession | None, Depends(_optional_dashboard_auth_session)],
     _: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
 ) -> DashboardEventPlaneCutoverSettings:
+    app_settings = get_settings()
+    if payload.use_snapshot_read and app_settings.event_plane_mode == "duckdb_log_shards":
+        window_end = datetime.now(tz=UTC)
+        window_start = window_end - timedelta(minutes=_CUTOVER_PARITY_WINDOW_MINUTES)
+        try:
+            allowed, report = build_cutover_decision(
+                project_id=str(context.project_id),
+                window_start=window_start,
+                window_end=window_end,
+                legacy_db_path=app_settings.event_store_duckdb_path,
+                snapshots_root=app_settings.event_plane_snapshots_path,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Snapshot cutover blocked: {exc}",
+            ) from exc
+        if not allowed:
+            mismatch_count = len(report.mismatches)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Snapshot cutover blocked by parity gate "
+                    f"(mismatches={mismatch_count} "
+                    f"window_minutes={_CUTOVER_PARITY_WINDOW_MINUTES})"
+                ),
+            )
     settings = await get_or_create_project_ui_settings(session, context.project_id)
     previous = bool(settings.event_plane_use_snapshot_read)
     updated = bool(payload.use_snapshot_read)

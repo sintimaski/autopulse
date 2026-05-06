@@ -15,6 +15,11 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from autopulse_backend.core.config import Settings, get_settings
+from autopulse_backend.metrics import service_metrics
+from autopulse_backend.services.event_plane_manifest import (
+    ShardManifestState,
+    SqliteShardManifest,
+)
 
 
 def _json_default(value: object) -> object:
@@ -41,10 +46,12 @@ class ShardDurabilityMode(StrEnum):
 @dataclass(frozen=True, slots=True)
 class ShardWriteResult:
     shard_path: Path
+    shard_id: str
     records_appended: int
     bytes_appended: int
     rotated: bool
     fsync_performed: bool
+    sealed_shard_ids: tuple[str, ...] = ()
 
 
 class EventPlaneBackpressureError(RuntimeError):
@@ -53,6 +60,7 @@ class EventPlaneBackpressureError(RuntimeError):
 
 @dataclass(slots=True)
 class _OpenShard:
+    shard_id: str
     project_segment: str
     time_bucket: str
     path: Path
@@ -104,6 +112,13 @@ class LocalAppendOnlyShardWriter:
         with self._lock:
             self._close_open_shard()
 
+    def close_and_seal(self) -> tuple[str, ...]:
+        with self._lock:
+            sealed = self._close_open_shard()
+            if sealed is None:
+                return ()
+            return (sealed.shard_id,)
+
     def append_rows(
         self,
         *,
@@ -122,7 +137,7 @@ class LocalAppendOnlyShardWriter:
         )
         bucket = received_utc.strftime("%Y/%m/%d/%H")
         with self._lock:
-            rotated = self._ensure_open_shard_for_append(
+            rotated, sealed_shard_ids = self._ensure_open_shard_for_append(
                 project_segment=project_segment,
                 time_bucket=bucket,
                 incoming_bytes=len(payload),
@@ -137,10 +152,12 @@ class LocalAppendOnlyShardWriter:
             fsync_performed = self._maybe_fsync(shard, force=False)
             return ShardWriteResult(
                 shard_path=shard.path,
+                shard_id=shard.shard_id,
                 records_appended=len(rows),
                 bytes_appended=written,
                 rotated=rotated,
                 fsync_performed=fsync_performed,
+                sealed_shard_ids=sealed_shard_ids,
             )
 
     def _serialize_rows(self, rows: Sequence[Mapping[str, Any]]) -> bytes:
@@ -156,7 +173,7 @@ class LocalAppendOnlyShardWriter:
         project_segment: str,
         time_bucket: str,
         incoming_bytes: int,
-    ) -> bool:
+    ) -> tuple[bool, tuple[str, ...]]:
         now = self._monotonic()
         current = self._open_shard
         should_rotate = False
@@ -171,25 +188,29 @@ class LocalAppendOnlyShardWriter:
                 or age_seconds >= self._max_shard_age_seconds
             )
         if should_rotate:
-            self._close_open_shard()
+            sealed = self._close_open_shard()
             self._open_shard = self._create_open_shard(
                 project_segment=project_segment,
                 time_bucket=time_bucket,
                 now=now,
             )
-            return True
-        return False
+            if sealed is None:
+                return True, ()
+            return True, (sealed.shard_id,)
+        return False, ()
 
     def _create_open_shard(
         self, *, project_segment: str, time_bucket: str, now: float
     ) -> _OpenShard:
         shard_dir = self._root_dir / project_segment / time_bucket
         shard_dir.mkdir(parents=True, exist_ok=True)
-        shard_name = f"shard-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex}.jsonl"
+        shard_id = f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}-{uuid4().hex}"
+        shard_name = f"shard-{shard_id}.jsonl"
         shard_path = shard_dir / shard_name
         fd = os.open(shard_path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o640)
         existing_size = int(os.fstat(fd).st_size)
         return _OpenShard(
+            shard_id=shard_id,
             project_segment=project_segment,
             time_bucket=time_bucket,
             path=shard_path,
@@ -200,10 +221,10 @@ class LocalAppendOnlyShardWriter:
             last_fsync_monotonic=now,
         )
 
-    def _close_open_shard(self) -> None:
+    def _close_open_shard(self) -> _OpenShard | None:
         shard = self._open_shard
         if shard is None:
-            return
+            return None
         try:
             self._maybe_fsync(shard, force=True)
         finally:
@@ -211,6 +232,7 @@ class LocalAppendOnlyShardWriter:
                 os.close(shard.fd)
             finally:
                 self._open_shard = None
+        return shard
 
     def _maybe_fsync(self, shard: _OpenShard, *, force: bool) -> bool:
         if self._durability_mode == ShardDurabilityMode.NONE and not force:
@@ -228,6 +250,8 @@ class LocalAppendOnlyShardWriter:
 
 _event_plane_shard_writer: LocalAppendOnlyShardWriter | None = None
 _event_plane_shard_writer_lock = Lock()
+_event_plane_manifest: SqliteShardManifest | None = None
+_event_plane_manifest_lock = Lock()
 _event_plane_backpressure_probe_lock = Lock()
 _event_plane_backpressure_probe_cache: dict[str, tuple[float, int]] = {}
 _EVENT_PLANE_BACKPRESSURE_PROBE_INTERVAL_SECONDS = 5.0
@@ -251,6 +275,47 @@ def get_event_plane_shard_writer(
     return _event_plane_shard_writer
 
 
+def _event_plane_manifest_path(*, settings: Settings) -> Path:
+    return Path(settings.event_plane_shards_path).parent / "events-index" / "manifest.sqlite"
+
+
+def get_event_plane_manifest(settings: Settings | None = None) -> SqliteShardManifest:
+    global _event_plane_manifest
+    if _event_plane_manifest is not None:
+        return _event_plane_manifest
+    with _event_plane_manifest_lock:
+        if _event_plane_manifest is None:
+            resolved = settings if settings is not None else get_settings()
+            _event_plane_manifest = SqliteShardManifest(
+                _event_plane_manifest_path(settings=resolved)
+            )
+    return _event_plane_manifest
+
+
+def _record_manifest_lifecycle(
+    *,
+    project_id: str,
+    write_result: ShardWriteResult,
+    settings: Settings,
+) -> None:
+    manifest = get_event_plane_manifest(settings=settings)
+    manifest.register_open_shard(
+        shard_id=write_result.shard_id,
+        project_id=project_id,
+        shard_path=str(write_result.shard_path),
+    )
+    for sealed_id in write_result.sealed_shard_ids:
+        try:
+            manifest.transition_state(
+                shard_id=sealed_id,
+                to_state=ShardManifestState.SEALED,
+            )
+            service_metrics.increment("event_plane.shards.sealed_total")
+        except (KeyError, ValueError):
+            # Keep ingest fail-open: inconsistent manifest transitions should not fail append.
+            continue
+
+
 def append_events_to_shards(
     *,
     project_id: str,
@@ -271,16 +336,42 @@ def append_events_to_shards(
         root_dir=writer.root_dir,
         max_pending_shards=resolved.event_plane_backpressure_max_pending_shards,
     )
-    return writer.append_rows(project_id=project_id, received_at=received_at, rows=rows)
+    result = writer.append_rows(project_id=project_id, received_at=received_at, rows=rows)
+    _record_manifest_lifecycle(
+        project_id=project_id,
+        write_result=result,
+        settings=resolved,
+    )
+    return result
 
 
 def shutdown_event_plane_shard_writer() -> None:
-    global _event_plane_shard_writer
+    global _event_plane_shard_writer, _event_plane_manifest
     with _event_plane_shard_writer_lock:
         writer = _event_plane_shard_writer
         _event_plane_shard_writer = None
         if writer is not None:
-            writer.close()
+            sealed_ids = writer.close_and_seal()
+            if sealed_ids:
+                try:
+                    manifest = get_event_plane_manifest()
+                except Exception:
+                    manifest = None
+                if manifest is not None:
+                    for sealed_id in sealed_ids:
+                        try:
+                            manifest.transition_state(
+                                shard_id=sealed_id,
+                                to_state=ShardManifestState.SEALED,
+                            )
+                            service_metrics.increment("event_plane.shards.sealed_total")
+                        except (KeyError, ValueError):
+                            continue
+    with _event_plane_manifest_lock:
+        manifest = _event_plane_manifest
+        _event_plane_manifest = None
+        if manifest is not None:
+            manifest.close()
     with _event_plane_backpressure_probe_lock:
         _event_plane_backpressure_probe_cache.clear()
 

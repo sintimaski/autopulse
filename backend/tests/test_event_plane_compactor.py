@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import duckdb
 import pytest
@@ -13,6 +14,11 @@ from autopulse_backend.services.event_plane_compactor import EventPlaneCompactor
 from autopulse_backend.services.event_plane_manifest import (
     ShardManifestState,
     SqliteShardManifest,
+)
+from autopulse_backend.services.event_store import (
+    EventStoreFilters,
+    get_duckdb_read_store_for_path,
+    shutdown_duckdb_event_store,
 )
 
 
@@ -537,4 +543,47 @@ def test_compactor_publish_timeout_raises(tmp_path: Path) -> None:
 
     with pytest.raises(TimeoutError):
         compactor.compact_once()
+    manifest.close()
+
+
+def test_compacted_snapshot_supports_dashboard_read_store_queries(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC)
+    shard = tmp_path / "events-log" / "p1" / "2026/05/05/22" / "compat-1.jsonl"
+    _write_shard(
+        shard,
+        [
+            {
+                "project_id": "p1",
+                "timestamp": now.isoformat(),
+                "received_at": now.isoformat(),
+                "sdk_version": "1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/compat",
+                "status_code": 200,
+                "latency_ms": 1.0,
+                "payload": {},
+                "request_id": "req-1",
+            }
+        ],
+    )
+    _register_sealed(manifest, shard_id="compat-1", project_id="p1", shard_path=shard)
+    compactor = EventPlaneCompactor(manifest=manifest, snapshots_root=snapshots_root)
+    result = compactor.compact_once()
+    assert result.published_snapshot_path is not None
+
+    store = get_duckdb_read_store_for_path(result.published_snapshot_path / "events.duckdb")
+    filters = EventStoreFilters(
+        project_id=uuid4(),
+        from_timestamp=now - timedelta(minutes=1),
+        to_timestamp=now + timedelta(minutes=1),
+    )
+    total, rows = store.fetch_events_with_total(filters, limit=10, offset=0)
+    assert total == 0
+    assert rows == []
+    shutdown_duckdb_event_store()
     manifest.close()

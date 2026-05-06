@@ -398,12 +398,12 @@ No-go triggers:
 
 Use this checklist to track evidence in staging/prod:
 
-- [ ] Ingest p95 delta documented for baseline vs `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards` shadow mode.
-- [ ] Shadow parity counters show stable match behavior over representative traffic windows.
-- [ ] `/internal/metrics` confirms no sustained growth in `event_plane_append_failed_total` or `event_plane_append_rejected_total`.
-- [ ] Compactor load probe output captured via `scripts/event_plane_compactor_load_probe.sh`.
-- [ ] Latest restore drill output captured via `scripts/event_plane_disaster_recovery_drill.sh`.
-- [ ] Staging rollback exercised end-to-end with project-scoped cutover toggle.
+- Ingest p95 delta documented for baseline vs `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards` shadow mode.
+- Shadow parity counters show stable match behavior over representative traffic windows.
+- `/internal/metrics` confirms no sustained growth in `event_plane_append_failed_total` or `event_plane_append_rejected_total`.
+- Compactor load probe output captured via `scripts/event_plane_compactor_load_probe.sh`.
+- Latest restore drill output captured via `scripts/event_plane_disaster_recovery_drill.sh`.
+- Staging rollback exercised end-to-end with project-scoped cutover toggle.
 
 ## 15) Post-implementation code review (latest Plan B commits)
 
@@ -415,17 +415,26 @@ Review basis: `c81389e`, `4d97afe`, `d21eae4` and follow-up working-tree deltas.
 - Test coverage for the critical path is strong and currently green for targeted Plan B suites.
 - Remaining gaps are mostly hardening/operability, not core path correctness.
 
-### Hardening findings status (2026-05-06)
+### Hardening findings status (2026-05-06, post-audit patch)
 
 1. **`AUTOPULSE_SNAPSHOT_RETENTION_COUNT` wiring** — **DONE**
-   - Compactor now prunes old completed snapshots after successful publish while retaining newest `N` snapshots and preserving `CURRENT`.
+   - Compactor prunes old completed snapshots after successful publish while retaining newest `N` snapshots and preserving `CURRENT`.
 2. **`AUTOPULSE_COMPACTOR_PUBLISH_TIMEOUT_SECONDS` wiring** — **DONE**
-   - Compactor publish phase now enforces a timeout budget and fails closed with explicit timeout errors when exceeded.
+   - Compactor publish phase enforces a timeout budget and fails closed with explicit timeout errors when exceeded.
 3. **Dashboard cutover UX** — **DONE**
    - Added owner/admin Settings control for `GET/PUT /dashboard/event-plane-cutover` with rollback guidance.
 4. **Compactor memory pressure during large runs** — **DONE**
-   - Snapshot build now inserts rows in bounded batches instead of accumulating all rows in memory first.
+   - Snapshot build inserts rows in bounded batches instead of accumulating all rows in memory first.
+5. **Manifest lifecycle integration from shard writes** — **DONE**
+   - Shard appends now register open shards in manifest, and shard rotation/shutdown transitions prior shards to `sealed` so compactor candidates progress automatically.
+6. **Snapshot/read-path schema compatibility** — **DONE**
+   - Snapshot `events` table now includes `id` and is compatible with dashboard `DuckDbEventStore` read queries used by requests/error-group/diagnosis routes.
+7. **Automatic parity gate on cutover enable** — **DONE**
+   - `PUT /dashboard/event-plane-cutover` now rejects enable attempts (`409`) when `CURRENT` snapshot parity check fails against legacy DuckDB over a recent window.
+8. **Operational metrics parity with Plan B invariants** — **DONE**
+   - Added/updated event-plane counters and gauges for sealed shard transitions, open shard count, compaction lag seconds, snapshot age seconds, and snapshot publish failures.
 
 ### Remaining follow-up (non-blocking)
 
 - Keep collecting seven-day SLO evidence from Section 12 before broad production defaulting.
+- Capture representative production latency/parity evidence for `TSK-B1-01` and keep cutover expansion staged per-project.
