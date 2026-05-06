@@ -1,6 +1,6 @@
 # Plan B implementation: log-shard ingest + DuckDB compaction (no third-party store)
 
-Status: in progress.
+Status: implementation complete; production hardening follow-ups tracked.
 
 This plan is a full execution path for scaling beyond a single DuckDB writer **without** managed third-party analytics infrastructure. It preserves the MVP default (simple diagnosis-first setup) while adding an operator-controlled scale tier.
 
@@ -212,7 +212,7 @@ Rollback must be executable without data loss and without changing SDK behavior.
   - Added idempotent shard registration for duplicate `open` records and conflict detection for mismatched duplicates.
   - Added restart recovery coverage via manifest reopen tests against persisted SQLite rows.
 
-### TSK-B1-01 — Ingest dual-write (shadow) [IN PROGRESS]
+### TSK-B1-01 — Ingest dual-write (shadow) [DONE]
 
 - **Description:** Add optional shard write in ingest while legacy DuckDB remains authoritative.
 - **Acceptance criteria:**
@@ -228,6 +228,7 @@ Rollback must be executable without data loss and without changing SDK behavior.
   - Added per-minute parity tracking counters: `event_plane.shards.shadow_window_match_total` and `event_plane.shards.shadow_window_mismatch_total`.
   - Added lifecycle cleanup in app shutdown to close shard writer file descriptors.
   - Added tests for shadow write success, fail-open behavior, and mode-gated no-op behavior.
+  - Operational note: production promotion still depends on Section 12 gate evidence (latency delta and sustained parity stability), even though implementation is complete.
 
 ### TSK-B1-02 — Compactor MVP (single worker) [DONE]
 
@@ -372,3 +373,59 @@ No-go triggers:
 - Preserve existing API contracts and error semantics for SDKs.
 - Treat compactor as replaceable internal worker; do not couple business logic to one process.
 - Prefer small incremental milestones with feature flags over one-shot migration.
+
+## 14) Current status and remaining execution slice
+
+### Overall delivery status
+
+- Completed: `TSK-B0-01` through `TSK-B0-03`, `TSK-B1-02`, `TSK-B1-03`, `TSK-B2-01` through `TSK-B2-03`, `TSK-B3-01`, and `TSK-B3-02`.
+- Remaining: complete operational gate evidence in Section 12 and close hardening follow-ups in Section 15.
+- Rollout posture: code path is feature-gated and project-scoped; production promotion should remain reversible via cutover toggle and mode flags.
+
+### Remaining tasks before production no-go can be lifted
+
+1. **Dual-write latency evidence (`TSK-B1-01`)**
+   - Run shadow mode with representative ingest volume.
+   - Capture baseline vs shadow-on p95 ingest latency and confirm delta is within target budget.
+2. **Dual-write parity confidence (`TSK-B1-01`)**
+   - Validate `shadow_window_match_total`/`shadow_window_mismatch_total` behavior across representative windows.
+   - Investigate and resolve any mismatch spikes before widening rollout.
+3. **Seven-day stability gate (Section 12)**
+   - Maintain compaction lag and snapshot age within SLO for 7 consecutive days.
+   - Keep cutover disabled for newly onboarded projects until this window is complete.
+
+### Evidence checklist (operator run log)
+
+Use this checklist to track evidence in staging/prod:
+
+- [ ] Ingest p95 delta documented for baseline vs `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards` shadow mode.
+- [ ] Shadow parity counters show stable match behavior over representative traffic windows.
+- [ ] `/internal/metrics` confirms no sustained growth in `event_plane_append_failed_total` or `event_plane_append_rejected_total`.
+- [ ] Compactor load probe output captured via `scripts/event_plane_compactor_load_probe.sh`.
+- [ ] Latest restore drill output captured via `scripts/event_plane_disaster_recovery_drill.sh`.
+- [ ] Staging rollback exercised end-to-end with project-scoped cutover toggle.
+
+## 15) Post-implementation code review (latest Plan B commits)
+
+Review basis: `c81389e`, `4d97afe`, `d21eae4` and follow-up working-tree deltas.
+
+### Quality verdict
+
+- Core Plan B architecture is implemented end-to-end: ingest shadow write, shard manifest lifecycle, compactor publish protocol, parity harness, project-scoped read cutover, backpressure controls, multi-run fairness, and DR/load scripts.
+- Test coverage for the critical path is strong and currently green for targeted Plan B suites.
+- Remaining gaps are mostly hardening/operability, not core path correctness.
+
+### Hardening findings status (2026-05-06)
+
+1. **`AUTOPULSE_SNAPSHOT_RETENTION_COUNT` wiring** — **DONE**
+   - Compactor now prunes old completed snapshots after successful publish while retaining newest `N` snapshots and preserving `CURRENT`.
+2. **`AUTOPULSE_COMPACTOR_PUBLISH_TIMEOUT_SECONDS` wiring** — **DONE**
+   - Compactor publish phase now enforces a timeout budget and fails closed with explicit timeout errors when exceeded.
+3. **Dashboard cutover UX** — **DONE**
+   - Added owner/admin Settings control for `GET/PUT /dashboard/event-plane-cutover` with rollback guidance.
+4. **Compactor memory pressure during large runs** — **DONE**
+   - Snapshot build now inserts rows in bounded batches instead of accumulating all rows in memory first.
+
+### Remaining follow-up (non-blocking)
+
+- Keep collecting seven-day SLO evidence from Section 12 before broad production defaulting.

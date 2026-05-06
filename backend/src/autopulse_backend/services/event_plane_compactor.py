@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import time
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -68,6 +69,8 @@ class EventPlaneCompactor:
         snapshots_root: str | Path,
         max_shards_per_run: int = 1024,
         max_runs_per_tick: int = 1,
+        publish_timeout_seconds: float = 60.0,
+        snapshot_retention_count: int = 3,
     ) -> None:
         self._manifest = manifest
         self._snapshots_root = Path(snapshots_root).expanduser().resolve()
@@ -77,6 +80,8 @@ class EventPlaneCompactor:
         self._current_pointer = self._snapshots_root / "CURRENT"
         self._max_shards_per_run = max(1, int(max_shards_per_run))
         self._max_runs_per_tick = max(1, int(max_runs_per_tick))
+        self._publish_timeout_seconds = max(0.0, float(publish_timeout_seconds))
+        self._snapshot_retention_count = max(1, int(snapshot_retention_count))
 
     @property
     def snapshots_root(self) -> Path:
@@ -95,6 +100,7 @@ class EventPlaneCompactor:
         temp_snapshot_dir = self._tmp_root / f"snapshot-{snapshot_version}-{uuid4().hex}"
         final_snapshot_dir = self._snapshots_root / f"snapshot-{snapshot_version}"
         compacted_rows = 0
+        publish_started = 0.0
         try:
             temp_snapshot_dir.mkdir(parents=True, exist_ok=False)
             compacted_rows = self._build_snapshot(
@@ -106,11 +112,17 @@ class EventPlaneCompactor:
                 f"snapshot_version={snapshot_version}\n",
                 encoding="utf-8",
             )
+            publish_started = time.monotonic()
+            self._ensure_publish_within_timeout(publish_started, "before_snapshot_rename")
             temp_snapshot_dir.rename(final_snapshot_dir)
+            self._ensure_publish_within_timeout(publish_started, "after_snapshot_rename")
             self._publish_current_snapshot_pointer(
                 snapshot_dir=final_snapshot_dir,
                 snapshot_version=snapshot_version,
             )
+            self._ensure_publish_within_timeout(publish_started, "after_pointer_publish")
+            self._prune_published_snapshots(current_snapshot=final_snapshot_dir)
+            self._ensure_publish_within_timeout(publish_started, "after_snapshot_prune")
             for shard in candidates:
                 self._manifest.transition_state(
                     shard_id=shard.shard_id,
@@ -257,6 +269,27 @@ class EventPlaneCompactor:
             if temp_path.exists():
                 temp_path.unlink(missing_ok=True)
 
+    def _ensure_publish_within_timeout(self, started_at: float, stage: str) -> None:
+        if self._publish_timeout_seconds <= 0:
+            return
+        elapsed = time.monotonic() - started_at
+        if elapsed > self._publish_timeout_seconds:
+            raise TimeoutError(
+                "event plane compactor publish timeout exceeded "
+                f"(stage={stage} elapsed_seconds={elapsed:.3f} "
+                f"timeout_seconds={self._publish_timeout_seconds:.3f})"
+            )
+
+    def _prune_published_snapshots(self, *, current_snapshot: Path) -> None:
+        published = self.list_published_snapshots()
+        if len(published) <= self._snapshot_retention_count:
+            return
+        current_resolved = current_snapshot.resolve()
+        deletable = [path for path in published if path.resolve() != current_resolved]
+        to_delete_count = max(0, len(published) - self._snapshot_retention_count)
+        for old in sorted(deletable)[:to_delete_count]:
+            shutil.rmtree(old, ignore_errors=True)
+
     def _build_snapshot(
         self,
         *,
@@ -289,6 +322,7 @@ class EventPlaneCompactor:
                 """
             )
             insert_rows: list[tuple[object, ...]] = []
+            batch_size = 5000
             for shard in candidates:
                 shard_path = Path(shard.shard_path)
                 if not shard_path.is_file():
@@ -325,6 +359,19 @@ class EventPlaneCompactor:
                             shard.shard_id,
                         )
                     )
+                    if len(insert_rows) >= batch_size:
+                        conn.executemany(
+                            """
+                            INSERT INTO events (
+                                project_id, timestamp, received_at, sdk_version, type, service_name,
+                                environment, method, path, status_code, latency_ms, payload,
+                                request_id, shard_id
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            insert_rows,
+                        )
+                        rows_written += len(insert_rows)
+                        insert_rows.clear()
             if insert_rows:
                 conn.executemany(
                     """
@@ -336,7 +383,7 @@ class EventPlaneCompactor:
                     """,
                     insert_rows,
                 )
-                rows_written = len(insert_rows)
+                rows_written += len(insert_rows)
             (target_dir / "manifest.json").write_text(
                 json.dumps(
                     {
@@ -370,4 +417,6 @@ def make_event_plane_compactor(
         snapshots_root=resolved.event_plane_snapshots_path,
         max_shards_per_run=resolved.event_plane_compactor_max_shards_per_run,
         max_runs_per_tick=resolved.event_plane_compactor_max_concurrency,
+        publish_timeout_seconds=resolved.event_plane_compactor_publish_timeout_seconds,
+        snapshot_retention_count=resolved.event_plane_snapshot_retention_count,
     )

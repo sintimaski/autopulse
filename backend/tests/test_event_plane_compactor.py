@@ -462,3 +462,79 @@ def test_compactor_tick_budget_improves_per_tick_throughput(tmp_path: Path) -> N
     assert high_tick.compacted_rows == 8
     manifest_low.close()
     manifest_high.close()
+
+
+def test_compactor_prunes_old_snapshots_with_retention_limit(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+    compactor = EventPlaneCompactor(
+        manifest=manifest,
+        snapshots_root=snapshots_root,
+        snapshot_retention_count=2,
+    )
+    for idx in range(3):
+        shard = tmp_path / "events-log" / "p1" / "2026/05/05/22" / f"ret-{idx}.jsonl"
+        _write_shard(
+            shard,
+            [
+                {
+                    "project_id": "p1",
+                    "timestamp": now,
+                    "received_at": now,
+                    "sdk_version": "1.0",
+                    "type": "request",
+                    "service_name": "api",
+                    "environment": "test",
+                    "method": "GET",
+                    "path": f"/ret-{idx}",
+                    "status_code": 200,
+                    "latency_ms": 1.0,
+                    "payload": {},
+                }
+            ],
+        )
+        _register_sealed(manifest, shard_id=f"ret-{idx}", project_id="p1", shard_path=shard)
+        result = compactor.compact_once()
+        assert result.snapshot_version is not None
+
+    published = compactor.list_published_snapshots()
+    assert len(published) == 2
+    assert compactor.resolve_current_snapshot_path() in published
+    manifest.close()
+
+
+def test_compactor_publish_timeout_raises(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+    shard = tmp_path / "events-log" / "p1" / "2026/05/05/22" / "timeout-1.jsonl"
+    _write_shard(
+        shard,
+        [
+            {
+                "project_id": "p1",
+                "timestamp": now,
+                "received_at": now,
+                "sdk_version": "1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/timeout",
+                "status_code": 200,
+                "latency_ms": 1.0,
+                "payload": {},
+            }
+        ],
+    )
+    _register_sealed(manifest, shard_id="timeout-1", project_id="p1", shard_path=shard)
+    compactor = EventPlaneCompactor(
+        manifest=manifest,
+        snapshots_root=snapshots_root,
+        publish_timeout_seconds=0.000001,
+    )
+
+    with pytest.raises(TimeoutError):
+        compactor.compact_once()
+    manifest.close()
