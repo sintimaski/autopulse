@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import autopulse_backend.core.config as _config
+import autopulse_backend.core.config_env as _config_env
 
 
 @pytest.fixture(autouse=True)
@@ -12,12 +13,12 @@ def _disable_runtime_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
     """Do not load developer-specific backend/.env during tests."""
 
     def _noop_load_runtime_dotenv() -> None:
-        if _config._RUNTIME_DOTENV_LOADED:
+        if _config_env._RUNTIME_DOTENV_LOADED:
             return
-        _config._RUNTIME_DOTENV_LOADED = True
+        _config_env._RUNTIME_DOTENV_LOADED = True
 
     monkeypatch.setattr(_config, "_load_runtime_dotenv_once", _noop_load_runtime_dotenv)
-    monkeypatch.setattr(_config, "_RUNTIME_DOTENV_LOADED", False)
+    monkeypatch.setattr(_config_env, "_RUNTIME_DOTENV_LOADED", False)
 
 
 def test_event_plane_mode_defaults_to_single_writer(monkeypatch: pytest.MonkeyPatch) -> None:

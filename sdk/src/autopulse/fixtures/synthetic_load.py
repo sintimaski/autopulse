@@ -241,7 +241,10 @@ def _request_payload(
         params["q"] = f"q-{rng.randint(1, 50)}"
     elif spec.name == "auth-login":
         chosen_role = rng.choice(["viewer", "editor", "admin"])
-        body = {"username": f"{chosen_role}@example.com", "password": "demo-pass"}
+        body = {
+            "username": f"{chosen_role}@example.com",
+            "password": "demo-pass",  # nosec B105 — synthetic traffic fixture only
+        }
         headers = {"x-request-id": request_id}
         if error_burst and rng.random() < 0.42:
             body["password"] = "wrong-pass"  # nosec B105

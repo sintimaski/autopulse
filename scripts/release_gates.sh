@@ -5,7 +5,7 @@ echo "[release-gates] backend static checks"
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend
 
 echo "[release-gates] backend tests"
 uv run pytest

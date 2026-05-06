@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 from datetime import UTC, datetime
+from typing import Literal
 
 from autopulse_backend.schemas import IngestBatchRequest, IngestEvent
 
@@ -63,9 +64,10 @@ def _any_value_to_python(raw: object) -> object:
             for item in values:
                 if not isinstance(item, dict):
                     continue
-                key = item.get("key")
-                if not isinstance(key, str) or not key:
+                raw_key = item.get("key")
+                if not isinstance(raw_key, str) or not raw_key:
                     continue
+                key = raw_key
                 out[key] = _any_value_to_python(item.get("value"))
             return out
     return raw
@@ -200,7 +202,9 @@ def convert_otlp_json_to_ingest_batch(
                         status_message = raw_message
                 if status_code <= 0:
                     status_code = 500 if status_enum == 2 else 200
-                event_type = "error" if status_code >= 500 or status_enum == 2 else "request"
+                etype: Literal["request", "error", "job"] = (
+                    "error" if status_code >= 500 or status_enum == 2 else "request"
+                )
                 trace_id = _normalize_trace_id(span.get("traceId"))
                 span_id = _normalize_span_id(span.get("spanId"))
                 parent_span_id = _normalize_span_id(span.get("parentSpanId"))
@@ -210,24 +214,26 @@ def convert_otlp_json_to_ingest_batch(
                     if isinstance(request_id_raw, str) and request_id_raw.strip()
                     else (trace_id[:128] if trace_id else None)
                 )
-                event = IngestEvent(
-                    type=event_type,
-                    timestamp=start_at,
-                    service_name=service_name,
-                    environment=environment,
-                    method=method,
-                    path=path,
-                    status_code=status_code,
-                    latency_ms=latency_ms,
-                    request_id=request_id,
-                    trace_id=trace_id,
-                    span_id=span_id,
-                    parent_span_id=parent_span_id,
-                    span_name=str(span_name)[:255] if isinstance(span_name, str) else None,
-                    span_kind=_coerce_int(span.get("kind")),
-                    span_scope=scope_name[:120] if scope_name else None,
-                    otlp_status_code=status_enum,
-                    otlp_status_message=status_message[:512] if status_message else None,
+                event = IngestEvent.model_validate(
+                    {
+                        "type": etype,
+                        "timestamp": start_at,
+                        "service_name": service_name,
+                        "environment": environment,
+                        "method": method,
+                        "path": path,
+                        "status_code": status_code,
+                        "latency_ms": latency_ms,
+                        "request_id": request_id,
+                        "trace_id": trace_id,
+                        "span_id": span_id,
+                        "parent_span_id": parent_span_id,
+                        "span_name": str(span_name)[:255] if isinstance(span_name, str) else None,
+                        "span_kind": _coerce_int(span.get("kind")),
+                        "span_scope": scope_name[:120] if scope_name else None,
+                        "otlp_status_code": status_enum,
+                        "otlp_status_message": status_message[:512] if status_message else None,
+                    }
                 )
                 events.append(event)
 

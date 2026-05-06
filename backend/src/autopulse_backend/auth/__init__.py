@@ -13,7 +13,6 @@ from autopulse_backend.auth.api_keys import (
 from autopulse_backend.auth.dashboard import (
     DashboardAuthSession,
     bootstrap_dashboard_tenant_for_user,
-    clear_session_cookie,
     create_magic_link_token,
     get_dashboard_auth_session,
     issue_dashboard_session_for_user,
@@ -22,6 +21,7 @@ from autopulse_backend.auth.dashboard import (
     update_dashboard_session_active_project,
     verify_magic_link_and_create_session,
 )
+from autopulse_backend.auth.dashboard_security import clear_session_cookie
 from autopulse_backend.auth.rbac import (
     ensure_dashboard_admin_or_owner,
     ensure_dashboard_not_viewer,

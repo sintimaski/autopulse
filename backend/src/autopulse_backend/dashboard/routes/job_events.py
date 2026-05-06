@@ -90,7 +90,7 @@ async def get_dashboard_recent_job_failures(
         raw = await run_duckdb_read_sync(
             recent_job_failures, duckdb_filters, limit=limit, store=read_store
         )
-        items = [
+        duckdb_items = [
             DashboardRecentJobFailureItem(
                 timestamp=row["timestamp"],
                 job_name=row["job_name"],
@@ -108,7 +108,7 @@ async def get_dashboard_recent_job_failures(
             server_now=server_now,
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
-            items=items,
+            items=duckdb_items,
         )
 
     rows = await session.execute(

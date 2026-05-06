@@ -8,6 +8,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 import duckdb
@@ -278,7 +279,7 @@ class EventPlaneCompactor:
                     "snapshot version monotonicity violation: "
                     f"current={current_version} next={snapshot_version}"
                 )
-        payload = {
+        payload: dict[str, object] = {
             "snapshot_version": snapshot_version,
             "snapshot_dir": snapshot_dir.name,
             "published_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -289,9 +290,12 @@ class EventPlaneCompactor:
         if not self._current_pointer.is_file():
             return None
         try:
-            return json.loads(self._current_pointer.read_text(encoding="utf-8"))
+            raw = json.loads(self._current_pointer.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, TypeError):
             return None
+        if isinstance(raw, dict):
+            return cast(dict[str, object], raw)
+        return None
 
     def _write_current_pointer_atomically(self, payload: dict[str, object]) -> None:
         temp_path = self._snapshots_root / f".CURRENT.tmp-{uuid4().hex}"

@@ -30,7 +30,7 @@ check-python:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy
-	uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+	uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend
 	uv run pytest
 
 check-frontend:

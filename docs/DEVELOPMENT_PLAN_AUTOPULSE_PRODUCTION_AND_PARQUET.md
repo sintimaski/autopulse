@@ -382,9 +382,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Blocked
-  - % complete: 85
-  - Last update: 2026-05-06 (release gates aligned with npm audit + bundle budget + optional e2e/postgres flags; dry-run blocked by existing repo mypy baseline failures)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-06 (mypy clean; release_gates.sh + Makefile bandit invocation matches CI; full release gates dry-run passed)
   - Owner: DevEx
 - **Related documents:** `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`, `.github/workflows/ci.yml`
 - **References / examples:** existing `scripts/release_gates.sh`.

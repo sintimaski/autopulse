@@ -8,7 +8,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]
 from sqlalchemy import text
 
 from autopulse_backend.core.config import Settings
@@ -139,24 +139,24 @@ async def dispatch_realtime_payload(payload: str) -> None:
         return
     parsed = json.loads(payload_json)
     if message_type == "ingest":
-        msg = IngestBroadcastMessage(
+        ingest_msg = IngestBroadcastMessage(
             project_id=UUID(str(parsed["project_id"])),
             accepted=int(parsed["accepted"]),
             received_at=_parse_iso_timestamp(str(parsed["received_at"])),
         )
-        await project_websocket_hub.publish_ingest(message=msg)
+        await project_websocket_hub.publish_ingest(message=ingest_msg)
         service_metrics.increment("dashboard.realtime_bus.receive.ingest")
         return
     if message_type == "dashboard_update":
         slices = tuple(str(item) for item in parsed.get("updated_slices", []))
-        msg = DashboardUpdateMessage(
+        dashboard_msg = DashboardUpdateMessage(
             project_id=UUID(str(parsed["project_id"])),
             version=int(parsed["version"]),
             reason=str(parsed.get("reason") or "remote"),
             updated_slices=slices,
             updated_at=_parse_iso_timestamp(str(parsed["updated_at"])),
         )
-        await project_websocket_hub.publish_dashboard_update(message=msg)
+        await project_websocket_hub.publish_dashboard_update(message=dashboard_msg)
         service_metrics.increment("dashboard.realtime_bus.receive.dashboard_update")
         return
     service_metrics.increment("dashboard.realtime_bus.receive.unknown_type")

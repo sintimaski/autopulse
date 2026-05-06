@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from threading import Lock
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -241,7 +242,7 @@ async def persist_ingest_batch(
             shadow_rows = await _maybe_shadow_write_event_plane_shards(
                 project_id=project_id,
                 received_at=received_at,
-                rows=duckdb_rows,
+                rows=cast(list[dict[str, object]], duckdb_rows),
             )
             if shadow_rows is not None:
                 _record_shadow_window_parity(
