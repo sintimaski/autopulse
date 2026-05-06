@@ -279,3 +279,36 @@ def test_jobs_cli_parquet_export_once(
     assert exit_code == 0
     assert capsys.readouterr().out.strip() == "2"
     assert any(parquet_root.glob("date=*/service=*/environment=*/part-*.parquet"))
+
+
+def test_jobs_cli_parquet_lifecycle_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "events.duckdb"
+    meta_db = tmp_path / "meta.db"
+    _seed_duckdb_events(db_path)
+    parquet_root = tmp_path / "parquet-out"
+    database_url = f"sqlite+aiosqlite:///{meta_db}"
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("AUTOPULSE_ENV", "development")
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer")
+    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(db_path.resolve()))
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ENABLED", "true")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_LIFECYCLE_ENABLED", "true")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES", "2")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_LIFECYCLE_RETENTION_DAYS", "3650")
+    try:
+        export_exit_code = jobs.main(["parquet-export-once"])
+        lifecycle_exit_code = jobs.main(["parquet-lifecycle-once"])
+    finally:
+        asyncio.run(dispose_engine_for_url(database_url))
+
+    assert export_exit_code == 0
+    assert lifecycle_exit_code == 0
+    assert capsys.readouterr().out.strip().splitlines()[-1].isdigit()

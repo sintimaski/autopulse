@@ -176,6 +176,16 @@ Staging evidence before go-live:
   - Enable with `AUTOPULSE_PARQUET_QUERY_ENABLED=true`.
   - Set hot-window boundary with `AUTOPULSE_PARQUET_HOT_WINDOW_HOURS` (newer windows stay on DuckDB; older windows route to Parquet partitions when present).
   - `/internal/metrics` reports `parquet_export.query_enabled` and `parquet_export.hot_window_hours` for topology verification.
+- Parquet phase-3 lifecycle (optional compaction + retention + verify):
+  - Enable with `AUTOPULSE_PARQUET_LIFECYCLE_ENABLED=true`.
+  - Tune cadence and policies with:
+    - `AUTOPULSE_PARQUET_LIFECYCLE_INTERVAL_SECONDS`
+    - `AUTOPULSE_PARQUET_LIFECYCLE_RETENTION_DAYS`
+    - `AUTOPULSE_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES`
+    - `AUTOPULSE_PARQUET_LIFECYCLE_VERIFY_SAMPLE_SIZE`
+    - `AUTOPULSE_PARQUET_LIFECYCLE_DRY_RUN` (stage-first safety mode)
+  - Manual run: `uv run python -m autopulse_backend.jobs parquet-lifecycle-once`.
+  - Verify lifecycle counters in `/internal/metrics`: `parquet.lifecycle.*` (compaction, retention, verify, reclaimed bytes).
 
 ## 5.1 When to move metadata DB off SQLite
 

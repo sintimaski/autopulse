@@ -82,3 +82,7 @@ def test_internal_metrics_includes_ingest_pressure_view(
     assert "enabled" in body["parquet_export"]
     assert "query_enabled" in body["parquet_export"]
     assert "hot_window_hours" in body["parquet_export"]
+    assert "lifecycle_enabled" in body["parquet_export"]
+    assert "lifecycle_interval_seconds" in body["parquet_export"]
+    assert "lifecycle_retention_days" in body["parquet_export"]
+    assert "lifecycle_dry_run" in body["parquet_export"]

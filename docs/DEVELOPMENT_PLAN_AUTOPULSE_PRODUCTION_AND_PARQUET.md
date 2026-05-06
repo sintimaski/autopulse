@@ -294,9 +294,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes (manifest-driven)
   - If partial/no, guardrails required: partition lock + manifest version checks.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-07 (implemented lifecycle worker/CLI for Parquet compaction + tiered retention + readability verification, added metrics + config surface, and covered with lifecycle/job tests)
   - Owner: Backend data plane + Ops
 - **Related documents:** `docs/ops/BACKUP_RESTORE.md`, `docs/ops/EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md`
 - **References / examples:** existing compactor and DR evidence docs.

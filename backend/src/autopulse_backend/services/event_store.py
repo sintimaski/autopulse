@@ -452,7 +452,7 @@ class DuckDbEventStore:
         if not parquet_files:
             return "events", []
         parquet_files_sql = ",".join(self._sql_string_literal(str(path)) for path in parquet_files)
-        # Parquet paths are filesystem-derived and SQL-escaped; filters bind separately.
+        # Paths are filesystem literals from export layout, not user SQL.
         source_sql = (
             "(SELECT "  # nosec B608
             + self._EVENT_SOURCE_COLUMNS

@@ -186,6 +186,10 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
             "root": settings.parquet_export_root,
             "query_enabled": settings.parquet_query_enabled,
             "hot_window_hours": settings.parquet_hot_window_hours,
+            "lifecycle_enabled": settings.parquet_lifecycle_enabled,
+            "lifecycle_interval_seconds": settings.parquet_lifecycle_interval_seconds,
+            "lifecycle_retention_days": settings.parquet_lifecycle_retention_days,
+            "lifecycle_dry_run": settings.parquet_lifecycle_dry_run,
         },
     }
 

@@ -60,6 +60,12 @@ class Settings:
     parquet_export_window_seconds: int = 900
     parquet_query_enabled: bool = False
     parquet_hot_window_hours: int = 24
+    parquet_lifecycle_enabled: bool = False
+    parquet_lifecycle_interval_seconds: float = 3600.0
+    parquet_lifecycle_retention_days: int = 90
+    parquet_lifecycle_dry_run: bool = False
+    parquet_lifecycle_compaction_min_files: int = 4
+    parquet_lifecycle_verify_sample_size: int = 5
     ingest_idempotency_ttl_hours: int = 24
     ingest_idempotency_stale_seconds: int = 45
     ingest_require_https: bool = True
@@ -650,6 +656,28 @@ def get_settings() -> Settings:
         parquet_hot_window_hours=_env_int(
             "AUTOPULSE_PARQUET_HOT_WINDOW_HOURS",
             24,
+            minimum=1,
+        ),
+        parquet_lifecycle_enabled=_env_bool("AUTOPULSE_PARQUET_LIFECYCLE_ENABLED", False),
+        parquet_lifecycle_interval_seconds=_env_float(
+            "AUTOPULSE_PARQUET_LIFECYCLE_INTERVAL_SECONDS",
+            3600.0,
+            minimum=5.0,
+        ),
+        parquet_lifecycle_retention_days=_env_int(
+            "AUTOPULSE_PARQUET_LIFECYCLE_RETENTION_DAYS",
+            90,
+            minimum=1,
+        ),
+        parquet_lifecycle_dry_run=_env_bool("AUTOPULSE_PARQUET_LIFECYCLE_DRY_RUN", False),
+        parquet_lifecycle_compaction_min_files=_env_int(
+            "AUTOPULSE_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES",
+            4,
+            minimum=2,
+        ),
+        parquet_lifecycle_verify_sample_size=_env_int(
+            "AUTOPULSE_PARQUET_LIFECYCLE_VERIFY_SAMPLE_SIZE",
+            5,
             minimum=1,
         ),
         ingest_idempotency_ttl_hours=_env_int("INGEST_IDEMPOTENCY_TTL_HOURS", 24, minimum=1),

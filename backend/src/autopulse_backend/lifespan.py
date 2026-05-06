@@ -130,7 +130,9 @@ def _log_grouped_startup_settings() -> None:
         "Startup settings [deployment]: autopulse_env=%s aggregate_max_retries=%d "
         "run_migrations_on_startup=%s parquet_export_enabled=%s "
         "parquet_export_interval_seconds=%.2f parquet_export_window_seconds=%d "
-        "parquet_export_root=%s parquet_query_enabled=%s parquet_hot_window_hours=%d",
+        "parquet_export_root=%s parquet_query_enabled=%s parquet_hot_window_hours=%d "
+        "parquet_lifecycle_enabled=%s parquet_lifecycle_interval_seconds=%.2f "
+        "parquet_lifecycle_retention_days=%d parquet_lifecycle_dry_run=%s",
         settings.autopulse_env,
         settings.ingest_aggregate_worker_max_retries,
         settings.database_run_migrations_on_startup,
@@ -140,6 +142,10 @@ def _log_grouped_startup_settings() -> None:
         settings.parquet_export_root,
         settings.parquet_query_enabled,
         settings.parquet_hot_window_hours,
+        settings.parquet_lifecycle_enabled,
+        settings.parquet_lifecycle_interval_seconds,
+        settings.parquet_lifecycle_retention_days,
+        settings.parquet_lifecycle_dry_run,
     )
     log.info(
         "Startup settings [alerts]: enabled=%s sender_mode=%s email_provider=%s "
