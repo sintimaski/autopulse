@@ -18,7 +18,9 @@ Use this as the default single-node topology unless your expected traffic/ops pr
 | Component | Default setting | Effective default path |
 |----------|------------------|------------------------|
 | Metadata DB (SQLite) | `DATABASE_URL=sqlite+aiosqlite:///./.autopulse/autopulse.db` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/autopulse.db` |
-| Event store (DuckDB) | `AUTOPULSE_EVENT_STORE=duckdb`, `AUTOPULSE_DUCKDB_PATH=.autopulse/events.duckdb` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events.duckdb` |
+| Event store (DuckDB) | `AUTOPULSE_EVENT_STORE=duckdb`, `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`, `AUTOPULSE_DUCKDB_PATH=.autopulse/events.duckdb` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events.duckdb` |
+| Plan B shard log root | `AUTOPULSE_EVENT_PLANE_SHARDS_PATH=.autopulse/events-log` (used when `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards`) | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events-log` |
+| Plan B snapshot root | `AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH=.autopulse/events-duckdb` (compactor output) | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events-duckdb` |
 | File alert outbox (optional) | `ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/emails` |
 
 `AUTOPULSE_DATA_DIR` re-anchors relative metadata/event paths so API, jobs, and restore tooling all target the same files independent of process cwd.

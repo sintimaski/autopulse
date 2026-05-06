@@ -1,6 +1,6 @@
 # Plan B implementation: log-shard ingest + DuckDB compaction (no third-party store)
 
-Status: implementation plan only (not yet implemented).
+Status: in progress.
 
 This plan is a full execution path for scaling beyond a single DuckDB writer **without** managed third-party analytics infrastructure. It preserves the MVP default (simple diagnosis-first setup) while adding an operator-controlled scale tier.
 
@@ -171,45 +171,78 @@ Rollback must be executable without data loss and without changing SDK behavior.
 
 ## 10) Task backlog (with acceptance criteria)
 
-### TSK-B0-01 — Event-plane mode flag and config surface
+### TSK-B0-01 — Event-plane mode flag and config surface [DONE]
 
 - **Description:** Add Plan B mode flag and validated config schema.
 - **Acceptance criteria:**
   - Backend starts with either mode.
   - Invalid combinations fail fast at startup with clear errors.
   - Docs/env template updated.
+- **Implementation notes (2026-05-05):**
+   - Added validated config surface in backend settings for `AUTOPULSE_EVENT_PLANE_MODE` and related Plan B shard/compactor knobs.
+   - Added startup validation: `duckdb_log_shards` mode now fails fast unless `AUTOPULSE_EVENT_STORE=duckdb`.
+   - Updated `backend/.env.example` and production deployment docs with new env variables.
+   - Added targeted backend tests for mode defaults, invalid values, and invalid mode/store combinations.
 
-### TSK-B0-02 — Shard writer abstraction
+### TSK-B0-02 — Shard writer abstraction [DONE]
 
 - **Description:** Introduce append-only shard writer interface and local filesystem implementation.
 - **Acceptance criteria:**
   - Writes are append-only and durable per configured policy.
   - Writer supports rotation by size and age.
   - Unit tests cover crash-safe flush/close semantics.
+- **Implementation notes (2026-05-05):**
+  - Added `LocalAppendOnlyShardWriter` and `EventShardWriter` protocol in `backend/src/autopulse_backend/services/event_plane_shards.py`.
+  - Local writer now appends newline-delimited JSON rows to immutable shard files under project/hour buckets.
+  - Added durability modes (`always`, `interval`, `none`) with explicit `fsync` behavior and forced `fsync` on close.
+  - Implemented automatic shard rotation based on configured max bytes and max shard age.
+  - Added unit tests for append durability, size rotation, age rotation, and close-time flush semantics.
 
-### TSK-B0-03 — Manifest/index schema
+### TSK-B0-03 — Manifest/index schema [DONE]
 
 - **Description:** Add shard manifest schema and lifecycle states.
 - **Acceptance criteria:**
   - State transitions are validated (`open -> sealed -> compacting -> compacted`).
   - Duplicate transition attempts are idempotent.
   - Recovery on restart resumes from persisted state.
+- **Implementation notes (2026-05-05):**
+  - Added persisted shard manifest service `SqliteShardManifest` in `backend/src/autopulse_backend/services/event_plane_manifest.py`.
+  - Created lifecycle states (`open`, `sealed`, `compacting`, `compacted`, `failed`) with strict transition validation.
+  - Implemented idempotent duplicate transitions (same target state returns existing record without error).
+  - Added idempotent shard registration for duplicate `open` records and conflict detection for mismatched duplicates.
+  - Added restart recovery coverage via manifest reopen tests against persisted SQLite rows.
 
-### TSK-B1-01 — Ingest dual-write (shadow)
+### TSK-B1-01 — Ingest dual-write (shadow) [IN PROGRESS]
 
 - **Description:** Add optional shard write in ingest while legacy DuckDB remains authoritative.
 - **Acceptance criteria:**
   - Ingest latency increase stays within agreed budget (for example p95 delta <= 10%).
   - Per-window row counts match legacy path within tolerance.
   - Failure metrics/logs are emitted without exposing sensitive payloads.
+- **Implementation notes (2026-05-05):**
+  - Added shadow-write path in `persist_ingest_batch` for `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards` while DuckDB remains authoritative.
+  - Shadow writes are fail-open: shard append errors increment `event_plane.shards.append_failed_total` and emit sanitized warning logs (no payload data).
+  - Successful shadow appends increment `event_plane.shards.appended_total` by appended record count.
+  - Added shadow instrumentation counters for operator checks: `event_plane.shards.shadow_write_batches_total`, `event_plane.shards.shadow_write_ms_total`, and `event_plane.shards.shadow_count_mismatch_total`.
+  - Note: `shadow_write_ms_total` intentionally floors sub-millisecond shadow work to **1ms** per batch (otherwise fast local writes round to `0ms` and look like broken instrumentation).
+  - Added per-minute parity tracking counters: `event_plane.shards.shadow_window_match_total` and `event_plane.shards.shadow_window_mismatch_total`.
+  - Added lifecycle cleanup in app shutdown to close shard writer file descriptors.
+  - Added tests for shadow write success, fail-open behavior, and mode-gated no-op behavior.
 
-### TSK-B1-02 — Compactor MVP (single worker)
+### TSK-B1-02 — Compactor MVP (single worker) [DONE]
 
 - **Description:** Build sealed shards into versioned DuckDB snapshots.
 - **Acceptance criteria:**
   - Compactor is restart-safe and idempotent.
   - Publishes only fully built snapshots.
   - Failed builds never become visible to readers.
+- **Implementation notes (2026-05-06):**
+  - Added `EventPlaneCompactor` in `backend/src/autopulse_backend/services/event_plane_compactor.py`.
+  - Compactor now reserves `sealed` shards (`sealed -> compacting`), resumes pre-existing `compacting` shards after restart, and marks shards `compacted` only after successful snapshot publish.
+  - Snapshot build writes to a temp directory first, then publishes by directory rename and `COMPLETE` marker creation.
+  - Failed builds are cleaned up from temp output and remain unpublished (no `COMPLETE` snapshot visible).
+  - Added `AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH` config/env surface for snapshot output root.
+  - Added compactor tests for restart safety, idempotence, successful publish, and failed-build invisibility.
 
 ### TSK-B1-03 — Snapshot publish protocol
 

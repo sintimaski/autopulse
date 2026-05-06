@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.core.config import get_settings
+from autopulse_backend.core.config import Settings, get_settings
 from autopulse_backend.dashboard.error_grouping import (
     derived_error_group_key,
     error_group_labels,
@@ -26,6 +29,7 @@ from autopulse_backend.repositories.aggregates import (
     upsert_metric_buckets,
 )
 from autopulse_backend.schemas import IngestBatchRequest, event_payload
+from autopulse_backend.services.event_plane_shards import append_events_to_shards
 from autopulse_backend.services.event_store import event_store_enabled, insert_events_duckdb
 from autopulse_backend.services.infrastructure_metrics import (
     InfrastructureMetricsSampler,
@@ -45,6 +49,109 @@ class PersistIngestResult:
 
 
 _infrastructure_sampler = InfrastructureMetricsSampler()
+_shadow_parity_lock = Lock()
+_shadow_parity_window_counts: dict[tuple[str, datetime], tuple[int, int]] = {}
+_SHADOW_PARITY_MAX_WINDOWS = 4096
+
+
+def _event_plane_shadow_write_enabled(*, settings: Settings) -> bool:
+    return settings.event_store == "duckdb" and settings.event_plane_mode == "duckdb_log_shards"
+
+
+async def _maybe_shadow_write_event_plane_shards(
+    *,
+    project_id: UUID,
+    received_at: datetime,
+    rows: list[dict[str, object]],
+) -> int | None:
+    settings = get_settings()
+    if not rows or not _event_plane_shadow_write_enabled(settings=settings):
+        return None
+    started = time.perf_counter()
+    try:
+        result = await asyncio.to_thread(
+            append_events_to_shards,
+            project_id=str(project_id),
+            received_at=received_at,
+            rows=rows,
+            settings=settings,
+        )
+        if result is not None:
+            service_metrics.increment(
+                "event_plane.shards.appended_total",
+                amount=max(0, int(result.records_appended)),
+            )
+            if int(result.records_appended) != len(rows):
+                service_metrics.increment("event_plane.shards.shadow_count_mismatch_total")
+                logger.warning(
+                    "event_plane_shard_count_mismatch",
+                    extra={
+                        "event": "event_plane_shard_count_mismatch",
+                        "project_id": str(project_id),
+                        "expected_rows": len(rows),
+                        "appended_rows": int(result.records_appended),
+                    },
+                )
+            elapsed_s = time.perf_counter() - started
+            # ``int(ms)`` rounds sub-millisecond work down to 0, which makes operator dashboards
+            # look broken even when shadow writes are happening. Treat any nonzero duration as at
+            # least 1ms so totals remain a useful lower bound without adding per-batch overhead.
+            elapsed_ms = 0
+            if elapsed_s > 0:
+                elapsed_ms = max(1, int(elapsed_s * 1000))
+            service_metrics.increment("event_plane.shards.shadow_write_batches_total")
+            service_metrics.increment(
+                "event_plane.shards.shadow_write_ms_total",
+                amount=elapsed_ms,
+            )
+            return int(result.records_appended)
+    except Exception as exc:
+        service_metrics.increment("event_plane.shards.append_failed_total")
+        logger.warning(
+            "event_plane_shard_append_failed",
+            extra={
+                "event": "event_plane_shard_append_failed",
+                "project_id": str(project_id),
+                "rows": len(rows),
+                "error_type": type(exc).__name__,
+            },
+        )
+    return 0
+
+
+def _record_shadow_window_parity(
+    *,
+    project_id: UUID,
+    received_at: datetime,
+    authoritative_rows: int,
+    shadow_rows: int,
+) -> None:
+    bucket = minute_bucket(received_at)
+    key = (str(project_id), bucket)
+    with _shadow_parity_lock:
+        previous = _shadow_parity_window_counts.get(key, (0, 0))
+        merged = (
+            previous[0] + max(0, int(authoritative_rows)),
+            previous[1] + max(0, int(shadow_rows)),
+        )
+        _shadow_parity_window_counts[key] = merged
+        if len(_shadow_parity_window_counts) > _SHADOW_PARITY_MAX_WINDOWS:
+            oldest = min(_shadow_parity_window_counts.keys(), key=lambda item: item[1])
+            _shadow_parity_window_counts.pop(oldest, None)
+    if merged[0] == merged[1]:
+        service_metrics.increment("event_plane.shards.shadow_window_match_total")
+    else:
+        service_metrics.increment("event_plane.shards.shadow_window_mismatch_total")
+        logger.warning(
+            "event_plane_shadow_window_mismatch",
+            extra={
+                "event": "event_plane_shadow_window_mismatch",
+                "project_id": str(project_id),
+                "window_start": bucket.isoformat(),
+                "authoritative_rows": merged[0],
+                "shadow_rows": merged[1],
+            },
+        )
 
 
 async def persist_ingest_batch(
@@ -101,6 +208,20 @@ async def persist_ingest_batch(
     if event_store_enabled():
         await insert_events_duckdb(duckdb_rows)
         accepted = len(duckdb_rows)
+        settings = get_settings()
+        if _event_plane_shadow_write_enabled(settings=settings):
+            shadow_rows = await _maybe_shadow_write_event_plane_shards(
+                project_id=project_id,
+                received_at=received_at,
+                rows=duckdb_rows,
+            )
+            if shadow_rows is not None:
+                _record_shadow_window_parity(
+                    project_id=project_id,
+                    received_at=received_at,
+                    authoritative_rows=accepted,
+                    shadow_rows=shadow_rows,
+                )
     else:
         accepted = await events_repo.insert_ingest_events(session, rows)
     metric_bucket_deltas, error_group_deltas = _build_aggregate_deltas(

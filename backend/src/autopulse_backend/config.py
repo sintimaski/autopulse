@@ -5,6 +5,8 @@ from __future__ import annotations
 from autopulse_backend.core.config import (
     Settings,
     get_settings,
+    normalize_event_plane_shards_path,
+    normalize_event_plane_snapshots_path,
     normalize_event_store_duckdb_path,
     resolve_autopulse_data_root,
 )
@@ -12,6 +14,8 @@ from autopulse_backend.core.config import (
 __all__ = [
     "Settings",
     "get_settings",
+    "normalize_event_plane_shards_path",
+    "normalize_event_plane_snapshots_path",
     "normalize_event_store_duckdb_path",
     "resolve_autopulse_data_root",
 ]

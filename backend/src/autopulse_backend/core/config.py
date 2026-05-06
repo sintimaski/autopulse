@@ -100,7 +100,16 @@ class Settings:
     database_url: str
     event_store: str
     event_store_duckdb_path: str
-    cors_allow_origins: tuple[str, ...]
+    cors_allow_origins: tuple[str, ...] = ()
+    event_plane_mode: str = "duckdb_single_writer"
+    event_plane_shards_path: str = "./.autopulse/events-log"
+    event_plane_snapshots_path: str = "./.autopulse/events-duckdb"
+    event_plane_shard_max_bytes: int = 134_217_728
+    event_plane_shard_max_age_seconds: int = 300
+    event_plane_compactor_interval_seconds: int = 60
+    event_plane_compactor_max_concurrency: int = 1
+    event_plane_compactor_publish_timeout_seconds: int = 60
+    event_plane_snapshot_retention_count: int = 3
     ingest_max_request_bytes: int = 1_048_576
     ingest_max_events_per_batch: int = 500
     ingest_rate_limit_requests_per_window: int = 1200
@@ -239,6 +248,18 @@ def validate_deployment_settings(settings: Settings) -> None:
         )
 
 
+def validate_event_plane_settings(settings: Settings) -> None:
+    """Raise ``ValueError`` when event-plane config combinations are invalid."""
+    if settings.event_plane_mode not in {"duckdb_single_writer", "duckdb_log_shards"}:
+        raise ValueError(
+            "AUTOPULSE_EVENT_PLANE_MODE must be one of: duckdb_single_writer, duckdb_log_shards"
+        )
+    if settings.event_plane_mode == "duckdb_log_shards" and settings.event_store != "duckdb":
+        raise ValueError(
+            "AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards requires AUTOPULSE_EVENT_STORE=duckdb"
+        )
+
+
 def normalize_database_url(database_url: str) -> str:
     normalized = database_url.strip()
     parsed = urlparse(normalized)
@@ -336,6 +357,42 @@ def normalize_event_store_duckdb_path(raw: str, *, data_root: Path | None = None
     except ValueError as exc:
         raise ValueError(
             f"AUTOPULSE_DUCKDB_PATH={raw!r} resolves outside data root {root}: {anchored}"
+        ) from exc
+    return str(anchored)
+
+
+def normalize_event_plane_shards_path(raw: str, *, data_root: Path | None = None) -> str:
+    """Resolve ``AUTOPULSE_EVENT_PLANE_SHARDS_PATH`` to an absolute path."""
+    text = (raw or "").strip() or "./.autopulse/events-log"
+    root = (data_root or resolve_autopulse_data_root()).resolve()
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    anchored = (root / text).resolve()
+    try:
+        anchored.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            "AUTOPULSE_EVENT_PLANE_SHARDS_PATH="
+            f"{raw!r} resolves outside data root {root}: {anchored}"
+        ) from exc
+    return str(anchored)
+
+
+def normalize_event_plane_snapshots_path(raw: str, *, data_root: Path | None = None) -> str:
+    """Resolve ``AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH`` to an absolute path."""
+    text = (raw or "").strip() or "./.autopulse/events-duckdb"
+    root = (data_root or resolve_autopulse_data_root()).resolve()
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    anchored = (root / text).resolve()
+    try:
+        anchored.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            "AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH="
+            f"{raw!r} resolves outside data root {root}: {anchored}"
         ) from exc
     return str(anchored)
 
@@ -461,6 +518,20 @@ def get_settings() -> Settings:
         or "./.autopulse/events.duckdb",
         data_root=_data_root,
     )
+    event_plane_mode = (
+        getenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer").strip().lower()
+        or "duckdb_single_writer"
+    )
+    event_plane_shards_path = normalize_event_plane_shards_path(
+        getenv("AUTOPULSE_EVENT_PLANE_SHARDS_PATH", "./.autopulse/events-log").strip()
+        or "./.autopulse/events-log",
+        data_root=_data_root,
+    )
+    event_plane_snapshots_path = normalize_event_plane_snapshots_path(
+        getenv("AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH", "./.autopulse/events-duckdb").strip()
+        or "./.autopulse/events-duckdb",
+        data_root=_data_root,
+    )
     dashboard_allowed_email_domains = _parse_email_domains(
         getenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS")
     )
@@ -493,7 +564,40 @@ def get_settings() -> Settings:
     settings = Settings(
         database_url=database_url,
         event_store=event_store,
+        event_plane_mode=event_plane_mode,
         event_store_duckdb_path=event_store_duckdb_path,
+        event_plane_shards_path=event_plane_shards_path,
+        event_plane_snapshots_path=event_plane_snapshots_path,
+        event_plane_shard_max_bytes=_env_int(
+            "AUTOPULSE_SHARD_MAX_BYTES",
+            134_217_728,
+            minimum=1_048_576,
+        ),
+        event_plane_shard_max_age_seconds=_env_int(
+            "AUTOPULSE_SHARD_MAX_AGE_SECONDS",
+            300,
+            minimum=10,
+        ),
+        event_plane_compactor_interval_seconds=_env_int(
+            "AUTOPULSE_COMPACTOR_INTERVAL_SECONDS",
+            60,
+            minimum=1,
+        ),
+        event_plane_compactor_max_concurrency=_env_int(
+            "AUTOPULSE_COMPACTOR_MAX_CONCURRENCY",
+            1,
+            minimum=1,
+        ),
+        event_plane_compactor_publish_timeout_seconds=_env_int(
+            "AUTOPULSE_COMPACTOR_PUBLISH_TIMEOUT_SECONDS",
+            60,
+            minimum=1,
+        ),
+        event_plane_snapshot_retention_count=_env_int(
+            "AUTOPULSE_SNAPSHOT_RETENTION_COUNT",
+            3,
+            minimum=1,
+        ),
         cors_allow_origins=cors_allow_origins,
         ingest_max_request_bytes=_env_int("INGEST_MAX_REQUEST_BYTES", 1_048_576, minimum=1),
         ingest_max_events_per_batch=_env_int(
@@ -678,5 +782,6 @@ def get_settings() -> Settings:
         ),
         dashboard_rum_log_payloads=_env_bool("DASHBOARD_RUM_LOG_PAYLOADS", False),
     )
+    validate_event_plane_settings(settings)
     validate_deployment_settings(settings)
     return settings

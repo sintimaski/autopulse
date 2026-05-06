@@ -26,6 +26,7 @@ from autopulse_backend.models import Base
 from autopulse_backend.realtime.bus import run_postgres_realtime_subscriber
 from autopulse_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
 from autopulse_backend.services.duckdb_async import shutdown_duckdb_executors
+from autopulse_backend.services.event_plane_shards import shutdown_event_plane_shard_writer
 from autopulse_backend.services.event_store import (
     event_store_enabled,
     shutdown_duckdb_event_store,
@@ -146,9 +147,13 @@ def _log_grouped_startup_settings() -> None:
     )
     if settings.event_store == "duckdb":
         log.info(
-            "Startup settings [event_store]: mode=%s duckdb_path=%s data_root=%s",
+            "Startup settings [event_store]: mode=%s event_plane_mode=%s duckdb_path=%s "
+            "shards_path=%s snapshots_path=%s data_root=%s",
             settings.event_store,
+            settings.event_plane_mode,
             settings.event_store_duckdb_path,
+            settings.event_plane_shards_path,
+            settings.event_plane_snapshots_path,
             str(resolve_autopulse_data_root()),
         )
 
@@ -274,4 +279,5 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await bus_task
     app.state._autopulse_realtime_bus_subscriber_task = None
     shutdown_duckdb_executors(wait=True)
+    shutdown_event_plane_shard_writer()
     shutdown_duckdb_event_store()
