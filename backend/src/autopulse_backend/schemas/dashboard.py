@@ -430,6 +430,14 @@ class DashboardThemeSettingsUpdate(BaseModel):
     exclude_autopulse_traffic: bool
 
 
+class DashboardEventPlaneCutoverSettings(BaseModel):
+    use_snapshot_read: bool
+
+
+class DashboardEventPlaneCutoverSettingsUpdate(BaseModel):
+    use_snapshot_read: bool
+
+
 class DashboardRetentionSettings(BaseModel):
     raw_events_days: int
     logs_query_max_window_minutes: int

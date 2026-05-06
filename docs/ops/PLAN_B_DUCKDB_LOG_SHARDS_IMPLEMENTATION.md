@@ -244,29 +244,47 @@ Rollback must be executable without data loss and without changing SDK behavior.
   - Added `AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH` config/env surface for snapshot output root.
   - Added compactor tests for restart safety, idempotence, successful publish, and failed-build invisibility.
 
-### TSK-B1-03 — Snapshot publish protocol
+### TSK-B1-03 — Snapshot publish protocol [DONE]
 
 - **Description:** Implement atomic `CURRENT` pointer update and reader consistency checks.
 - **Acceptance criteria:**
   - Readers never observe partial snapshots.
   - Pointer updates are atomic on supported deployment filesystem.
   - Integration test validates concurrent read during publish.
+- **Implementation notes (2026-05-06):**
+  - Added atomic `CURRENT` pointer publishing in `backend/src/autopulse_backend/services/event_plane_compactor.py` using `os.replace` over a temp pointer file.
+  - `CURRENT` pointer now includes snapshot metadata (`snapshot_version`, `snapshot_dir`, `published_at`) and enforces monotonic snapshot version checks before publish.
+  - Added reader-side `resolve_current_snapshot_path()` validation so only completed snapshots (`COMPLETE` marker present) are considered visible.
+  - Added concurrent-read publish test coverage in `backend/tests/test_event_plane_compactor.py` to verify readers only observe previous-or-new complete snapshots during atomic pointer switch.
 
-### TSK-B2-01 — Parity harness
+### TSK-B2-01 — Parity harness [DONE]
 
 - **Description:** Build automated parity checks for core dashboard query families.
 - **Acceptance criteria:**
   - Requests/errors/latency views compared across old vs Plan B outputs.
   - Mismatch report includes project/window/query signature.
   - Cutover blocked automatically on parity regression.
+- **Implementation notes (2026-05-06):**
+  - Added parity harness service in `backend/src/autopulse_backend/services/event_plane_parity.py`.
+  - Harness now compares core diagnosis-critical query families across legacy DuckDB and Plan B snapshot DuckDB (`request_count`, `error_count`, `avg_latency_ms`, `p95_latency_ms`) for a project/window.
+  - Added structured mismatch reporting with explicit `project_id`, `window_start`, `window_end`, and `query_signature` for each regression.
+  - Added `build_cutover_decision(...)` gate logic that resolves the snapshot from atomic `CURRENT` pointer and returns `allowed=False` whenever parity mismatches exist.
+  - Added focused tests in `backend/tests/test_event_plane_parity.py` covering match, mismatch reporting detail, and automatic cutover-block behavior.
 
-### TSK-B2-02 — Project-scoped cutover control
+### TSK-B2-02 — Project-scoped cutover control [IN PROGRESS]
 
 - **Description:** Add per-project toggle for Plan B read path.
 - **Acceptance criteria:**
   - Operators can enable/disable without deploy.
   - Toggle is audited and visible in internal logs.
   - Rollback to legacy read path validated in staging.
+- **Implementation notes (2026-05-06):**
+  - Added project-scoped toggle storage (`event_plane_use_snapshot_read`) on `ProjectUiSettings` with backward-compatible SQLite lazy migration in `backend/src/autopulse_backend/dashboard/repositories/project_ui.py`.
+  - Added dashboard operator endpoints in `backend/src/autopulse_backend/dashboard/routes/ui_settings.py`:
+    - `GET /dashboard/event-plane-cutover`
+    - `PUT /dashboard/event-plane-cutover`
+  - Toggle changes now emit structured audit logs (`event_plane_project_cutover_toggled`) and increment `event_plane.cutover_toggle_changes_total`.
+  - Added integration coverage in `backend/tests/test_dashboard.py` verifying enable/disable rollback flow via API-key dashboard auth.
 
 ### TSK-B2-03 — Backpressure and safeguards
 

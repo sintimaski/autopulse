@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -21,7 +22,10 @@ from autopulse_backend.dashboard.serializers import (
     serialize_theme_settings,
 )
 from autopulse_backend.database import get_db_session
+from autopulse_backend.metrics import service_metrics
 from autopulse_backend.schemas import (
+    DashboardEventPlaneCutoverSettings,
+    DashboardEventPlaneCutoverSettingsUpdate,
     DashboardInternalMetricsResponse,
     DashboardRetentionSettings,
     DashboardRetentionSettingsUpdate,
@@ -30,6 +34,7 @@ from autopulse_backend.schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 async def _optional_dashboard_auth_session(
@@ -74,6 +79,50 @@ async def update_dashboard_theme_settings(
     await session.commit()
     await session.refresh(settings)
     return serialize_theme_settings(settings)
+
+
+@router.get("/event-plane-cutover", response_model=DashboardEventPlaneCutoverSettings)
+async def get_dashboard_event_plane_cutover_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardEventPlaneCutoverSettings:
+    settings = await get_or_create_project_ui_settings(session, context.project_id)
+    await session.commit()
+    await session.refresh(settings)
+    return DashboardEventPlaneCutoverSettings(
+        use_snapshot_read=bool(settings.event_plane_use_snapshot_read)
+    )
+
+
+@router.put("/event-plane-cutover", response_model=DashboardEventPlaneCutoverSettings)
+async def update_dashboard_event_plane_cutover_settings(
+    payload: DashboardEventPlaneCutoverSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    auth_session: Annotated[DashboardAuthSession | None, Depends(_optional_dashboard_auth_session)],
+    _: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardEventPlaneCutoverSettings:
+    settings = await get_or_create_project_ui_settings(session, context.project_id)
+    previous = bool(settings.event_plane_use_snapshot_read)
+    updated = bool(payload.use_snapshot_read)
+    settings.event_plane_use_snapshot_read = updated
+    await session.commit()
+    await session.refresh(settings)
+    if previous != updated:
+        service_metrics.increment("event_plane.cutover_toggle_changes_total")
+    logger.info(
+        "event_plane_project_cutover_toggled",
+        extra={
+            "event": "event_plane_project_cutover_toggled",
+            "project_id": str(context.project_id),
+            "previous_use_snapshot_read": previous,
+            "use_snapshot_read": updated,
+            "actor_email": (auth_session.email if auth_session is not None else None),
+        },
+    )
+    return DashboardEventPlaneCutoverSettings(
+        use_snapshot_read=bool(settings.event_plane_use_snapshot_read)
+    )
 
 
 @router.get("/retention-settings", response_model=DashboardRetentionSettings)

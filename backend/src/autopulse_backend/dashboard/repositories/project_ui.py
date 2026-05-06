@@ -22,6 +22,7 @@ async def get_or_create_project_ui_settings(
         error_text = str(exc)
         if (
             "project_ui_settings.exclude_autopulse_traffic" not in error_text
+            and "project_ui_settings.event_plane_use_snapshot_read" not in error_text
             and "project_ui_settings.logs_query_max_window_minutes" not in error_text
             and "project_ui_settings.retention_raw_events_days" not in error_text
             and "project_ui_settings.retention_max_db_size_mb" not in error_text
@@ -37,6 +38,8 @@ async def get_or_create_project_ui_settings(
         alter_statements = [
             "ALTER TABLE project_ui_settings "
             "ADD COLUMN exclude_autopulse_traffic BOOLEAN NOT NULL DEFAULT 1",
+            "ALTER TABLE project_ui_settings "
+            "ADD COLUMN event_plane_use_snapshot_read BOOLEAN NOT NULL DEFAULT 0",
             "ALTER TABLE project_ui_settings "
             "ADD COLUMN logs_query_max_window_minutes INTEGER NOT NULL DEFAULT 1440",
             "ALTER TABLE project_ui_settings ADD COLUMN retention_raw_events_days INTEGER NULL",

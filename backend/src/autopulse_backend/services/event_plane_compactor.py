@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -57,6 +58,7 @@ class EventPlaneCompactor:
         self._snapshots_root.mkdir(parents=True, exist_ok=True)
         self._tmp_root = self._snapshots_root / "_tmp"
         self._tmp_root.mkdir(parents=True, exist_ok=True)
+        self._current_pointer = self._snapshots_root / "CURRENT"
 
     @property
     def snapshots_root(self) -> Path:
@@ -87,6 +89,10 @@ class EventPlaneCompactor:
                 encoding="utf-8",
             )
             temp_snapshot_dir.rename(final_snapshot_dir)
+            self._publish_current_snapshot_pointer(
+                snapshot_dir=final_snapshot_dir,
+                snapshot_version=snapshot_version,
+            )
             for shard in candidates:
                 self._manifest.transition_state(
                     shard_id=shard.shard_id,
@@ -111,6 +117,22 @@ class EventPlaneCompactor:
                 published.append(candidate)
         return published
 
+    def resolve_current_snapshot_path(self) -> Path | None:
+        if not self._current_pointer.is_file():
+            return None
+        payload = self._read_current_pointer()
+        if payload is None:
+            return None
+        snapshot_dir_name = str(payload.get("snapshot_dir", "")).strip()
+        if not snapshot_dir_name:
+            return None
+        snapshot_path = (self._snapshots_root / snapshot_dir_name).resolve()
+        if not snapshot_path.is_dir():
+            return None
+        if not (snapshot_path / "COMPLETE").is_file():
+            return None
+        return snapshot_path
+
     def _reserve_candidates_for_compaction(self) -> list[ShardManifestRecord]:
         sealed = self._manifest.list_by_state(ShardManifestState.SEALED)
         compacting = self._manifest.list_by_state(ShardManifestState.COMPACTING)
@@ -123,6 +145,49 @@ class EventPlaneCompactor:
             reserved.append(updated)
         reserved.extend(compacting)
         return reserved
+
+    def _publish_current_snapshot_pointer(
+        self,
+        *,
+        snapshot_dir: Path,
+        snapshot_version: str,
+    ) -> None:
+        if not (snapshot_dir / "COMPLETE").is_file():
+            raise ValueError(f"cannot publish incomplete snapshot: {snapshot_dir}")
+        current = self._read_current_pointer()
+        if current is not None:
+            current_version = str(current.get("snapshot_version", "")).strip()
+            if current_version and current_version > snapshot_version:
+                raise ValueError(
+                    "snapshot version monotonicity violation: "
+                    f"current={current_version} next={snapshot_version}"
+                )
+        payload = {
+            "snapshot_version": snapshot_version,
+            "snapshot_dir": snapshot_dir.name,
+            "published_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        self._write_current_pointer_atomically(payload)
+
+    def _read_current_pointer(self) -> dict[str, object] | None:
+        if not self._current_pointer.is_file():
+            return None
+        try:
+            return json.loads(self._current_pointer.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+
+    def _write_current_pointer_atomically(self, payload: dict[str, object]) -> None:
+        temp_path = self._snapshots_root / f".CURRENT.tmp-{uuid4().hex}"
+        try:
+            temp_path.write_text(
+                json.dumps(payload, separators=(",", ":")) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temp_path, self._current_pointer)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
 
     def _build_snapshot(
         self,

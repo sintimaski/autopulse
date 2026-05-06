@@ -37,6 +37,12 @@ Operational assumptions for this embedded mode:
 2. Never commit real secrets. Use your platform’s secret manager for `DATABASE_URL`, OIDC client secrets, SMTP, and `INTERNAL_METRICS_BEARER_TOKEN`.
 3. **SDK (remote ingest):** set `AUTOPULSE_API_KEY` and `AUTOPULSE_INGEST_URL`. Production-safe capture defaults are **off** for full headers/query strings unless you opt in (`capture_headers` / `capture_query_params` or `AUTOPULSE_CAPTURE_HEADERS` / `AUTOPULSE_CAPTURE_QUERY_PARAMS`). See [sdk/README.md](../../sdk/README.md).
 
+### Internal metrics auth boundary
+
+- `GET /internal/metrics` and `/metrics` are guarded by `INTERNAL_METRICS_BEARER_TOKEN` (operator token).
+- Dashboard auth credentials (session cookie or dashboard API key fallback when explicitly enabled) do **not** authorize `/internal/metrics`.
+- Keep `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK=false` by default in production; only enable temporarily for controlled troubleshooting.
+
 ## 2.1 Dashboard auth modes (production)
 
 AutoPulse supports two production-ready dashboard auth modes:

@@ -1111,6 +1111,38 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
         assert overview_filtered.json()["request_count"] == 1
 
 
+def test_dashboard_event_plane_cutover_toggle_can_enable_and_rollback(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Cutover Toggle")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    with TestClient(app) as client:
+        initial = client.get("/dashboard/event-plane-cutover", headers=headers)
+        assert initial.status_code == 200
+        assert initial.json()["use_snapshot_read"] is False
+
+        enable = client.put(
+            "/dashboard/event-plane-cutover",
+            json={"use_snapshot_read": True},
+            headers=headers,
+        )
+        assert enable.status_code == 200
+        assert enable.json()["use_snapshot_read"] is True
+
+        disable = client.put(
+            "/dashboard/event-plane-cutover",
+            json={"use_snapshot_read": False},
+            headers=headers,
+        )
+        assert disable.status_code == 200
+        assert disable.json()["use_snapshot_read"] is False
+
+
 def test_dashboard_internal_metrics_requires_server_token_flag(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

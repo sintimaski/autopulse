@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -86,6 +88,8 @@ def test_compactor_builds_snapshot_and_marks_shards_compacted(tmp_path: Path) ->
     assert result.compacted_rows == 2
     assert result.published_snapshot_path is not None
     assert (result.published_snapshot_path / "COMPLETE").is_file()
+    current_snapshot = compactor.resolve_current_snapshot_path()
+    assert current_snapshot == result.published_snapshot_path
     assert manifest.get_shard("s1") is not None
     assert manifest.get_shard("s1").state == ShardManifestState.COMPACTED  # type: ignore[union-attr]
     assert manifest.get_shard("s2") is not None
@@ -188,4 +192,86 @@ def test_failed_compaction_build_is_not_published(tmp_path: Path) -> None:
     assert compactor.list_published_snapshots() == []
     assert manifest.get_shard("s1") is not None
     assert manifest.get_shard("s1").state == ShardManifestState.COMPACTING  # type: ignore[union-attr]
+    manifest.close()
+
+
+def test_current_pointer_is_atomic_for_concurrent_reads(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    compactor = EventPlaneCompactor(manifest=manifest, snapshots_root=snapshots_root)
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+    shard_one = tmp_path / "events-log" / "p1" / "2026/05/05/22" / "shard-1.jsonl"
+    shard_two = tmp_path / "events-log" / "p1" / "2026/05/05/22" / "shard-2.jsonl"
+    _write_shard(
+        shard_one,
+        [
+            {
+                "project_id": "p1",
+                "timestamp": now,
+                "received_at": now,
+                "sdk_version": "1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/a",
+                "status_code": 200,
+                "latency_ms": 1.0,
+                "payload": {},
+            }
+        ],
+    )
+    _register_sealed(manifest, shard_id="s1", project_id="p1", shard_path=shard_one)
+    first = compactor.compact_once()
+    assert first.published_snapshot_path is not None
+    _write_shard(
+        shard_two,
+        [
+            {
+                "project_id": "p1",
+                "timestamp": now,
+                "received_at": now,
+                "sdk_version": "1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "POST",
+                "path": "/b",
+                "status_code": 201,
+                "latency_ms": 2.0,
+                "payload": {},
+            }
+        ],
+    )
+    _register_sealed(manifest, shard_id="s2", project_id="p1", shard_path=shard_two)
+
+    original = compactor._write_current_pointer_atomically
+
+    def _slow_write(payload: dict[str, object]) -> None:
+        time.sleep(0.05)
+        original(payload)
+
+    compactor._write_current_pointer_atomically = _slow_write  # type: ignore[method-assign]
+    observed: list[Path] = []
+    stop = threading.Event()
+
+    def _reader() -> None:
+        while not stop.is_set():
+            path = compactor.resolve_current_snapshot_path()
+            if path is not None:
+                observed.append(path)
+            time.sleep(0.001)
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
+    second = compactor.compact_once()
+    stop.set()
+    reader.join(timeout=1)
+
+    assert second.published_snapshot_path is not None
+    assert observed
+    allowed = {first.published_snapshot_path, second.published_snapshot_path}
+    assert set(observed).issubset(allowed)
+    assert all((path / "COMPLETE").is_file() for path in observed)
+    assert compactor.resolve_current_snapshot_path() == second.published_snapshot_path
     manifest.close()
