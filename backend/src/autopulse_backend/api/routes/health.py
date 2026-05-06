@@ -49,6 +49,8 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
       ``ingest_aggregate_worker_failed`` exception traceback.
     - ``persist_sql_tail_failed_total`` > 0: SQL tail failed after DuckDB writes; verify DB health.
       See ops docs on cross-store consistency.
+    - ``sql_tail_repair_dead_lettered_total`` > 0: replay queue exhausted retries;
+      investigate oldest failed payload and run replay CLI after remediation.
     """
     accepted_batches = int(counters.get("ingest.accepted.batches", 0))
     accepted_events = int(counters.get("ingest.accepted.events", 0))
@@ -64,6 +66,11 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
     worker_succeeded = int(counters.get("ingest.aggregate_worker.succeeded", 0))
     worker_failed = int(counters.get("ingest.aggregate_worker.failed", 0))
     persist_sql_tail_failed = int(counters.get("ingest.persist_sql_tail_failed", 0))
+    sql_tail_repair_queued = int(counters.get("ingest.sql_tail.repair_queued", 0))
+    sql_tail_repair_enqueue_failed = int(counters.get("ingest.sql_tail.repair_enqueue_failed", 0))
+    sql_tail_repair_succeeded = int(counters.get("ingest.sql_tail.repair_succeeded", 0))
+    sql_tail_repair_failed = int(counters.get("ingest.sql_tail.repair_failed", 0))
+    sql_tail_repair_dead_lettered = int(counters.get("ingest.sql_tail.repair_dead_lettered", 0))
     event_plane_append_rejected = int(counters.get("event_plane.shards.append_rejected_total", 0))
     event_plane_append_failed = int(counters.get("event_plane.shards.append_failed_total", 0))
     return {
@@ -82,6 +89,11 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
         "aggregate_worker_succeeded_total": worker_succeeded,
         "aggregate_worker_failed_total": worker_failed,
         "persist_sql_tail_failed_total": persist_sql_tail_failed,
+        "sql_tail_repair_queued_total": sql_tail_repair_queued,
+        "sql_tail_repair_enqueue_failed_total": sql_tail_repair_enqueue_failed,
+        "sql_tail_repair_succeeded_total": sql_tail_repair_succeeded,
+        "sql_tail_repair_failed_total": sql_tail_repair_failed,
+        "sql_tail_repair_dead_lettered_total": sql_tail_repair_dead_lettered,
         "event_plane_append_rejected_total": event_plane_append_rejected,
         "event_plane_append_failed_total": event_plane_append_failed,
     }

@@ -91,6 +91,22 @@ def _count_events(database_url: str) -> int:
     return asyncio.run(run())
 
 
+def _count_sql_tail_repair_items(database_url: str) -> int:
+    async def run() -> int:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                result = await session.execute(
+                    text("SELECT COUNT(*) FROM ingest_sql_tail_repair_items")
+                )
+                return int(result.scalar_one())
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
 def _list_indexes(database_url: str) -> list[str]:
     async def run() -> list[str]:
         engine = create_async_engine(database_url, pool_pre_ping=True)
@@ -750,6 +766,39 @@ def test_ingest_async_aggregate_sync_fallback_when_enqueue_returns_false(
     assert response.json() == {"accepted": 1}
     after = service_metrics.snapshot().get("ingest.aggregate_worker.sync_fallback", 0)
     assert after == baseline + 1
+
+
+def test_ingest_queues_sql_tail_repair_when_event_store_is_authoritative(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/sql-tail-failure",
+                "status_code": 200,
+                "latency_ms": 5.0,
+            }
+        ]
+    }
+    with (
+        patch(
+            "autopulse_backend.services.ingest_service.dashboard_widgets_repo.upsert_widget_definitions",
+            side_effect=RuntimeError("simulated sql tail write failure"),
+        ),
+        TestClient(app) as client,
+    ):
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+    assert response.status_code == 200
+    assert response.json() == {"accepted": 1}
+    assert _count_sql_tail_repair_items(backend_test_database_url) == 1
 
 
 def test_ingest_accepts_job_event(backend_test_database_url: str) -> None:

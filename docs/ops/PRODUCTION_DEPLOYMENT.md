@@ -136,6 +136,11 @@ Validate in staging: issue a real dashboard login and one SDK ingest batch throu
   - `GET /ready` should report `jobs_enable_scheduler=true` and `scheduler_running=true` (or your documented external-cron mode).
   - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
+- SQL-tail repair queue (DuckDB authoritative ingest):
+  - Keep `INGEST_SQL_TAIL_REPAIR_ENABLED=true` in production.
+  - Tune cadence with `INGEST_SQL_TAIL_REPAIR_INTERVAL_SECONDS` and `INGEST_SQL_TAIL_REPAIR_BATCH_SIZE`.
+  - Bound retry depth with `INGEST_SQL_TAIL_REPAIR_MAX_RETRIES`; dead letters expose via `ingest_pressure.sql_tail_repair_dead_lettered_total`.
+  - Manual replay CLI: `uv run python -m autopulse_backend.jobs replay-sql-tail-repairs-once`.
 
 ## 5.1 When to move metadata DB off SQLite
 
@@ -165,12 +170,13 @@ In typical deployments, **raw events** land in DuckDB (when enabled) while **rol
 **Operational model**
 
 1. **Happy path:** ingest commits DuckDB inserts (when enabled), then applies SQL-side widget + aggregate updates — inline or via the async aggregate worker queue (`INGEST_ASYNC_AGGREGATE_ENABLED`).
-2. **Partial failure:** if SQL-side persistence fails after DuckDB succeeded, the request may still return `200` with accepted events while aggregates lag; the service increments `ingest.persist_sql_tail_failed` and logs `ingest_persist_sql_tail_failed`.
+2. **Partial failure:** if SQL-side persistence fails after DuckDB succeeded, the request may still return `200` with accepted events while aggregates lag; the service increments `ingest.persist_sql_tail_failed`, persists a durable SQL-tail repair item, and logs `ingest_persist_sql_tail_failed`.
 3. **Async aggregate backlog:** if the aggregate worker queue drops work (`ingest.aggregate_worker.enqueue_failed`) or repeatedly fails (`ingest.aggregate_worker.failed`), payloads can land in aggregate dead letters for replay (`replay-aggregate-dead-letters-once`). Watch **`ingest_pressure`** on `/internal/metrics`: `aggregate_worker_sync_fallback_total`, `aggregate_worker_enqueue_failed_total`, `aggregate_worker_failed_total`, `persist_sql_tail_failed_total`, and **`ingest_aggregate_queue`** depth vs max.
 
 **Recovery**
 
 - Fix underlying SQL connectivity or disk pressure, then replay dead-letter rows when appropriate.
+- Run `replay-sql-tail-repairs-once` after remediation if the periodic queue cannot keep up.
 - Expect **event timeline** in DuckDB to remain authoritative for raw rows; SQL aggregates catch up as retries/replays succeed.
 
 ## 6. Observability (golden signals)

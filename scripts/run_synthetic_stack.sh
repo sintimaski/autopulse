@@ -73,26 +73,50 @@ if [[ -z "${AUTOPULSE_API_KEY:-}" ]]; then
   fi
 fi
 
+BACKEND_LOG=""
 cleanup() {
   if [[ -n "${BACKEND_PID:-}" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then
     kill "$BACKEND_PID" 2>/dev/null || true
     wait "$BACKEND_PID" 2>/dev/null || true
   fi
+  if [[ -n "${BACKEND_LOG:-}" && -f "$BACKEND_LOG" ]]; then
+    rm -f "$BACKEND_LOG"
+  fi
 }
 trap cleanup EXIT INT TERM
 
+# Avoid a second uvicorn fighting the same port / DuckDB lock (symptom: /health never succeeds in time).
+if curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
+  echo "error: something already responds on http://127.0.0.1:8000/health." >&2
+  echo "  Stop the other process (or free port 8000), then re-run this script." >&2
+  exit 1
+fi
+
 echo "Starting backend on :8000…"
-uv run uvicorn autopulse_backend.main:app --host 0.0.0.0 --port 8000 --log-level info &
+BACKEND_LOG="$(mktemp)"
+uv run uvicorn autopulse_backend.main:app --host 0.0.0.0 --port 8000 --log-level info >>"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
-for _ in $(seq 1 120); do
+# Startup can exceed 30s when Alembic runs, DuckDB opens under lock contention
+# (see AUTOPULSE_DUCKDB_CONNECT_RETRIES in event_store), or cold disk — allow ~100s.
+for _ in $(seq 1 400); do
   if curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
     break
+  fi
+  if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    echo "error: backend exited before /health succeeded (check logs below)." >&2
+    echo "--- tail ${BACKEND_LOG} ---" >&2
+    tail -n 120 "$BACKEND_LOG" >&2 || true
+    exit 1
   fi
   sleep 0.25
 done
 if ! curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
-  echo "error: backend did not become healthy on http://127.0.0.1:8000/health" >&2
+  echo "error: backend did not become healthy on http://127.0.0.1:8000/health within ~100s." >&2
+  echo "  Common causes: port 8000 in use, DuckDB file locked by another AutoPulse process, or very slow first migration." >&2
+  echo "  Tip: ensure no other uvicorn is using this repo's .autopulse/events.duckdb; try lsof on that path." >&2
+  echo "--- tail ${BACKEND_LOG} ---" >&2
+  tail -n 120 "$BACKEND_LOG" >&2 || true
   exit 1
 fi
 

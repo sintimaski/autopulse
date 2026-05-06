@@ -85,7 +85,9 @@ def _log_grouped_startup_settings() -> None:
     log.info(
         "Startup settings [ingest]: max_request_bytes=%d rate_limit=%d/%ds "
         "distributed_rate_limit=%s async_aggregate=%s aggregate_queue_max=%d "
-        "drop_autopulse_traffic=%s",
+        "drop_autopulse_traffic=%s sql_tail_repair_enabled=%s "
+        "sql_tail_repair_interval_seconds=%.2f sql_tail_repair_batch_size=%d "
+        "sql_tail_repair_max_retries=%d",
         settings.ingest_max_request_bytes,
         settings.ingest_rate_limit_requests_per_window,
         settings.ingest_rate_limit_window_seconds,
@@ -93,6 +95,10 @@ def _log_grouped_startup_settings() -> None:
         settings.ingest_async_aggregate_enabled,
         settings.ingest_async_aggregate_queue_max_size,
         settings.ingest_drop_autopulse_traffic_from_db,
+        settings.ingest_sql_tail_repair_enabled,
+        settings.ingest_sql_tail_repair_interval_seconds,
+        settings.ingest_sql_tail_repair_batch_size,
+        settings.ingest_sql_tail_repair_max_retries,
     )
     log.info(
         "Startup settings [jobs_retention]: jobs_enable_scheduler=%s "

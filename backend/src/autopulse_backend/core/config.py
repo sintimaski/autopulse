@@ -50,6 +50,10 @@ class Settings:
     ingest_async_aggregate_enabled: bool = True
     ingest_async_aggregate_queue_max_size: int = 2000
     ingest_aggregate_worker_max_retries: int = 3
+    ingest_sql_tail_repair_enabled: bool = True
+    ingest_sql_tail_repair_interval_seconds: float = 30.0
+    ingest_sql_tail_repair_batch_size: int = 50
+    ingest_sql_tail_repair_max_retries: int = 12
     ingest_idempotency_ttl_hours: int = 24
     ingest_idempotency_stale_seconds: int = 45
     ingest_require_https: bool = True
@@ -584,6 +588,25 @@ def get_settings() -> Settings:
             "INGEST_AGGREGATE_WORKER_MAX_RETRIES",
             3,
             minimum=0,
+        ),
+        ingest_sql_tail_repair_enabled=_env_bool(
+            "INGEST_SQL_TAIL_REPAIR_ENABLED",
+            True,
+        ),
+        ingest_sql_tail_repair_interval_seconds=_env_float(
+            "INGEST_SQL_TAIL_REPAIR_INTERVAL_SECONDS",
+            30.0,
+            minimum=1.0,
+        ),
+        ingest_sql_tail_repair_batch_size=_env_int(
+            "INGEST_SQL_TAIL_REPAIR_BATCH_SIZE",
+            50,
+            minimum=1,
+        ),
+        ingest_sql_tail_repair_max_retries=_env_int(
+            "INGEST_SQL_TAIL_REPAIR_MAX_RETRIES",
+            12,
+            minimum=1,
         ),
         ingest_idempotency_ttl_hours=_env_int("INGEST_IDEMPOTENCY_TTL_HOURS", 24, minimum=1),
         ingest_idempotency_stale_seconds=_env_int(

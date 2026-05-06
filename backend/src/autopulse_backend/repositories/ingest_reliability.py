@@ -10,7 +10,11 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from autopulse_backend.models import IngestAggregateDeadLetter, IngestIdempotencyKey
+from autopulse_backend.models import (
+    IngestAggregateDeadLetter,
+    IngestIdempotencyKey,
+    IngestSqlTailRepairItem,
+)
 from autopulse_backend.repositories.aggregates import ErrorGroupAggregateDelta, MetricBucketDelta
 from autopulse_backend.services.aggregate_delta_codec import encode_aggregate_payload
 
@@ -59,6 +63,79 @@ async def mark_dead_letter_replayed(session: AsyncSession, row_id: int) -> None:
         update(IngestAggregateDeadLetter)
         .where(IngestAggregateDeadLetter.id == row_id)
         .values(replayed_at=datetime.now(tz=UTC))
+    )
+    await session.commit()
+
+
+async def insert_sql_tail_repair_item(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    payload: dict[str, Any],
+    last_error: str | None,
+) -> None:
+    session.add(
+        IngestSqlTailRepairItem(
+            project_id=project_id,
+            payload=payload,
+            last_error=last_error,
+        )
+    )
+    await session.commit()
+
+
+async def fetch_pending_sql_tail_repair_items(
+    session: AsyncSession, *, limit: int = 50
+) -> list[IngestSqlTailRepairItem]:
+    now = datetime.now(tz=UTC)
+    stmt = (
+        select(IngestSqlTailRepairItem)
+        .where(
+            IngestSqlTailRepairItem.resolved_at.is_(None),
+            IngestSqlTailRepairItem.dead_lettered_at.is_(None),
+            IngestSqlTailRepairItem.next_retry_at <= now,
+        )
+        .order_by(IngestSqlTailRepairItem.id.asc())
+        .limit(limit)
+    )
+    rows = (await session.scalars(stmt)).all()
+    return list(rows)
+
+
+async def mark_sql_tail_repair_resolved(session: AsyncSession, row_id: int) -> None:
+    now = datetime.now(tz=UTC)
+    await session.execute(
+        update(IngestSqlTailRepairItem)
+        .where(IngestSqlTailRepairItem.id == row_id)
+        .values(
+            resolved_at=now,
+            last_attempt_at=now,
+            last_error=None,
+        )
+    )
+    await session.commit()
+
+
+async def mark_sql_tail_repair_retry(
+    session: AsyncSession,
+    *,
+    row_id: int,
+    attempt_count: int,
+    next_retry_at: datetime,
+    last_error: str,
+    dead_lettered: bool,
+) -> None:
+    now = datetime.now(tz=UTC)
+    values: dict[str, Any] = {
+        "attempt_count": max(0, int(attempt_count)),
+        "last_attempt_at": now,
+        "next_retry_at": next_retry_at,
+        "last_error": last_error[:2048],
+    }
+    if dead_lettered:
+        values["dead_lettered_at"] = now
+    await session.execute(
+        update(IngestSqlTailRepairItem).where(IngestSqlTailRepairItem.id == row_id).values(**values)
     )
     await session.commit()
 

@@ -118,9 +118,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes (with idempotency key on repair records)
   - If partial/no, guardrails required: dedupe by ingest batch/event id.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-06 (added durable SQL-tail repair queue + scheduler replay job + bounded retry/dead-letter + ingest fallback + docs/tests)
   - Owner: Backend
 - **Related documents:** `docs/ops/RUNBOOK_EVENT_PLANE_BACKPRESSURE.md`, `docs/ops/ADR_EVENT_STORE_SCALING.md`
 - **References / examples:** existing ingest persistence metrics and failure signals.

@@ -10,6 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 _FULL_RESET_TABLES = (
     "alert_dispatches",
     "project_alert_settings",
+    "ingest_sql_tail_repair_items",
+    "ingest_aggregate_dead_letters",
+    "ingest_idempotency_keys",
+    "ingest_rate_limit_windows",
     "error_group_aggregates",
     "metric_buckets",
     "events",
@@ -18,6 +22,7 @@ _FULL_RESET_TABLES = (
 )
 
 _INGEST_CORE_TABLES = (
+    "ingest_sql_tail_repair_items",
     "ingest_aggregate_dead_letters",
     "ingest_idempotency_keys",
     "ingest_rate_limit_windows",

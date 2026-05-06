@@ -18,11 +18,13 @@ from autopulse_backend.dashboard.error_grouping import (
 )
 from autopulse_backend.dashboard.payload_limits import MAX_WIDGET_POINTS_PER_INGEST_BATCH
 from autopulse_backend.dashboard.time_window import minute_bucket
+from autopulse_backend.database import get_session_maker
 from autopulse_backend.ingestion.exclude_autopulse import is_autopulse_internal_path
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.models import Event
 from autopulse_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from autopulse_backend.repositories import events as events_repo
+from autopulse_backend.repositories import ingest_reliability as ingest_reliability_repo
 from autopulse_backend.repositories.aggregates import (
     ErrorGroupAggregateDelta,
     MetricBucketDelta,
@@ -41,6 +43,7 @@ from autopulse_backend.services.infrastructure_metrics import (
 from autopulse_backend.services.infrastructure_metrics import (
     to_widget_payload as infrastructure_to_widget_payload,
 )
+from autopulse_backend.services.ingest_sql_tail_codec import encode_ingest_sql_tail_payload
 from autopulse_backend.services.ingest_widgets import (
     extract_dashboard_widget_rows,
     extract_operational_widget_rows,
@@ -314,8 +317,11 @@ async def persist_ingest_batch(
         if persist_aggregates:
             await upsert_metric_buckets(session, metric_bucket_deltas)
             await upsert_error_group_aggregates(session, error_group_deltas)
-    except Exception:
+    except Exception as exc:
         service_metrics.increment("ingest.persist_sql_tail_failed")
+        # Clear the request-bound SQLAlchemy transaction state before continuing with
+        # a durable repair record; the original write path already failed.
+        await session.rollback()
         logger.exception(
             "ingest_persist_sql_tail_failed",
             extra={
@@ -324,7 +330,42 @@ async def persist_ingest_batch(
                 "event_store_duckdb": bool(event_store_enabled()),
             },
         )
-        raise
+        if not event_store_enabled():
+            raise
+        try:
+            payload = encode_ingest_sql_tail_payload(
+                widget_definitions=widget_definitions,
+                metric_bucket_deltas=metric_bucket_deltas,
+                error_group_deltas=error_group_deltas,
+                persist_aggregates=persist_aggregates,
+            )
+            session_maker = get_session_maker(settings.database_url)
+            async with session_maker() as repair_session:
+                await ingest_reliability_repo.insert_sql_tail_repair_item(
+                    repair_session,
+                    project_id=project_id,
+                    payload=payload,
+                    last_error=f"{type(exc).__name__}: {exc}",
+                )
+            service_metrics.increment("ingest.sql_tail.repair_queued")
+            logger.warning(
+                "ingest_sql_tail_repair_queued",
+                extra={
+                    "event": "ingest_sql_tail_repair_queued",
+                    "project_id": str(project_id),
+                    "persist_aggregates": bool(persist_aggregates),
+                },
+            )
+        except Exception:
+            service_metrics.increment("ingest.sql_tail.repair_enqueue_failed")
+            logger.exception(
+                "ingest_sql_tail_repair_enqueue_failed",
+                extra={
+                    "event": "ingest_sql_tail_repair_enqueue_failed",
+                    "project_id": str(project_id),
+                },
+            )
+            raise exc from None
     return PersistIngestResult(
         accepted=accepted,
         metric_bucket_deltas=metric_bucket_deltas,

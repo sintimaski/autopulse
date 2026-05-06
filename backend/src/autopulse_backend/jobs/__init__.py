@@ -8,7 +8,7 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from autopulse_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
@@ -23,6 +23,7 @@ from autopulse_backend.maintenance.retention import (
 )
 from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
 from autopulse_backend.models import Base
+from autopulse_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from autopulse_backend.repositories import ingest_reliability as ingest_reliability_repo
 from autopulse_backend.repositories.aggregates import (
     upsert_error_group_aggregates,
@@ -30,6 +31,7 @@ from autopulse_backend.repositories.aggregates import (
 )
 from autopulse_backend.repositories.runtime_controls import acquire_scheduler_lease
 from autopulse_backend.services.aggregate_delta_codec import decode_aggregate_payload
+from autopulse_backend.services.ingest_sql_tail_codec import decode_ingest_sql_tail_payload
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,61 @@ async def run_replay_aggregate_dead_letters_once(
                     extra={"dead_letter_id": row.id},
                 )
     return replayed
+
+
+async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) -> int:
+    """Replay SQL-tail write failures after authoritative DuckDB ingest succeeded."""
+    resolved_settings = settings or get_settings()
+    await _ensure_sqlite_schema_from_models(resolved_settings.database_url)
+    session_maker = get_session_maker(resolved_settings.database_url)
+    repaired = 0
+    max_retries = max(1, int(resolved_settings.ingest_sql_tail_repair_max_retries))
+    limit = max(1, int(resolved_settings.ingest_sql_tail_repair_batch_size))
+    async with session_maker() as session:
+        rows = await ingest_reliability_repo.fetch_pending_sql_tail_repair_items(
+            session, limit=limit
+        )
+    for row in rows:
+        try:
+            payload = decode_ingest_sql_tail_payload(row.payload)
+            async with session_maker() as replay_session:
+                await dashboard_widgets_repo.upsert_widget_definitions(
+                    replay_session, payload.widget_definitions
+                )
+                if payload.persist_aggregates:
+                    await upsert_metric_buckets(replay_session, payload.metric_bucket_deltas)
+                    await upsert_error_group_aggregates(replay_session, payload.error_group_deltas)
+                await replay_session.commit()
+            async with session_maker() as mark_session:
+                await ingest_reliability_repo.mark_sql_tail_repair_resolved(mark_session, row.id)
+            repaired += 1
+            service_metrics.increment("ingest.sql_tail.repair_succeeded")
+        except Exception as exc:
+            attempt_count = int(row.attempt_count) + 1
+            dead_lettered = attempt_count >= max_retries
+            backoff_seconds = float(min(300, 2 ** min(attempt_count, 8)))
+            next_retry_at = datetime.now(tz=UTC) + timedelta(seconds=backoff_seconds)
+            async with session_maker() as mark_session:
+                await ingest_reliability_repo.mark_sql_tail_repair_retry(
+                    mark_session,
+                    row_id=row.id,
+                    attempt_count=attempt_count,
+                    next_retry_at=next_retry_at,
+                    last_error=f"{type(exc).__name__}: {exc}",
+                    dead_lettered=dead_lettered,
+                )
+            service_metrics.increment("ingest.sql_tail.repair_failed")
+            if dead_lettered:
+                service_metrics.increment("ingest.sql_tail.repair_dead_lettered")
+            logger.exception(
+                "replay_sql_tail_repair_failed",
+                extra={
+                    "repair_item_id": row.id,
+                    "attempt_count": attempt_count,
+                    "dead_lettered": dead_lettered,
+                },
+            )
+    return repaired
 
 
 async def run_retention_once(
@@ -347,6 +404,12 @@ def start_scheduler(
             ),
         )
 
+    async def sql_tail_repair_tick() -> None:
+        await _record_job_execution(
+            job_name="sql_tail_repair",
+            operation=lambda: run_replay_sql_tail_repairs_once(settings=resolved_settings),
+        )
+
     tasks = [
         asyncio.create_task(
             _run_periodic(
@@ -369,6 +432,19 @@ def start_scheduler(
             )
         ),
     ]
+    if resolved_settings.ingest_sql_tail_repair_enabled:
+        tasks.append(
+            asyncio.create_task(
+                _run_periodic(
+                    job_name="sql_tail_repair",
+                    settings=resolved_settings,
+                    scheduler_owner_token=scheduler_owner_token,
+                    interval_seconds=resolved_settings.ingest_sql_tail_repair_interval_seconds,
+                    stop_event=stop_event,
+                    operation=sql_tail_repair_tick,
+                )
+            )
+        )
     return SchedulerHandle(stop_event=stop_event, tasks=tasks)
 
 
@@ -466,7 +542,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run AutoPulse background jobs.")
     parser.add_argument(
         "command",
-        choices=("alerts-once", "retention-once", "replay-aggregate-dead-letters-once"),
+        choices=(
+            "alerts-once",
+            "retention-once",
+            "replay-aggregate-dead-letters-once",
+            "replay-sql-tail-repairs-once",
+        ),
         help="Which one-off job to run.",
     )
     return parser
@@ -484,6 +565,11 @@ async def _run_command(command: str) -> int:
         return await _record_job_execution(
             job_name="replay_aggregate_dead_letters",
             operation=run_replay_aggregate_dead_letters_once,
+        )
+    if command == "replay-sql-tail-repairs-once":
+        return await _record_job_execution(
+            job_name="sql_tail_repair",
+            operation=run_replay_sql_tail_repairs_once,
         )
     raise ValueError(f"Unsupported command: {command}")
 
