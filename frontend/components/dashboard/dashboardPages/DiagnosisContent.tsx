@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   buildCurrentScopedState,
@@ -24,6 +24,11 @@ import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { MetricCard } from "../MetricCard";
 import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
+import {
+  isDiagnosisScopePartial,
+  nextDeepLinkRetryAction,
+  parseErrorGroupHash,
+} from "../diagnosisDeepLink";
 
 export function DiagnosisContent() {
   const d = useDashboardData();
@@ -34,6 +39,10 @@ export function DiagnosisContent() {
   const queryStringForBookmarks = searchParams.toString();
   const [errorModalItem, setErrorModalItem] = useState<ErrorGroupItem | null>(null);
   const [bookmarkDraft, setBookmarkDraft] = useState<{ title: string; hashFragment: string } | null>(null);
+  const [deepLinkGroupKey, setDeepLinkGroupKey] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : parseErrorGroupHash(window.location.hash),
+  );
+  const deepLinkAutoRetryKeyRef = useRef<string | null>(null);
   const scopedState = useMemo(
     (): DashboardScopedQueryState =>
       buildCurrentScopedState({
@@ -96,29 +105,67 @@ export function DiagnosisContent() {
     if (typeof window === "undefined") {
       return;
     }
-    const hash = window.location.hash;
-    if (!hash.startsWith("#error-group:")) {
-      return;
-    }
-    const encoded = hash.slice("#error-group:".length);
-    if (!encoded) {
-      return;
-    }
-    let decodedGroupKey = "";
-    try {
-      decodedGroupKey = decodeURIComponent(encoded);
-    } catch {
+    const onHashChange = () => {
+      setDeepLinkGroupKey(parseErrorGroupHash(window.location.hash));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const decodedGroupKey = deepLinkGroupKey;
+    if (!decodedGroupKey) {
+      deepLinkAutoRetryKeyRef.current = null;
       return;
     }
     const rowId = `error-group|${decodedGroupKey}`;
     const exists = d.displayedErrorGroups.some((group) => group.group_key === decodedGroupKey);
     if (!exists) {
+      const retryAction = nextDeepLinkRetryAction({
+        targetGroupKey: decodedGroupKey,
+        lastRetriedKey: deepLinkAutoRetryKeyRef.current,
+        errorGroupPage: d.errorGroupPage,
+        errorGroupLimit: d.errorGroupLimit,
+      });
+      if (retryAction !== "none") {
+        deepLinkAutoRetryKeyRef.current = decodedGroupKey;
+        if (retryAction === "reset_page") {
+          d.setErrorGroupPage(0);
+          return;
+        }
+        if (retryAction === "expand_limit") {
+          d.setErrorGroupLimit(50);
+        }
+      }
       return;
     }
+    deepLinkAutoRetryKeyRef.current = null;
     if (!d.expandedRequestIds.has(rowId)) {
       d.toggleRequestRow(rowId);
     }
-  }, [d]);
+  }, [d, deepLinkGroupKey]);
+  const deepLinkMissing =
+    deepLinkGroupKey !== null &&
+    !d.displayedErrorGroups.some((group) => group.group_key === deepLinkGroupKey);
+
+
+  const requestSampleCount = requests?.items.length ?? 0;
+  const requestTotalCount = requests?.total ?? 0;
+  const errorGroupSampleCount = d.displayedErrorGroups.length;
+  const errorGroupTotalCount = errorGroups?.total ?? 0;
+  const hasScopeNarrowing =
+    d.pathQuery.trim().length > 0 || (d.sqlFilterEnabled && d.sqlFilterApplied.trim().length > 0);
+  const diagnosisScopeIsPartial = isDiagnosisScopePartial({
+    requestSampleCount,
+    requestTotalCount,
+    requestOffset: requests?.offset ?? 0,
+    errorGroupSampleCount,
+    errorGroupTotalCount,
+    errorGroupPage: d.errorGroupPage,
+    hasScopeNarrowing,
+  });
 
   if (!requests || !errorGroups || !timeline || !failures) {
     if (d.loading && !d.errorMessage) {
@@ -188,6 +235,77 @@ export function DiagnosisContent() {
           role="status"
         >
           Some diagnosis widgets may be stale: {d.errorMessage}
+        </section>
+      ) : null}
+      {diagnosisScopeIsPartial ? (
+        <section
+          className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-100"
+          role="status"
+        >
+          <p className="font-medium">Diagnosis confidence: scope is partial.</p>
+          <p className="mt-1">
+            Requests sample: {requestSampleCount} of {requestTotalCount} · Error groups shown:{" "}
+            {errorGroupSampleCount} of {errorGroupTotalCount}.
+            {hasScopeNarrowing ? " Active filters may hide matching incidents." : ""}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Link href={buildRequestsPageHref(scopedState)} className="ap-btn">
+              Open full Requests view
+            </Link>
+            {d.pathQuery.trim() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  d.setPathQuery("");
+                  d.setErrorGroupPage(0);
+                }}
+                className="ap-btn"
+              >
+                Clear route filter
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+      {deepLinkMissing && deepLinkGroupKey ? (
+        <section
+          className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-100"
+          role="status"
+        >
+          <p className="font-medium">Deep link not found in the current diagnosis scope.</p>
+          <p className="mt-1">
+            Error group{" "}
+            <code className="rounded bg-white/70 px-1 py-0.5 text-xs dark:bg-neutral-900/70">
+              {deepLinkGroupKey}
+            </code>{" "}
+            may be outside this page or time window. We already retried with page 1 and larger group limit.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                d.setErrorGroupSort("last_seen");
+                d.setErrorGroupPage(0);
+                d.setErrorGroupLimit(50);
+              }}
+              className="ap-btn"
+            >
+              Show newest groups
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                d.clearAbsoluteWindow();
+                d.onServerWindowChange(1440);
+              }}
+              className="ap-btn"
+            >
+              Expand to rolling 24h
+            </button>
+            <Link href={buildRequestsPageHref(scopedState)} className="ap-btn">
+              Open Requests fallback
+            </Link>
+          </div>
         </section>
       ) : null}
       <RecentJobFailuresStrip data={diagnosisSlice.recentJobFailures} />

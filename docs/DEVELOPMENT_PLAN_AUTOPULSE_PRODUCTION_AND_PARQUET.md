@@ -250,9 +250,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: preserve URL-state compatibility.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-07 (added diagnosis partial-scope confidence banner, deep-link retry + guided fallback actions, and focused unit coverage for deep-link/partial-scope logic)
   - Owner: Frontend
 - **Related documents:** `DEVELOPMENT.md`, `docs/testing/E2E_CORE_JOURNEY.md`
 - **References / examples:** current diagnosis/request navigation patterns.
