@@ -21,7 +21,8 @@ from autopulse_backend.schemas import (
     DashboardTraceSummaryItem,
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
-from autopulse_backend.services.event_store import event_store_enabled, get_duckdb_event_store
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
+from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 _TRACE_ID_HEX_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -81,7 +82,11 @@ async def search_dashboard_traces(
         status_class=status_class,
         path_contains=path_contains,
     )
-    store = get_duckdb_event_store()
+    store = await resolve_dashboard_read_store(
+        session=session,
+        project_id=context.project_id,
+        settings=settings,
+    )
     safe_q = q.strip().lower()
     search_where = ""
     params: list[object] = []
@@ -200,7 +205,11 @@ async def get_dashboard_trace_detail(
         http_events_only=False,
         include_received_at_in_time_window=True,
     )
-    store = get_duckdb_event_store()
+    store = await resolve_dashboard_read_store(
+        session=session,
+        project_id=context.project_id,
+        settings=settings,
+    )
     query = """
         SELECT
           timestamp,

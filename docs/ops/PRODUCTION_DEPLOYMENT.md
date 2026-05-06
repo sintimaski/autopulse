@@ -21,9 +21,13 @@ Use this as the default single-node topology unless your expected traffic/ops pr
 | Event store (DuckDB) | `AUTOPULSE_EVENT_STORE=duckdb`, `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`, `AUTOPULSE_DUCKDB_PATH=.autopulse/events.duckdb` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events.duckdb` |
 | Plan B shard log root | `AUTOPULSE_EVENT_PLANE_SHARDS_PATH=.autopulse/events-log` (used when `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards`) | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events-log` |
 | Plan B snapshot root | `AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH=.autopulse/events-duckdb` (compactor output) | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events-duckdb` |
+| Plan B compactor fairness cap | `AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN=1024` | Limits shards per compaction run and enables project-round-robin selection to reduce noisy-tenant starvation |
+| Plan B append backpressure | `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES=536870912`, `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT=5`, `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS=20000` | Reject shard appends when disk headroom or pending-shard backlog exceeds thresholds (metered in internal metrics) |
 | File alert outbox (optional) | `ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/emails` |
 
 `AUTOPULSE_DATA_DIR` re-anchors relative metadata/event paths so API, jobs, and restore tooling all target the same files independent of process cwd.
+
+When `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards`, the backend now runs a periodic in-process compactor worker on `AUTOPULSE_COMPACTOR_INTERVAL_SECONDS` with bounded per-tick work (`AUTOPULSE_COMPACTOR_MAX_CONCURRENCY`, `AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN`).
 
 Operational assumptions for this embedded mode:
 
@@ -268,6 +272,9 @@ Follow [BACKUP_RESTORE.md](./BACKUP_RESTORE.md). Before GA:
 - [PHASE5_RELEASE_CHECKLIST.md](../runbooks/PHASE5_RELEASE_CHECKLIST.md) — broader product/release gate list.
 - [agents/security-privacy.md](../../agents/security-privacy.md) — security review checklist.
 - [docs/contracts/ingest-api.md](../contracts/ingest-api.md) — ingest contract and status codes.
+- [RUNBOOK_EVENT_PLANE_BACKPRESSURE.md](./RUNBOOK_EVENT_PLANE_BACKPRESSURE.md) — low-disk/backlog reject remediation for Plan B shard appends.
+- [EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md](./EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md) — quarterly drill procedure and latest evidence log.
+- [EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md](./EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md) — per-tick throughput evidence for compactor run-budget/concurrency controls.
 - [`../../Dockerfile`](../../Dockerfile) and [`./docker-compose.autopulse.yml`](./docker-compose.autopulse.yml) — official container artifact and minimal compose example.
 
 ## 9.1 No-Go triggers (topology)

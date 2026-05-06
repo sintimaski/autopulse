@@ -49,6 +49,7 @@ from autopulse_backend.schemas import (
     DashboardDiagnosisTimelineResponse,
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
 from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
@@ -95,6 +96,10 @@ async def get_dashboard_diagnosis_timeline(
     )
     append_event_sql_filters(filters, event_sql_filter)
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -108,6 +113,7 @@ async def get_dashboard_diagnosis_timeline(
             duckdb_filters,
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
+            store=read_store,
         )
         return DashboardDiagnosisTimelineResponse(
             server_now=server_now,
@@ -169,6 +175,10 @@ async def get_dashboard_diagnosis_failures_by_route(
     )
     append_event_sql_filters(filters, event_sql_filter)
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -177,7 +187,7 @@ async def get_dashboard_diagnosis_failures_by_route(
             event_sql_filter=event_sql_filter,
             http_events_only=True,
         )
-        items = await run_duckdb_read_sync(failures_by_route, duckdb_filters)
+        items = await run_duckdb_read_sync(failures_by_route, duckdb_filters, store=read_store)
         return DashboardDiagnosisFailureRoutesResponse(
             server_now=server_now,
             from_timestamp=resolved_from,
@@ -247,6 +257,10 @@ async def get_dashboard_diagnosis_error_group_events(
     )
     append_event_sql_filters(filters, event_sql_filter)
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -261,6 +275,7 @@ async def get_dashboard_diagnosis_error_group_events(
             group_key=group_key,
             limit=limit,
             offset=offset,
+            store=read_store,
         )
         return DashboardDiagnosisErrorGroupEventsResponse(total=total, items=items)
     rows = await session.execute(

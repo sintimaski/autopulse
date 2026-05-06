@@ -7,7 +7,10 @@ from uuid import uuid4
 
 from autopulse_backend.core.config import Settings
 from autopulse_backend.metrics import service_metrics
-from autopulse_backend.services.event_plane_shards import ShardWriteResult
+from autopulse_backend.services.event_plane_shards import (
+    EventPlaneBackpressureError,
+    ShardWriteResult,
+)
 from autopulse_backend.services.ingest_service import (
     _maybe_shadow_write_event_plane_shards,
     _record_shadow_window_parity,
@@ -79,6 +82,32 @@ def test_shadow_write_failure_is_swallowed_and_counts_failure_metric(monkeypatch
         )
     )
     after = service_metrics.snapshot().get("event_plane.shards.append_failed_total", 0)
+    assert after == baseline + 1
+
+
+def test_shadow_write_backpressure_rejection_counts_rejected_metric(monkeypatch) -> None:
+    baseline = service_metrics.snapshot().get("event_plane.shards.append_rejected_total", 0)
+    monkeypatch.setattr(
+        "autopulse_backend.services.ingest_service.get_settings",
+        lambda: _base_settings(event_plane_mode="duckdb_log_shards"),
+    )
+
+    def _append_events_to_shards(**_: object) -> ShardWriteResult:
+        raise EventPlaneBackpressureError("low disk")
+
+    monkeypatch.setattr(
+        "autopulse_backend.services.ingest_service.append_events_to_shards",
+        _append_events_to_shards,
+    )
+
+    asyncio.run(
+        _maybe_shadow_write_event_plane_shards(
+            project_id=uuid4(),
+            received_at=datetime.now(tz=UTC),
+            rows=[{"path": "/ok"}],
+        )
+    )
+    after = service_metrics.snapshot().get("event_plane.shards.append_rejected_total", 0)
     assert after == baseline + 1
 
 

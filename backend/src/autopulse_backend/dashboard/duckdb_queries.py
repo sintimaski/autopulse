@@ -28,7 +28,11 @@ from autopulse_backend.schemas import (
     DashboardOverviewBucket,
     DashboardRequestItem,
 )
-from autopulse_backend.services.event_store import EventStoreFilters, get_duckdb_event_store
+from autopulse_backend.services.event_store import (
+    DuckDbEventStore,
+    EventStoreFilters,
+    get_duckdb_event_store,
+)
 
 
 def _dashboard_list_payload_cell(value: object) -> dict[str, Any]:
@@ -109,10 +113,10 @@ def build_filters(
 
 
 def request_items(
-    filters: EventStoreFilters, *, limit: int, offset: int
+    filters: EventStoreFilters, *, limit: int, offset: int, store: DuckDbEventStore | None = None
 ) -> tuple[int, list[DashboardRequestItem]]:
-    store = get_duckdb_event_store()
-    total, rows = store.fetch_events_with_total(
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    total, rows = resolved_store.fetch_events_with_total(
         filters, limit=limit, offset=offset, slim_payload=True
     )
     return total, [
@@ -158,9 +162,14 @@ def request_items(
 
 
 def overview_series(
-    filters: EventStoreFilters, *, from_timestamp: datetime, to_timestamp: datetime
+    filters: EventStoreFilters,
+    *,
+    from_timestamp: datetime,
+    to_timestamp: datetime,
+    store: DuckDbEventStore | None = None,
 ) -> tuple[int, int, float, list[DashboardOverviewBucket]]:
-    rows = get_duckdb_event_store().query_events_sql(
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    rows = resolved_store.query_events_sql(
         filters,
         select_sql="""
             date_trunc('minute', timestamp) AS minute,
@@ -248,9 +257,14 @@ def overview_series(
 
 
 def diagnosis_timeline(
-    filters: EventStoreFilters, *, from_timestamp: datetime, to_timestamp: datetime
+    filters: EventStoreFilters,
+    *,
+    from_timestamp: datetime,
+    to_timestamp: datetime,
+    store: DuckDbEventStore | None = None,
 ) -> list[DashboardDiagnosisTimelineBucket]:
-    rows = get_duckdb_event_store().query_events_sql(
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    rows = resolved_store.query_events_sql(
         filters,
         select_sql=(
             "date_trunc('minute', timestamp) AS minute, "
@@ -281,8 +295,11 @@ def diagnosis_timeline(
     ]
 
 
-def failures_by_route(filters: EventStoreFilters) -> list[DashboardDiagnosisFailureRouteItem]:
-    rows = get_duckdb_event_store().query_events_sql(
+def failures_by_route(
+    filters: EventStoreFilters, *, store: DuckDbEventStore | None = None
+) -> list[DashboardDiagnosisFailureRouteItem]:
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    rows = resolved_store.query_events_sql(
         filters,
         select_sql="""
             COALESCE(path, 'unknown') AS path,
@@ -310,10 +327,16 @@ def failures_by_route(filters: EventStoreFilters) -> list[DashboardDiagnosisFail
 
 
 def error_group_events(
-    filters: EventStoreFilters, *, group_key: str, limit: int, offset: int
+    filters: EventStoreFilters,
+    *,
+    group_key: str,
+    limit: int,
+    offset: int,
+    store: DuckDbEventStore | None = None,
 ) -> tuple[int, list[DashboardDiagnosisErrorGroupEventItem]]:
     scan_limit = min(MAX_ERROR_GROUP_SCAN_ROWS, max(offset + limit, max(limit * 4, 200)))
-    rows = get_duckdb_event_store().fetch_events(
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    rows = resolved_store.fetch_events(
         filters,
         columns=EVENT_SELECT_COLUMNS,
         limit=scan_limit,
@@ -362,10 +385,11 @@ def error_group_events(
 
 
 def error_groups(
-    filters: EventStoreFilters, *, limit: int, offset: int
+    filters: EventStoreFilters, *, limit: int, offset: int, store: DuckDbEventStore | None = None
 ) -> tuple[int, list[DashboardErrorGroupItem]]:
     scan_limit = min(MAX_ERROR_GROUP_SCAN_ROWS, max(offset + limit, max(limit * 4, 200)))
-    rows = get_duckdb_event_store().fetch_events(
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    rows = resolved_store.fetch_events(
         filters,
         columns=EVENT_SELECT_COLUMNS,
         limit=scan_limit,
@@ -439,11 +463,15 @@ def error_groups(
 
 
 def overview_extended(
-    filters: EventStoreFilters, *, from_timestamp: datetime, to_timestamp: datetime
+    filters: EventStoreFilters,
+    *,
+    from_timestamp: datetime,
+    to_timestamp: datetime,
+    store: DuckDbEventStore | None = None,
 ) -> dict[str, Any]:
-    store = get_duckdb_event_store()
+    resolved_store = store if store is not None else get_duckdb_event_store()
     error_window_start = to_timestamp - timedelta(minutes=5)
-    summary_rows = store.query_events_sql(
+    summary_rows = resolved_store.query_events_sql(
         filters,
         select_sql="""
             quantile_cont(latency_ms, 0.50) AS p50_latency_ms,
@@ -484,7 +512,7 @@ def overview_extended(
     active_sessions_estimate = int(summary_row[4] or 0) if summary_row else 0
     error_burst_count = int(summary_row[5] or 0) if summary_row else 0
 
-    error_type_rows = store.query_events_sql(
+    error_type_rows = resolved_store.query_events_sql(
         filters,
         select_sql="""
             CASE
@@ -533,7 +561,7 @@ def overview_extended(
     )
 
     def fetch_breakdown(key_column: str) -> list[dict[str, Any]]:
-        rows = store.query_events_sql(
+        rows = resolved_store.query_events_sql(
             filters,
             select_sql=(
                 f"COALESCE({key_column}, 'unknown') AS group_key, "
@@ -573,9 +601,11 @@ def overview_extended(
     }
 
 
-def recent_job_failures(filters: EventStoreFilters, *, limit: int = 12) -> list[dict[str, Any]]:
+def recent_job_failures(
+    filters: EventStoreFilters, *, limit: int = 12, store: DuckDbEventStore | None = None
+) -> list[dict[str, Any]]:
     """Recent failed background job rows (``type=job``, HTTP status in 5xx range)."""
-    store = get_duckdb_event_store()
+    resolved_store = store if store is not None else get_duckdb_event_store()
     job_filters = EventStoreFilters(
         project_id=filters.project_id,
         from_timestamp=filters.from_timestamp,
@@ -594,7 +624,7 @@ def recent_job_failures(filters: EventStoreFilters, *, limit: int = 12) -> list[
         include_received_at_in_time_window=filters.include_received_at_in_time_window,
     )
     cap = max(1, min(int(limit), 50))
-    rows = store.fetch_events(
+    rows = resolved_store.fetch_events(
         job_filters,
         columns=(
             "timestamp, method, path, status_code, latency_ms, "

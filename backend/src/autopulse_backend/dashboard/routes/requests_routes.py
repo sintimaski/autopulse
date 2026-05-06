@@ -37,6 +37,7 @@ from autopulse_backend.ingestion.exclude_autopulse import (
 from autopulse_backend.models import Event
 from autopulse_backend.schemas import DashboardRequestItem, DashboardRequestsResponse
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
 from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
@@ -108,6 +109,10 @@ async def get_dashboard_requests(
         filters.append(Event.latency_ms <= max_latency_ms)
     append_event_sql_filters(filters, event_sql_filter)
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -124,7 +129,7 @@ async def get_dashboard_requests(
             http_events_only=True,
         )
         total, items = await run_duckdb_read_sync(
-            request_items, duckdb_filters, limit=limit, offset=offset
+            request_items, duckdb_filters, limit=limit, offset=offset, store=read_store
         )
         return DashboardRequestsResponse(
             server_now=server_now,

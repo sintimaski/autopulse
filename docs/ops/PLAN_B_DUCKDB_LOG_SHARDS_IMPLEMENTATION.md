@@ -35,17 +35,17 @@ This removes multi-writer pressure on a single DuckDB file while avoiding ClickH
 ### Components
 
 1. **Ingest API**
-   - Validates/authenticates payloads as today.
-   - Appends normalized event rows to append-only shard files.
-   - Returns success after durability threshold is met (fsync policy; see corner cases).
+  - Validates/authenticates payloads as today.
+  - Appends normalized event rows to append-only shard files.
+  - Returns success after durability threshold is met (fsync policy; see corner cases).
 2. **Shard manifest/index**
-   - Tracks shard lifecycle (`open`, `sealed`, `compacting`, `compacted`, `failed`).
-   - Stores ownership and idempotency metadata for safe retries.
+  - Tracks shard lifecycle (`open`, `sealed`, `compacting`, `compacted`, `failed`).
+  - Stores ownership and idempotency metadata for safe retries.
 3. **Compactor worker**
-   - Seals eligible shards, builds partitioned DuckDB segments, atomically publishes new snapshot pointers.
+  - Seals eligible shards, builds partitioned DuckDB segments, atomically publishes new snapshot pointers.
 4. **Query read path**
-   - Reads from current published DuckDB snapshot/partition set.
-   - Never reads half-written compaction outputs.
+  - Reads from current published DuckDB snapshot/partition set.
+  - Never reads half-written compaction outputs.
 
 ### Data layout (example)
 
@@ -66,17 +66,17 @@ This removes multi-writer pressure on a single DuckDB file while avoiding ClickH
 ## 5) Migration path from current single-writer DuckDB
 
 1. **Phase 0: instrumentation first**
-   - Add metrics for ingest throughput, shard queue depth, compaction lag, and snapshot age.
+  - Add metrics for ingest throughput, shard queue depth, compaction lag, and snapshot age.
 2. **Phase 1: dual-write (guarded)**
-   - Keep current DuckDB write path authoritative.
-   - Also write shards; validate row-count and checksum parity per time window.
+  - Keep current DuckDB write path authoritative.
+  - Also write shards; validate row-count and checksum parity per time window.
 3. **Phase 2: compaction shadow**
-   - Build DuckDB snapshots from shards but keep dashboard reads on current path.
-   - Run parity checks for representative dashboard queries.
+  - Build DuckDB snapshots from shards but keep dashboard reads on current path.
+  - Run parity checks for representative dashboard queries.
 4. **Phase 3: project-scoped read cutover**
-   - Enable reads from compacted snapshots for selected projects.
+  - Enable reads from compacted snapshots for selected projects.
 5. **Phase 4: generalized Plan B mode**
-   - Default high-scale projects to Plan B; preserve rollback switch.
+  - Default high-scale projects to Plan B; preserve rollback switch.
 
 ## 6) Corner cases and failure modes
 
@@ -179,10 +179,10 @@ Rollback must be executable without data loss and without changing SDK behavior.
   - Invalid combinations fail fast at startup with clear errors.
   - Docs/env template updated.
 - **Implementation notes (2026-05-05):**
-   - Added validated config surface in backend settings for `AUTOPULSE_EVENT_PLANE_MODE` and related Plan B shard/compactor knobs.
-   - Added startup validation: `duckdb_log_shards` mode now fails fast unless `AUTOPULSE_EVENT_STORE=duckdb`.
-   - Updated `backend/.env.example` and production deployment docs with new env variables.
-   - Added targeted backend tests for mode defaults, invalid values, and invalid mode/store combinations.
+  - Added validated config surface in backend settings for `AUTOPULSE_EVENT_PLANE_MODE` and related Plan B shard/compactor knobs.
+  - Added startup validation: `duckdb_log_shards` mode now fails fast unless `AUTOPULSE_EVENT_STORE=duckdb`.
+  - Updated `backend/.env.example` and production deployment docs with new env variables.
+  - Added targeted backend tests for mode defaults, invalid values, and invalid mode/store combinations.
 
 ### TSK-B0-02 — Shard writer abstraction [DONE]
 
@@ -271,7 +271,7 @@ Rollback must be executable without data loss and without changing SDK behavior.
   - Added `build_cutover_decision(...)` gate logic that resolves the snapshot from atomic `CURRENT` pointer and returns `allowed=False` whenever parity mismatches exist.
   - Added focused tests in `backend/tests/test_event_plane_parity.py` covering match, mismatch reporting detail, and automatic cutover-block behavior.
 
-### TSK-B2-02 — Project-scoped cutover control [IN PROGRESS]
+### TSK-B2-02 — Project-scoped cutover control [DONE]
 
 - **Description:** Add per-project toggle for Plan B read path.
 - **Acceptance criteria:**
@@ -285,30 +285,62 @@ Rollback must be executable without data loss and without changing SDK behavior.
     - `PUT /dashboard/event-plane-cutover`
   - Toggle changes now emit structured audit logs (`event_plane_project_cutover_toggled`) and increment `event_plane.cutover_toggle_changes_total`.
   - Added integration coverage in `backend/tests/test_dashboard.py` verifying enable/disable rollback flow via API-key dashboard auth.
+  - Wired dashboard DuckDB read paths to respect project-scoped toggle via `backend/src/autopulse_backend/services/event_plane_read_path.py`.
+  - When toggled on in `duckdb_log_shards` mode and a valid `CURRENT` snapshot exists, dashboard query families now read from the snapshot DuckDB; otherwise they fail back to legacy DuckDB path automatically.
+  - Added unit coverage in `backend/tests/test_event_plane_read_path.py` for legacy/snapshot selection and safe fallback behavior.
 
-### TSK-B2-03 — Backpressure and safeguards
+### TSK-B2-03 — Backpressure and safeguards [DONE]
 
 - **Description:** Add disk watermarks, append reject policy, and operator alerts.
 - **Acceptance criteria:**
   - Predictable behavior under low disk and high backlog.
   - Rejects are metered and visible in `/internal/metrics`.
   - Runbook documents remediation steps.
+- **Implementation notes (2026-05-06):**
+  - Added shard append backpressure guardrails in `backend/src/autopulse_backend/services/event_plane_shards.py` with explicit low-disk rejection (`EventPlaneBackpressureError`).
+  - Added config knobs and defaults for disk watermarks:
+    - `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES` (default `536870912`)
+    - `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT` (default `5`)
+    - `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS` (default `20000`)
+  - Shadow-write ingest path now distinguishes hard append failures vs low-disk rejects and increments dedicated metric `event_plane.shards.append_rejected_total`.
+  - Extended `/internal/metrics` ingest pressure view with `event_plane_append_rejected_total` and `event_plane_append_failed_total`.
+  - Added tests for low-disk reject behavior and metric accounting in:
+    - `backend/tests/test_event_plane_shards.py`
+    - `backend/tests/test_ingest_event_plane_shadow.py`
+    - `backend/tests/test_event_plane_config.py`
+  - Added runbook `docs/ops/RUNBOOK_EVENT_PLANE_BACKPRESSURE.md` with concrete remediation and validation steps.
 
-### TSK-B3-01 — Multi-worker compaction and fairness
+### TSK-B3-01 — Multi-worker compaction and fairness [DONE]
 
 - **Description:** Scale compactor workers with per-project fairness controls.
 - **Acceptance criteria:**
   - No single project can starve others beyond configured fairness budget.
   - Throughput improves with concurrency in load tests.
   - No increase in correctness failures vs single-worker baseline.
+- **Implementation notes (2026-05-06):**
+  - Added compactor run-budget control via `AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN` (default `1024`).
+  - Updated `EventPlaneCompactor` reservation logic to apply project-aware round-robin selection across sealed shards within each run budget, reducing noisy-project starvation.
+  - Added bounded multi-run compaction ticks (`compact_tick`) wired to `AUTOPULSE_COMPACTOR_MAX_CONCURRENCY`, so each scheduler interval can process multiple compaction passes without unbounded loops.
+  - Added mode-gated periodic compactor worker service (`event_plane_compactor_worker`) and wired startup/shutdown lifecycle hooks so Plan B mode runs compaction ticks automatically.
+  - Added worker telemetry counters for compaction duration, compacted shard count, compacted row count, and failed tick count.
+  - Added compactor tests for run-budget enforcement and fair multi-project shard selection in `backend/tests/test_event_plane_compactor.py`.
+  - Added compactor tick test coverage for bounded multi-pass behavior and aggregate shard/row accounting.
+  - Added worker tests in `backend/tests/test_event_plane_compactor_worker.py` for mode gating and metric emission.
+  - Added deterministic throughput validation in `backend/tests/test_event_plane_compactor.py` (`test_compactor_tick_budget_improves_per_tick_throughput`) to verify higher compactor run budgets compact more shards per scheduler tick than the single-run baseline.
+  - Added repeatable load probe script `scripts/event_plane_compactor_load_probe.sh` and documented latest evidence in `docs/ops/EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md` to track throughput improvement over time.
 
-### TSK-B3-02 — Disaster recovery drills
+### TSK-B3-02 — Disaster recovery drills [DONE]
 
 - **Description:** Add restore and replay procedure for shards + snapshots.
 - **Acceptance criteria:**
   - Quarterly drill script exists and is repeatable.
   - Recovery meets declared RTO/RPO.
   - Evidence of latest successful drill is documented.
+- **Implementation notes (2026-05-06):**
+  - Added repeatable drill script `scripts/event_plane_disaster_recovery_drill.sh` with `simulate` and `real` modes.
+  - Script now verifies restore correctness by resolving restored `CURRENT` pointer and reading row count from restored snapshot DuckDB.
+  - Added drill documentation and declared targets in `docs/ops/EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md` (`RTO=30m`, `RPO=5m`).
+  - Logged latest successful drill evidence (2026-05-06 simulate run) in the same document.
 
 ## 11) Test matrix (must pass before broad rollout)
 

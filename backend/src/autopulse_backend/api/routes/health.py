@@ -64,6 +64,8 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
     worker_succeeded = int(counters.get("ingest.aggregate_worker.succeeded", 0))
     worker_failed = int(counters.get("ingest.aggregate_worker.failed", 0))
     persist_sql_tail_failed = int(counters.get("ingest.persist_sql_tail_failed", 0))
+    event_plane_append_rejected = int(counters.get("event_plane.shards.append_rejected_total", 0))
+    event_plane_append_failed = int(counters.get("event_plane.shards.append_failed_total", 0))
     return {
         "accepted_batches_total": accepted_batches,
         "accepted_events_total": accepted_events,
@@ -80,6 +82,8 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
         "aggregate_worker_succeeded_total": worker_succeeded,
         "aggregate_worker_failed_total": worker_failed,
         "persist_sql_tail_failed_total": persist_sql_tail_failed,
+        "event_plane_append_rejected_total": event_plane_append_rejected,
+        "event_plane_append_failed_total": event_plane_append_failed,
     }
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -44,6 +45,10 @@ class ShardWriteResult:
     bytes_appended: int
     rotated: bool
     fsync_performed: bool
+
+
+class EventPlaneBackpressureError(RuntimeError):
+    pass
 
 
 @dataclass(slots=True)
@@ -223,6 +228,9 @@ class LocalAppendOnlyShardWriter:
 
 _event_plane_shard_writer: LocalAppendOnlyShardWriter | None = None
 _event_plane_shard_writer_lock = Lock()
+_event_plane_backpressure_probe_lock = Lock()
+_event_plane_backpressure_probe_cache: dict[str, tuple[float, int]] = {}
+_EVENT_PLANE_BACKPRESSURE_PROBE_INTERVAL_SECONDS = 5.0
 
 
 def get_event_plane_shard_writer(
@@ -252,7 +260,17 @@ def append_events_to_shards(
 ) -> ShardWriteResult | None:
     if not rows:
         return None
-    writer = get_event_plane_shard_writer(settings=settings)
+    resolved = settings if settings is not None else get_settings()
+    writer = get_event_plane_shard_writer(settings=resolved)
+    _enforce_event_plane_backpressure_or_raise(
+        root_dir=writer.root_dir,
+        min_free_bytes=resolved.event_plane_backpressure_min_free_bytes,
+        min_free_percent=resolved.event_plane_backpressure_min_free_percent,
+    )
+    _enforce_event_plane_backlog_or_raise(
+        root_dir=writer.root_dir,
+        max_pending_shards=resolved.event_plane_backpressure_max_pending_shards,
+    )
     return writer.append_rows(project_id=project_id, received_at=received_at, rows=rows)
 
 
@@ -263,3 +281,63 @@ def shutdown_event_plane_shard_writer() -> None:
         _event_plane_shard_writer = None
         if writer is not None:
             writer.close()
+    with _event_plane_backpressure_probe_lock:
+        _event_plane_backpressure_probe_cache.clear()
+
+
+def _enforce_event_plane_backpressure_or_raise(
+    *,
+    root_dir: Path,
+    min_free_bytes: int,
+    min_free_percent: int,
+) -> None:
+    usage = shutil.disk_usage(root_dir)
+    free = int(usage.free)
+    total = int(usage.total)
+    free_percent = (float(free) / float(total) * 100.0) if total > 0 else 0.0
+    if free >= int(min_free_bytes) and free_percent >= float(min_free_percent):
+        return
+    raise EventPlaneBackpressureError(
+        "event plane shard append rejected due to low disk headroom "
+        f"(free_bytes={free} min_free_bytes={int(min_free_bytes)} "
+        f"free_percent={free_percent:.2f} min_free_percent={int(min_free_percent)})"
+    )
+
+
+def _count_shard_files_up_to_limit(root_dir: Path, limit: int) -> int:
+    count = 0
+    for dir_path, _, file_names in os.walk(root_dir):
+        _ = dir_path
+        for name in file_names:
+            if not name.startswith("shard-") or not name.endswith(".jsonl"):
+                continue
+            count += 1
+            if count > limit:
+                return count
+    return count
+
+
+def _probe_pending_shards(root_dir: Path, limit: int) -> int:
+    now = time.monotonic()
+    key = str(root_dir.resolve())
+    with _event_plane_backpressure_probe_lock:
+        cached = _event_plane_backpressure_probe_cache.get(key)
+        if (
+            cached is not None
+            and (now - cached[0]) < _EVENT_PLANE_BACKPRESSURE_PROBE_INTERVAL_SECONDS
+        ):
+            return int(cached[1])
+    count = _count_shard_files_up_to_limit(root_dir, limit)
+    with _event_plane_backpressure_probe_lock:
+        _event_plane_backpressure_probe_cache[key] = (now, int(count))
+    return count
+
+
+def _enforce_event_plane_backlog_or_raise(*, root_dir: Path, max_pending_shards: int) -> None:
+    pending = _probe_pending_shards(root_dir, int(max_pending_shards))
+    if pending <= int(max_pending_shards):
+        return
+    raise EventPlaneBackpressureError(
+        "event plane shard append rejected due to backlog pressure "
+        f"(pending_shards={pending} max_pending_shards={int(max_pending_shards)})"
+    )

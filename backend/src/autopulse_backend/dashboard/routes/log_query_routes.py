@@ -30,7 +30,8 @@ from autopulse_backend.schemas import (
     DashboardLogQueryValidationResponse,
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
-from autopulse_backend.services.event_store import event_store_enabled, get_duckdb_event_store
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
+from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 
@@ -105,7 +106,11 @@ async def execute_dashboard_log_query(
         if parsed.order_by == "timestamp":
             order_by = "timestamp DESC, id DESC" if parsed.order_desc else "timestamp ASC, id ASC"
         requested_limit = max(1, min(payload.page_size, parsed.limit, LOG_QUERY_MAX_LIMIT))
-        store = get_duckdb_event_store()
+        store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+            settings=settings,
+        )
         rows = await run_duckdb_read_sync(
             store.fetch_events,
             duckdb_filters,

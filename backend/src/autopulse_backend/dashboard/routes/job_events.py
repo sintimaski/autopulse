@@ -22,6 +22,7 @@ from autopulse_backend.schemas import (
     DashboardRecentJobFailuresResponse,
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
 from autopulse_backend.services.event_store import event_store_enabled
 
 
@@ -70,6 +71,10 @@ async def get_dashboard_recent_job_failures(
     append_event_sql_filters(filters, event_sql_filter)
 
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -82,7 +87,9 @@ async def get_dashboard_recent_job_failures(
             exclude_autopulse_traffic=exclude_autopulse_traffic,
             event_sql_filter=event_sql_filter,
         )
-        raw = await run_duckdb_read_sync(recent_job_failures, duckdb_filters, limit=limit)
+        raw = await run_duckdb_read_sync(
+            recent_job_failures, duckdb_filters, limit=limit, store=read_store
+        )
         items = [
             DashboardRecentJobFailureItem(
                 timestamp=row["timestamp"],

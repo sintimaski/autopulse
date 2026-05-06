@@ -93,3 +93,20 @@ def test_event_plane_snapshots_path_cannot_escape_data_root(
 
     with pytest.raises(ValueError, match="AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH"):
         get_settings()
+
+
+def test_event_plane_backpressure_defaults_and_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_log_shards")
+    monkeypatch.setenv("AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN", "77")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES", "12345")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT", "7")
+    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS", "222")
+
+    from autopulse_backend.core.config import get_settings
+
+    settings = get_settings()
+    assert settings.event_plane_compactor_max_shards_per_run == 77
+    assert settings.event_plane_backpressure_min_free_bytes == 12345
+    assert settings.event_plane_backpressure_min_free_percent == 7
+    assert settings.event_plane_backpressure_max_pending_shards == 222

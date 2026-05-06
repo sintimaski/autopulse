@@ -108,8 +108,12 @@ class Settings:
     event_plane_shard_max_age_seconds: int = 300
     event_plane_compactor_interval_seconds: int = 60
     event_plane_compactor_max_concurrency: int = 1
+    event_plane_compactor_max_shards_per_run: int = 1024
     event_plane_compactor_publish_timeout_seconds: int = 60
     event_plane_snapshot_retention_count: int = 3
+    event_plane_backpressure_min_free_bytes: int = 536_870_912
+    event_plane_backpressure_min_free_percent: int = 5
+    event_plane_backpressure_max_pending_shards: int = 20_000
     ingest_max_request_bytes: int = 1_048_576
     ingest_max_events_per_batch: int = 500
     ingest_rate_limit_requests_per_window: int = 1200
@@ -588,6 +592,11 @@ def get_settings() -> Settings:
             1,
             minimum=1,
         ),
+        event_plane_compactor_max_shards_per_run=_env_int(
+            "AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN",
+            1024,
+            minimum=1,
+        ),
         event_plane_compactor_publish_timeout_seconds=_env_int(
             "AUTOPULSE_COMPACTOR_PUBLISH_TIMEOUT_SECONDS",
             60,
@@ -596,6 +605,21 @@ def get_settings() -> Settings:
         event_plane_snapshot_retention_count=_env_int(
             "AUTOPULSE_SNAPSHOT_RETENTION_COUNT",
             3,
+            minimum=1,
+        ),
+        event_plane_backpressure_min_free_bytes=_env_int(
+            "AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES",
+            536_870_912,
+            minimum=1,
+        ),
+        event_plane_backpressure_min_free_percent=_env_int(
+            "AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT",
+            5,
+            minimum=0,
+        ),
+        event_plane_backpressure_max_pending_shards=_env_int(
+            "AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS",
+            20_000,
             minimum=1,
         ),
         cors_allow_origins=cors_allow_origins,

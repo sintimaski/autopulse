@@ -275,3 +275,190 @@ def test_current_pointer_is_atomic_for_concurrent_reads(tmp_path: Path) -> None:
     assert all((path / "COMPLETE").is_file() for path in observed)
     assert compactor.resolve_current_snapshot_path() == second.published_snapshot_path
     manifest.close()
+
+
+def test_compactor_respects_max_shards_per_run(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+    for idx in range(4):
+        shard_path = tmp_path / "events-log" / "p1" / "2026/05/05/22" / f"shard-{idx}.jsonl"
+        _write_shard(
+            shard_path,
+            [
+                {
+                    "project_id": "p1",
+                    "timestamp": now,
+                    "received_at": now,
+                    "sdk_version": "1.0",
+                    "type": "request",
+                    "service_name": "api",
+                    "environment": "test",
+                    "method": "GET",
+                    "path": f"/{idx}",
+                    "status_code": 200,
+                    "latency_ms": 1.0,
+                    "payload": {},
+                }
+            ],
+        )
+        _register_sealed(manifest, shard_id=f"s{idx}", project_id="p1", shard_path=shard_path)
+    compactor = EventPlaneCompactor(
+        manifest=manifest, snapshots_root=snapshots_root, max_shards_per_run=2
+    )
+    first = compactor.compact_once()
+    second = compactor.compact_once()
+
+    assert first.compacted_shards == 2
+    assert second.compacted_shards == 2
+    manifest.close()
+
+
+def test_compactor_selects_sealed_shards_fairly_across_projects(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+    shard_specs = [
+        ("a1", "project-a"),
+        ("a2", "project-a"),
+        ("a3", "project-a"),
+        ("b1", "project-b"),
+        ("c1", "project-c"),
+    ]
+    for shard_id, project_id in shard_specs:
+        shard_path = tmp_path / "events-log" / project_id / "2026/05/05/22" / f"{shard_id}.jsonl"
+        _write_shard(
+            shard_path,
+            [
+                {
+                    "project_id": project_id,
+                    "timestamp": now,
+                    "received_at": now,
+                    "sdk_version": "1.0",
+                    "type": "request",
+                    "service_name": "api",
+                    "environment": "test",
+                    "method": "GET",
+                    "path": f"/{shard_id}",
+                    "status_code": 200,
+                    "latency_ms": 1.0,
+                    "payload": {},
+                }
+            ],
+        )
+        _register_sealed(manifest, shard_id=shard_id, project_id=project_id, shard_path=shard_path)
+    compactor = EventPlaneCompactor(
+        manifest=manifest, snapshots_root=snapshots_root, max_shards_per_run=3
+    )
+    first = compactor.compact_once()
+    assert first.compacted_shards == 3
+
+    assert manifest.get_shard("a1") is not None
+    assert manifest.get_shard("a1").state == ShardManifestState.COMPACTED  # type: ignore[union-attr]
+    assert manifest.get_shard("b1") is not None
+    assert manifest.get_shard("b1").state == ShardManifestState.COMPACTED  # type: ignore[union-attr]
+    assert manifest.get_shard("c1") is not None
+    assert manifest.get_shard("c1").state == ShardManifestState.COMPACTED  # type: ignore[union-attr]
+    assert manifest.get_shard("a2") is not None
+    assert manifest.get_shard("a2").state == ShardManifestState.SEALED  # type: ignore[union-attr]
+    assert manifest.get_shard("a3") is not None
+    assert manifest.get_shard("a3").state == ShardManifestState.SEALED  # type: ignore[union-attr]
+    manifest.close()
+
+
+def test_compactor_tick_runs_multiple_passes_up_to_budget(tmp_path: Path) -> None:
+    manifest = SqliteShardManifest(tmp_path / "events-index" / "manifest.sqlite")
+    snapshots_root = tmp_path / "events-duckdb"
+    now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+    for idx in range(5):
+        shard_path = tmp_path / "events-log" / "p1" / "2026/05/05/22" / f"tick-{idx}.jsonl"
+        _write_shard(
+            shard_path,
+            [
+                {
+                    "project_id": "p1",
+                    "timestamp": now,
+                    "received_at": now,
+                    "sdk_version": "1.0",
+                    "type": "request",
+                    "service_name": "api",
+                    "environment": "test",
+                    "method": "GET",
+                    "path": f"/tick-{idx}",
+                    "status_code": 200,
+                    "latency_ms": 1.0,
+                    "payload": {},
+                }
+            ],
+        )
+        _register_sealed(manifest, shard_id=f"tick-{idx}", project_id="p1", shard_path=shard_path)
+    compactor = EventPlaneCompactor(
+        manifest=manifest,
+        snapshots_root=snapshots_root,
+        max_shards_per_run=2,
+        max_runs_per_tick=3,
+    )
+
+    tick = compactor.compact_tick()
+
+    assert len(tick.runs) == 3
+    assert tick.compacted_shards == 5
+    assert tick.compacted_rows == 5
+    manifest.close()
+
+
+def test_compactor_tick_budget_improves_per_tick_throughput(tmp_path: Path) -> None:
+    def _prepare_manifest(root: Path) -> tuple[SqliteShardManifest, Path]:
+        manifest = SqliteShardManifest(root / "events-index" / "manifest.sqlite")
+        snapshots_root = root / "events-duckdb"
+        now = datetime(2026, 5, 5, 22, 0, tzinfo=UTC).isoformat()
+        for idx in range(8):
+            shard_path = root / "events-log" / "p1" / "2026/05/05/22" / f"load-{idx}.jsonl"
+            _write_shard(
+                shard_path,
+                [
+                    {
+                        "project_id": "p1",
+                        "timestamp": now,
+                        "received_at": now,
+                        "sdk_version": "1.0",
+                        "type": "request",
+                        "service_name": "api",
+                        "environment": "test",
+                        "method": "GET",
+                        "path": f"/load-{idx}",
+                        "status_code": 200,
+                        "latency_ms": 1.0,
+                        "payload": {},
+                    }
+                ],
+            )
+            _register_sealed(
+                manifest, shard_id=f"load-{idx}", project_id="p1", shard_path=shard_path
+            )
+        return manifest, snapshots_root
+
+    manifest_low, snapshots_low = _prepare_manifest(tmp_path / "low")
+    low_budget = EventPlaneCompactor(
+        manifest=manifest_low,
+        snapshots_root=snapshots_low,
+        max_shards_per_run=2,
+        max_runs_per_tick=1,
+    )
+    low_tick = low_budget.compact_tick()
+
+    manifest_high, snapshots_high = _prepare_manifest(tmp_path / "high")
+    high_budget = EventPlaneCompactor(
+        manifest=manifest_high,
+        snapshots_root=snapshots_high,
+        max_shards_per_run=2,
+        max_runs_per_tick=4,
+    )
+    high_tick = high_budget.compact_tick()
+
+    assert low_tick.compacted_shards == 2
+    assert high_tick.compacted_shards == 8
+    assert high_tick.compacted_shards > low_tick.compacted_shards
+    assert high_tick.compacted_rows == 8
+    manifest_low.close()
+    manifest_high.close()

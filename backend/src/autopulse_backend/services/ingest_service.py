@@ -29,7 +29,10 @@ from autopulse_backend.repositories.aggregates import (
     upsert_metric_buckets,
 )
 from autopulse_backend.schemas import IngestBatchRequest, event_payload
-from autopulse_backend.services.event_plane_shards import append_events_to_shards
+from autopulse_backend.services.event_plane_shards import (
+    EventPlaneBackpressureError,
+    append_events_to_shards,
+)
 from autopulse_backend.services.event_store import event_store_enabled, insert_events_duckdb
 from autopulse_backend.services.infrastructure_metrics import (
     InfrastructureMetricsSampler,
@@ -105,6 +108,17 @@ async def _maybe_shadow_write_event_plane_shards(
                 amount=elapsed_ms,
             )
             return int(result.records_appended)
+    except EventPlaneBackpressureError as exc:
+        service_metrics.increment("event_plane.shards.append_rejected_total")
+        logger.warning(
+            "event_plane_shard_append_rejected",
+            extra={
+                "event": "event_plane_shard_append_rejected",
+                "project_id": str(project_id),
+                "rows": len(rows),
+                "reason": str(exc),
+            },
+        )
     except Exception as exc:
         service_metrics.increment("event_plane.shards.append_failed_total")
         logger.warning(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,12 +47,27 @@ class CompactionRunResult:
     published_snapshot_path: Path | None
 
 
+@dataclass(frozen=True, slots=True)
+class CompactionTickResult:
+    runs: tuple[CompactionRunResult, ...]
+
+    @property
+    def compacted_shards(self) -> int:
+        return sum(run.compacted_shards for run in self.runs)
+
+    @property
+    def compacted_rows(self) -> int:
+        return sum(run.compacted_rows for run in self.runs)
+
+
 class EventPlaneCompactor:
     def __init__(
         self,
         *,
         manifest: SqliteShardManifest,
         snapshots_root: str | Path,
+        max_shards_per_run: int = 1024,
+        max_runs_per_tick: int = 1,
     ) -> None:
         self._manifest = manifest
         self._snapshots_root = Path(snapshots_root).expanduser().resolve()
@@ -59,6 +75,8 @@ class EventPlaneCompactor:
         self._tmp_root = self._snapshots_root / "_tmp"
         self._tmp_root.mkdir(parents=True, exist_ok=True)
         self._current_pointer = self._snapshots_root / "CURRENT"
+        self._max_shards_per_run = max(1, int(max_shards_per_run))
+        self._max_runs_per_tick = max(1, int(max_runs_per_tick))
 
     @property
     def snapshots_root(self) -> Path:
@@ -110,6 +128,17 @@ class EventPlaneCompactor:
                 shutil.rmtree(temp_snapshot_dir, ignore_errors=True)
             raise
 
+    def compact_tick(self, *, max_runs: int | None = None) -> CompactionTickResult:
+        runs: list[CompactionRunResult] = []
+        run_budget = int(max_runs) if max_runs is not None else self._max_runs_per_tick
+        run_budget = max(1, run_budget)
+        for _ in range(run_budget):
+            result = self.compact_once()
+            if result.compacted_shards <= 0:
+                break
+            runs.append(result)
+        return CompactionTickResult(runs=tuple(runs))
+
     def list_published_snapshots(self) -> list[Path]:
         published: list[Path] = []
         for candidate in sorted(self._snapshots_root.glob("snapshot-*")):
@@ -136,8 +165,16 @@ class EventPlaneCompactor:
     def _reserve_candidates_for_compaction(self) -> list[ShardManifestRecord]:
         sealed = self._manifest.list_by_state(ShardManifestState.SEALED)
         compacting = self._manifest.list_by_state(ShardManifestState.COMPACTING)
+        compacting_by_id = {record.shard_id for record in compacting}
+        max_new_reservations = max(0, self._max_shards_per_run - len(compacting))
+        selected_sealed = self._select_fair_sealed_candidates(
+            sealed=sealed,
+            limit=max_new_reservations,
+        )
         reserved: list[ShardManifestRecord] = []
-        for shard in sealed:
+        for shard in selected_sealed:
+            if shard.shard_id in compacting_by_id:
+                continue
             updated = self._manifest.transition_state(
                 shard_id=shard.shard_id,
                 to_state=ShardManifestState.COMPACTING,
@@ -145,6 +182,37 @@ class EventPlaneCompactor:
             reserved.append(updated)
         reserved.extend(compacting)
         return reserved
+
+    def _select_fair_sealed_candidates(
+        self, *, sealed: list[ShardManifestRecord], limit: int
+    ) -> list[ShardManifestRecord]:
+        if limit <= 0 or not sealed:
+            return []
+        if len(sealed) <= limit:
+            return list(sealed)
+        per_project: dict[str, deque[ShardManifestRecord]] = {}
+        oldest_by_project: dict[str, datetime] = {}
+        for record in sealed:
+            queue = per_project.setdefault(record.project_id, deque())
+            queue.append(record)
+            current_oldest = oldest_by_project.get(record.project_id)
+            if current_oldest is None or record.created_at < current_oldest:
+                oldest_by_project[record.project_id] = record.created_at
+        project_order = sorted(
+            per_project.keys(),
+            key=lambda project_id: (oldest_by_project[project_id], project_id),
+        )
+        selected: list[ShardManifestRecord] = []
+        while len(selected) < limit and project_order:
+            next_round: list[str] = []
+            for project_id in project_order:
+                queue = per_project[project_id]
+                if queue and len(selected) < limit:
+                    selected.append(queue.popleft())
+                if queue:
+                    next_round.append(project_id)
+            project_order = next_round
+        return selected
 
     def _publish_current_snapshot_pointer(
         self,
@@ -300,4 +368,6 @@ def make_event_plane_compactor(
     return EventPlaneCompactor(
         manifest=resolved_manifest,
         snapshots_root=resolved.event_plane_snapshots_path,
+        max_shards_per_run=resolved.event_plane_compactor_max_shards_per_run,
+        max_runs_per_tick=resolved.event_plane_compactor_max_concurrency,
     )

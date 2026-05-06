@@ -26,6 +26,10 @@ from autopulse_backend.models import Base
 from autopulse_backend.realtime.bus import run_postgres_realtime_subscriber
 from autopulse_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
 from autopulse_backend.services.duckdb_async import shutdown_duckdb_executors
+from autopulse_backend.services.event_plane_compactor_worker import (
+    EventPlaneCompactorWorkerHandle,
+    start_event_plane_compactor_worker,
+)
 from autopulse_backend.services.event_plane_shards import shutdown_event_plane_shard_writer
 from autopulse_backend.services.event_store import (
     event_store_enabled,
@@ -251,6 +255,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     else:
         app.state._autopulse_realtime_bus_subscriber_task = None
+    app.state._autopulse_event_plane_compactor_worker = start_event_plane_compactor_worker(
+        settings=settings
+    )
 
     yield
 
@@ -278,6 +285,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await bus_task
     app.state._autopulse_realtime_bus_subscriber_task = None
+    compactor_worker = getattr(app.state, "_autopulse_event_plane_compactor_worker", None)
+    if isinstance(compactor_worker, EventPlaneCompactorWorkerHandle):
+        await compactor_worker.stop()
+    app.state._autopulse_event_plane_compactor_worker = None
     shutdown_duckdb_executors(wait=True)
     shutdown_event_plane_shard_writer()
     shutdown_duckdb_event_store()

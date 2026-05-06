@@ -714,6 +714,7 @@ class DuckDbEventStore:
 
 _duckdb_store: DuckDbEventStore | None = None
 _duckdb_store_lock = Lock()
+_duckdb_read_stores_by_path: dict[Path, DuckDbEventStore] = {}
 
 
 def event_store_enabled(settings: Settings | None = None) -> bool:
@@ -731,6 +732,19 @@ def get_duckdb_event_store() -> DuckDbEventStore:
     return _duckdb_store
 
 
+def get_duckdb_read_store_for_path(db_path: str | Path) -> DuckDbEventStore:
+    """Return a cached read-only DuckDB store for a specific on-disk database path."""
+    resolved_path = Path(db_path).expanduser().resolve()
+    global _duckdb_read_stores_by_path
+    with _duckdb_store_lock:
+        existing = _duckdb_read_stores_by_path.get(resolved_path)
+        if existing is not None:
+            return existing
+        created = DuckDbEventStore(str(resolved_path))
+        _duckdb_read_stores_by_path[resolved_path] = created
+        return created
+
+
 def try_get_duckdb_event_store() -> DuckDbEventStore | None:
     try:
         return get_duckdb_event_store()
@@ -739,12 +753,15 @@ def try_get_duckdb_event_store() -> DuckDbEventStore | None:
 
 
 def shutdown_duckdb_event_store() -> None:
-    global _duckdb_store
+    global _duckdb_store, _duckdb_read_stores_by_path
     with _duckdb_store_lock:
         store = _duckdb_store
         _duckdb_store = None
         if store is not None:
             store.close()
+        for read_store in _duckdb_read_stores_by_path.values():
+            read_store.close()
+        _duckdb_read_stores_by_path = {}
 
 
 async def insert_events_duckdb(rows: list[dict[str, Any]]) -> None:

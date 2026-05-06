@@ -17,7 +17,8 @@ from autopulse_backend.dashboard.time_window import resolve_time_window
 from autopulse_backend.database import get_db_session
 from autopulse_backend.schemas import DashboardQueryExplorerRequest, DashboardQueryExplorerResponse
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
-from autopulse_backend.services.event_store import event_store_enabled, get_duckdb_event_store
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
+from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 
@@ -98,7 +99,11 @@ async def execute_dashboard_query_explorer(
         exclude_autopulse_traffic=bool(ui_settings.exclude_autopulse_traffic),
         http_events_only=False,
     )
-    store = get_duckdb_event_store()
+    store = await resolve_dashboard_read_store(
+        session=session,
+        project_id=context.project_id,
+        settings=settings,
+    )
     columns, rows = await run_duckdb_read_sync(
         store.query_scoped_events_sql,
         filters,

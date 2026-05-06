@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+from autopulse_backend.core.config import Settings
 from autopulse_backend.services.event_plane_shards import (
+    EventPlaneBackpressureError,
     LocalAppendOnlyShardWriter,
     ShardDurabilityMode,
+    append_events_to_shards,
 )
 
 
@@ -123,3 +129,61 @@ def test_close_forces_fsync_even_when_runtime_mode_is_none(tmp_path: Path, monke
     assert fsync_calls == []
     writer.close()
     assert len(fsync_calls) == 1
+
+
+def test_append_events_to_shards_rejects_when_disk_below_backpressure_threshold(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = Settings(
+        database_url="sqlite+aiosqlite:///./x.db",
+        event_store="duckdb",
+        event_store_duckdb_path=str(tmp_path / "legacy.duckdb"),
+        event_plane_mode="duckdb_log_shards",
+        event_plane_shards_path=str(tmp_path / "events-log"),
+        event_plane_backpressure_min_free_bytes=1_000,
+        event_plane_backpressure_min_free_percent=10,
+    )
+    monkeypatch.setattr(
+        "autopulse_backend.services.event_plane_shards.shutil.disk_usage",
+        lambda _: SimpleNamespace(total=10_000, used=9_500, free=500),
+    )
+
+    with pytest.raises(EventPlaneBackpressureError, match="append rejected due to low disk"):
+        append_events_to_shards(
+            project_id="project-1",
+            received_at=datetime(2026, 5, 5, 21, 0, 0, tzinfo=UTC),
+            rows=[{"path": "/ok"}],
+            settings=settings,
+        )
+
+
+def test_append_events_to_shards_rejects_when_pending_shards_exceed_threshold(
+    tmp_path: Path, monkeypatch
+) -> None:
+    settings = Settings(
+        database_url="sqlite+aiosqlite:///./x.db",
+        event_store="duckdb",
+        event_store_duckdb_path=str(tmp_path / "legacy.duckdb"),
+        event_plane_mode="duckdb_log_shards",
+        event_plane_shards_path=str(tmp_path / "events-log"),
+        event_plane_backpressure_min_free_bytes=1,
+        event_plane_backpressure_min_free_percent=0,
+        event_plane_backpressure_max_pending_shards=3,
+    )
+    monkeypatch.setattr(
+        "autopulse_backend.services.event_plane_shards.shutil.disk_usage",
+        lambda _: SimpleNamespace(total=10_000, used=1_000, free=9_000),
+    )
+    monkeypatch.setattr(
+        "autopulse_backend.services.event_plane_shards._probe_pending_shards",
+        lambda *_: 4,
+    )
+    with pytest.raises(
+        EventPlaneBackpressureError, match="append rejected due to backlog pressure"
+    ):
+        append_events_to_shards(
+            project_id="project-1",
+            received_at=datetime(2026, 5, 5, 21, 0, 0, tzinfo=UTC),
+            rows=[{"path": "/ok"}],
+            settings=settings,
+        )

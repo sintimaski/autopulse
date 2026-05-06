@@ -43,6 +43,7 @@ from autopulse_backend.schemas import (
     DashboardOverviewResponse,
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
+from autopulse_backend.services.event_plane_read_path import resolve_dashboard_read_store
 from autopulse_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
@@ -139,6 +140,10 @@ async def get_dashboard_overview(
     )
     append_event_sql_filters(filters, event_sql_filter)
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -152,6 +157,7 @@ async def get_dashboard_overview(
             duckdb_filters,
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
+            store=read_store,
         )
         window_minutes_val = max((resolved_to - resolved_from).total_seconds() / 60.0, 1.0)
         return DashboardOverviewResponse(
@@ -389,6 +395,10 @@ async def get_dashboard_overview_extended(
     )
     append_event_sql_filters(filters, event_sql_filter)
     if event_store_enabled():
+        read_store = await resolve_dashboard_read_store(
+            session=session,
+            project_id=context.project_id,
+        )
         duckdb_filters = build_filters(
             project_id=context.project_id,
             from_timestamp=resolved_from,
@@ -402,6 +412,7 @@ async def get_dashboard_overview_extended(
             duckdb_filters,
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
+            store=read_store,
         )
         return DashboardOverviewExtendedResponse(
             server_now=server_now,
