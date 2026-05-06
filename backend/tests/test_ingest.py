@@ -515,6 +515,12 @@ def test_prometheus_metrics_endpoint_exposes_ingest_counters(
     assert ingest.status_code == 200
     assert metrics.status_code == 200
     assert "autopulse_ingest_accepted_batches" in metrics.text
+    for needle in (
+        "autopulse_ingest_pressure_sql_tail_repair_queued_total",
+        "autopulse_ingest_pressure_sql_tail_repair_succeeded_total",
+        "autopulse_ingest_pressure_sql_tail_repair_dead_lettered_total",
+    ):
+        assert needle in metrics.text, f"missing prometheus series: {needle}"
 
 
 def test_internal_metrics_requires_bearer_token(backend_test_database_url: str) -> None:

@@ -69,9 +69,16 @@ def test_internal_metrics_includes_ingest_pressure_view(
         "aggregate_worker_sync_fallback_total",
         "aggregate_worker_failed_total",
         "persist_sql_tail_failed_total",
+        "sql_tail_repair_queued_total",
+        "sql_tail_repair_enqueue_failed_total",
+        "sql_tail_repair_succeeded_total",
+        "sql_tail_repair_failed_total",
+        "sql_tail_repair_dead_lettered_total",
     ):
         assert field in pressure, f"missing pressure field: {field}"
     assert "ingest_aggregate_queue" in body
     assert "enabled" in body["ingest_aggregate_queue"]
     assert "parquet_export" in body
     assert "enabled" in body["parquet_export"]
+    assert "query_enabled" in body["parquet_export"]
+    assert "hot_window_hours" in body["parquet_export"]

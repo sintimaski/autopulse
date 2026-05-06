@@ -184,6 +184,8 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
             "interval_seconds": settings.parquet_export_interval_seconds,
             "window_seconds": settings.parquet_export_window_seconds,
             "root": settings.parquet_export_root,
+            "query_enabled": settings.parquet_query_enabled,
+            "hot_window_hours": settings.parquet_hot_window_hours,
         },
     }
 

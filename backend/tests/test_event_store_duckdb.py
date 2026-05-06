@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import duckdb
+
 from autopulse_backend.services.event_store import DuckDbEventStore, EventStoreFilters
 
 
@@ -322,3 +324,112 @@ def test_duckdb_event_rotation_deletes_eldest_by_event_timestamp(tmp_path) -> No
     remaining = store.fetch_events(filters, order_by="timestamp ASC, id ASC")
     assert len(remaining) == 1
     assert remaining[0][3] == "/newer-event"
+
+
+def test_duckdb_hybrid_hot_cold_reads_old_data_from_parquet(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "events_hybrid.duckdb"
+    parquet_root = tmp_path / "parquet"
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_QUERY_ENABLED", "true")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_HOT_WINDOW_HOURS", "24")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
+    store = DuckDbEventStore(str(db_path))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    old_ts = now - timedelta(hours=48)
+    new_ts = now - timedelta(hours=1)
+    store.insert_rows(
+        [
+            {
+                "project_id": project_id,
+                "timestamp": old_ts,
+                "received_at": old_ts,
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/old",
+                "status_code": 200,
+                "latency_ms": 10.0,
+                "payload": {},
+                "request_id": "old-1",
+            },
+            {
+                "project_id": project_id,
+                "timestamp": new_ts,
+                "received_at": new_ts,
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/new",
+                "status_code": 200,
+                "latency_ms": 12.0,
+                "payload": {},
+                "request_id": "new-1",
+            },
+        ]
+    )
+    day = old_ts.date().isoformat()
+    partition_dir = parquet_root / f"date={day}" / "service=api" / "environment=test"
+    partition_dir.mkdir(parents=True, exist_ok=True)
+    parquet_path = partition_dir / "part-test.parquet"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            "COPY (SELECT * FROM events WHERE path = '/old') TO ? (FORMAT PARQUET)",
+            [str(parquet_path)],
+        )
+    finally:
+        conn.close()
+    deleted = store.delete_events_before(cutoff=now - timedelta(hours=24), project_id=project_id)
+    assert deleted == 1
+    filters = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(hours=72),
+        to_timestamp=now,
+    )
+    assert store.count_events(filters) == 2
+    rows = store.fetch_events(filters, order_by="timestamp ASC, id ASC")
+    assert [row[3] for row in rows] == ["/old", "/new"]
+
+
+def test_duckdb_hybrid_falls_back_to_hot_store_when_no_parquet_files(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "events_hybrid_fallback.duckdb"
+    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_QUERY_ENABLED", "true")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_HOT_WINDOW_HOURS", "24")
+    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(tmp_path / "missing-parquet"))
+    store = DuckDbEventStore(str(db_path))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    store.insert_rows(
+        [
+            {
+                "project_id": project_id,
+                "timestamp": now - timedelta(hours=72),
+                "received_at": now - timedelta(hours=72),
+                "sdk_version": "0.1.0",
+                "type": "request",
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/legacy",
+                "status_code": 200,
+                "latency_ms": 20.0,
+                "payload": {},
+                "request_id": "legacy-1",
+            }
+        ]
+    )
+    filters = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(days=4),
+        to_timestamp=now,
+    )
+    assert store.count_events(filters) == 1
+    rows = store.fetch_events(filters)
+    assert len(rows) == 1
+    assert rows[0][3] == "/legacy"

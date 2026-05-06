@@ -172,6 +172,10 @@ Staging evidence before go-live:
   - Manual run: `uv run python -m autopulse_backend.jobs parquet-export-once`.
   - First export (no `watermark.json` or watermark before 1971-01-01 UTC): one catch-up tick exports through “now”; later ticks use `AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS` for incremental windows.
   - Verify `/internal/metrics` counters: `parquet.export.rows`, `parquet.export.partitions`, `parquet.export.bytes`, and `parquet.export.runs.succeeded`.
+- Parquet phase-2 hybrid reads (optional hot/cold routing):
+  - Enable with `AUTOPULSE_PARQUET_QUERY_ENABLED=true`.
+  - Set hot-window boundary with `AUTOPULSE_PARQUET_HOT_WINDOW_HOURS` (newer windows stay on DuckDB; older windows route to Parquet partitions when present).
+  - `/internal/metrics` reports `parquet_export.query_enabled` and `parquet_export.hot_window_hours` for topology verification.
 
 ## 5.1 When to move metadata DB off SQLite
 

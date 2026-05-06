@@ -16,6 +16,7 @@ Use this checklist before promoting any release-hardening changes.
 - [ ] Ingest remains healthy (`/health` and `/ready`) under retention/archive load.
 - [ ] Retention settings updates validate plan and archival options.
 - [ ] Archival-before-delete behavior is verified with replay-safe retries.
+- [ ] If Parquet hybrid reads are enabled, validate mixed-window dashboard queries (recent=DuckDB hot, historical=Parquet cold) with stable response schema.
 - [ ] DuckDB topology validation passed: no deployment plans with multi-replica writers targeting the same DuckDB file.
 - [ ] Staging load run for intended topology shows no DuckDB lock/corruption-class errors.
 

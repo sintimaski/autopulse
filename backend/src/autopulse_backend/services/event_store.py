@@ -4,7 +4,7 @@ import json
 import time
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
 from os import getenv
 from pathlib import Path
 from threading import Lock, local
@@ -49,6 +49,11 @@ class EventStoreFilters:
 
 
 class DuckDbEventStore:
+    _EVENT_SOURCE_COLUMNS = (
+        "id, project_id, timestamp, received_at, sdk_version, type, "
+        "service_name, environment, method, path, status_code, latency_ms, payload, request_id"
+    )
+
     def __init__(self, db_path: str) -> None:
         self._path = Path(db_path).expanduser().resolve()
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -392,6 +397,76 @@ class DuckDbEventStore:
             return "latency_ms <= ?"
         raise ValueError(f"Unsupported WHERE clause fragment: '{clause}'")
 
+    @staticmethod
+    def _sql_string_literal(value: object) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def _list_parquet_export_files(
+        self,
+        *,
+        export_root: str,
+        from_timestamp: datetime,
+        to_timestamp: datetime,
+    ) -> list[Path]:
+        def _utc_date(value: datetime) -> date:
+            if value.tzinfo is None:
+                return value.date()
+            return value.astimezone(UTC).date()
+
+        root = Path(export_root).expanduser().resolve()
+        if not root.is_dir():
+            return []
+        start_day = _utc_date(from_timestamp)
+        end_day = _utc_date(to_timestamp)
+        if end_day < start_day:
+            return []
+        files: list[Path] = []
+        day = start_day
+        while day <= end_day:
+            day_dir = root / f"date={day.isoformat()}"
+            if day_dir.is_dir():
+                files.extend(day_dir.glob("service=*/environment=*/part-*.parquet"))
+            day = day + timedelta(days=1)
+        unique_sorted = sorted({path.resolve() for path in files if path.is_file()})
+        return unique_sorted
+
+    def _resolve_events_source_sql(self, filters: EventStoreFilters) -> tuple[str, list[Any]]:
+        settings = get_settings()
+        if not settings.parquet_query_enabled or settings.event_store != "duckdb":
+            return "events", []
+        cutoff = datetime.now(tz=UTC) - timedelta(
+            hours=max(1, int(settings.parquet_hot_window_hours))
+        )
+        cutoff_utc = as_utc(cutoff)
+        cutoff_naive = as_duckdb_timestamp(cutoff)
+        if as_utc(filters.from_timestamp) >= cutoff_utc:
+            return "events", []
+        cold_window_end = min(as_utc(filters.to_timestamp), cutoff_utc)
+        if cold_window_end <= as_utc(filters.from_timestamp):
+            return "events", []
+        parquet_files = self._list_parquet_export_files(
+            export_root=settings.parquet_export_root,
+            from_timestamp=as_utc(filters.from_timestamp),
+            to_timestamp=cold_window_end,
+        )
+        if not parquet_files:
+            return "events", []
+        parquet_files_sql = ",".join(self._sql_string_literal(str(path)) for path in parquet_files)
+        return self._hot_cold_events_union_sql(parquet_files_sql), [cutoff_naive, cutoff_naive]
+
+    def _hot_cold_events_union_sql(self, parquet_files_sql: str) -> str:
+        """Union hot `events` rows with Parquet files under export_root (paths SQL-escaped)."""
+        return (
+            "(SELECT "  # nosec B608
+            + self._EVENT_SOURCE_COLUMNS
+            + " FROM events WHERE timestamp > CAST(? AS TIMESTAMP) "  # nosec B608
+            "UNION ALL SELECT "
+            + self._EVENT_SOURCE_COLUMNS
+            + " FROM read_parquet(["  # nosec B608
+            + parquet_files_sql
+            + "], hive_partitioning=1) WHERE timestamp <= CAST(? AS TIMESTAMP))"  # nosec B608
+        )
+
     def fetch_events(
         self,
         filters: EventStoreFilters,
@@ -404,15 +479,20 @@ class DuckDbEventStore:
         limit: int | None = None,
         offset: int = 0,
     ) -> list[tuple[Any, ...]]:
+        source_sql, source_params = self._resolve_events_source_sql(filters)
         where_sql, params = self._compile_filters(filters)
-        sql = f"SELECT {columns} FROM events WHERE {where_sql} ORDER BY {order_by}"  # nosec B608
+        sql = (
+            f"SELECT {columns} FROM {source_sql} AS scoped_events "
+            f"WHERE {where_sql} ORDER BY {order_by}"  # nosec B608
+        )
+        bound_params = [*source_params, *params]
         if limit is not None:
             sql += " LIMIT ?"
-            params.append(limit)
+            bound_params.append(limit)
         if offset:
             sql += " OFFSET ?"
-            params.append(offset)
-        return self._fetchall_read(sql, params)
+            bound_params.append(offset)
+        return self._fetchall_read(sql, bound_params)
 
     def query_events_sql(
         self,
@@ -422,11 +502,16 @@ class DuckDbEventStore:
         suffix_sql: str = "",
         extra_params: list[Any] | None = None,
     ) -> list[tuple[Any, ...]]:
+        source_sql, source_params = self._resolve_events_source_sql(filters)
         where_sql, params = self._compile_filters(filters)
-        sql = f"SELECT {select_sql} FROM events WHERE {where_sql} {suffix_sql}"  # nosec B608
+        sql = (
+            f"SELECT {select_sql} FROM {source_sql} AS scoped_events "
+            f"WHERE {where_sql} {suffix_sql}"  # nosec B608
+        )
+        bound_params = [*source_params, *params]
         if extra_params:
-            params.extend(extra_params)
-        return self._fetchall_read(sql, params)
+            bound_params.extend(extra_params)
+        return self._fetchall_read(sql, bound_params)
 
     def query_scoped_events_sql(
         self,
@@ -435,16 +520,18 @@ class DuckDbEventStore:
         max_rows: int,
         extra_params: list[Any] | None = None,
     ) -> tuple[list[str], list[tuple[Any, ...]]]:
+        source_sql, source_params = self._resolve_events_source_sql(filters)
         where_sql, params = self._compile_filters(filters)
         sql = (
             f"WITH scoped_events AS MATERIALIZED ("
-            f"SELECT * FROM events WHERE {where_sql}"
+            f"SELECT * FROM {source_sql} AS events_source WHERE {where_sql}"
             f") SELECT * FROM ({query_sql}) AS user_query LIMIT ?"  # nosec B608
         )
+        bound_params = [*source_params, *params]
         if extra_params:
-            params.extend(extra_params)
-        params.append(max_rows)
-        return self._query_with_columns_read(sql, params)
+            bound_params.extend(extra_params)
+        bound_params.append(max_rows)
+        return self._query_with_columns_read(sql, bound_params)
 
     def fetch_events_with_total(
         self,
@@ -477,19 +564,20 @@ class DuckDbEventStore:
             )
         else:
             resolved_columns = columns
+        source_sql, source_params = self._resolve_events_source_sql(filters)
         where_sql, params = self._compile_filters(filters)
         # Avoid COUNT(*) OVER() on an unbounded inner result: that pattern scans
         # the full filter match before LIMIT. MATERIALIZED CTE + COUNT on the
         # cached result matches totals while keeping one pass over base events.
         sql = (
             f"WITH filtered AS MATERIALIZED ("
-            f"SELECT {resolved_columns} FROM events WHERE {where_sql}"
+            f"SELECT {resolved_columns} FROM {source_sql} AS scoped_events WHERE {where_sql}"
             f"), agg AS (SELECT COUNT(*)::BIGINT AS __total FROM filtered) "
             f"SELECT page.*, agg.__total FROM ("
             f"SELECT * FROM filtered ORDER BY {order_by} LIMIT ? OFFSET ?"
             f") AS page CROSS JOIN agg"  # nosec B608
         )
-        rows = self._fetchall_read(sql, [*params, limit, offset])
+        rows = self._fetchall_read(sql, [*source_params, *params, limit, offset])
         if not rows:
             return 0, []
         total = int(rows[0][-1])
@@ -497,10 +585,11 @@ class DuckDbEventStore:
         return total, trimmed
 
     def count_events(self, filters: EventStoreFilters) -> int:
+        source_sql, source_params = self._resolve_events_source_sql(filters)
         where_sql, params = self._compile_filters(filters)
         result = self._fetchone_read(
-            f"SELECT COUNT(*) FROM events WHERE {where_sql}",  # nosec B608
-            params,
+            f"SELECT COUNT(*) FROM {source_sql} AS scoped_events WHERE {where_sql}",  # nosec B608
+            [*source_params, *params],
         )
         return int(result[0] if result else 0)
 

@@ -58,6 +58,8 @@ class Settings:
     parquet_export_root: str = "./.autopulse/parquet/events"
     parquet_export_interval_seconds: float = 300.0
     parquet_export_window_seconds: int = 900
+    parquet_query_enabled: bool = False
+    parquet_hot_window_hours: int = 24
     ingest_idempotency_ttl_hours: int = 24
     ingest_idempotency_stale_seconds: int = 45
     ingest_require_https: bool = True
@@ -643,6 +645,12 @@ def get_settings() -> Settings:
             "AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS",
             900,
             minimum=60,
+        ),
+        parquet_query_enabled=_env_bool("AUTOPULSE_PARQUET_QUERY_ENABLED", False),
+        parquet_hot_window_hours=_env_int(
+            "AUTOPULSE_PARQUET_HOT_WINDOW_HOURS",
+            24,
+            minimum=1,
         ),
         ingest_idempotency_ttl_hours=_env_int("INGEST_IDEMPOTENCY_TTL_HOURS", 24, minimum=1),
         ingest_idempotency_stale_seconds=_env_int(

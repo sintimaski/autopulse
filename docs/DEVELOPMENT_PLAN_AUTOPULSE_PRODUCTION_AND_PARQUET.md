@@ -206,9 +206,9 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Safe to re-run? Yes
   - If partial/no, guardrails required: deterministic window boundaries.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-06
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-07 (implemented deterministic hot/cold read boundary with Parquet fallback to DuckDB, wired config/metrics visibility, and added regression coverage for hybrid/fallback query paths)
   - Owner: Backend dashboard/data
 - **Related documents:** `docs/contracts/ingest-api.md`, `backend/src/autopulse_backend/schemas/dashboard.py`
 - **References / examples:** existing bundle query flow and schema models.

@@ -14,7 +14,10 @@ from autopulse_backend.services.aggregate_delta_codec import (
 def _as_datetime(raw: object) -> datetime:
     if not isinstance(raw, str):
         raise ValueError("invalid_sql_tail_datetime")
-    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("invalid_sql_tail_datetime") from exc
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)

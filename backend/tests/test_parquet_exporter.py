@@ -139,3 +139,64 @@ def test_parquet_exporter_is_restart_safe_with_watermark(tmp_path: Path) -> None
     second = run_parquet_export_once(settings=replace(settings, parquet_export_window_seconds=3600))
     assert second.rows_exported == 0
     assert second.partitions_exported == 0
+
+
+def test_parquet_exporter_returns_empty_when_disabled(tmp_path: Path) -> None:
+    settings = replace(_base_settings(tmp_path), parquet_export_enabled=False)
+    _seed_duckdb_events(Path(settings.event_store_duckdb_path))
+    result = run_parquet_export_once(settings=settings)
+    assert result.rows_exported == 0
+    assert result.partitions_exported == 0
+    assert result.bytes_written == 0
+
+
+def test_parquet_exporter_returns_empty_when_event_store_not_duckdb(tmp_path: Path) -> None:
+    settings = replace(_base_settings(tmp_path), event_store="sqlite")
+    result = run_parquet_export_once(settings=settings)
+    assert result.rows_exported == 0
+
+
+def test_parquet_exporter_returns_empty_when_duckdb_file_missing(tmp_path: Path) -> None:
+    settings = replace(
+        _base_settings(tmp_path),
+        event_store_duckdb_path=str(tmp_path / "missing-events.duckdb"),
+    )
+    result = run_parquet_export_once(settings=settings)
+    assert result.rows_exported == 0
+
+
+def test_parquet_exporter_noop_when_watermark_already_caught_up(tmp_path: Path) -> None:
+    settings = _base_settings(tmp_path)
+    _seed_duckdb_events(Path(settings.event_store_duckdb_path))
+    assert run_parquet_export_once(settings=settings).rows_exported == 2
+
+    future = datetime(2099, 1, 1, tzinfo=UTC)
+    state_dir = Path(settings.parquet_export_root) / "_state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "watermark.json").write_text(
+        json.dumps(
+            {
+                "watermark": future.isoformat().replace("+00:00", "Z"),
+                "updated_at": future.isoformat().replace("+00:00", "Z"),
+                "last_exported_rows": 0,
+            },
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = run_parquet_export_once(settings=settings)
+    assert result.rows_exported == 0
+    assert result.partitions_exported == 0
+
+
+def test_parquet_exporter_corrupt_watermark_json_catchup(tmp_path: Path) -> None:
+    settings = _base_settings(tmp_path)
+    db_path = Path(settings.event_store_duckdb_path)
+    _seed_duckdb_events(db_path)
+    state_dir = Path(settings.parquet_export_root) / "_state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "watermark.json").write_text("{not json\n", encoding="utf-8")
+
+    result = run_parquet_export_once(settings=settings)
+    assert result.rows_exported == 2
