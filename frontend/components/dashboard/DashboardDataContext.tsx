@@ -972,6 +972,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         return;
       }
+      if (dashboardFetchInFlightRef.current) {
+        dashboardQueuedRefreshRef.current = true;
+        return;
+      }
       setRefreshToken((token) => token + 1);
     }, DASHBOARD_REFRESH_INTERVAL_MS);
     return () => {
@@ -991,6 +995,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (typeof document === "undefined" || document.visibilityState !== "visible") {
+        return;
+      }
+      if (dashboardFetchInFlightRef.current) {
+        dashboardQueuedRefreshRef.current = true;
         return;
       }
       setRefreshToken((token) => token + 1);
