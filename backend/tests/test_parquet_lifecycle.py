@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import duckdb
+import pytest
 
+import autopulse_backend.services.parquet_lifecycle as parquet_lifecycle_module
 from autopulse_backend.core.config import Settings
 from autopulse_backend.services.parquet_lifecycle import run_parquet_lifecycle_once
 
@@ -245,3 +248,57 @@ def test_parquet_lifecycle_retention_deletes_old_partition_with_single_file(tmp_
     assert result.compacted_partitions == 0
     assert result.retention_deleted_partitions == 1
     assert not old_partition.exists()
+
+
+def test_parquet_lifecycle_compaction_mismatch_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Force post-COPY row reconciliation to fail (simulated wrong count)."""
+    real_connect = duckdb.connect
+
+    class _WrongCountResult:
+        def fetchone(self) -> tuple[int]:
+            return (0,)
+
+    class _ConnProxy:
+        __slots__ = ("_inner",)
+
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+
+        def execute(self, query: object, parameters: object | None = None) -> object:
+            q = query if isinstance(query, str) else str(query)
+            if (
+                parameters is not None
+                and isinstance(parameters, list | tuple)
+                and len(parameters) == 1
+                and isinstance(parameters[0], str)
+                and parameters[0].endswith(".tmp.parquet")
+                and "read_parquet(?)" in q
+            ):
+                return _WrongCountResult()
+            if parameters is not None:
+                return self._inner.execute(query, parameters)
+            return self._inner.execute(query)
+
+        def close(self) -> None:
+            self._inner.close()
+
+    def connect_wrapped(*args: object, **kwargs: object) -> _ConnProxy:
+        return _ConnProxy(real_connect(*args, **kwargs))
+
+    monkeypatch.setattr(parquet_lifecycle_module.duckdb, "connect", connect_wrapped)
+
+    settings = _base_settings(tmp_path, dry_run=False)
+    root = Path(settings.parquet_export_root)
+    now = datetime.now(tz=UTC)
+    recent_day = (now - timedelta(days=1)).date().isoformat()
+    partition = root / f"date={recent_day}" / "service=api" / "environment=prod"
+    _write_partition_file(path=partition / "part-a.parquet", event_id=1, timestamp=now)
+    _write_partition_file(path=partition / "part-b.parquet", event_id=2, timestamp=now)
+
+    with pytest.raises(ValueError, match="parquet_lifecycle_compaction_mismatch"):
+        run_parquet_lifecycle_once(settings=settings)
+
+    assert (partition / "part-a.parquet").is_file()
+    assert (partition / "part-b.parquet").is_file()
