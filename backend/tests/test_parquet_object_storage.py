@@ -16,6 +16,61 @@ from autopulse_backend.services.parquet_object_storage import (
 )
 
 
+def test_object_storage_sync_verify_manifest_checksum_mismatch_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_get_bytes = pos._LocalObjectStore.get_bytes
+
+    def get_bytes_tampered(self: pos._LocalObjectStore, key: str) -> bytes:
+        if "/manifests/" in key.replace("\\", "/") and key.endswith(".json"):
+            return b'{"version":1,"tampered":true}\n'
+        return real_get_bytes(self, key)
+
+    monkeypatch.setattr(pos._LocalObjectStore, "get_bytes", get_bytes_tampered)
+
+    settings = _base_settings(tmp_path)
+    _seed_duckdb_events(Path(settings.event_store_duckdb_path))
+    assert run_parquet_export_once(settings=settings).rows_exported == 2
+    object_store_root = tmp_path / "object-store-manifest-bad"
+    object_settings = replace(
+        settings,
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{object_store_root}",
+        parquet_object_storage_prefix="snapshots",
+        parquet_object_storage_verify_upload=True,
+    )
+    with pytest.raises(ValueError, match="object_storage_manifest_checksum_mismatch"):
+        run_parquet_object_storage_sync_once(settings=object_settings)
+
+
+def test_object_storage_sync_verify_data_object_checksum_mismatch_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_get_bytes = pos._LocalObjectStore.get_bytes
+
+    def get_bytes_tampered(self: pos._LocalObjectStore, key: str) -> bytes:
+        norm = key.replace("\\", "/")
+        if "/data/" in norm and norm.endswith(".parquet"):
+            return b"not-parquet"
+        return real_get_bytes(self, key)
+
+    monkeypatch.setattr(pos._LocalObjectStore, "get_bytes", get_bytes_tampered)
+
+    settings = _base_settings(tmp_path)
+    _seed_duckdb_events(Path(settings.event_store_duckdb_path))
+    assert run_parquet_export_once(settings=settings).rows_exported == 2
+    object_store_root = tmp_path / "object-store-data-bad"
+    object_settings = replace(
+        settings,
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{object_store_root}",
+        parquet_object_storage_prefix="snapshots",
+        parquet_object_storage_verify_upload=True,
+    )
+    with pytest.raises(ValueError, match="object_storage_checksum_mismatch"):
+        run_parquet_object_storage_sync_once(settings=object_settings)
+
+
 def test_object_storage_sync_and_restore_roundtrip_local_file_store(tmp_path: Path) -> None:
     settings = _base_settings(tmp_path)
     _seed_duckdb_events(Path(settings.event_store_duckdb_path))

@@ -433,3 +433,30 @@ def test_duckdb_hybrid_falls_back_to_hot_store_when_no_parquet_files(tmp_path, m
     rows = store.fetch_events(filters)
     assert len(rows) == 1
     assert rows[0][3] == "/legacy"
+
+
+def test_list_parquet_export_files_missing_root_returns_empty(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events_list_parquet.duckdb"))
+    missing = tmp_path / "no-such-parquet-root"
+    assert (
+        store._list_parquet_export_files(
+            export_root=str(missing),
+            from_timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+            to_timestamp=datetime(2026, 1, 3, tzinfo=UTC),
+        )
+        == []
+    )
+
+
+def test_list_parquet_export_files_inverted_date_window_returns_empty(tmp_path) -> None:
+    store = DuckDbEventStore(str(tmp_path / "events_list_parquet2.duckdb"))
+    root = tmp_path / "parquet-empty-window"
+    root.mkdir()
+    assert (
+        store._list_parquet_export_files(
+            export_root=str(root),
+            from_timestamp=datetime(2026, 1, 5, tzinfo=UTC),
+            to_timestamp=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        == []
+    )

@@ -137,4 +137,32 @@ describe("isDiagnosisScopePartial", () => {
       }),
     ).toBe(true);
   });
+
+  it("flags partial when request list uses a non-zero offset", () => {
+    expect(
+      isDiagnosisScopePartial({
+        requestSampleCount: 25,
+        requestTotalCount: 100,
+        requestOffset: 25,
+        errorGroupSampleCount: 10,
+        errorGroupTotalCount: 10,
+        errorGroupPage: 0,
+        hasScopeNarrowing: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("flags partial when error group list is truncated on first page", () => {
+    expect(
+      isDiagnosisScopePartial({
+        requestSampleCount: 25,
+        requestTotalCount: 25,
+        requestOffset: 0,
+        errorGroupSampleCount: 5,
+        errorGroupTotalCount: 30,
+        errorGroupPage: 0,
+        hasScopeNarrowing: false,
+      }),
+    ).toBe(true);
+  });
 });

@@ -145,6 +145,7 @@ Next.js dashboard
 - **DuckDB file path:** relative `AUTOPULSE_DUCKDB_PATH` values are anchored to the **AutoPulse data root** (monorepo checkout root, or `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT`), not the process cwd—so ingest, dashboard queries, retention, and CLI jobs always open the same file. See `normalize_event_store_duckdb_path` / `resolve_autopulse_data_root` in `backend/src/autopulse_backend/core/config.py` and `docs/ops/BACKUP_RESTORE.md` (migration note if you previously relied on cwd-relative files).
 - Preserve dashboard API contracts while event reads migrate behind an event-store abstraction.
 - Keep a `sqlite` event-store fallback mode for rollout safety.
+- **Parquet cold storage (optional):** on-disk Parquet export, retention/compaction lifecycle, hybrid hot/cold reads, and S3-compatible object sync are operator-facing in **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (see the Parquet / lifecycle / object storage section). Relative `AUTOPULSE_PARQUET_EXPORT_ROOT` and `AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT` values are resolved under the same AutoPulse data root as the DuckDB path helpers in `backend/src/autopulse_backend/core/config.py`.
 - **Production rollout:** topology, health probes, SLO budgets, backups, and drills are summarized in **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (canonical; use it instead of piecing ops docs ad hoc).
 
 SDK:
