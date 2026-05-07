@@ -287,7 +287,7 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Recovery steps: keep pre-compaction files until manifest commit; require retention dry-run approval.
   - Rollback/backout conditions: any detected data-loss or unreadable partitions.
 - **Validation / verification:**
-  - Automated checks: compaction/retention unit tests with synthetic partitions.
+  - Automated checks: compaction/retention unit tests with synthetic partitions (`backend/tests/test_parquet_lifecycle.py`, plus parquet job/tick coverage in `backend/tests/test_backend_jobs.py`).
   - Manual checks: execute lifecycle on staging snapshots and compare row counts pre/post.
   - Observed evidence: compaction ratio improvements and zero reconciliation loss.
 - **Idempotency (re-run safety):**
@@ -331,7 +331,7 @@ Use this plan to move AutoPulse from current state to production-safe operation 
   - Recovery steps: resumable upload, quarantine corrupt objects, replay last good checkpoint.
   - Rollback/backout conditions: inability to validate manifest chain integrity.
 - **Validation / verification:**
-  - Automated checks: manifest generation/verification tests.
+  - Automated checks: manifest generation/verification tests (`backend/tests/test_parquet_object_storage.py`, CLI flows in `backend/tests/test_backend_jobs.py`).
   - Manual checks: run DR replay drill from object storage snapshots.
   - Observed evidence: successful replay and checksum validation for sampled partitions.
 - **Idempotency (re-run safety):**

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -356,3 +357,52 @@ def test_jobs_cli_parquet_object_sync_and_restore_once(
     assert lines[-2] == "2"
     assert lines[-1] == "2"
     assert any(restore_root.glob("date=*/service=*/environment=*/part-*.parquet"))
+
+
+async def _gather_parquet_tick_outputs(tmp_path: Path) -> tuple[int, int, int, int]:
+    from test_parquet_exporter import _base_settings, _seed_duckdb_events
+
+    db_path = tmp_path / "tick-events.duckdb"
+    _seed_duckdb_events(db_path)
+    export_settings = replace(
+        _base_settings(tmp_path),
+        event_store_duckdb_path=str(db_path),
+        parquet_export_root=str(tmp_path / "tick-parquet"),
+    )
+    export_rows = await jobs.run_parquet_export_tick_once(settings=export_settings)
+
+    from test_parquet_lifecycle import _base_settings as _lifecycle_base
+
+    lifecycle_settings = _lifecycle_base(tmp_path / "lifecycle-ticks", dry_run=True)
+    Path(lifecycle_settings.parquet_export_root).mkdir(parents=True, exist_ok=True)
+    lifecycle_score = await jobs.run_parquet_lifecycle_tick_once(settings=lifecycle_settings)
+
+    object_store_root = tmp_path / "tick-object-store"
+    object_store_root.mkdir()
+    sync_settings = replace(
+        export_settings,
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{object_store_root.resolve()}",
+        parquet_object_storage_prefix="snapshots",
+        parquet_object_storage_verify_upload=False,
+    )
+    uploaded = await jobs.run_parquet_object_storage_sync_tick_once(settings=sync_settings)
+
+    restore_root = tmp_path / "tick-restore"
+    restore_settings = replace(
+        sync_settings,
+        parquet_object_storage_restore_root=str(restore_root),
+    )
+    restored = await jobs.run_parquet_object_storage_restore_tick_once(settings=restore_settings)
+
+    return export_rows, lifecycle_score, uploaded, restored
+
+
+def test_parquet_async_tick_helpers_delegate_to_threaded_jobs(tmp_path: Path) -> None:
+    export_rows, lifecycle_score, uploaded, restored = asyncio.run(
+        _gather_parquet_tick_outputs(tmp_path)
+    )
+    assert export_rows == 2
+    assert lifecycle_score == 0
+    assert uploaded == 2
+    assert restored == 2

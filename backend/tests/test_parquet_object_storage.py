@@ -240,3 +240,88 @@ def test_restore_disabled_returns_empty(tmp_path: Path) -> None:
     )
     assert out.restored_files == 0
     assert out.manifest_key is None
+
+
+def test_object_storage_sync_export_root_not_directory_returns_zeros(tmp_path: Path) -> None:
+    export_root = tmp_path / "export-not-dir"
+    export_root.write_text("x", encoding="utf-8")
+    store_root = tmp_path / "object-store"
+    settings = replace(
+        _base_settings(tmp_path),
+        parquet_export_root=str(export_root),
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{store_root}",
+        parquet_object_storage_prefix="snapshots",
+    )
+    result = run_parquet_object_storage_sync_once(settings=settings)
+    assert result == pos.ParquetObjectStorageSyncResult(0, 0, 0, 0, 0, None, None)
+
+
+def test_object_storage_restore_no_manifest_in_store_returns_zeros(tmp_path: Path) -> None:
+    store_root = tmp_path / "empty-object-store"
+    store_root.mkdir()
+    restore_root = tmp_path / "restore-empty"
+    settings = replace(
+        _base_settings(tmp_path),
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{store_root}",
+        parquet_object_storage_prefix="snapshots",
+        parquet_object_storage_restore_root=str(restore_root),
+    )
+    out = run_parquet_object_storage_restore_once(settings=settings)
+    assert out.restored_files == 0
+    assert out.manifest_key is None
+
+
+def test_object_storage_sync_corrupt_state_json_recovers_and_uploads(tmp_path: Path) -> None:
+    settings = _base_settings(tmp_path)
+    _seed_duckdb_events(Path(settings.event_store_duckdb_path))
+    assert run_parquet_export_once(settings=settings).rows_exported == 2
+    object_store_root = tmp_path / "object-store"
+    object_settings = replace(
+        settings,
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{object_store_root}",
+        parquet_object_storage_prefix="snapshots",
+        parquet_object_storage_verify_upload=False,
+    )
+    state_path = Path(settings.parquet_export_root) / "_state" / "object_storage_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text("{not-json", encoding="utf-8")
+
+    result = run_parquet_object_storage_sync_once(settings=object_settings)
+    assert result.uploaded_files == 2
+    assert result.manifest_key is not None
+
+
+def test_resolve_s3_uri_missing_bucket_raises(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="bucket"):
+        pos._resolve_store(
+            replace(
+                _base_settings(tmp_path),
+                parquet_object_storage_uri="s3:///only/path",
+                parquet_object_storage_prefix="pfx",
+            )
+        )
+
+
+def test_restore_invalid_manifest_missing_files_list_raises(tmp_path: Path) -> None:
+    settings = _base_settings(tmp_path)
+    store_root = tmp_path / "object-store"
+    store_root.mkdir()
+    bad_key = "snapshots/manifests/bad.json"
+    (store_root / bad_key).parent.mkdir(parents=True, exist_ok=True)
+    (store_root / bad_key).write_text(
+        json.dumps({"version": 1, "created_at": "x", "files": "nope"}),
+        encoding="utf-8",
+    )
+    bad = replace(
+        settings,
+        parquet_object_storage_enabled=True,
+        parquet_object_storage_uri=f"file://{store_root}",
+        parquet_object_storage_prefix="snapshots",
+        parquet_object_storage_restore_root=str(tmp_path / "out"),
+        parquet_object_storage_restore_manifest_key=bad_key,
+    )
+    with pytest.raises(ValueError, match="Invalid object storage manifest"):
+        run_parquet_object_storage_restore_once(settings=bad)

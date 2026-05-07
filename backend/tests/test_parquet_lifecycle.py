@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -133,6 +134,10 @@ def test_parquet_lifecycle_dry_run_preserves_existing_files(tmp_path: Path) -> N
     assert old_partition.exists()
     assert (recent_partition / "part-a.parquet").is_file()
     assert (recent_partition / "part-b.parquet").is_file()
+    assert result.manifest_path is not None
+    manifest = json.loads(Path(result.manifest_path).read_text(encoding="utf-8"))
+    assert manifest["summary"]["dry_run"] is True
+    assert any(a.get("dry_run") is True for a in manifest.get("compaction_actions", []))
 
 
 def test_parquet_lifecycle_returns_empty_when_disabled(tmp_path: Path) -> None:
@@ -150,3 +155,93 @@ def test_parquet_lifecycle_returns_empty_when_disabled(tmp_path: Path) -> None:
     assert result.compacted_partitions == 0
     assert result.retention_deleted_partitions == 0
     assert result.verified_files == 0
+    assert result.manifest_path is None
+
+
+def test_parquet_lifecycle_returns_empty_when_event_store_not_duckdb(tmp_path: Path) -> None:
+    root = tmp_path / "parquet"
+    root.mkdir()
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'meta.db'}",
+        event_store="sqlite",
+        event_store_duckdb_path=str(tmp_path / "unused.duckdb"),
+        parquet_export_root=str(root),
+        parquet_lifecycle_enabled=True,
+        autopulse_env="development",
+    )
+    result = run_parquet_lifecycle_once(settings=settings)
+    assert result.compacted_partitions == 0
+    assert result.manifest_path is None
+
+
+def test_parquet_lifecycle_returns_empty_when_export_root_missing(tmp_path: Path) -> None:
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'meta.db'}",
+        event_store="duckdb",
+        event_store_duckdb_path=str(tmp_path / "events.duckdb"),
+        parquet_export_root=str(tmp_path / "no-such-parquet-dir"),
+        parquet_lifecycle_enabled=True,
+        autopulse_env="development",
+    )
+    result = run_parquet_lifecycle_once(settings=settings)
+    assert result.compacted_partitions == 0
+    assert result.manifest_path is None
+
+
+def test_parquet_lifecycle_returns_empty_when_export_root_is_file(tmp_path: Path) -> None:
+    bogus = tmp_path / "not-a-directory"
+    bogus.write_text("x", encoding="utf-8")
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'meta.db'}",
+        event_store="duckdb",
+        event_store_duckdb_path=str(tmp_path / "events.duckdb"),
+        parquet_export_root=str(bogus),
+        parquet_lifecycle_enabled=True,
+        autopulse_env="development",
+    )
+    result = run_parquet_lifecycle_once(settings=settings)
+    assert result.compacted_partitions == 0
+    assert result.manifest_path is None
+
+
+def test_parquet_lifecycle_skips_partition_with_unparseable_date_prefix(tmp_path: Path) -> None:
+    """Malformed ``date=`` segment yields no calendar day; partition is skipped (no crash)."""
+    settings = _base_settings(tmp_path, dry_run=False)
+    root = Path(settings.parquet_export_root)
+    bad = root / "date=not-a-date" / "service=api" / "environment=prod"
+    _write_partition_file(path=bad / "part.parquet", event_id=1, timestamp=datetime.now(tz=UTC))
+
+    result = run_parquet_lifecycle_once(settings=settings)
+
+    assert result.compacted_partitions == 0
+    assert result.retention_deleted_partitions == 0
+    assert bad.exists()
+
+
+def test_parquet_lifecycle_no_compaction_when_only_one_file_in_partition(tmp_path: Path) -> None:
+    settings = _base_settings(tmp_path, dry_run=False)
+    root = Path(settings.parquet_export_root)
+    now = datetime.now(tz=UTC)
+    recent_day = (now - timedelta(days=1)).date().isoformat()
+    partition = root / f"date={recent_day}" / "service=api" / "environment=prod"
+    _write_partition_file(path=partition / "solo.parquet", event_id=1, timestamp=now)
+
+    result = run_parquet_lifecycle_once(settings=settings)
+
+    assert result.compacted_partitions == 0
+    assert (partition / "solo.parquet").is_file()
+
+
+def test_parquet_lifecycle_retention_deletes_old_partition_with_single_file(tmp_path: Path) -> None:
+    settings = _base_settings(tmp_path, dry_run=False)
+    root = Path(settings.parquet_export_root)
+    now = datetime.now(tz=UTC)
+    old_day = (now - timedelta(days=30)).date().isoformat()
+    old_partition = root / f"date={old_day}" / "service=api" / "environment=prod"
+    _write_partition_file(path=old_partition / "only.parquet", event_id=1, timestamp=now)
+
+    result = run_parquet_lifecycle_once(settings=settings)
+
+    assert result.compacted_partitions == 0
+    assert result.retention_deleted_partitions == 1
+    assert not old_partition.exists()
