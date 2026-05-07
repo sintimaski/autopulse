@@ -550,10 +550,10 @@ Use this plan to move AutoPulse from current state to production-safe operation 
 
 Mark each item before closing the plan:
 
-- [ ] All tasks have explicit AC.
-- [ ] All tasks define validation (automated + manual).
-- [ ] Idempotency is documented for each task.
-- [ ] Domain rules and constraints are mapped to tasks.
-- [ ] Observability updates are included where behavior changed.
-- [ ] Related docs are updated or explicitly deferred.
-- [ ] Remaining ambiguity is logged with owner and due date.
+- [x] All tasks have explicit AC.
+- [x] All tasks define validation (automated + manual).
+- [x] Idempotency is documented for each task.
+- [x] Domain rules and constraints are mapped to tasks.
+- [x] Observability updates are included where behavior changed.
+- [x] Related docs are updated or explicitly deferred.
+- [x] Remaining ambiguity is logged with owner and due date.

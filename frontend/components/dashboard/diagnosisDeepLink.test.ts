@@ -14,6 +14,14 @@ describe("parseErrorGroupHash", () => {
   it("returns null for unsupported hash", () => {
     expect(parseErrorGroupHash("#grouped-errors")).toBeNull();
   });
+
+  it("returns null when payload is empty", () => {
+    expect(parseErrorGroupHash("#error-group:")).toBeNull();
+  });
+
+  it("returns null for malformed percent encoding", () => {
+    expect(parseErrorGroupHash("#error-group:%E0%A4%A")).toBeNull();
+  });
 });
 
 describe("nextDeepLinkRetryAction", () => {
@@ -46,6 +54,28 @@ describe("nextDeepLinkRetryAction", () => {
         lastRetriedKey: "g-1",
         errorGroupPage: 0,
         errorGroupLimit: 25,
+      }),
+    ).toBe("none");
+  });
+
+  it("returns none when automatic retries are exhausted at max limit", () => {
+    expect(
+      nextDeepLinkRetryAction({
+        targetGroupKey: "g-1",
+        lastRetriedKey: null,
+        errorGroupPage: 0,
+        errorGroupLimit: 50,
+      }),
+    ).toBe("none");
+  });
+
+  it("returns none for empty target key", () => {
+    expect(
+      nextDeepLinkRetryAction({
+        targetGroupKey: "",
+        lastRetriedKey: null,
+        errorGroupPage: 2,
+        errorGroupLimit: 10,
       }),
     ).toBe("none");
   });
@@ -92,5 +122,19 @@ describe("isDiagnosisScopePartial", () => {
         hasScopeNarrowing: false,
       }),
     ).toBe(false);
+  });
+
+  it("flags partial when error groups are paginated", () => {
+    expect(
+      isDiagnosisScopePartial({
+        requestSampleCount: 25,
+        requestTotalCount: 25,
+        requestOffset: 0,
+        errorGroupSampleCount: 10,
+        errorGroupTotalCount: 40,
+        errorGroupPage: 1,
+        hasScopeNarrowing: false,
+      }),
+    ).toBe(true);
   });
 });

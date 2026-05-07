@@ -200,6 +200,7 @@ Staging evidence before go-live:
     - Set `AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT`
     - Run `uv run python -m autopulse_backend.jobs parquet-object-restore-once`
   - Verify `/internal/metrics` counters: `parquet.object_storage.sync.*` and `parquet.object_storage.restore.*`.
+  - Automated regression coverage: `backend/tests/test_parquet_object_storage.py` (local `file://` store, manifest continuity, restore checksums, CLI wiring in `backend/tests/test_backend_jobs.py`).
 
 ## 5.1 When to move metadata DB off SQLite
 

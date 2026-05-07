@@ -43,6 +43,7 @@ npm --prefix frontend run test:e2e
 2. Verify sign-in via `/autopulse/ui/auth/magic-link?token=...`.
 3. Load `/autopulse/ui/dashboard` and assert shell navigation appears.
 4. Navigate to `/autopulse/ui/diagnosis` and assert route + nav stability.
+5. (Optional) Load `/autopulse/ui/diagnosis#grouped-errors` or a saved `#error-group:…` bookmark and confirm the page still renders (deep-link + partial-scope UX is covered in unit tests under `frontend/components/dashboard/diagnosisDeepLink.test.ts`).
 
 Record HAR or video on failure (`trace: 'retain-on-failure'` in config).
 
