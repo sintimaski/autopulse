@@ -61,6 +61,11 @@ mypy_path = "sdk/src:backend/src"
 explicit_package_bases = true
 namespace_packages = true
 
+[[tool.mypy.overrides]]
+module = "autopulse_backend.alembic.*"
+# Alembic revision modules use dynamic SQLAlchemy typing patterns; keep them out of strict checks.
+ignore_errors = true
+
 [tool.bandit]
 targets = ["sdk/src/autopulse", "backend/src/autopulse_backend"]
 skips = ["B101"]

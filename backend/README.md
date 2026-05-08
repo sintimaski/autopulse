@@ -10,6 +10,16 @@ FastAPI backend for ingest, dashboard APIs, auth/session flows, alerts, retentio
 - Background jobs: alert evaluation and retention cleanup.
 - Internal ops endpoints: health/ready and service metrics.
 
+## Install outside the monorepo (no PyPI)
+
+The wheel is **`autopulse-backend`**, but it is **not published to PyPI** (unlike `autopulse-sdk`). From another project, install from Git with the `backend/` subdirectory, for example:
+
+```bash
+uv add "autopulse-backend @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+```
+
+Prefer a **tag or commit SHA** instead of `main` for reproducible deploys. If dependency resolution fails on a very new Python (for example 3.14), try **3.12 or 3.13**.
+
 ## Run locally
 
 From repository root:

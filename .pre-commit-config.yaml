@@ -31,7 +31,7 @@ repos:
         entry: bash scripts/pre_commit_alembic.sh
         language: system
         pass_filenames: false
-        files: ^backend/(alembic/|src/autopulse_backend/models/)
+        files: ^backend/src/autopulse_backend/(alembic/|models/)
       - id: frontend-eslint
         name: frontend-eslint
         entry: npm --prefix frontend run lint

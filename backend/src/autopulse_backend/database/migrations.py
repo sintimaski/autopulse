@@ -33,10 +33,18 @@ def _sqlite_schema_exists_without_alembic(database_url: str) -> bool:
 
 def upgrade_to_head() -> None:
     database_url = get_settings().database_url
-    backend_root = Path(__file__).resolve().parents[3]
-    alembic_ini = backend_root / "alembic.ini"
-    config = Config(str(alembic_ini))
-    config.set_main_option("script_location", str(backend_root / "alembic"))
+    pkg_root = Path(__file__).resolve().parents[1]
+    alembic_dir = pkg_root / "alembic"
+    if not alembic_dir.is_dir():
+        msg = (
+            "Alembic migration scripts not found next to autopulse_backend package "
+            f"({alembic_dir}); reinstall autopulse-backend or run from repository sources."
+        )
+        raise RuntimeError(msg)
+    # Load config without relying on alembic.ini on disk — required for installs from wheels
+    # where scripts live under site-packages next to autopulse_backend.
+    config = Config()
+    config.set_main_option("script_location", str(alembic_dir))
     if _sqlite_schema_exists_without_alembic(database_url):
         command.stamp(config, "head")
         return
