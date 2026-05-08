@@ -14,6 +14,7 @@ def _production_dashboard_base() -> Settings:
         event_store_duckdb_path="./.autopulse/e.duckdb",
         cors_allow_origins=("http://localhost:3000",),
         autopulse_env="production",
+        jobs_enable_scheduler=True,
         dev_scenarios_enabled=False,
         dashboard_auth_enabled=True,
         dashboard_auth_allowed_email=None,
@@ -47,6 +48,7 @@ def test_validate_deployment_settings_rejects_dev_scenarios_in_production() -> N
         event_store_duckdb_path="./.autopulse/e.duckdb",
         cors_allow_origins=("http://localhost:3000",),
         autopulse_env="production",
+        jobs_enable_scheduler=True,
         dev_scenarios_enabled=True,
     )
     with pytest.raises(ValueError, match="DEV_SCENARIOS_ENABLED"):
@@ -109,3 +111,47 @@ def test_validate_deployment_settings_rejects_magic_link_dev_token_in_production
     )
     with pytest.raises(ValueError, match="DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN"):
         validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_rejects_production_without_scheduler_or_external_cron() -> (
+    None
+):
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        jobs_enable_scheduler=False,
+        jobs_external_cron_ownership=False,
+    )
+    with pytest.raises(ValueError, match="JOBS_ENABLE_SCHEDULER"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_allows_external_cron_ownership_in_production() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        jobs_enable_scheduler=False,
+        jobs_external_cron_ownership=True,
+    )
+    validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_rejects_staging_without_scheduler_or_external_cron() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        jobs_enable_scheduler=False,
+        jobs_external_cron_ownership=False,
+    )
+    with pytest.raises(ValueError, match="JOBS_ENABLE_SCHEDULER"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_allows_staging_with_external_cron_ownership() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        jobs_enable_scheduler=False,
+        jobs_external_cron_ownership=True,
+    )
+    validate_deployment_settings(s)

@@ -101,6 +101,7 @@ class Settings:
     sqlite_size_retention_only: bool = False
     logs_query_max_window_minutes: int = 1440
     jobs_enable_scheduler: bool = False
+    jobs_external_cron_ownership: bool = False
     jobs_scheduler_lease_enabled: bool = True
     jobs_scheduler_lease_ttl_seconds: int = 120
     jobs_alert_interval_seconds: float = 60.0
@@ -180,9 +181,22 @@ def _oidc_fully_configured(settings: Settings) -> bool:
     )
 
 
+def scheduler_required_for_env(settings: Settings) -> bool:
+    """Whether this deployment must run the in-process scheduler."""
+    env = (settings.autopulse_env or "development").strip().lower()
+    if env not in {"staging", "production"}:
+        return False
+    return not settings.jobs_external_cron_ownership
+
+
 def validate_deployment_settings(settings: Settings) -> None:
     """Raise ``ValueError`` when production invariants are violated."""
     env = (settings.autopulse_env or "development").strip().lower()
+    if scheduler_required_for_env(settings) and not settings.jobs_enable_scheduler:
+        raise ValueError(
+            "JOBS_ENABLE_SCHEDULER must be true when AUTOPULSE_ENV is staging/production unless "
+            "JOBS_EXTERNAL_CRON_OWNERSHIP=true is explicitly set and documented"
+        )
     if env != "production":
         return
     if settings.dashboard_auth_magic_link_dev_expose_token:
@@ -807,6 +821,7 @@ def get_settings() -> Settings:
         ),
         logs_query_max_window_minutes=_env_int("LOGS_QUERY_MAX_WINDOW_MINUTES", 1440, minimum=1),
         jobs_enable_scheduler=jobs_enable_scheduler,
+        jobs_external_cron_ownership=_env_bool("JOBS_EXTERNAL_CRON_OWNERSHIP", False),
         jobs_scheduler_lease_enabled=_env_bool("JOBS_SCHEDULER_LEASE_ENABLED", True),
         jobs_scheduler_lease_ttl_seconds=_env_int(
             "JOBS_SCHEDULER_LEASE_TTL_SECONDS",

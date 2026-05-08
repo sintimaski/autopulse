@@ -4,9 +4,10 @@ import asyncio
 import secrets
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from autopulse_backend.core.config import get_settings
+from autopulse_backend.core.config import get_settings, scheduler_required_for_env
 from autopulse_backend.database import get_engine
 from autopulse_backend.metrics import service_metrics
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync
@@ -16,6 +17,70 @@ from autopulse_backend.services.event_store import (
 )
 
 router = APIRouter(tags=["system"])
+
+
+def _scheduler_running(scheduler: object) -> bool:
+    return bool(
+        scheduler is not None
+        and isinstance(getattr(scheduler, "tasks", None), list)
+        and any(isinstance(task, asyncio.Task) and not task.done() for task in scheduler.tasks)
+    )
+
+
+def _topology_guardrail_status(
+    *,
+    autopulse_env: str,
+    scheduler_running: bool,
+    jobs_enable_scheduler: bool,
+    scheduler_required: bool,
+    dashboard_realtime_bus_backend: str,
+) -> dict[str, object]:
+    findings: list[dict[str, str]] = []
+    if scheduler_required and not jobs_enable_scheduler:
+        findings.append(
+            {
+                "severity": "unsafe",
+                "code": "scheduler-required-env-without-in-process-scheduler",
+                "message": (
+                    "set JOBS_ENABLE_SCHEDULER=true or document external cron ownership "
+                    "(JOBS_EXTERNAL_CRON_OWNERSHIP=true)"
+                ),
+            }
+        )
+    elif scheduler_required and not scheduler_running:
+        findings.append(
+            {
+                "severity": "risky",
+                "code": "scheduler-required-env-scheduler-not-running",
+                "message": (
+                    "scheduler is required for this environment but no scheduler tasks are running"
+                ),
+            }
+        )
+    env = (autopulse_env or "development").strip().lower()
+    if env in {"staging", "production"} and dashboard_realtime_bus_backend == "none":
+        findings.append(
+            {
+                "severity": "risky",
+                "code": "realtime-bus-none",
+                "message": (
+                    "multi-instance deployments must validate websocket stickiness "
+                    "or dedicated ws routing when DASHBOARD_REALTIME_BUS_BACKEND=none"
+                ),
+            }
+        )
+    unsafe_count = sum(1 for finding in findings if finding["severity"] == "unsafe")
+    risky_count = sum(1 for finding in findings if finding["severity"] == "risky")
+    status = "healthy" if not findings else "degraded"
+    reasons = [f"{finding['severity']}:{finding['code']}" for finding in findings]
+    return {
+        "status": status,
+        "scheduler_required": scheduler_required,
+        "unsafe_count": unsafe_count,
+        "risky_count": risky_count,
+        "reasons": reasons,
+        "findings": findings,
+    }
 
 
 def _require_internal_metrics_access(request: Request) -> None:
@@ -110,10 +175,13 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     realtime_bus_subscriber_running = (
         isinstance(realtime_bus_task, asyncio.Task) and not realtime_bus_task.done()
     )
-    scheduler_running = bool(
-        scheduler is not None
-        and isinstance(getattr(scheduler, "tasks", None), list)
-        and any(isinstance(task, asyncio.Task) and not task.done() for task in scheduler.tasks)
+    scheduler_running = _scheduler_running(scheduler)
+    topology_guardrails = _topology_guardrail_status(
+        autopulse_env=settings.autopulse_env,
+        scheduler_running=scheduler_running,
+        jobs_enable_scheduler=settings.jobs_enable_scheduler,
+        scheduler_required=scheduler_required_for_env(settings),
+        dashboard_realtime_bus_backend=settings.dashboard_realtime_bus_backend,
     )
     retention_pressure_poll_running = bool(
         pressure is not None
@@ -160,6 +228,7 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         "scheduler_running": scheduler_running,
         "retention_pressure_poll_running": retention_pressure_poll_running,
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
         "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
         "jobs_retention_interval_seconds": settings.jobs_retention_interval_seconds,
         "event_store": settings.event_store,
@@ -170,9 +239,11 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
             "event_store": settings.event_store,
             "event_plane_mode": settings.event_plane_mode,
             "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+            "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
             "dashboard_auth_enabled": settings.dashboard_auth_enabled,
             "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
         },
+        "topology_guardrails": topology_guardrails,
         "ingest_pressure": _build_ingest_pressure_view(counters),
         "ingest_aggregate_queue": {
             "enabled": settings.ingest_async_aggregate_enabled,
@@ -209,6 +280,7 @@ async def health() -> dict[str, str]:
 async def ready(request: Request) -> dict[str, object]:
     settings = get_settings()
     scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
+    scheduler_running = _scheduler_running(scheduler)
     engine = get_engine(settings.database_url)
     try:
         async with engine.connect() as connection:
@@ -232,23 +304,30 @@ async def ready(request: Request) -> dict[str, object]:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="DuckDB event store ping failed",
             ) from exc
-    return {
-        "status": "ready",
+    topology_guardrails = _topology_guardrail_status(
+        autopulse_env=settings.autopulse_env,
+        scheduler_running=scheduler_running,
+        jobs_enable_scheduler=settings.jobs_enable_scheduler,
+        scheduler_required=scheduler_required_for_env(settings),
+        dashboard_realtime_bus_backend=settings.dashboard_realtime_bus_backend,
+    )
+    payload = {
         "autopulse_env": settings.autopulse_env,
         "event_plane_mode": settings.event_plane_mode,
         "dashboard_auth_enabled": settings.dashboard_auth_enabled,
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
-        "scheduler_running": bool(
-            scheduler is not None
-            and isinstance(getattr(scheduler, "tasks", None), list)
-            and any(
-                isinstance(task, asyncio.Task) and not task.done()
-                for task in getattr(scheduler, "tasks", [])
-            )
-        ),
+        "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
+        "scheduler_running": scheduler_running,
         "database_run_migrations_on_startup": settings.database_run_migrations_on_startup,
         "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
+        "topology_guardrails": topology_guardrails,
     }
+    if topology_guardrails["status"] != "healthy":
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "degraded", **payload},
+        )
+    return {"status": "ready", **payload}
 
 
 @router.get("/internal/metrics")

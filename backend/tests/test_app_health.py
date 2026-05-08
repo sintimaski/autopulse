@@ -4,6 +4,7 @@ import os
 
 from fastapi.testclient import TestClient
 
+from autopulse_backend.api.routes.health import _topology_guardrail_status
 from autopulse_backend.app import create_app
 
 
@@ -28,8 +29,10 @@ def test_ready_endpoint_returns_ready_when_database_is_available(
     assert "event_plane_mode" in body
     assert "dashboard_auth_enabled" in body
     assert "jobs_enable_scheduler" in body
+    assert "jobs_external_cron_ownership" in body
     assert "scheduler_running" in body
     assert "database_run_migrations_on_startup" in body
+    assert "topology_guardrails" in body
 
 
 def test_internal_metrics_includes_ingest_pressure_view(
@@ -53,10 +56,14 @@ def test_internal_metrics_includes_ingest_pressure_view(
         "event_store",
         "event_plane_mode",
         "jobs_enable_scheduler",
+        "jobs_external_cron_ownership",
         "dashboard_auth_enabled",
         "dashboard_realtime_bus_backend",
     ):
         assert field in topology, f"missing topology field: {field}"
+    assert "topology_guardrails" in body
+    assert "scheduler_required" in body["topology_guardrails"]
+    assert "reasons" in body["topology_guardrails"]
     pressure = body["ingest_pressure"]
     for field in (
         "accepted_events_total",
@@ -92,3 +99,57 @@ def test_internal_metrics_includes_ingest_pressure_view(
     assert "object_storage_prefix" in body["parquet_export"]
     assert "object_storage_verify_upload" in body["parquet_export"]
     assert "object_storage_restore_root" in body["parquet_export"]
+
+
+def test_topology_guardrail_status_degraded_when_scheduler_required_but_not_running() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="production",
+        scheduler_running=False,
+        jobs_enable_scheduler=True,
+        scheduler_required=True,
+        dashboard_realtime_bus_backend="postgres_notify",
+    )
+    assert status["status"] == "degraded"
+    assert "risky:scheduler-required-env-scheduler-not-running" in status["reasons"]
+    assert status["risky_count"] >= 1
+
+
+def test_topology_guardrail_status_degraded_when_scheduler_required_but_disabled() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="staging",
+        scheduler_running=False,
+        jobs_enable_scheduler=False,
+        scheduler_required=True,
+        dashboard_realtime_bus_backend="postgres_notify",
+    )
+    assert status["status"] == "degraded"
+    assert any(
+        r == "unsafe:scheduler-required-env-without-in-process-scheduler" for r in status["reasons"]
+    )
+    assert status["unsafe_count"] >= 1
+
+
+def test_topology_guardrail_status_flags_realtime_risk_for_staging_without_shared_bus() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="staging",
+        scheduler_running=True,
+        jobs_enable_scheduler=True,
+        scheduler_required=True,
+        dashboard_realtime_bus_backend="none",
+    )
+    assert status["status"] == "degraded"
+    assert "risky:realtime-bus-none" in status["reasons"]
+    assert status["risky_count"] >= 1
+
+
+def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="development",
+        scheduler_running=False,
+        jobs_enable_scheduler=False,
+        scheduler_required=False,
+        dashboard_realtime_bus_backend="none",
+    )
+    assert status["status"] == "healthy"
+    assert status["unsafe_count"] == 0
+    assert status["risky_count"] == 0

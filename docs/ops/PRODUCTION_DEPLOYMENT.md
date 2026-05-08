@@ -116,7 +116,7 @@ Validate in staging: issue a real dashboard login and one SDK ingest batch throu
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /health` | Process liveness (does **not** prove database connectivity). |
-| `GET /ready` | Database (+ DuckDB when configured) readiness for traffic. |
+| `GET /ready` | Database (+ DuckDB when configured) readiness for traffic, plus scheduler guardrail status in staging/production profiles. |
 
 **Load balancer:** Prefer `/ready` for readiness probes when the data plane must be available. See [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md) for `/ready` scope (e.g. SMTP/OIDC not fully validated here).
 
@@ -134,7 +134,8 @@ Set these explicitly in production deployment config (do not rely on implicit lo
 - `AUTOPULSE_ENV=production`
 - `AUTOPULSE_EVENT_STORE=duckdb`
 - `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`
-- `JOBS_ENABLE_SCHEDULER=true` (or documented external cron ownership)
+- `JOBS_ENABLE_SCHEDULER=true` (recommended default)
+- If scheduler is intentionally externalized, set `JOBS_EXTERNAL_CRON_OWNERSHIP=true` and document the external cron owner/runbook.
 - `DASHBOARD_AUTH_ENABLED=true`
 - `DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true`
 - `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` for multi-replica Postgres deployments; otherwise explicitly set `none` with sticky WS/single WS routing policy documented.
@@ -147,7 +148,7 @@ Staging evidence before go-live:
    - `jobs_enable_scheduler`
    - `dashboard_auth_enabled`
    - `dashboard_realtime_bus_backend`
-3. Capture `/ready` confirming `autopulse_env`, `event_plane_mode`, scheduler status, and realtime backend.
+3. Capture `/ready` confirming `autopulse_env`, `event_plane_mode`, scheduler status, realtime backend, and `topology_guardrails.status=healthy`.
 
 ## 5. Jobs, retention, and aggregation
 
@@ -156,6 +157,7 @@ Staging evidence before go-live:
 - For non-default SQLite paths and Postgres metadata, treat missing scheduler as a release **No-Go** unless you run equivalent external cron jobs for alerts/retention.
 - Validate scheduler state after deploy:
   - `GET /ready` should report `jobs_enable_scheduler=true` and `scheduler_running=true` (or your documented external-cron mode).
+  - In staging/production profiles, `/ready` now returns `503` with `status=degraded` when topology guardrails fail (`topology_guardrails.findings` explains unsafe/risky causes).
   - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
 - SQL-tail repair queue (DuckDB authoritative ingest):
@@ -246,8 +248,9 @@ Monitor at minimum:
 | Signal | Where |
 |--------|--------|
 | Ingest accepted / rejected | `/internal/metrics` or `/metrics` (bearer-gated) — counters such as `ingest.accepted.*`, `ingest.rejected.*`, `ingest.rate_limit.distributed_fallback` |
-| Ingest pressure | `GET /ready` JSON `ingest_pressure` (queue depth, sync fallback, worker failures) |
+| Ingest pressure | `GET /internal/metrics` JSON `ingest_pressure` (queue depth, sync fallback, worker failures) |
 | Scheduler | Job telemetry from internal metrics + logs |
+| Topology guardrails | `GET /ready` + `GET /internal/metrics` `topology_guardrails` (`status`, `unsafe_count`, `risky_count`, `findings`) |
 
 Tune alerts on **ingest 429 rate**, **aggregate worker dead-letter growth**, and **dashboard `/ready` failures**.
 
