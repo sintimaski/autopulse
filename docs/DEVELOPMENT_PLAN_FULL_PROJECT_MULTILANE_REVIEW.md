@@ -485,9 +485,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: staged rollout by environment.
 - **State / progress tracking:**
-  - Status: In progress
-  - % complete: 70
-  - Last update: 2026-05-08 (production startup validation now also requires HTTPS ingest and an internal metrics bearer token, in addition to dashboard auth guardrails; deployment-setting regression tests and ops docs updated)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-08 (completed production security posture pass with enforced dashboard/ingest guardrails: fallback/CORS/TTL/HTTPS/token checks, https URL validation for magic-link and OIDC redirect settings, documented secret rotation + MVP audit logging policy, and deployment-setting regression coverage)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `agents/security-privacy.md`
 - **References / examples:** `backend/src/autopulse_backend/app.py`, `backend/src/autopulse_backend/auth/dashboard_security.py`

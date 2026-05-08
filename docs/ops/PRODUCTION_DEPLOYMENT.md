@@ -51,6 +51,7 @@ Production startup validation enforces `INGEST_REQUIRE_HTTPS=true` and requires 
 - `CORS_ALLOW_ORIGINS` must be explicit in production dashboard-auth mode (wildcard `*` is rejected by startup validation).
 - `DASHBOARD_AUTH_SESSION_TTL_MINUTES` must be at least `30` in production dashboard-auth mode (validated at startup); keep shorter TTLs for staging/dev only.
 - `DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES` must stay within `5..30` in production dashboard-auth mode (validated at startup) to limit replay window while preserving usability.
+- `DASHBOARD_AUTH_MAGIC_LINK_BASE_URL` and `DASHBOARD_OIDC_REDIRECT_URI` (when set) must use `https` in production dashboard-auth mode (validated at startup).
 
 ## 2.1 Dashboard auth modes (production)
 
@@ -115,6 +116,20 @@ Route **all browser and SDK traffic through TLS** at the edge. The backend relie
 | Session works over HTTP in prod | TLS not enforced at edge or scheme forwarded as `http`. |
 
 Validate in staging: issue a real dashboard login and one SDK ingest batch through the **same** LB/proxy path you use in production; confirm `GET /ready` is healthy and `/internal/metrics` `ingest_pressure` shows no unexpected `non_https_rejected_total` spikes.
+
+### 2.3 Secret rotation and MVP audit logging policy
+
+Use this as the minimum production policy (MVP scope, not enterprise audit platform):
+
+- Rotate and verify these secrets on a regular cadence and after suspected compromise:
+  - project API keys (`/dashboard/auth/api-keys/*`)
+  - `INTERNAL_METRICS_BEARER_TOKEN`
+  - OIDC client secret (`DASHBOARD_OIDC_CLIENT_SECRET`) where OIDC mode is used
+  - SMTP/webhook credentials used for alerts
+- Keep API key lifecycle owner/admin-only and use issue/rotate/revoke flows rather than manual DB edits.
+- Governance audit events are emitted for API key lifecycle actions (`api_key_issued`, `api_key_rotated`, `api_key_revoked`) via `governance_audit_events`.
+- MVP audit logs should include actor, action, target, and project/org context; they must not include raw API key values, magic-link tokens, request payload bodies, or other PII-heavy blobs.
+- Retention pointer: align operational retention of governance audit rows with your metadata DB backup/retention policy (MVP does not provide a separate enterprise audit retention product).
 
 ## 3. Health checks and load balancers
 

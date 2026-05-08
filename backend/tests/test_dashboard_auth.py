@@ -132,6 +132,25 @@ def _truncate_tables(database_url: str) -> None:
     asyncio.run(run())
 
 
+def _list_governance_audit_events(database_url: str) -> list[dict[str, object]]:
+    async def run() -> list[dict[str, object]]:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT action, target_type, target_id, detail "
+                        "FROM governance_audit_events ORDER BY id"
+                    )
+                )
+                return [dict(row) for row in result.mappings().all()]
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
 def _extract_magic_link_token_from_outbox(tmp_path) -> str:
     """Decode MIME so quoted-printable outbox tokens are not truncated at ``=`` or soft breaks."""
     outbox_files = list(tmp_path.glob("*.eml"))
@@ -739,6 +758,59 @@ def test_dashboard_api_key_lifecycle_owner_flow(
         assert revoke_response.status_code == 200
         assert revoke_response.json()["key_id"] == replacement
         assert revoke_response.json()["revoked_at"] is not None
+
+
+def test_dashboard_api_key_lifecycle_emits_governance_audit_events(
+    backend_test_database_url: str,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="owner@example.com", tmp_path=tmp_path)
+        verify_response = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify_response.status_code == 200
+
+        issue = client.post("/dashboard/auth/api-keys/issue")
+        assert issue.status_code == 200
+        issued_key_id = issue.json()["key_id"]
+        issued_raw_key = issue.json()["api_key"]
+
+        rotate = client.post(
+            "/dashboard/auth/api-keys/rotate",
+            json={"key_id": issued_key_id},
+        )
+        assert rotate.status_code == 200
+        replacement_key_id = rotate.json()["replacement_key_id"]
+        replacement_raw_key = rotate.json()["replacement_api_key"]
+
+        revoke = client.post(
+            "/dashboard/auth/api-keys/revoke",
+            json={"key_id": replacement_key_id},
+        )
+        assert revoke.status_code == 200
+
+    events = _list_governance_audit_events(backend_test_database_url)
+    assert [event["action"] for event in events] == [
+        "api_key_issued",
+        "api_key_rotated",
+        "api_key_revoked",
+    ]
+    for event in events:
+        assert event["target_type"] == "api_key"
+        detail = event.get("detail") if isinstance(event.get("detail"), dict) else {}
+        detail_text = str(detail)
+        # Audit trail should reference key ids/project scope, not raw API key material.
+        assert "ap_live_" not in detail_text
+        assert issued_raw_key not in detail_text
+        assert replacement_raw_key not in detail_text
 
 
 def test_dashboard_issue_key_syncs_env_autopulse_file(

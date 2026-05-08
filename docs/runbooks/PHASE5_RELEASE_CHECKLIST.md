@@ -4,6 +4,7 @@ Use this checklist before promoting any release-hardening changes.
 
 ## Auth and Governance
 
+- [ ] Production target configuration satisfies `validate_deployment_settings` (see `docs/ops/PRODUCTION_DEPLOYMENT.md` and `backend/tests/test_deployment_settings.py`).
 - [ ] Pre-go-live config verification captured from staging startup logs and `/internal/metrics` `topology_profile` (`event_plane_mode`, `jobs_enable_scheduler`, `dashboard_auth_enabled`, `dashboard_realtime_bus_backend`).
 - [ ] Dashboard session endpoint returns `project_id`, `organization_id`, and `membership_role`.
 - [ ] Owner/member authorization is enforced for organization governance endpoints.

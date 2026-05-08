@@ -227,6 +227,20 @@ def validate_deployment_settings(settings: Settings) -> None:
             "DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES must be <= 30 when AUTOPULSE_ENV=production "
             "and DASHBOARD_AUTH_ENABLED is true"
         )
+    if settings.dashboard_auth_magic_link_base_url:
+        parsed_magic_link_base = urlparse(settings.dashboard_auth_magic_link_base_url.strip())
+        if parsed_magic_link_base.scheme.lower() != "https":
+            raise ValueError(
+                "DASHBOARD_AUTH_MAGIC_LINK_BASE_URL must use https when AUTOPULSE_ENV=production "
+                "and DASHBOARD_AUTH_ENABLED is true"
+            )
+    if settings.dashboard_oidc_enabled and settings.dashboard_oidc_redirect_uri:
+        parsed_oidc_redirect = urlparse(settings.dashboard_oidc_redirect_uri.strip())
+        if parsed_oidc_redirect.scheme.lower() != "https":
+            raise ValueError(
+                "DASHBOARD_OIDC_REDIRECT_URI must use https when AUTOPULSE_ENV=production "
+                "and DASHBOARD_AUTH_ENABLED is true"
+            )
     if not settings.ingest_require_https:
         raise ValueError("INGEST_REQUIRE_HTTPS must be true when AUTOPULSE_ENV=production")
     if not (settings.internal_metrics_bearer_token or "").strip():

@@ -50,6 +50,13 @@ Parquet **object storage** with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI=s3://...` 
 
 See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.
 
+**Production:** startup applies `validate_deployment_settings` for `AUTOPULSE_ENV=production`. Follow `docs/ops/PRODUCTION_DEPLOYMENT.md` for enforced HTTPS ingest, internal metrics token, CORS, dashboard session/magic-link TTL, OIDC/magic-link URL schemes, and related constraints. Automated checks: `backend/tests/test_deployment_settings.py`.
+
+## Testing (backend)
+
+- Unit-style deployment guardrails: `uv run pytest backend/tests/test_deployment_settings.py`
+- Integration tests under `backend/tests/` that need a real DB URL skip unless `BACKEND_TEST_DATABASE_URL` is set (see `backend/tests/conftest.py`). Example: `export BACKEND_TEST_DATABASE_URL=sqlite+aiosqlite:////tmp/ap-test.db` then run targeted files such as `backend/tests/test_dashboard_auth.py`.
+
 ## Retention scheduling (FastAPI-optional)
 
 The portable unit of work is **one retention pass** (SQLite caps, time windows, aggregates trim):

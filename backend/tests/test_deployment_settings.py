@@ -147,6 +147,31 @@ def test_validate_deployment_settings_production_rejects_long_magic_link_ttl_whe
         validate_deployment_settings(s)
 
 
+def test_validate_deployment_settings_production_rejects_non_https_magic_link_base_url() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_magic_link_base_url="http://example.com/auth/magic-link",
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_AUTH_MAGIC_LINK_BASE_URL"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_production_rejects_non_https_oidc_redirect_uri() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_oidc_enabled=True,
+        dashboard_oidc_issuer_url="https://idp.example.com",
+        dashboard_oidc_client_id="client",
+        dashboard_oidc_client_secret="secret",
+        dashboard_oidc_redirect_uri="http://app.example.com/callback",
+        dashboard_oidc_state_secret="state-secret",
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_OIDC_REDIRECT_URI"):
+        validate_deployment_settings(s)
+
+
 def test_validate_deployment_settings_production_rejects_ingest_https_off() -> None:
     s = replace(
         _production_dashboard_base(),
@@ -212,6 +237,16 @@ def test_validate_deployment_settings_staging_allows_ingest_https_off() -> None:
         autopulse_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         ingest_require_https=False,
+    )
+    validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_staging_allows_non_https_magic_link_base_url() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_magic_link_base_url="http://staging.example.com/auth/magic-link",
     )
     validate_deployment_settings(s)
 
