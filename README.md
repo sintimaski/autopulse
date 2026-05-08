@@ -1,6 +1,12 @@
 # AutoPulse 🚀
 
-> ⚡ FastAPI observability you can wire up in minutes, with enough depth for serious backends when you grow into it.
+> ⚡ Observability in minutes for FastAPI: know what broke, when, and why.
+
+### Why teams pick AutoPulse
+
+- **Instant observability:** one middleware call gives you request + error visibility without blocking app traffic.
+- **Custom widgets that matter:** ship your own cards and charts next to built-in diagnostics so business and system signals live together.
+- **Full control over your system:** run the whole stack yourself and tune storage, auth, retention, alerts, and dashboard behavior to fit your environment.
 
 **AutoPulse** is an opinionated stack for Python teams: SDK middleware captures requests and errors without blocking your app; a backend ingests and stores high-volume telemetry; the dashboard favors quick answers—what broke, when it broke, and what traffic surrounded it—over building your own Grafana.
 
