@@ -12,6 +12,7 @@ from autopulse_backend.core.config import (
     get_settings,
     redact_database_url_for_log,
     resolve_autopulse_data_root,
+    scheduler_required_for_env,
 )
 from autopulse_backend.database import get_engine, warm_database_connections
 from autopulse_backend.jobs import (
@@ -43,6 +44,14 @@ from autopulse_backend.services.ingest_aggregate_worker import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _scheduler_handle_running(scheduler: object) -> bool:
+    return bool(
+        isinstance(scheduler, SchedulerHandle)
+        and isinstance(scheduler.tasks, list)
+        and any(isinstance(task, asyncio.Task) and not task.done() for task in scheduler.tasks)
+    )
 
 
 def _ensure_autopulse_backend_logging() -> None:
@@ -238,6 +247,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 "SQLite under .autopulse/ (autopulse.db or autopulse_embedded.db) for "
                 "automatic retention)"
             )
+    if scheduler_required_for_env(settings) and not _scheduler_handle_running(
+        app.state._autopulse_scheduler
+    ):
+        scheduler = app.state._autopulse_scheduler
+        if isinstance(scheduler, SchedulerHandle):
+            await scheduler.stop()
+        app.state._autopulse_scheduler = None
+        raise RuntimeError(
+            "Unsafe topology: scheduler is required for this environment but did not start; "
+            "failing startup"
+        )
     if settings.ingest_async_aggregate_enabled:
         app.state._autopulse_ingest_aggregate_worker = start_ingest_aggregate_worker(settings)
     else:

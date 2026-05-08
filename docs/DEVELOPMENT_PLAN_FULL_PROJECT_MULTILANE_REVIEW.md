@@ -393,8 +393,8 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - If partial/no, guardrails required: migration toggles documented.
 - **State / progress tracking:**
   - Status: In progress
-  - % complete: 55
-  - Last update: 2026-05-08 (guardrail increment: explicit unsafe/risky topology classification in `/ready` + realtime risk signaling + tests/docs)
+  - % complete: 70
+  - Last update: 2026-05-08 (guardrail increment: required-scheduler startup now hard-fails in staging/production when scheduler tasks do not start; adds regression test and ops docs)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - **References / examples:** `backend/src/autopulse_backend/core/config.py`, `backend/src/autopulse_backend/lifespan.py`

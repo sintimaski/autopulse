@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import os
 
+import pytest
 from fastapi.testclient import TestClient
 
 from autopulse_backend.api.routes.health import _topology_guardrail_status
 from autopulse_backend.app import create_app
+from autopulse_backend.jobs import SchedulerHandle
 
 
 def test_health_endpoint_returns_ok(backend_test_database_url: str) -> None:
@@ -153,3 +156,21 @@ def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() 
     assert status["status"] == "healthy"
     assert status["unsafe_count"] == 0
     assert status["risky_count"] == 0
+
+
+def test_startup_hard_fails_when_required_scheduler_does_not_start(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTOPULSE_ENV", "staging")
+    monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "true")
+    monkeypatch.setenv("JOBS_EXTERNAL_CRON_OWNERSHIP", "false")
+    monkeypatch.setattr(
+        "autopulse_backend.lifespan.start_scheduler",
+        lambda settings: SchedulerHandle(stop_event=asyncio.Event(), tasks=[]),
+    )
+    app = create_app()
+    with (
+        pytest.raises(RuntimeError, match="Unsafe topology: scheduler is required"),
+        TestClient(app),
+    ):
+        pass
