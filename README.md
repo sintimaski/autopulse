@@ -4,6 +4,10 @@
 
 **AutoPulse** is an opinionated stack for Python teams: SDK middleware captures requests and errors without blocking your app; a backend ingests and stores high-volume telemetry; the dashboard favors quick answers—what broke, when it broke, and what traffic surrounded it—over building your own Grafana.
 
+
+<img width="1440" height="813" alt="image" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" />
+
+
 📊 You can also **ship custom dashboard panels from your app**: define cards, line charts, bar charts, donuts, histograms, scatter plots, and stacked areas in code (`dashboard_widgets=...` on `autopulse()`), and they appear beside the built-in views—useful for SLIs, business counters, or anything you want operators to see next to requests and errors.
 
 🛡️ Ship a working setup fast; keep **sampling**, **privacy controls**, **dashboard auth** (magic link, domains, OIDC), **multi-channel alerting**, **DuckDB-backed event storage**, and **optional host metrics** in your back pocket for larger installs.
