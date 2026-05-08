@@ -486,8 +486,8 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - If partial/no, guardrails required: staged rollout by environment.
 - **State / progress tracking:**
   - Status: In progress
-  - % complete: 34
-  - Last update: 2026-05-08 (production startup validation now rejects dashboard API-key fallback and wildcard CORS when dashboard auth is enabled; added deployment-setting regression tests and ops docs alignment)
+  - % complete: 70
+  - Last update: 2026-05-08 (production startup validation now also requires HTTPS ingest and an internal metrics bearer token, in addition to dashboard auth guardrails; deployment-setting regression tests and ops docs updated)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `agents/security-privacy.md`
 - **References / examples:** `backend/src/autopulse_backend/app.py`, `backend/src/autopulse_backend/auth/dashboard_security.py`

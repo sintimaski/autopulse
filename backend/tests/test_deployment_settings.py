@@ -26,6 +26,7 @@ def _production_dashboard_base() -> Settings:
         dashboard_oidc_redirect_uri=None,
         dashboard_oidc_state_secret=None,
         dashboard_enforce_origin_for_mutations=True,
+        internal_metrics_bearer_token="prod-metrics-token",
     )
 
 
@@ -114,6 +115,58 @@ def test_validate_deployment_settings_production_rejects_wildcard_cors_when_auth
         validate_deployment_settings(s)
 
 
+def test_validate_deployment_settings_production_rejects_short_session_ttl_when_auth_on() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_session_ttl_minutes=15,
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_AUTH_SESSION_TTL_MINUTES"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_production_rejects_short_magic_link_ttl_when_auth_on() -> (
+    None
+):
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_magic_link_ttl_minutes=3,
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_production_rejects_long_magic_link_ttl_when_auth_on() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_magic_link_ttl_minutes=45,
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_production_rejects_ingest_https_off() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        ingest_require_https=False,
+    )
+    with pytest.raises(ValueError, match="INGEST_REQUIRE_HTTPS"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_production_requires_internal_metrics_token() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        internal_metrics_bearer_token=None,
+    )
+    with pytest.raises(ValueError, match="INTERNAL_METRICS_BEARER_TOKEN"):
+        validate_deployment_settings(s)
+
+
 def test_validate_deployment_settings_production_skips_dashboard_rules_when_auth_off() -> None:
     s = replace(
         _production_dashboard_base(),
@@ -129,6 +182,36 @@ def test_validate_deployment_settings_staging_allows_api_key_fallback() -> None:
         autopulse_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         dashboard_auth_allow_api_key_fallback=True,
+    )
+    validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_staging_allows_short_session_ttl() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_session_ttl_minutes=15,
+    )
+    validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_staging_allows_short_magic_link_ttl() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_magic_link_ttl_minutes=3,
+    )
+    validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_staging_allows_ingest_https_off() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        dashboard_auth_allowed_email="ops@example.com",
+        ingest_require_https=False,
     )
     validate_deployment_settings(s)
 

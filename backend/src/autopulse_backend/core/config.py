@@ -212,6 +212,25 @@ def validate_deployment_settings(settings: Settings) -> None:
             "DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK must be false when AUTOPULSE_ENV=production "
             "and DASHBOARD_AUTH_ENABLED is true"
         )
+    if settings.dashboard_auth_session_ttl_minutes < 30:
+        raise ValueError(
+            "DASHBOARD_AUTH_SESSION_TTL_MINUTES must be >= 30 when AUTOPULSE_ENV=production "
+            "and DASHBOARD_AUTH_ENABLED is true"
+        )
+    if settings.dashboard_auth_magic_link_ttl_minutes < 5:
+        raise ValueError(
+            "DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES must be >= 5 when AUTOPULSE_ENV=production "
+            "and DASHBOARD_AUTH_ENABLED is true"
+        )
+    if settings.dashboard_auth_magic_link_ttl_minutes > 30:
+        raise ValueError(
+            "DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES must be <= 30 when AUTOPULSE_ENV=production "
+            "and DASHBOARD_AUTH_ENABLED is true"
+        )
+    if not settings.ingest_require_https:
+        raise ValueError("INGEST_REQUIRE_HTTPS must be true when AUTOPULSE_ENV=production")
+    if not (settings.internal_metrics_bearer_token or "").strip():
+        raise ValueError("INTERNAL_METRICS_BEARER_TOKEN must be set when AUTOPULSE_ENV=production")
     if any(origin.strip() == "*" for origin in settings.cors_allow_origins):
         raise ValueError(
             "CORS_ALLOW_ORIGINS must not include '*' when AUTOPULSE_ENV=production "

@@ -41,12 +41,16 @@ Operational assumptions for this embedded mode:
 2. Never commit real secrets. Use your platform’s secret manager for `DATABASE_URL`, OIDC client secrets, SMTP, and `INTERNAL_METRICS_BEARER_TOKEN`.
 3. **SDK (remote ingest):** set `AUTOPULSE_API_KEY` and `AUTOPULSE_INGEST_URL`. Production-safe capture defaults are **off** for full headers/query strings unless you opt in (`capture_headers` / `capture_query_params` or `AUTOPULSE_CAPTURE_HEADERS` / `AUTOPULSE_CAPTURE_QUERY_PARAMS`). See [sdk/README.md](../../sdk/README.md).
 
+Production startup validation enforces `INGEST_REQUIRE_HTTPS=true` and requires `INTERNAL_METRICS_BEARER_TOKEN` to be set.
+
 ### Internal metrics auth boundary
 
 - `GET /internal/metrics` and `/metrics` are guarded by `INTERNAL_METRICS_BEARER_TOKEN` (operator token).
 - Dashboard auth credentials (session cookie or dashboard API key fallback when explicitly enabled) do **not** authorize `/internal/metrics`.
 - `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK=true` is rejected by production startup validation when dashboard auth is enabled; keep it false in production.
 - `CORS_ALLOW_ORIGINS` must be explicit in production dashboard-auth mode (wildcard `*` is rejected by startup validation).
+- `DASHBOARD_AUTH_SESSION_TTL_MINUTES` must be at least `30` in production dashboard-auth mode (validated at startup); keep shorter TTLs for staging/dev only.
+- `DASHBOARD_AUTH_MAGIC_LINK_TTL_MINUTES` must stay within `5..30` in production dashboard-auth mode (validated at startup) to limit replay window while preserving usability.
 
 ## 2.1 Dashboard auth modes (production)
 
