@@ -21,14 +21,30 @@ The name **`autopulse`** on PyPI is **already taken** by an unrelated package (s
 
 ## GitHub Actions (trusted publishing)
 
-1. On **PyPI** → each project → **Publishing** → **Add a pending publisher** (GitHub → this repository → workflow file → optional `pypi` environment).
-2. On **GitHub** → **Settings → Environments** → create **`pypi`** if the workflow uses it for protection rules.
-3. Merge to **`main`** with a **version bump** when you want a release (workflows skip upload if that version already exists on PyPI).
+1. On **PyPI** → **each** PyPI project (`autopulse-api` and `autopulse-sdk` are separate) → **Publishing** → **Add a pending trusted publisher** → choose **GitHub** as the publisher.
+2. Fill fields so they **exactly** match what GitHub puts in the OIDC token (see [PyPI troubleshooting](https://docs.pypi.org/trusted-publishers/troubleshooting/)):
+   - **Repository:** `sintimaski/autopulse` (owner + repo name, no `https://`).
+   - **Workflow name:** the path **inside the repo**, e.g. `.github/workflows/publish-autopulse-api-pypi.yml` — **not** the SDK workflow unless you are configuring the `autopulse-sdk` project.
+   - **Environment name:** `pypi` — required because both publish workflows set `jobs.<id>.environment.name: pypi`. If you leave this blank on PyPI while the workflow uses an environment, you get **`invalid-publisher`**. If you prefer **no** GitHub Environment, remove the `environment:` block from the workflow and register the publisher **without** an environment (then claims will not include `environment:pypi`).
+3. On **GitHub** → **Settings → Environments** → create **`pypi`** and allow the default branch (or leave unrestricted) so the workflow can acquire `id-token: write` in that environment.
+4. Merge to **`main`** with a **version bump** when you want a release (workflows skip upload if that version already exists on PyPI).
 
-| Workflow file | Publishes |
-|---------------|-----------|
-| [`.github/workflows/publish-autopulse-api-pypi.yml`](../../.github/workflows/publish-autopulse-api-pypi.yml) | **`autopulse-api`** — builds `frontend/out`, then `uv build backend` |
-| [`.github/workflows/publish-autopulse-sdk-pypi.yml`](../../.github/workflows/publish-autopulse-sdk-pypi.yml) | **`autopulse-sdk`** |
+| Workflow file | PyPI project | Publisher must use this workflow path |
+|----------------|--------------|----------------------------------------|
+| [`.github/workflows/publish-autopulse-api-pypi.yml`](../../.github/workflows/publish-autopulse-api-pypi.yml) | **`autopulse-api`** | `.github/workflows/publish-autopulse-api-pypi.yml` + environment **`pypi`** |
+| [`.github/workflows/publish-autopulse-sdk-pypi.yml`](../../.github/workflows/publish-autopulse-sdk-pypi.yml) | **`autopulse-sdk`** | `.github/workflows/publish-autopulse-sdk-pypi.yml` + environment **`pypi`** |
+
+### `invalid-publisher` / “no corresponding publisher”
+
+If the action logs show **`invalid-publisher`** and a claim like:
+
+`workflow_ref`: `sintimaski/autopulse/.github/workflows/publish-autopulse-api-pypi.yml@refs/heads/main`
+
+`environment`: `pypi`
+
+then **PyPI’s pending publisher for `autopulse-api` must list that exact workflow filename** (the API workflow was added/renameed separately from the SDK one). A publisher registered only for `publish-autopulse-sdk-pypi.yml` **does not** satisfy uploads from `publish-autopulse-api-pypi.yml`.
+
+**Fix:** On https://pypi.org/manage/project/autopulse-api/settings/publishing/ add **another** pending trusted publisher (or edit the existing one) with workflow **`.github/workflows/publish-autopulse-api-pypi.yml`** and environment **`pypi`**, save, then re-run the failed GitHub Action.
 
 ## Manual dry-run (local)
 
