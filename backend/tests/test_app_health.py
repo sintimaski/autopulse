@@ -58,6 +58,7 @@ def test_internal_metrics_includes_ingest_pressure_view(
     for field in (
         "event_store",
         "event_plane_mode",
+        "duckdb_single_writer_profile",
         "jobs_enable_scheduler",
         "jobs_external_cron_ownership",
         "dashboard_auth_enabled",

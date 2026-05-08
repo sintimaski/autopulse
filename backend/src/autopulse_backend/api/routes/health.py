@@ -275,6 +275,7 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         "topology_profile": {
             "event_store": settings.event_store,
             "event_plane_mode": settings.event_plane_mode,
+            "duckdb_single_writer_profile": settings.event_store_duckdb_single_writer_profile,
             "jobs_enable_scheduler": settings.jobs_enable_scheduler,
             "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
             "dashboard_auth_enabled": settings.dashboard_auth_enabled,

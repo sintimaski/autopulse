@@ -28,6 +28,7 @@ class Settings:
     database_url: str
     event_store: str
     event_store_duckdb_path: str
+    event_store_duckdb_single_writer_profile: bool = False
     cors_allow_origins: tuple[str, ...] = ()
     event_plane_mode: str = "duckdb_single_writer"
     event_plane_shards_path: str = "./.autopulse/events-log"
@@ -196,6 +197,17 @@ def validate_deployment_settings(settings: Settings) -> None:
         raise ValueError(
             "JOBS_ENABLE_SCHEDULER must be true when AUTOPULSE_ENV is staging/production unless "
             "JOBS_EXTERNAL_CRON_OWNERSHIP=true is explicitly set and documented"
+        )
+    if (
+        env == "production"
+        and settings.event_store == "duckdb"
+        and settings.event_plane_mode == "duckdb_single_writer"
+        and not settings.event_store_duckdb_single_writer_profile
+    ):
+        raise ValueError(
+            "AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE must be true when "
+            "AUTOPULSE_ENV=production uses AUTOPULSE_EVENT_STORE=duckdb with "
+            "AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer"
         )
     if env != "production":
         return
@@ -618,6 +630,10 @@ def get_settings() -> Settings:
         event_store=event_store,
         event_plane_mode=event_plane_mode,
         event_store_duckdb_path=event_store_duckdb_path,
+        event_store_duckdb_single_writer_profile=_env_bool(
+            "AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE",
+            False,
+        ),
         event_plane_shards_path=event_plane_shards_path,
         event_plane_snapshots_path=event_plane_snapshots_path,
         event_plane_shard_max_bytes=_env_int(

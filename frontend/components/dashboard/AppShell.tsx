@@ -3,40 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import {
-  Activity,
-  Bell,
-  Bookmark,
-  History,
-  LayoutDashboard,
-  LayoutGrid,
-  ListChecks,
-  PanelLeft,
-  PanelLeftClose,
-  RotateCw,
-  Settings,
-  Stethoscope,
-  ScrollText,
-} from "../../lib/icons";
+import { Activity, LayoutGrid, PanelLeft, PanelLeftClose, RotateCw } from "../../lib/icons";
 import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
+import { DASHBOARD_NAV_SECTIONS } from "./dashboardNavConfig";
 import { isApiSubpathDashboard } from "./dashboardTypes";
 
 const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
-
-type NavItem = { href: string; label: string; Icon: LucideIcon };
-
-/** Primary console IA: diagnose failures first, then evidence, then alerts and configuration. */
-const BASE_NAV: readonly NavItem[] = [
-  { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
-  { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
-  { href: "/requests", label: "Requests", Icon: ScrollText },
-  { href: "/bookmarks", label: "Bookmarks", Icon: Bookmark },
-  { href: "/query-explorer", label: "Query Explorer", Icon: ListChecks },
-  { href: "/traces", label: "Traces (OTLP)", Icon: History },
-  { href: "/alerts", label: "Alerts", Icon: Bell },
-  { href: "/settings", label: "Settings", Icon: Settings },
-] as const;
 
 const DEV_NAV: readonly { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/widgets-showcase", label: "Widgets", Icon: LayoutGrid },
@@ -77,7 +50,6 @@ export function DashboardAppShell({
   /** Last persisted or live `/logs` server-scope query string (without `?`). */
   logsNavQuery?: string;
 }) {
-  const nav: readonly NavItem[] = BASE_NAV;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
@@ -166,37 +138,61 @@ export function DashboardAppShell({
               </div>
             )}
           </div>
-          <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-4 text-sm">
-            {nav.map((item) => {
-              const active = pathname === item.href;
-              const Icon = item.Icon;
-              return (
-                <Link
-                  key={item.href}
-                  prefetch={false}
-                  href={
-                    item.href === "/diagnosis" && diagnosisNavQuery
-                      ? `${item.href}?${diagnosisNavQuery}`
-                      : (item.href === "/logs" || item.href === "/requests") && logsNavQuery
-                        ? `${item.href}?${logsNavQuery}`
-                        : item.href
-                  }
-                  title={sidebarCollapsed ? item.label : undefined}
-                  aria-current={active ? "page" : undefined}
-                  aria-label={sidebarCollapsed ? item.label : undefined}
-                  className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
-                    sidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
-                  } ${
-                    active
-                      ? "bg-white/15 font-medium text-white"
-                      : "text-neutral-300 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  <Icon className="size-[1.125rem] shrink-0" aria-hidden />
-                  {!sidebarCollapsed ? <span>{item.label}</span> : null}
-                </Link>
-              );
-            })}
+          <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-4 text-sm">
+            {DASHBOARD_NAV_SECTIONS.map((section, sectionIndex) => (
+              <div
+                key={section.id}
+                className={sectionIndex > 0 ? "mt-1 border-t border-white/10 pt-2" : undefined}
+                role="group"
+                aria-label={
+                  section.heading
+                    ? section.heading
+                    : section.id === "primary"
+                      ? "Diagnosis and workspace"
+                      : section.id === "settings"
+                        ? "Configuration"
+                        : "Navigation"
+                }
+              >
+                {!sidebarCollapsed && section.heading ? (
+                  <p className="mb-1 px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                    {section.heading}
+                  </p>
+                ) : null}
+                <div className="flex flex-col gap-0.5">
+                  {section.items.map((item) => {
+                    const active = pathname === item.href;
+                    const Icon = item.Icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        prefetch={false}
+                        href={
+                          item.href === "/diagnosis" && diagnosisNavQuery
+                            ? `${item.href}?${diagnosisNavQuery}`
+                            : (item.href === "/logs" || item.href === "/requests") && logsNavQuery
+                              ? `${item.href}?${logsNavQuery}`
+                              : item.href
+                        }
+                        title={sidebarCollapsed ? item.label : undefined}
+                        aria-current={active ? "page" : undefined}
+                        aria-label={sidebarCollapsed ? item.label : undefined}
+                        className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                          sidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
+                        } ${
+                          active
+                            ? "bg-white/15 font-medium text-white"
+                            : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        <Icon className="size-[1.125rem] shrink-0" aria-hidden />
+                        {!sidebarCollapsed ? <span>{item.label}</span> : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
           <div className="mt-auto border-t border-white/10 px-2 py-3">
             {!sidebarCollapsed ? (

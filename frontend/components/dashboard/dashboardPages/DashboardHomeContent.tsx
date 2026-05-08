@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 
 import { MetricCard } from "../MetricCard";
 import { DashboardScopeFacetShell } from "../DashboardScopeFacetShell";
@@ -31,17 +32,73 @@ import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
-import { buildScopedQuery } from "../dashboardQueryState";
+import { buildCurrentScopedState, buildScopedQuery, type DashboardScopedQueryState } from "../dashboardQueryState";
+import { DashboardDetailModal } from "../DashboardDetailModal";
+import { ErrorGroupEvidenceBody } from "../ErrorGroupEvidenceBody";
+import { SaveBookmarkModal } from "../SaveBookmarkModal";
+import { toDashboardRoutePath } from "../dashboardRoutePath";
+import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
+import { RowActionsMenu } from "../RowActionsMenu";
 import {
   formatTimestamp,
   type DashboardWidgetDefinition,
   type DashboardWidgetPoint,
+  type ErrorGroupItem,
 } from "../dashboardTypes";
 
 export function DashboardHomeContent() {
   const router = useRouter();
   const d = useDashboardData();
   const homeSlice = useDashboardHomeSlice();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const routePath = useMemo(() => toDashboardRoutePath(pathname), [pathname]);
+  const queryStringForBookmarks = searchParams.toString();
+  const [errorModalItem, setErrorModalItem] = useState<ErrorGroupItem | null>(null);
+  const [bookmarkDraft, setBookmarkDraft] = useState<{ title: string; hashFragment: string } | null>(null);
+  const scopedState = useMemo(
+    (): DashboardScopedQueryState =>
+      buildCurrentScopedState({
+        isAbsoluteWindow: d.isAbsoluteWindow,
+        windowMinutes: d.windowMinutes,
+        windowFromTimestamp: d.windowFromTimestamp,
+        windowToTimestamp: d.windowToTimestamp,
+        method: d.method,
+        statusClass: d.statusClass,
+        minLatencyMs: d.minLatencyMs,
+        maxLatencyMs: d.maxLatencyMs,
+        pathQuery: d.pathQuery,
+        serverEnvironmentQuery: d.serverEnvironmentQuery,
+        serverServiceQuery: d.serverServiceQuery,
+        requestLimit: d.requestLimit,
+        requestPage: d.requestPage,
+        errorGroupLimit: d.errorGroupLimit,
+        errorGroupPage: d.errorGroupPage,
+        errorGroupSort: d.errorGroupSort,
+        sqlFilterApplied: d.sqlFilterApplied,
+        sqlFilterEnabled: d.sqlFilterEnabled,
+      }),
+    [
+      d.isAbsoluteWindow,
+      d.windowMinutes,
+      d.windowFromTimestamp,
+      d.windowToTimestamp,
+      d.method,
+      d.statusClass,
+      d.minLatencyMs,
+      d.maxLatencyMs,
+      d.pathQuery,
+      d.serverEnvironmentQuery,
+      d.serverServiceQuery,
+      d.requestLimit,
+      d.requestPage,
+      d.errorGroupLimit,
+      d.errorGroupPage,
+      d.errorGroupSort,
+      d.sqlFilterApplied,
+      d.sqlFilterEnabled,
+    ],
+  );
   const overview = homeSlice.overview;
   const requests = homeSlice.requests;
   if (!overview || !requests) {
@@ -87,6 +144,43 @@ export function DashboardHomeContent() {
     params.set("error_group_sort", "count");
     return params.toString();
   })()}#grouped-errors`;
+  const homeErrorModals = (
+    <>
+      <DashboardDetailModal
+        open={errorModalItem !== null}
+        title={errorModalItem ? `${errorModalItem.exception_type ?? "Error"} · ${errorModalItem.path}` : ""}
+        onClose={() => setErrorModalItem(null)}
+      >
+        {errorModalItem ? (
+          <ErrorGroupEvidenceBody
+            item={errorModalItem}
+            scopedState={scopedState}
+            headerActions={
+              <RowActionsMenu
+                items={buildErrorGroupEvidenceMenuItems({
+                  item: errorModalItem,
+                  onOpenInModal: () => undefined,
+                  onSaveBookmark: () =>
+                    setBookmarkDraft({
+                      title: `${errorModalItem.exception_type ?? "Error"} · ${errorModalItem.path}`.slice(0, 200),
+                      hashFragment: `error-group:${encodeURIComponent(errorModalItem.group_key)}`,
+                    }),
+                }).filter((i) => i.id !== "open-modal")}
+              />
+            }
+          />
+        ) : null}
+      </DashboardDetailModal>
+      <SaveBookmarkModal
+        open={bookmarkDraft !== null}
+        onClose={() => setBookmarkDraft(null)}
+        defaultTitle={bookmarkDraft?.title ?? ""}
+        pathname={routePath}
+        queryString={queryStringForBookmarks}
+        hashFragment={bookmarkDraft?.hashFragment ?? ""}
+      />
+    </>
+  );
   const phasedLiteDashboard = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
   if (phasedLiteDashboard) {
     const totalRequests = homeSlice.sparklineSeries.reduce(
@@ -159,7 +253,8 @@ export function DashboardHomeContent() {
       },
     ];
     return (
-      <section className="space-y-6">
+      <>
+        <section className="space-y-6">
         <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
@@ -281,28 +376,51 @@ export function DashboardHomeContent() {
                 Open diagnosis
               </Link>
             </div>
+            <p className="mb-2 text-[10px] leading-snug text-slate-500 dark:text-neutral-500">
+              Tap a row for evidence, or use the row menu for copy and bookmarks.
+            </p>
             <div className="divide-y divide-slate-100 dark:divide-neutral-800">
               {d.recentErrorsPreview.length ? (
                 d.recentErrorsPreview.slice(0, 6).map((item) => (
-                  <div key={item.group_key} className="flex items-baseline justify-between gap-2 py-1.5 first:pt-0">
-                    <div className="min-w-0 flex-1 leading-tight">
-                      <span className="text-[11px] font-medium text-slate-800 dark:text-neutral-200">
-                        {item.exception_type ?? "Error"}
-                      </span>
-                      <span className="text-[11px] text-slate-500 dark:text-neutral-500"> · </span>
-                      <span className="font-mono text-[11px] text-slate-600 dark:text-neutral-300">{item.path}</span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span
-                        className="max-w-[6.5rem] truncate text-right text-[10px] text-slate-500 dark:text-neutral-500"
-                        title={formatTimestamp(item.last_seen)}
-                      >
-                        {formatTimestamp(item.last_seen)}
-                      </span>
-                      <span className="rounded bg-rose-100 px-1.5 py-0 text-[10px] font-semibold text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
-                        {item.count}
-                      </span>
-                    </div>
+                  <div key={item.group_key} className="flex items-start gap-1 py-2 first:pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setErrorModalItem(item)}
+                      aria-label={`Open evidence for ${item.exception_type ?? "error"} on ${item.path}`}
+                      className="min-w-0 flex-1 rounded-md px-1 py-0.5 text-left leading-tight outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-800/80 dark:focus-visible:ring-orange-400/35"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[11px] font-medium text-slate-800 dark:text-neutral-200">
+                            {item.exception_type ?? "Error"}
+                          </span>
+                          <span className="text-[11px] text-slate-500 dark:text-neutral-500"> · </span>
+                          <span className="font-mono text-[11px] text-slate-600 dark:text-neutral-300">{item.path}</span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span
+                            className="max-w-[6.5rem] truncate text-right text-[10px] text-slate-500 dark:text-neutral-500"
+                            title={formatTimestamp(item.last_seen)}
+                          >
+                            {formatTimestamp(item.last_seen)}
+                          </span>
+                          <span className="rounded bg-rose-100 px-1.5 py-0 text-[10px] font-semibold text-rose-800 dark:bg-rose-900/40 dark:text-rose-200">
+                            {item.count}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                    <RowActionsMenu
+                      items={buildErrorGroupEvidenceMenuItems({
+                        item,
+                        onOpenInModal: () => setErrorModalItem(item),
+                        onSaveBookmark: () =>
+                          setBookmarkDraft({
+                            title: `${item.exception_type ?? "Error"} · ${item.path}`.slice(0, 200),
+                            hashFragment: `error-group:${encodeURIComponent(item.group_key)}`,
+                          }),
+                      })}
+                    />
                   </div>
                 ))
               ) : (
@@ -312,6 +430,8 @@ export function DashboardHomeContent() {
           </div>
         </div>
       </section>
+        {homeErrorModals}
+      </>
     );
   }
   // Legacy full dashboard fallback when phased rewrite flag is disabled.
@@ -1328,6 +1448,7 @@ export function DashboardHomeContent() {
 
         <ChartPanel
           title="Recent errors"
+          description="Click a row for evidence, or use the row menu. Use “Grouped list” for the full diagnosis table."
           actionHref={diagnosisGroupedHref}
           actionLabel="Grouped list"
         >
@@ -1340,27 +1461,36 @@ export function DashboardHomeContent() {
               {d.recentErrorsPreview.map((item) => (
                 <li
                   key={item.group_key}
-                  className="rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/70"
+                  className="rounded-lg border border-slate-100 bg-slate-50/80 px-2 py-2 dark:border-neutral-700 dark:bg-neutral-800/70"
                 >
-                  <Link
-                    href={`/diagnosis?${(() => {
-                      const params = new URLSearchParams(diagnosisParams.toString());
-                      params.set("error_group_sort", "count");
-                      // Do not set path_contains here: narrowing to one route hides every other
-                      // group and that scope persists for Diagnosis (sidebar + session).
-                      return params.toString();
-                    })()}#grouped-errors`}
-                    className="block"
-                  >
-                    <p className="text-sm font-medium text-slate-900 dark:text-neutral-100">
-                      {item.exception_type ?? "Error"}{" "}
-                      <span className="text-slate-500 dark:text-neutral-400">on</span>{" "}
-                      <span className="font-mono text-xs">{item.path}</span>
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-300">
-                      Last seen {formatTimestamp(item.last_seen)} · Count {item.count}
-                    </p>
-                  </Link>
+                  <div className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setErrorModalItem(item)}
+                      aria-label={`Open evidence for ${item.exception_type ?? "error"} on ${item.path}`}
+                      className="min-w-0 flex-1 rounded-md px-1 py-0.5 text-left outline-none transition-colors hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-900/80 dark:focus-visible:ring-orange-400/35"
+                    >
+                      <p className="text-sm font-medium text-slate-900 dark:text-neutral-100">
+                        {item.exception_type ?? "Error"}{" "}
+                        <span className="text-slate-500 dark:text-neutral-400">on</span>{" "}
+                        <span className="font-mono text-xs">{item.path}</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-600 dark:text-neutral-300">
+                        Last seen {formatTimestamp(item.last_seen)} · Count {item.count}
+                      </p>
+                    </button>
+                    <RowActionsMenu
+                      items={buildErrorGroupEvidenceMenuItems({
+                        item,
+                        onOpenInModal: () => setErrorModalItem(item),
+                        onSaveBookmark: () =>
+                          setBookmarkDraft({
+                            title: `${item.exception_type ?? "Error"} · ${item.path}`.slice(0, 200),
+                            hashFragment: `error-group:${encodeURIComponent(item.group_key)}`,
+                          }),
+                      })}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1446,6 +1576,7 @@ export function DashboardHomeContent() {
           />
         </ChartPanel>
       </section>
+      {homeErrorModals}
     </>
   );
 }

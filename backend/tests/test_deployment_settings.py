@@ -12,6 +12,7 @@ def _production_dashboard_base() -> Settings:
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
         event_store_duckdb_path="./.autopulse/e.duckdb",
+        event_store_duckdb_single_writer_profile=True,
         cors_allow_origins=("http://localhost:3000",),
         autopulse_env="production",
         jobs_enable_scheduler=True,
@@ -47,12 +48,22 @@ def test_validate_deployment_settings_rejects_dev_scenarios_in_production() -> N
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
         event_store_duckdb_path="./.autopulse/e.duckdb",
+        event_store_duckdb_single_writer_profile=True,
         cors_allow_origins=("http://localhost:3000",),
         autopulse_env="production",
         jobs_enable_scheduler=True,
         dev_scenarios_enabled=True,
     )
     with pytest.raises(ValueError, match="DEV_SCENARIOS_ENABLED"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_rejects_unacknowledged_duckdb_single_writer_profile() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        event_store_duckdb_single_writer_profile=False,
+    )
+    with pytest.raises(ValueError, match="AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE"):
         validate_deployment_settings(s)
 
 

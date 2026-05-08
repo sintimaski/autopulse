@@ -252,12 +252,12 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: maintain route redirects.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-08 (diagnosis-first ordering preserved; Query Explorer + Traces grouped under **Advanced** with section labels; nav structure unit-tested in `dashboardNavConfig.test.ts`; deep links unchanged)
   - Owner: Frontend + Product
 - **Related documents:** `DEVELOPMENT.md`, `docs/testing/E2E_CORE_JOURNEY.md`
-- **References / examples:** `frontend/components/dashboard/AppShell.tsx`
+- **References / examples:** `frontend/components/dashboard/AppShell.tsx`, `frontend/components/dashboard/dashboardNavConfig.ts`
 - **Ambiguity handling:**
   - If requirement is unclear: optimize for fastest diagnosis journey.
   - If data conflicts: preserve MVP lane over power-user lane.
@@ -340,9 +340,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: preserve role/action permissions.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: In progress
+  - % complete: 65
+  - Last update: 2026-05-09 (implemented modal focus trap + focus restore + initial focus in `DashboardDetailModal`; upgraded row action menu keyboard navigation with roving tabindex/arrow-home-end/enter-space and trigger focus return in `RowActionsMenu`; added frontend regression tests)
   - Owner: Frontend
 - **Related documents:** `docs/testing/E2E_CORE_JOURNEY.md`
 - **References / examples:** `frontend/components/dashboard/DashboardDetailModal.tsx`
@@ -393,8 +393,8 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - If partial/no, guardrails required: migration toggles documented.
 - **State / progress tracking:**
   - Status: In progress
-  - % complete: 88
-  - Last update: 2026-05-08 (guardrail increment: required-scheduler startup hard-fail covered; mixed scheduler ownership non-ideal telemetry added; plus risky migration-mode guardrail for non-SQLite startup migrations with regression test and ops guidance)
+  - % complete: 96
+  - Last update: 2026-05-09 (added production startup guardrail: `AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE=true` is now required when using DuckDB `duckdb_single_writer`; surfaced profile flag in internal topology metrics; added deployment/health regression coverage and updated production env/docs)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - **References / examples:** `backend/src/autopulse_backend/core/config.py`, `backend/src/autopulse_backend/lifespan.py`
@@ -530,11 +530,10 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: In progress
+  - % complete: 70
+  - Last update: 2026-05-08 (README: explicit `scripts/release_gates.sh` invocation, success tail, optional Postgres/E2E env flags; supported OS/Python/Node matrix + local-vs-CI parity table aligned to `ci.yml`; cold-start one-command paths unchanged)
   - Owner: DevEx
-- **Related documents:** `README.md`, `scripts/release_gates.sh`
 - **References / examples:** `Makefile`, `.github/workflows/ci.yml`
 - **Ambiguity handling:**
   - If requirement is unclear: optimize for shortest reliable path to local value.
@@ -574,9 +573,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: isolate flaky test retries.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: In progress
+  - % complete: 35
+  - Last update: 2026-05-08 (critical-path manifest documented in `scripts/release_gates.sh` header; CI split for Postgres/E2E remains authoritative)
   - Owner: QA + Eng leads
 - **Related documents:** `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`, `docs/testing/E2E_CORE_JOURNEY.md`
 - **References / examples:** `.github/workflows/ci.yml`, `.github/workflows/release-gates.yml`

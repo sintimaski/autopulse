@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# Full release gate — keep in sync with .github/workflows/ci.yml expectations.
+#
+# Critical-path manifest (always runs here unless noted):
+#   - Backend: ruff check/format, mypy, bandit, pytest (SQLite baseline)
+#   - Frontend: npm audit (high), lint, typecheck, vitest, next build, bundle budget
+#   - Jobs smoke: alerts-once, retention-once
+# Optional env (same split as CI jobs):
+#   - AUTOPULSE_RELEASE_GATES_POSTGRES=1 → uv run pytest backend/tests
+#   - AUTOPULSE_RELEASE_GATES_E2E=1 → npm --prefix frontend run test:e2e
 set -euo pipefail
 
 echo "[release-gates] backend static checks"

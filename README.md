@@ -257,4 +257,28 @@ make check
 make release-gates
 ```
 
+Same full gate as a copy-paste script (equivalent to `make release-gates`; see `scripts/release_gates.sh` for steps):
+
+```bash
+bash ./scripts/release_gates.sh
+```
+
+On success the final line is `[release-gates] all checks passed`. Optional: set `AUTOPULSE_RELEASE_GATES_POSTGRES=1` to include Postgres-backed pytest, or `AUTOPULSE_RELEASE_GATES_E2E=1` to run Playwright smoke (both are separate jobs in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
+
+#### Supported matrix and CI parity
+
+| Surface | Supported in CI / docs | Notes |
+| --- | --- | --- |
+| OS | **macOS**, **Linux** (`ubuntu-latest` in CI) | Primary maintainer paths. |
+| Windows | **Best effort** | Not covered in CI; WSL2 is the closest parity story. |
+| Python | **3.11+** per [`backend/pyproject.toml`](./backend/pyproject.toml) `requires-python` | Use `uv sync --group dev` from repo root. |
+| Node.js | **22.x** per [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) (`setup-node`) | Run `npm ci` in `frontend/` before `npm run dev` / `npm run build`. |
+
+| Check | Local default | CI |
+| --- | --- | --- |
+| Ruff, mypy, bandit, pytest | `make check` / release gates | `python-sqlite` job |
+| Backend tests on Postgres | Optional (`AUTOPULSE_RELEASE_GATES_POSTGRES=1`) | `python-postgres` job |
+| Frontend audit, lint, typecheck, test, build, bundle budget | `make check` / release gates | `frontend` job |
+| Browser smoke (Playwright) | Optional (`AUTOPULSE_RELEASE_GATES_E2E=1`) | `browser-smoke` job |
+
 **Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**.

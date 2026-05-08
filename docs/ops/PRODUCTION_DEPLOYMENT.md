@@ -154,6 +154,7 @@ Set these explicitly in production deployment config (do not rely on implicit lo
 - `AUTOPULSE_ENV=production`
 - `AUTOPULSE_EVENT_STORE=duckdb`
 - `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`
+- `AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE=true` (required startup ack for single-writer DuckDB topology in production)
 - `JOBS_ENABLE_SCHEDULER=true` (recommended default)
 - If scheduler is intentionally externalized, set `JOBS_EXTERNAL_CRON_OWNERSHIP=true` and document the external cron owner/runbook.
 - `DASHBOARD_AUTH_ENABLED=true`

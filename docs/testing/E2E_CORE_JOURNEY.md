@@ -41,7 +41,7 @@ npm --prefix frontend run test:e2e
 
 1. Request dev magic-link token from `/dashboard/auth/magic-link/request`.
 2. Verify sign-in via `/autopulse/ui/auth/magic-link?token=...`.
-3. Load `/autopulse/ui/dashboard` and assert shell navigation appears.
+3. Load `/autopulse/ui/dashboard` and assert shell navigation appears (primary links plus an **Advanced** group for query/traces).
 4. Navigate to `/autopulse/ui/diagnosis` and assert route + nav stability.
 5. (Optional) Load `/autopulse/ui/diagnosis#grouped-errors` or a saved `#error-group:…` bookmark and confirm the page still renders (deep-link + partial-scope UX is covered in unit tests under `frontend/components/dashboard/diagnosisDeepLink.test.ts`).
 
