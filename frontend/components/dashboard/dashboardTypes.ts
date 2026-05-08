@@ -455,6 +455,15 @@ export type DashboardInternalMetricsResponse = {
   metrics: Record<string, unknown> | null;
 };
 
+export type DashboardSystemDiagnosticsResponse = {
+  generated_at: string;
+  topology: Record<string, unknown>;
+  scheduler: Record<string, unknown>;
+  replay_queue: Record<string, unknown>;
+  ingestion_freshness: Record<string, unknown>;
+  config_diagnostics: Record<string, unknown>;
+};
+
 export type DashboardDataQueryScope = {
   from_timestamp?: string;
   to_timestamp?: string;

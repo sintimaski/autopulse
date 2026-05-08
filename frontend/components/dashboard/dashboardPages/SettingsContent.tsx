@@ -5,11 +5,13 @@ import Link from "next/link";
 
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import { LogOut } from "../../../lib/icons";
+import { copyTextToClipboard } from "../clipboard";
 import type {
   DashboardInternalMetricsResponse,
   DashboardMembershipItem,
   DashboardOrganizationListResponse,
   DashboardOrganizationSummary,
+  DashboardSystemDiagnosticsResponse,
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
@@ -25,6 +27,10 @@ import {
   looksLikeCompleteDiscordIncomingWebhook,
   looksLikeCompleteSlackIncomingWebhook,
 } from "./settingsContentUtils";
+import {
+  formatDurationSeconds,
+  normalizeSystemDiagnostics,
+} from "../../../utils/systemDiagnostics";
 
 type AlertTestResult = {
   status: string;
@@ -49,6 +55,8 @@ type InternalMetricsSnapshot = {
     max_size?: number | null;
   };
 };
+
+type SystemDiagnosticsSnapshot = DashboardSystemDiagnosticsResponse;
 
 type EventPlaneCutoverSettings = {
   use_snapshot_read: boolean;
@@ -97,6 +105,12 @@ export function SettingsContent() {
   const [internalMetricsEnabled, setInternalMetricsEnabled] = useState(false);
   const [internalMetricsReason, setInternalMetricsReason] = useState<string | null>(null);
   const [internalMetricsSnapshot, setInternalMetricsSnapshot] = useState<InternalMetricsSnapshot | null>(null);
+  const [systemDiagnosticsLoadState, setSystemDiagnosticsLoadState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [systemDiagnosticsSnapshot, setSystemDiagnosticsSnapshot] =
+    useState<SystemDiagnosticsSnapshot | null>(null);
+  const [systemDiagnosticsMessage, setSystemDiagnosticsMessage] = useState<string | null>(null);
   const [eventPlaneCutoverLoadState, setEventPlaneCutoverLoadState] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
@@ -407,6 +421,7 @@ export function SettingsContent() {
   const alertDeliveryDraft = d.alertSettings;
   const canEditAlertDelivery = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canViewInternalMetrics = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
+  const canViewSystemDiagnostics = canViewInternalMetrics;
   const canManageEventPlaneCutover = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const aggregateQueueDepth = internalMetricsSnapshot?.ingest_aggregate_queue?.depth ?? null;
   const aggregateQueueMax = internalMetricsSnapshot?.ingest_aggregate_queue?.max_size ?? null;
@@ -419,6 +434,10 @@ export function SettingsContent() {
       : null;
   const aggregateQueueHealthy = queueUsageRatio === null ? null : queueUsageRatio < 0.8;
   const aggregateWorkerHealthy = aggregateQueueEnabled ? aggregateQueueHealthy : null;
+  const systemDiagnosticsSummary = useMemo(
+    () => normalizeSystemDiagnostics(systemDiagnosticsSnapshot),
+    [systemDiagnosticsSnapshot],
+  );
   const metricStatusClass = (ok: boolean | null): string => {
     if (ok === true) {
       return "border-emerald-300 bg-emerald-50/90 dark:border-emerald-900/70 dark:bg-emerald-950/35";
@@ -482,6 +501,49 @@ export function SettingsContent() {
       cancelled = true;
     };
   }, [canViewInternalMetrics]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!canViewSystemDiagnostics) {
+      queueMicrotask(() => {
+        if (cancelled) {
+          return;
+        }
+        setSystemDiagnosticsLoadState("idle");
+        setSystemDiagnosticsSnapshot(null);
+      });
+      return;
+    }
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setSystemDiagnosticsLoadState("loading");
+      }
+    });
+    void (async () => {
+      try {
+        const response = await fetch(buildApiUrl("/dashboard/system-diagnostics"), {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          throw new Error(`system-diagnostics failed (${response.status})`);
+        }
+        const payload = (await response.json()) as DashboardSystemDiagnosticsResponse;
+        if (cancelled) {
+          return;
+        }
+        setSystemDiagnosticsSnapshot(payload);
+        setSystemDiagnosticsLoadState("ready");
+      } catch {
+        if (!cancelled) {
+          setSystemDiagnosticsLoadState("error");
+          setSystemDiagnosticsSnapshot(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewSystemDiagnostics]);
 
   useEffect(() => {
     let cancelled = false;
@@ -893,6 +955,124 @@ export function SettingsContent() {
         ) : (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
             Internal metrics are enabled, but no snapshot is currently available.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">System diagnostics</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
+          Support snapshot for topology guardrails, scheduler health, replay backlog, and project freshness.
+        </p>
+        {!canViewSystemDiagnostics ? (
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            Only organization owners and admins can view diagnostics.
+          </p>
+        ) : systemDiagnosticsLoadState === "loading" ? (
+          <div className="mt-4">
+            <InlineDataSpinner label="Loading diagnostics snapshot…" />
+          </div>
+        ) : systemDiagnosticsLoadState === "error" ? (
+          <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
+            Could not load diagnostics. Verify dashboard auth and backend availability.
+          </p>
+        ) : systemDiagnosticsSnapshot ? (
+          <>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(systemDiagnosticsSummary.guardrailStatus === "healthy" ? true : systemDiagnosticsSummary.guardrailStatus === "degraded" ? false : null)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Topology guardrails
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {systemDiagnosticsSummary.guardrailStatus}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(systemDiagnosticsSummary.schedulerStatus === "running" ? true : systemDiagnosticsSummary.schedulerStatus === "stopped" ? false : null)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Scheduler state
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {systemDiagnosticsSummary.schedulerStatus}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass((systemDiagnosticsSummary.pendingSqlTailRepairs ?? 0) < 1)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Pending SQL-tail repairs
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {systemDiagnosticsSummary.pendingSqlTailRepairs ?? "n/a"}
+                </p>
+              </div>
+              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(systemDiagnosticsSummary.ingestionLagSeconds !== null ? systemDiagnosticsSummary.ingestionLagSeconds < 600 : null)}`}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Ingestion lag
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {formatDurationSeconds(systemDiagnosticsSummary.ingestionLagSeconds)}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/60">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Dead-lettered SQL-tail repairs
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {systemDiagnosticsSummary.deadLetteredSqlTailRepairs ?? "n/a"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/60">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Aggregate dead-letter backlog
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {systemDiagnosticsSummary.aggregateDeadLetterBacklog ?? "n/a"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/60">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+                  Generated at
+                </p>
+                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+                  {systemDiagnosticsSummary.generatedAt
+                    ? new Date(systemDiagnosticsSummary.generatedAt).toLocaleString()
+                    : "n/a"}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                className="ap-btn"
+                onClick={async () => {
+                  const ok = await copyTextToClipboard(
+                    JSON.stringify(systemDiagnosticsSnapshot, null, 2),
+                  );
+                  setSystemDiagnosticsMessage(
+                    ok ? "Diagnostics JSON copied." : "Could not copy diagnostics JSON.",
+                  );
+                }}
+              >
+                Copy diagnostics JSON
+              </button>
+              {systemDiagnosticsMessage ? (
+                <p className="text-sm text-slate-600 dark:text-neutral-300">
+                  {systemDiagnosticsMessage}
+                </p>
+              ) : null}
+            </div>
+            <details className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-neutral-700">
+              <summary className="cursor-pointer bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
+                Raw diagnostics payload
+              </summary>
+              <pre className="max-h-72 overflow-auto bg-white px-3 py-2 text-xs text-slate-700 dark:bg-neutral-900 dark:text-neutral-200">
+                {JSON.stringify(systemDiagnosticsSnapshot, null, 2)}
+              </pre>
+            </details>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+            Diagnostics are enabled but no payload is currently available.
           </p>
         )}
       </section>

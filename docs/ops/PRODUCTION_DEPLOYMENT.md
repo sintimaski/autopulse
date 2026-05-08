@@ -314,6 +314,8 @@ The response includes:
 - project-scoped ingestion freshness (`ingestion_freshness.last_event_received_at`, `ingestion_freshness.lag_seconds`)
 - redacted config diagnostics (`config_diagnostics.database_url_redacted`, topology flags; no API keys/tokens)
 
+Dashboard UI note: this endpoint is surfaced under **Settings → System diagnostics** for admin/owner roles.
+
 ## 7. SLO / SLI targets (initial release gates)
 
 Treat these as **starting budgets**; tighten per customer tier and measured baseline after two weeks of production traffic.
