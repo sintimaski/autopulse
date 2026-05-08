@@ -1,13 +1,35 @@
 [project]
-name = "autopulse"
-version = "0.1.0"
+name = "autopulse-sdk"
+version = "0.1.1"
 description = "FastAPI observability SDK for AutoPulse"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+authors = [{ name = "AutoPulse maintainers" }]
+keywords = ["fastapi", "observability", "monitoring", "apm", "errors", "telemetry"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Framework :: FastAPI",
+    "Typing :: Typed",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "httpx>=0.27.0",
     "psutil>=6.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sintimaski/autopulse"
+Repository = "https://github.com/sintimaski/autopulse"
+Documentation = "https://github.com/sintimaski/autopulse/blob/main/sdk/README.md"
+Changelog = "https://github.com/sintimaski/autopulse/blob/main/sdk/CHANGELOG.md"
+Issues = "https://github.com/sintimaski/autopulse/issues"
 
 [build-system]
 requires = ["hatchling>=1.26.0"]

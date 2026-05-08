@@ -8,8 +8,8 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "autopulse",
     "autopulse-backend",
+    "autopulse-sdk",
     "autopulse-workspace",
 ]
 
@@ -116,23 +116,6 @@ wheels = [
 ]
 
 [[package]]
-name = "autopulse"
-version = "0.1.0"
-source = { editable = "sdk" }
-dependencies = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "psutil" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "psutil", specifier = ">=6.0.0" },
-]
-
-[[package]]
 name = "autopulse-backend"
 version = "0.1.0"
 source = { editable = "backend" }
@@ -177,12 +160,29 @@ requires-dist = [
 provides-extras = ["parquet-s3"]
 
 [[package]]
+name = "autopulse-sdk"
+version = "0.1.1"
+source = { editable = "sdk" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "psutil" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "psutil", specifier = ">=6.0.0" },
+]
+
+[[package]]
 name = "autopulse-workspace"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "autopulse" },
     { name = "autopulse-backend" },
+    { name = "autopulse-sdk" },
     { name = "dotenv" },
     { name = "pytz" },
 ]
@@ -201,8 +201,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "autopulse", editable = "sdk" },
     { name = "autopulse-backend", editable = "backend" },
+    { name = "autopulse-sdk", editable = "sdk" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "pytz", specifier = ">=2026.1.post1" },
 ]

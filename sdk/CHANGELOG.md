@@ -8,6 +8,10 @@ for public API and packaging.
 
 ## [Unreleased]
 
+### Packaging
+
+- **PyPI distribution name** is **`autopulse-sdk`** (import package remains **`autopulse`**). The PyPI project name [`autopulse`](https://pypi.org/project/autopulse/) is a different, unrelated package.
+
 ### Security
 
 - **Breaking / privacy:** `monitor()` now defaults `capture_headers` and `capture_query_params` to **off** unless enabled via kwargs or `AUTOPULSE_CAPTURE_HEADERS` / `AUTOPULSE_CAPTURE_QUERY_PARAMS`. Reduces accidental PII in events.

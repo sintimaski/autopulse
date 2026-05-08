@@ -33,7 +33,7 @@ AutoPulse gives Python teams a fast path to useful production visibility without
 Three steps: install the SDK, set ingest URL + project key, add one middleware call. Sending stays async and bounded; failures are quiet by default so a bad observability rollout cannot take down production.
 
 ```bash
-pip install autopulse
+pip install autopulse-sdk
 ```
 
 ```python

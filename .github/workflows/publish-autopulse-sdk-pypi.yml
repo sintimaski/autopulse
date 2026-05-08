@@ -1,0 +1,75 @@
+# Builds and uploads the autopulse-sdk distribution (import name remains ``autopulse``).
+#
+# Runs on pushes to ``main`` that touch SDK sources or metadata (see ``paths``), but only uploads
+# when ``sdk/pyproject.toml`` ``version`` is not yet on PyPI—so bump the version to cut a release.
+#
+# Manual: Actions → Publish autopulse-sdk to PyPI → Run workflow (same PyPI-version guard).
+#
+# One-time PyPI setup: Project ``autopulse-sdk`` → Publishing → trusted publisher for this workflow
+# (see https://docs.pypi.org/trusted-publishers/). Create GitHub Environment ``pypi`` if you use
+# protection rules.
+name: Publish autopulse-sdk to PyPI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sdk/pyproject.toml"
+      - "sdk/src/**"
+      - "sdk/README.md"
+      - "sdk/LICENSE"
+  workflow_dispatch:
+
+concurrency:
+  group: autopulse-sdk-pypi-publish
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/autopulse-sdk/
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide whether to publish
+        id: decide
+        run: |
+          set -euo pipefail
+          VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('sdk/pyproject.toml', 'rb'))['project']['version'])")
+          echo "sdk_version=${VERSION}"
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/autopulse-sdk/${VERSION}/json")
+          echo "pypi_version_probe_http=${CODE}"
+          if [ "${CODE}" = "200" ]; then
+            echo "publish=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Skipping PyPI upload: autopulse-sdk ${VERSION} already exists on PyPI. Bump sdk/pyproject.toml version to release."
+          elif [ "${CODE}" = "404" ]; then
+            echo "publish=true" >> "${GITHUB_OUTPUT}"
+            echo "::notice::Will publish autopulse-sdk ${VERSION} to PyPI."
+          else
+            echo "::error::Unexpected PyPI response (${CODE}) for autopulse-sdk ${VERSION}; not publishing."
+            exit 1
+          fi
+
+      - name: Install uv
+        if: steps.decide.outputs.publish == 'true'
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build sdist + wheel (hatchling)
+        if: steps.decide.outputs.publish == 'true'
+        run: uv build --package autopulse-sdk --out-dir dist
+
+      - name: Upload to PyPI
+        if: steps.decide.outputs.publish == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
