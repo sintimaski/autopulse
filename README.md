@@ -1,26 +1,17 @@
 # AutoPulse 🚀
 
-> ⚡ Observability in minutes for FastAPI: know what broke, when, and why.
+> ⚡ FastAPI observability in minutes: know what broke, when, and which requests caused it.
 
-### Why teams pick AutoPulse
+AutoPulse gives Python teams a fast path to useful production visibility without observability-infra overhead.
 
-- **Instant observability:** one middleware call gives you request + error visibility without blocking app traffic.
-- **Custom widgets that matter:** ship your own cards and charts next to built-in diagnostics so business and system signals live together.
-- **Full control over your system:** run the whole stack yourself and tune storage, auth, retention, alerts, and dashboard behavior to fit your environment.
+### Highlights
 
-**AutoPulse** is an opinionated stack for Python teams: SDK middleware captures requests and errors without blocking your app; a backend ingests and stores high-volume telemetry; the dashboard favors quick answers—what broke, when it broke, and what traffic surrounded it—over building your own Grafana.
+- **Instant visibility:** add one middleware call to capture requests and errors without blocking app traffic.
+- **Fast diagnosis UI:** dashboard answers "what broke, when, and why" in seconds.
+- **Custom + built-in insights:** add your own widgets next to system diagnostics.
+- **Self-hosted control:** tune auth, retention, storage, and alerting for your environment.
 
-
-<img width="1440" height="813" alt="image" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" />
-
-
-📊 You can also **ship custom dashboard panels from your app**: define cards, line charts, bar charts, donuts, histograms, scatter plots, and stacked areas in code (`dashboard_widgets=...` on `autopulse()`), and they appear beside the built-in views—useful for SLIs, business counters, or anything you want operators to see next to requests and errors.
-
-🛡️ Ship a working setup fast; keep **sampling**, **privacy controls**, **dashboard auth** (magic link, domains, OIDC), **multi-channel alerting**, **DuckDB-backed event storage**, and **optional host metrics** in your back pocket for larger installs.
-
----
-
-**🏭 Running in production?** Use the **[Production deployment guide](./docs/ops/PRODUCTION_DEPLOYMENT.md)** — TLS, databases, scaling, static UI export, scheduler/jobs, and operational defaults.
+<img width="1440" height="813" alt="AutoPulse dashboard overview" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" />
 
 ---
 
@@ -68,6 +59,10 @@ export INGEST_KEY='<project ingest key>'
 ```
 
 ✅ Expect **HTTP 202**. Refresh the dashboard to see the event.
+
+---
+
+**🏭 Running in production?** Start with the **[Production deployment guide](./docs/ops/PRODUCTION_DEPLOYMENT.md)**.
 
 ---
 
