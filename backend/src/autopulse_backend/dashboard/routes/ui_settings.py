@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
@@ -42,6 +42,66 @@ from autopulse_backend.services.event_plane_parity import build_cutover_decision
 router = APIRouter()
 logger = logging.getLogger(__name__)
 _CUTOVER_PARITY_WINDOW_MINUTES = 60
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return as_utc_datetime(parsed)
+
+
+def _scheduler_interval_seconds_for_job(job_name: str, settings: Any) -> float | None:
+    intervals: dict[str, float] = {
+        "alerts": float(settings.jobs_alert_interval_seconds),
+        "retention": float(settings.jobs_retention_interval_seconds),
+        "sql_tail_repair": float(settings.ingest_sql_tail_repair_interval_seconds),
+        "parquet_export": float(settings.parquet_export_interval_seconds),
+        "parquet_lifecycle": float(settings.parquet_lifecycle_interval_seconds),
+        "parquet_object_storage_sync": float(settings.parquet_object_storage_interval_seconds),
+    }
+    return intervals.get(job_name)
+
+
+def _build_scheduler_job_snapshots(metrics: dict[str, Any], settings: Any) -> list[dict[str, Any]]:
+    raw_jobs = metrics.get("jobs")
+    if not isinstance(raw_jobs, dict):
+        return []
+    snapshots: list[dict[str, Any]] = []
+    for job_name in sorted(raw_jobs):
+        telemetry = raw_jobs.get(job_name)
+        if not isinstance(telemetry, dict):
+            continue
+        started_at = _parse_iso_datetime(telemetry.get("started_at"))
+        finished_at = _parse_iso_datetime(telemetry.get("finished_at"))
+        interval_seconds = _scheduler_interval_seconds_for_job(job_name, settings)
+        next_scheduled_at: str | None = None
+        if finished_at is not None and interval_seconds is not None:
+            next_scheduled_at = (
+                finished_at + timedelta(seconds=max(interval_seconds, 0.0))
+            ).isoformat()
+        snapshots.append(
+            {
+                "job_name": job_name,
+                "status": telemetry.get("status"),
+                "started_at": started_at.isoformat() if started_at is not None else None,
+                "finished_at": finished_at.isoformat() if finished_at is not None else None,
+                "next_scheduled_at": next_scheduled_at,
+                "duration_ms": telemetry.get("duration_ms"),
+                "records_processed": telemetry.get("records_processed"),
+                "failure_reason": telemetry.get("failure_reason"),
+                "interval_seconds": interval_seconds,
+            }
+        )
+    return snapshots
 
 
 async def _optional_dashboard_auth_session(
@@ -303,6 +363,7 @@ async def get_dashboard_system_diagnostics(
         "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
         "scheduler_running": bool(metrics.get("scheduler_running")),
         "retention_pressure_poll_running": bool(metrics.get("retention_pressure_poll_running")),
+        "jobs": _build_scheduler_job_snapshots(metrics, settings),
     }
     replay_queue = {
         "project_id": str(project_id),

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from autopulse_backend.app import create_app
 from autopulse_backend.auth import generate_api_key
+from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
 from autopulse_backend.models import (
     ApiKey,
     IngestAggregateDeadLetter,
@@ -1235,8 +1236,22 @@ def test_dashboard_system_diagnostics_returns_supportability_snapshot(
     monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
     monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    monkeypatch.setenv("JOBS_RETENTION_INTERVAL_SECONDS", "120")
 
     base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    run_started = datetime.now(tz=UTC).replace(microsecond=0) - timedelta(minutes=1)
+    run_finished = run_started + timedelta(seconds=2)
+    service_metrics.set_job_last_run(
+        JobExecutionTelemetry(
+            job_name="retention",
+            status="failed",
+            started_at=run_started,
+            finished_at=run_finished,
+            duration_ms=2000,
+            records_processed=0,
+            failure_reason="RuntimeError",
+        )
+    )
 
     async def seed_reliability_rows() -> None:
         engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
@@ -1298,6 +1313,17 @@ def test_dashboard_system_diagnostics_returns_supportability_snapshot(
     assert "database_url_redacted" in payload["config_diagnostics"]
     assert "internal_metrics_enabled" in payload["config_diagnostics"]
     assert "guardrails" in payload["topology"]
+    scheduler_jobs = payload["scheduler"].get("jobs")
+    assert isinstance(scheduler_jobs, list)
+    retention_job = next(
+        (item for item in scheduler_jobs if item.get("job_name") == "retention"), None
+    )
+    assert retention_job is not None
+    assert retention_job["status"] in {"failed", "succeeded"}
+    assert "failure_reason" in retention_job
+    assert "finished_at" in retention_job
+    assert retention_job["interval_seconds"] == 120.0
+    assert retention_job["next_scheduled_at"] is not None
 
 
 def test_dashboard_overview_extended_and_diagnosis_endpoints(

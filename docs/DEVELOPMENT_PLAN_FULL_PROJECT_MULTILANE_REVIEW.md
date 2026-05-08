@@ -671,7 +671,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 - **Tools available:** FastAPI routes, frontend pages, metrics already emitted.
 - **Steps / plan:** 1) Inventory existing signals. 2) Design minimal UI. 3) Ship behind feature flag if needed.
 - **Validation / verification:** Operator can answer “is the system healthy?” without SSH in common cases.
-- **State / progress tracking:** Status: In progress; % complete: 65; Owner: Backend + Frontend + Ops; Last update: 2026-05-08 (backend API + frontend Settings surface shipped for `/dashboard/system-diagnostics`; includes summary cards, JSON copy/export, and tests/docs)
+- **State / progress tracking:** Status: Done; % complete: 100; Owner: Backend + Frontend + Ops; Last update: 2026-05-08 (completed scheduler job diagnostics in `/dashboard/system-diagnostics` with per-job last-run/next-run/failure fields, Settings UI rendering, and backend/frontend test coverage)
 - **Related documents:** §5.1 Production readiness matrix
 
 ## 7) Plan-level execution strategy

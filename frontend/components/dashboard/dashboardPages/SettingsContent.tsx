@@ -29,6 +29,7 @@ import {
 } from "./settingsContentUtils";
 import {
   formatDurationSeconds,
+  normalizeSchedulerJobs,
   normalizeSystemDiagnostics,
 } from "../../../utils/systemDiagnostics";
 
@@ -436,6 +437,10 @@ export function SettingsContent() {
   const aggregateWorkerHealthy = aggregateQueueEnabled ? aggregateQueueHealthy : null;
   const systemDiagnosticsSummary = useMemo(
     () => normalizeSystemDiagnostics(systemDiagnosticsSnapshot),
+    [systemDiagnosticsSnapshot],
+  );
+  const schedulerJobs = useMemo(
+    () => normalizeSchedulerJobs(systemDiagnosticsSnapshot),
     [systemDiagnosticsSnapshot],
   );
   const metricStatusClass = (ok: boolean | null): string => {
@@ -1040,6 +1045,40 @@ export function SettingsContent() {
                 </p>
               </div>
             </div>
+            {schedulerJobs.length > 0 ? (
+              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-neutral-700">
+                <table className="min-w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Job</th>
+                      <th className="px-3 py-2 font-semibold">Status</th>
+                      <th className="px-3 py-2 font-semibold">Last run</th>
+                      <th className="px-3 py-2 font-semibold">Next run</th>
+                      <th className="px-3 py-2 font-semibold">Failure</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
+                    {schedulerJobs.map((job) => (
+                      <tr key={job.jobName}>
+                        <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-200">
+                          {job.jobName}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{job.status}</td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                          {job.lastFinishedAt ? new Date(job.lastFinishedAt).toLocaleString() : "n/a"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                          {job.nextScheduledAt ? new Date(job.nextScheduledAt).toLocaleString() : "n/a"}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
+                          {job.failureReason ?? "none"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
             <div className="mt-4 flex items-center gap-3">
               <button
                 type="button"

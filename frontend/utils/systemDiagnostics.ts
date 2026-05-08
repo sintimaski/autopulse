@@ -10,6 +10,14 @@ export type SystemDiagnosticsSummary = {
   ingestionLagSeconds: number | null;
 };
 
+export type SchedulerJobSummary = {
+  jobName: string;
+  status: "succeeded" | "failed" | "unknown";
+  lastFinishedAt: string | null;
+  nextScheduledAt: string | null;
+  failureReason: string | null;
+};
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
@@ -69,4 +77,32 @@ export function formatDurationSeconds(seconds: number | null): string {
     return `${(seconds / 60).toFixed(1)}m`;
   }
   return `${(seconds / 3600).toFixed(1)}h`;
+}
+
+export function normalizeSchedulerJobs(
+  payload: DashboardSystemDiagnosticsResponse | null,
+): SchedulerJobSummary[] {
+  if (!payload) {
+    return [];
+  }
+  const scheduler = asRecord(payload.scheduler);
+  const jobs = Array.isArray(scheduler.jobs) ? scheduler.jobs : [];
+  return jobs
+    .map((job) => {
+      const row = asRecord(job);
+      const jobName = typeof row.job_name === "string" ? row.job_name : null;
+      if (!jobName) {
+        return null;
+      }
+      const status =
+        row.status === "succeeded" || row.status === "failed" ? row.status : "unknown";
+      return {
+        jobName,
+        status,
+        lastFinishedAt: typeof row.finished_at === "string" ? row.finished_at : null,
+        nextScheduledAt: typeof row.next_scheduled_at === "string" ? row.next_scheduled_at : null,
+        failureReason: typeof row.failure_reason === "string" ? row.failure_reason : null,
+      } satisfies SchedulerJobSummary;
+    })
+    .filter((row): row is SchedulerJobSummary => row !== null);
 }

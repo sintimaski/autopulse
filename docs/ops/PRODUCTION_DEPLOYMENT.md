@@ -309,7 +309,7 @@ For common support triage without SSH, operators can query:
 The response includes:
 
 - topology and readiness guardrails (`topology.profile`, `topology.guardrails`)
-- scheduler state summary (`scheduler.*`)
+- scheduler state summary (`scheduler.*`) including per-job status, last run, next scheduled run, and failure reason (`scheduler.jobs[]`)
 - replay/repair queue indicators (`replay_queue.pending_sql_tail_repairs`, `replay_queue.oldest_pending_age_seconds`, dead-letter counters)
 - project-scoped ingestion freshness (`ingestion_freshness.last_event_received_at`, `ingestion_freshness.lag_seconds`)
 - redacted config diagnostics (`config_diagnostics.database_url_redacted`, topology flags; no API keys/tokens)
