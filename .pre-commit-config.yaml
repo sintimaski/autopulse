@@ -20,6 +20,12 @@ repos:
       - id: check-added-large-files
   - repo: local
     hooks:
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        pass_filenames: false
+        files: ^(sdk|backend)/.*\.py$|^pyproject\.toml$
       - id: backend-alembic-verify
         name: backend-alembic-verify
         entry: bash scripts/pre_commit_alembic.sh

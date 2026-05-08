@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 from autopulse_backend.core.config import Settings, get_settings
@@ -93,9 +94,9 @@ class _S3ObjectStore:
     secret_access_key: str | None
     session_token: str | None
 
-    def _client(self) -> object:
+    def _client(self) -> Any:
         try:
-            import boto3
+            import boto3  # type: ignore[import-not-found]
         except ModuleNotFoundError as exc:
             raise RuntimeError(
                 "S3 object storage requires boto3. Install it in the backend environment."

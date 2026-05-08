@@ -293,10 +293,12 @@ async def get_dashboard_system_diagnostics(
         "profile": metrics.get("topology_profile"),
         "guardrails": metrics.get("topology_guardrails"),
     }
+    topology_guardrails_raw = metrics.get("topology_guardrails")
+    topology_guardrails_dict = (
+        topology_guardrails_raw if isinstance(topology_guardrails_raw, dict) else {}
+    )
     scheduler = {
-        "required_for_env": bool(
-            (metrics.get("topology_guardrails") or {}).get("scheduler_required")
-        ),
+        "required_for_env": bool(topology_guardrails_dict.get("scheduler_required")),
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
         "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
         "scheduler_running": bool(metrics.get("scheduler_running")),

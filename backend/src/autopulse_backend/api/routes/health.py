@@ -20,10 +20,11 @@ router = APIRouter(tags=["system"])
 
 
 def _scheduler_running(scheduler: object) -> bool:
+    tasks = getattr(scheduler, "tasks", None)
     return bool(
         scheduler is not None
-        and isinstance(getattr(scheduler, "tasks", None), list)
-        and any(isinstance(task, asyncio.Task) and not task.done() for task in scheduler.tasks)
+        and isinstance(tasks, list)
+        and any(isinstance(task, asyncio.Task) and not task.done() for task in tasks)
     )
 
 
@@ -276,8 +277,8 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/ready")
-async def ready(request: Request) -> dict[str, object]:
+@router.get("/ready", response_model=None)
+async def ready(request: Request) -> JSONResponse | dict[str, object]:
     settings = get_settings()
     scheduler = getattr(request.app.state, "_autopulse_scheduler", None)
     scheduler_running = _scheduler_running(scheduler)
