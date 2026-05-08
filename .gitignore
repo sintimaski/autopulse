@@ -64,3 +64,6 @@ out/
 
 # Local stray copies of dashboard static export (canonical build is frontend/out)
 sdk/src/autopulse/ui/
+
+# Hatch sdist staging for shipped wheels (never commit baked export under src)
+backend/src/autopulse_backend/dashboard_static/

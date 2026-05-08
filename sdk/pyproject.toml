@@ -1,6 +1,6 @@
 [project]
 name = "autopulse-sdk"
-version = "0.1.1"
+version = "0.1.4"
 description = "FastAPI observability SDK for AutoPulse"
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,10 @@ dependencies = [
     "httpx>=0.27.0",
     "psutil>=6.0.0",
 ]
+
+# ``pip install "autopulse-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``autopulse-api``) alongside this SDK.
+[project.optional-dependencies]
+stack = ["autopulse-api>=0.1.5"]
 
 [project.urls]
 Homepage = "https://github.com/sintimaski/autopulse"

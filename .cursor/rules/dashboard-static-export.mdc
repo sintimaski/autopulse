@@ -10,7 +10,7 @@ alwaysApply: false
 # Dashboard static export
 
 - The dashboard is built as a **Next.js static export** (`npm run build` → `frontend/out/`) with **`basePath` `/autopulse/ui`** so routes and `_next/static` assets align with API-submount layouts.
-- **FastAPI backend:** when serving the export from the API process, env **`AUTOPULSE_FRONTEND_STATIC_DIR`** should point at the export root and the app should mount it under **`/autopulse/ui/`**. The integration hook is `maybe_mount_dashboard_static_export` in `backend/src/autopulse_backend/dashboard/static_export_mount.py` (mounts when `index.html` is found—keep this rule and that module in sync when behavior changes).
+- **FastAPI backend:** when serving the export from the API process, env **`AUTOPULSE_FRONTEND_STATIC_DIR`** should point at the export root and the app should mount it under **`/autopulse/ui/`**. **`autopulse-api` wheels bundle** the last built export at **`autopulse_backend/dashboard_static/`** (populate via `npm --prefix frontend run build` before `uv build backend` / `backend/scripts/package_wheel.sh`; see `backend/pyproject.toml` `sdist.force-include`). Resolution order: explicit env → bundled copy → monorepo **`frontend/out`**. The integration hook is `maybe_mount_dashboard_static_export` in `backend/src/autopulse_backend/dashboard/static_export_mount.py` (mounts when `index.html` is found—keep this rule and that module in sync when behavior changes).
 - Prefer **static export + backend** for default full-stack checks; do not assume a separate **`next start`** unless the task is Next-only (see `.cursor/rules/frontend-next.mdc`).
 
 ## Rule self-review

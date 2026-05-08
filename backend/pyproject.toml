@@ -1,6 +1,6 @@
 [project]
-name = "autopulse-backend"
-version = "0.1.1"
+name = "autopulse-api"
+version = "0.1.5"
 description = "AutoPulse backend ingestion API"
 requires-python = ">=3.11"
 dependencies = [
@@ -28,6 +28,12 @@ parquet-s3 = [
 [build-system]
 requires = ["hatchling>=1.26.0"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+# Ship the Next static export inside the extracted tree used for wheels (nested under ``packages``)—avoids editable-install
+# breakage from wheel-only forced paths while keeping ``frontend/out`` out of Git.
+[tool.hatch.build.targets.sdist.force-include]
+"../frontend/out" = "src/autopulse_backend/dashboard_static"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/autopulse_backend"]

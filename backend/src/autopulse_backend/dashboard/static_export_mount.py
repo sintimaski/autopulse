@@ -60,6 +60,14 @@ class _DashboardStaticExportFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
+def _bundled_dashboard_static_dir() -> Path | None:
+    """Bundled dashboard export next to this module when shipped in the wheel."""
+    bundled = Path(__file__).resolve().parent / "dashboard_static"
+    if bundled.is_dir() and (bundled / "index.html").is_file():
+        return bundled
+    return None
+
+
 def _resolve_dashboard_static_dir(_settings: Settings) -> Path | None:
     env = os.getenv("AUTOPULSE_FRONTEND_STATIC_DIR", "").strip()
     if env:
@@ -67,6 +75,9 @@ def _resolve_dashboard_static_dir(_settings: Settings) -> Path | None:
         if p.is_dir() and (p / "index.html").is_file():
             return p
         return None
+    bundled = _bundled_dashboard_static_dir()
+    if bundled is not None:
+        return bundled
     # Prefer the workspace Next export (`npm run build` in `frontend/`).
     candidates = (Path.cwd() / "frontend" / "out",)
     for raw in candidates:

@@ -4,17 +4,19 @@ AutoPulse SDK instruments a FastAPI app and sends request/error events to AutoPu
 
 ## Install
 
-The distribution on PyPI is **`autopulse-sdk`** (the Python **import package** remains `autopulse`). Another unrelated project occupies the PyPI project name [`autopulse`](https://pypi.org/project/autopulse/).
+| Goal | PyPI one-liner | Import / process |
+|------|-----------------|------------------|
+| **API + bundled dashboard UI** (ingest, dashboard, static export under `/autopulse/ui/`) | `pip install autopulse-api` | `import autopulse_backend` · run `uvicorn autopulse_backend.main:app` |
+| **Instrument your FastAPI app** (send-only SDK) | `pip install autopulse-sdk` | `from autopulse import autopulse` |
+| **API + UI + SDK in one environment** | `pip install "autopulse-sdk[stack]"` | both of the above |
+
+`uv add` works the same (`uv add autopulse-api`, `uv add "autopulse-sdk[stack]"`, …).
+
+**From a git checkout** (offline wheels from repo root):
 
 ```bash
-pip install autopulse-sdk
-```
-
-**From a git checkout** (with the backend in the same workspace):
-
-```bash
-./scripts/build_sdk_release_wheels.sh   # from repo root; writes dist/wheels/*.whl
-pip install dist/wheels/autopulse_backend-*.whl dist/wheels/autopulse_sdk-*.whl
+./scripts/build_sdk_release_wheels.sh   # writes dist/wheels/*.whl
+pip install dist/wheels/autopulse_api-*.whl dist/wheels/autopulse_sdk-*.whl
 ```
 
 ## Publish to PyPI
@@ -28,11 +30,16 @@ twine check dist/pypi-sdk/*
 twine upload dist/pypi-sdk/*
 ```
 
-**Recommended:** use [trusted publishing](https://docs.pypi.org/trusted-publishers/) from GitHub Actions (workflow `.github/workflows/publish-autopulse-sdk-pypi.yml`) instead of storing a long-lived PyPI token in CI secrets—after you enable the Pending publisher for `autopulse-sdk` on [pypi.org](https://pypi.org).
+**Recommended:** use [trusted publishing](https://docs.pypi.org/trusted-publishers/) from GitHub Actions instead of storing a long-lived PyPI token in CI secrets:
 
-**On `main`:** merges that touch `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` trigger that workflow. It uploads **only when** `sdk/pyproject.toml` `[project] version` is **not already** on PyPI—bump the version to cut a release; otherwise the job succeeds and skips upload.
+- **SDK:** `.github/workflows/publish-autopulse-sdk-pypi.yml` → project **`autopulse-sdk`**
+- **API + bundled UI:** `.github/workflows/publish-autopulse-api-pypi.yml` → project **`autopulse-api`**
 
-**One-time on PyPI:** create the `autopulse-sdk` project, add a trusted publisher (this repo + workflow + environment `pypi` if you use the template workflow), then merge a version bump or run the workflow manually.
+**On `main`:** the SDK workflow runs when `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` change. The **`autopulse`** workflow runs when `backend/pyproject.toml`, `backend/src/**`, or `frontend/**` change. Both upload **only when** the corresponding `[project] version` is **not already** on PyPI.
+
+**`autopulse-sdk[stack]` on PyPI:** publish **`autopulse-api`** first (or same release train) so the extra can resolve **`autopulse-api>=0.1.5`**.
+
+**One-time on PyPI:** create projects **`autopulse-sdk`** and **`autopulse-api`**, add trusted publishers for each workflow, then merge version bumps or run workflows manually.
 
 ## Integration
 

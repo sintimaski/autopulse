@@ -125,6 +125,15 @@ jobs:
       - name: Bundle budget
         run: npm run check:bundle-budget
 
+      - name: Install uv (backend wheel smoke)
+        uses: astral-sh/setup-uv@v5
+
+      - name: Backend wheel bundles dashboard export
+        working-directory: ${{ github.workspace }}
+        run: |
+          uv build backend -o /tmp/ap-wheel-smoke
+          unzip -l /tmp/ap-wheel-smoke/autopulse_api-*-py3-none-any.whl | grep -Fq "autopulse_backend/dashboard_static/index.html"
+
   browser-smoke:
     runs-on: ubuntu-latest
     env:
@@ -172,7 +181,7 @@ jobs:
       - name: Start backend
         run: |
           uv run uvicorn autopulse_backend.main:app --app-dir backend/src --host 127.0.0.1 --port 8000 --log-level info &
-          echo $! > /tmp/autopulse-backend.pid
+          echo $! > /tmp/autopulse-api.pid
 
       - name: Wait for backend readiness
         run: |
@@ -192,6 +201,6 @@ jobs:
       - name: Stop backend
         if: always()
         run: |
-          if [ -f /tmp/autopulse-backend.pid ]; then
-            kill "$(cat /tmp/autopulse-backend.pid)" || true
+          if [ -f /tmp/autopulse-api.pid ]; then
+            kill "$(cat /tmp/autopulse-api.pid)" || true
           fi

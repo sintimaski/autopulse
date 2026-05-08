@@ -8,7 +8,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "autopulse-backend",
+    "autopulse-api",
     "autopulse-sdk",
     "autopulse-workspace",
 ]
@@ -116,8 +116,8 @@ wheels = [
 ]
 
 [[package]]
-name = "autopulse-backend"
-version = "0.1.1"
+name = "autopulse-api"
+version = "0.1.5"
 source = { editable = "backend" }
 dependencies = [
     { name = "aiosqlite" },
@@ -161,7 +161,7 @@ provides-extras = ["parquet-s3"]
 
 [[package]]
 name = "autopulse-sdk"
-version = "0.1.1"
+version = "0.1.4"
 source = { editable = "sdk" }
 dependencies = [
     { name = "fastapi" },
@@ -169,19 +169,26 @@ dependencies = [
     { name = "psutil" },
 ]
 
+[package.optional-dependencies]
+stack = [
+    { name = "autopulse-api" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "autopulse-api", marker = "extra == 'stack'", editable = "backend" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "psutil", specifier = ">=6.0.0" },
 ]
+provides-extras = ["stack"]
 
 [[package]]
 name = "autopulse-workspace"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "autopulse-backend" },
+    { name = "autopulse-api" },
     { name = "autopulse-sdk" },
     { name = "dotenv" },
     { name = "pytz" },
@@ -201,7 +208,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "autopulse-backend", editable = "backend" },
+    { name = "autopulse-api", editable = "backend" },
     { name = "autopulse-sdk", editable = "sdk" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "pytz", specifier = ">=2026.1.post1" },

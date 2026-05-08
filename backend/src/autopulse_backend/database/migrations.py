@@ -38,7 +38,7 @@ def upgrade_to_head() -> None:
     if not alembic_dir.is_dir():
         msg = (
             "Alembic migration scripts not found next to autopulse_backend package "
-            f"({alembic_dir}); reinstall autopulse-backend or run from repository sources."
+            f"({alembic_dir}); reinstall autopulse-api or run from repository sources."
         )
         raise RuntimeError(msg)
     # Load config without relying on alembic.ini on disk — required for installs from wheels

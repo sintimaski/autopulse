@@ -8,9 +8,27 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-05-08
+
 ### Packaging
 
-- **PyPI distribution name** is **`autopulse-sdk`** (import package remains **`autopulse`**). The PyPI project name [`autopulse`](https://pypi.org/project/autopulse/) is a different, unrelated package.
+- **`[stack]`** extra requires **`autopulse-api>=0.1.5`** (aligned with the current API wheel release train).
+
+## [0.1.3] - 2026-05-08
+
+### Packaging
+
+- **`[stack]`** extra now depends on **`autopulse-api>=0.1.4`** (PyPI name for the API + bundled dashboard; the unrelated PyPI project **`autopulse`** remains a different product).
+
+## [0.1.2] - 2026-05-08
+
+### Added
+
+- Optional extra **`[stack]`**: depends on the API distribution so `pip install "autopulse-sdk[stack]"` installs the API (with bundled dashboard) plus this SDK.
+
+### Packaging
+
+- **PyPI distribution name** for the SDK remains **`autopulse-sdk`** (import **`autopulse`**).
 
 ### Security
 

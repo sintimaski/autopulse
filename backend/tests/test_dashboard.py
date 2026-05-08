@@ -1221,7 +1221,7 @@ def test_dashboard_internal_metrics_returns_snapshot_for_admin_scope(
     assert payload["reason"] is None
     metrics = payload["metrics"]
     assert isinstance(metrics, dict)
-    assert metrics.get("service") == "autopulse-backend"
+    assert metrics.get("service") == "autopulse-api"
     assert isinstance(metrics.get("ingest_pressure"), dict)
     assert isinstance(metrics.get("ingest_aggregate_queue"), dict)
 

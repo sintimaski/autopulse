@@ -23,6 +23,7 @@ AutoPulse gives Python teams a fast path to useful production visibility without
 - 🔐 [Auth and options](#auth-and-options)
 - 🌍 [Environment reference](#environment-reference)
 - 🛠️ [Develop AutoPulse from this repo](#develop-autopulse-from-this-repo)
+- 📦 [PyPI publishing & install links](./docs/ops/PYPI_PUBLISHING.md)
 
 ---
 
@@ -53,11 +54,35 @@ export AUTOPULSE_API_KEY="<project ingest key from dashboard>"
 
 ### Run the AutoPulse API from another repo 🖥️
 
-The distribution on PyPI is **`autopulse-sdk`** only. **`autopulse-backend` is not on PyPI** today, so `uv add autopulse-backend` / `pip install autopulse-backend` will not resolve. Install the backend from this repository (pin `main` to a tag or commit in production):
+Two **PyPI** install lines (import for the API remains **`autopulse_backend`**):
+
+| What you need | One line |
+|-----------------|----------|
+| **API + pre-built dashboard** (wheel bundles static UI; published on pushes to `main` via `.github/workflows/publish-autopulse-api-pypi.yml` after PyPI trusted publishing is set up) | `pip install autopulse-api` or `uv add autopulse-api` |
+| **Same as above + FastAPI SDK** (`from autopulse import autopulse` in your app) | `pip install "autopulse-sdk[stack]"` or `uv add "autopulse-sdk[stack]"` |
+
+**Git** (always works; pin `main` to a tag or commit SHA in production):
 
 ```bash
-uv add "autopulse-backend @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+uv add "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+```
+
+```bash
+pip install "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+```
+
+```bash
 uv run uvicorn autopulse_backend.main:app --host 0.0.0.0 --port 8000
+```
+
+**API + SDK from Git in one line:**
+
+```bash
+uv add "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend" "autopulse-sdk @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=sdk"
+```
+
+```bash
+pip install "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend" "autopulse-sdk @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=sdk"
 ```
 
 Use `--env-file /path/to/.env` only when that file exists. Otherwise omit it or create one (see `backend/.env.example` in the repo).
@@ -124,7 +149,7 @@ autopulse(
 | Use case                          | What to run                                 | When to use                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **🏗️ Full local stack**          | `./scripts/run_synthetic_stack.sh`          | End-to-end demo or integration work: API on `:8000`, synthetic FastAPI app on `:8001`, dashboard (static mount or Next sidecar per `AUTOPULSE_FRONTEND_MODE`).       |
-| **🖥️ Backend only**              | `uv run python -m autopulse_backend.main` (requires `autopulse-backend`; [install from Git](./backend/README.md#install-outside-the-monorepo-no-pypi) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
+| **🖥️ Backend only**              | `uv run python -m autopulse_backend.main` (requires **`autopulse-api`**; [install](./backend/README.md#install-outside-the-monorepo) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
 | **🔥 API + Next with hot reload** | Backend + `npm --prefix frontend run dev`   | Frontend iteration: HMR on the dashboard while the API serves JSON; point `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (and related `NEXT_PUBLIC_`* vars) at the API origin. |
 | **📈 Synthetic load**             | `./scripts/examples/synthetic_load_demo.sh` | Generate realistic mixed traffic against the sample app; override `BASE_URL`, `DURATION_MINUTES`, `TARGET_REQUESTS`, `ROLE_MODE`, or `SCENARIO` as needed.           |
 

@@ -2,6 +2,8 @@
 
 FastAPI backend for ingest, dashboard APIs, auth/session flows, alerts, retention jobs, and realtime updates.
 
+Python **import name** remains **`autopulse_backend`**. The **distribution / PyPI project name** is **`autopulse-api`** (API + pre-built dashboard static export bundled in the wheel). The PyPI name **`autopulse`** is already used by an unrelated package, so this project publishes as **`autopulse-api`**. If you used **`autopulse-backend`** or **`autopulse`** in Git URLs earlier, switch to **`autopulse-api`** (same code paths).
+
 ## What lives here
 
 - Ingest API: `POST /ingest` with API-key authentication.
@@ -10,15 +12,43 @@ FastAPI backend for ingest, dashboard APIs, auth/session flows, alerts, retentio
 - Background jobs: alert evaluation and retention cleanup.
 - Internal ops endpoints: health/ready and service metrics.
 
-## Install outside the monorepo (no PyPI)
+## Install outside the monorepo
 
-The wheel is **`autopulse-backend`**, but it is **not published to PyPI** (unlike `autopulse-sdk`). From another project, install from Git with the `backend/` subdirectory, for example:
+**One line (PyPI, after trusted publishing is enabled):**
 
 ```bash
-uv add "autopulse-backend @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+pip install autopulse-api
 ```
 
-Prefer a **tag or commit SHA** instead of `main` for reproducible deploys. If dependency resolution fails on a very new Python (for example 3.14), try **3.12 or 3.13**.
+```bash
+uv add autopulse-api
+```
+
+**One line (Git — always works; pin `main` to a tag or SHA in production):**
+
+```bash
+uv add "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+```
+
+```bash
+pip install "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+```
+
+**API + Fast instrumented app in one line:** use the SDK extra (see [sdk/README.md](../sdk/README.md)):
+
+```bash
+pip install "autopulse-sdk[stack]"
+```
+
+If Python **3.14** fails to resolve wheels, try **3.12 or 3.13**.
+
+### Wheel build (bundled dashboard)
+
+The **`autopulse-api`** sdist/wheel ships the Next static export under **`autopulse_backend/dashboard_static/`** (mounted at **`/autopulse/ui/`** when **`AUTOPULSE_FRONTEND_STATIC_DIR`** is unset and **`index.html`** exists). Build **`frontend/out`** first (see **`scripts/run_synthetic_stack.sh`** for **`NEXT_PUBLIC_*`** defaults):
+
+```bash
+./backend/scripts/package_wheel.sh
+```
 
 ## Run locally
 
@@ -56,9 +86,9 @@ Backend defaults to `http://localhost:8000`.
 - `AUTOPULSE_SQLITE_MAX_DB_FILE_MB` (max SQLite log-store file size in MB; applies to DuckDB or SQLite when capped. For SQLite it includes main + `-wal` + `-shm`; deprecated alias `AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB`; default **512** on dev default SQLite filenames when unset)
 - `AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS` / `AUTOPULSE_RETENTION_PRESSURE_MIN_INTERVAL_SECONDS` (SQLite pressure poll; see `core/config.py`)
 
-Parquet **object storage** with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI=s3://...` needs **`boto3`**. Install the backend extra from this directory (`uv pip install -e ".[parquet-s3]"`) or add `boto3` to your environment. `file://` URIs do not use `boto3`.
+Parquet **object storage** with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI=s3://...` needs **`boto3`**. Install the extra from this directory (`uv pip install -e ".[parquet-s3]"`) or add `boto3` to your environment. `file://` URIs do not use `boto3`.
 
-See `backend/src/autopulse_backend/core/config.py` for the complete list and defaults.
+See `backend/src/autopulse_backend/core/config.py` and `backend/.env.example` for the complete list and defaults.
 
 **Production:** startup applies `validate_deployment_settings` for `AUTOPULSE_ENV=production`. Follow `docs/ops/PRODUCTION_DEPLOYMENT.md` for enforced HTTPS ingest, internal metrics token, CORS, dashboard session/magic-link TTL, OIDC/magic-link URL schemes, and related constraints. Automated checks: `backend/tests/test_deployment_settings.py`.
 

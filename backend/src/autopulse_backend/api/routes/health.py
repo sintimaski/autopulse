@@ -253,7 +253,7 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     except Exception:  # noqa: BLE001 - best-effort telemetry
         aggregate_queue_depth = None
     return {
-        "service": "autopulse-backend",
+        "service": "autopulse-api",
         "autopulse_env": settings.autopulse_env,
         "event_plane_mode": settings.event_plane_mode,
         "dashboard_auth_enabled": settings.dashboard_auth_enabled,
