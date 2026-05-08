@@ -49,6 +49,12 @@ Unknown event fields are accepted but ignored for MVP persistence unless explici
 - `429`: project rate limit exceeded (`Retry-After` header present).
 - `422`: validation failure.
 
+## First-ingest smoke check (quick)
+
+1. Send one valid request with project API key (or run `./scripts/examples/ingest_sample_event.sh` from repo root).
+2. Expect `200 OK` and JSON body containing `accepted >= 1`.
+3. Confirm the accepted event is visible in dashboard diagnosis surfaces (Overview/Requests) shortly after ingest.
+
 ## Processing guarantees
 
 - Raw event persistence is the source of truth.

@@ -207,9 +207,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: In progress
+  - % complete: 55
+  - Last update: 2026-05-08 (aligned README first-ingest semantics to HTTP 200, added contract smoke checklist, added OpenAPI regression test, and updated onboarding first-ingest copy with frontend unit coverage for HTTP 200 accepted guidance)
   - Owner: Product + Backend
 - **Related documents:** `docs/contracts/ingest-api.md`, `README.md`
 - **References / examples:** `backend/src/autopulse_backend/routes/ingest.py`
@@ -393,8 +393,8 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - If partial/no, guardrails required: migration toggles documented.
 - **State / progress tracking:**
   - Status: In progress
-  - % complete: 70
-  - Last update: 2026-05-08 (guardrail increment: required-scheduler startup now hard-fails in staging/production when scheduler tasks do not start; adds regression test and ops docs)
+  - % complete: 82
+  - Last update: 2026-05-08 (guardrail increment: required-scheduler startup hard-fail covered; non-ideal topology telemetry for mixed external-cron/in-process scheduler ownership added; `/ready` advisory behavior regression-tested alongside ops docs updates)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - **References / examples:** `backend/src/autopulse_backend/core/config.py`, `backend/src/autopulse_backend/lifespan.py`

@@ -145,6 +145,24 @@ def test_topology_guardrail_status_flags_realtime_risk_for_staging_without_share
     assert status["risky_count"] >= 1
 
 
+def test_topology_guardrail_status_reports_non_ideal_external_cron_mix_without_degrading() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="production",
+        scheduler_running=True,
+        jobs_enable_scheduler=True,
+        scheduler_required=False,
+        jobs_external_cron_ownership=True,
+        dashboard_realtime_bus_backend="postgres_notify",
+    )
+    assert status["status"] == "healthy"
+    assert (
+        "non-ideal:external-cron-ownership-with-in-process-scheduler-enabled" in status["reasons"]
+    )
+    assert status["non_ideal_count"] >= 1
+    assert status["unsafe_count"] == 0
+    assert status["risky_count"] == 0
+
+
 def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() -> None:
     status = _topology_guardrail_status(
         autopulse_env="development",
@@ -156,6 +174,7 @@ def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() 
     assert status["status"] == "healthy"
     assert status["unsafe_count"] == 0
     assert status["risky_count"] == 0
+    assert status["non_ideal_count"] == 0
 
 
 def test_startup_hard_fails_when_required_scheduler_does_not_start(
@@ -174,3 +193,24 @@ def test_startup_hard_fails_when_required_scheduler_does_not_start(
         TestClient(app),
     ):
         pass
+
+
+def test_ready_stays_ready_with_non_ideal_scheduler_ownership_mix(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AUTOPULSE_ENV", "staging")
+    monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "true")
+    monkeypatch.setenv("JOBS_EXTERNAL_CRON_OWNERSHIP", "true")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready"
+    guardrails = body["topology_guardrails"]
+    assert guardrails["status"] == "healthy"
+    assert guardrails["non_ideal_count"] >= 1
+    assert (
+        "non-ideal:external-cron-ownership-with-in-process-scheduler-enabled"
+        in guardrails["reasons"]
+    )

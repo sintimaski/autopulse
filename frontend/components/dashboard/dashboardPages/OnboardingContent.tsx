@@ -8,6 +8,19 @@ import { useDashboardData } from "../DashboardDataContext";
 import { isApiSubpathDashboard } from "../dashboardTypes";
 import { canManageIngestApiKeys } from "../dashboardRoleHelpers";
 
+export function onboardingFirstIngestGuidance(subpathUi: boolean): string {
+  if (subpathUi) {
+    return (
+      "After the SDK sends its first batch, expect HTTP 200 with an accepted count; " +
+      "counts update here shortly after (refresh if you just deployed)."
+    );
+  }
+  return (
+    "Send traffic through your instrumented app and confirm your ingest call returns HTTP 200 " +
+    "with an accepted count, then refresh."
+  );
+}
+
 export function OnboardingContent() {
   const router = useRouter();
   const d = useDashboardData();
@@ -108,9 +121,7 @@ export function OnboardingContent() {
         <li className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
           <p className="text-sm font-semibold text-slate-800 dark:text-neutral-100">3. First ingest</p>
           <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
-            {subpathUi
-              ? "After the SDK sends its first batch, counts update here — refresh if you just deployed."
-              : "Send traffic through your instrumented app, then refresh."}
+            {onboardingFirstIngestGuidance(subpathUi)}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => d.setRefreshToken((t) => t + 1)} className="ap-btn">

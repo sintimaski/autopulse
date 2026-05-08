@@ -58,7 +58,13 @@ export INGEST_KEY='<project ingest key>'
 ./scripts/examples/ingest_sample_event.sh
 ```
 
-✅ Expect **HTTP 202**. Refresh the dashboard to see the event.
+✅ Expect **HTTP 200** with `{"accepted": <n>}`.
+
+First-ingest smoke checklist (contract-aligned):
+
+1. Run `./scripts/examples/ingest_sample_event.sh` with a valid project key.
+2. Confirm the script reports **HTTP 200** and response body includes `"accepted": 1` (or higher for larger batches).
+3. Open the dashboard and verify the new event appears in Overview/Requests (live updates may appear without manual refresh; refresh if your browser tab was idle).
 
 ---
 

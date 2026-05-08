@@ -165,6 +165,16 @@ def test_ingest_rejects_missing_auth_header(backend_test_database_url: str) -> N
     assert _count_events(backend_test_database_url) == 0
 
 
+def test_openapi_ingest_contract_declares_200_success_response() -> None:
+    app = create_app()
+    with TestClient(app) as client:
+        openapi = client.get("/openapi.json")
+    assert openapi.status_code == 200
+    ingest_operation = openapi.json()["paths"]["/ingest"]["post"]
+    assert "200" in ingest_operation["responses"]
+    assert "202" not in ingest_operation["responses"]
+
+
 def test_ingest_persists_batch_with_metadata(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, project_id = _seed_project_and_key(backend_test_database_url)

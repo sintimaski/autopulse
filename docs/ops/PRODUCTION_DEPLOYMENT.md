@@ -157,8 +157,9 @@ Staging evidence before go-live:
 - For non-default SQLite paths and Postgres metadata, treat missing scheduler as a release **No-Go** unless you run equivalent external cron jobs for alerts/retention.
 - Validate scheduler state after deploy:
   - `GET /ready` should report `jobs_enable_scheduler=true` and `scheduler_running=true` (or your documented external-cron mode).
-- In staging/production profiles, `/ready` returns `503` with `status=degraded` when topology guardrails fail (`topology_guardrails.findings` explains unsafe/risky causes).
+- In staging/production profiles, `/ready` returns `503` with `status=degraded` when topology guardrails fail on **unsafe/risky** findings (`topology_guardrails.findings` explains unsafe/risky/non-ideal causes).
 - Startup now fails closed when a required in-process scheduler does not come up in staging/production (`Unsafe topology: scheduler is required ...`), instead of running in a partially unsafe state.
+- `/ready` and `/internal/metrics` include `topology_guardrails.non_ideal_count` for advisory states that should be corrected but do not block readiness (for example, external cron ownership enabled while in-process scheduler is also enabled).
   - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
 - SQL-tail repair queue (DuckDB authoritative ingest):
@@ -251,7 +252,7 @@ Monitor at minimum:
 | Ingest accepted / rejected | `/internal/metrics` or `/metrics` (bearer-gated) — counters such as `ingest.accepted.*`, `ingest.rejected.*`, `ingest.rate_limit.distributed_fallback` |
 | Ingest pressure | `GET /internal/metrics` JSON `ingest_pressure` (queue depth, sync fallback, worker failures) |
 | Scheduler | Job telemetry from internal metrics + logs |
-| Topology guardrails | `GET /ready` + `GET /internal/metrics` `topology_guardrails` (`status`, `unsafe_count`, `risky_count`, `findings`) |
+| Topology guardrails | `GET /ready` + `GET /internal/metrics` `topology_guardrails` (`status`, `unsafe_count`, `risky_count`, `non_ideal_count`, `findings`) |
 
 Tune alerts on **ingest 429 rate**, **aggregate worker dead-letter growth**, and **dashboard `/ready` failures**.
 

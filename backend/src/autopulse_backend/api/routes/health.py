@@ -34,6 +34,7 @@ def _topology_guardrail_status(
     scheduler_running: bool,
     jobs_enable_scheduler: bool,
     scheduler_required: bool,
+    jobs_external_cron_ownership: bool = False,
     dashboard_realtime_bus_backend: str,
 ) -> dict[str, object]:
     findings: list[dict[str, str]] = []
@@ -70,15 +71,29 @@ def _topology_guardrail_status(
                 ),
             }
         )
+    if jobs_external_cron_ownership and jobs_enable_scheduler:
+        findings.append(
+            {
+                "severity": "non-ideal",
+                "code": "external-cron-ownership-with-in-process-scheduler-enabled",
+                "message": (
+                    "JOBS_EXTERNAL_CRON_OWNERSHIP=true while JOBS_ENABLE_SCHEDULER=true; "
+                    "prefer one scheduler owner model per environment"
+                ),
+            }
+        )
     unsafe_count = sum(1 for finding in findings if finding["severity"] == "unsafe")
     risky_count = sum(1 for finding in findings if finding["severity"] == "risky")
-    status = "healthy" if not findings else "degraded"
+    non_ideal_count = sum(1 for finding in findings if finding["severity"] == "non-ideal")
+    has_blocking_findings = unsafe_count > 0 or risky_count > 0
+    status = "healthy" if not has_blocking_findings else "degraded"
     reasons = [f"{finding['severity']}:{finding['code']}" for finding in findings]
     return {
         "status": status,
         "scheduler_required": scheduler_required,
         "unsafe_count": unsafe_count,
         "risky_count": risky_count,
+        "non_ideal_count": non_ideal_count,
         "reasons": reasons,
         "findings": findings,
     }
@@ -182,6 +197,7 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         scheduler_running=scheduler_running,
         jobs_enable_scheduler=settings.jobs_enable_scheduler,
         scheduler_required=scheduler_required_for_env(settings),
+        jobs_external_cron_ownership=settings.jobs_external_cron_ownership,
         dashboard_realtime_bus_backend=settings.dashboard_realtime_bus_backend,
     )
     retention_pressure_poll_running = bool(
@@ -310,6 +326,7 @@ async def ready(request: Request) -> JSONResponse | dict[str, object]:
         scheduler_running=scheduler_running,
         jobs_enable_scheduler=settings.jobs_enable_scheduler,
         scheduler_required=scheduler_required_for_env(settings),
+        jobs_external_cron_ownership=settings.jobs_external_cron_ownership,
         dashboard_realtime_bus_backend=settings.dashboard_realtime_bus_backend,
     )
     payload = {
