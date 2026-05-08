@@ -671,7 +671,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 - **Tools available:** FastAPI routes, frontend pages, metrics already emitted.
 - **Steps / plan:** 1) Inventory existing signals. 2) Design minimal UI. 3) Ship behind feature flag if needed.
 - **Validation / verification:** Operator can answer “is the system healthy?” without SSH in common cases.
-- **State / progress tracking:** Status: Todo; Owner: Backend + Frontend + Ops; Last update: 2026-05-07
+- **State / progress tracking:** Status: In progress; % complete: 35; Owner: Backend + Frontend + Ops; Last update: 2026-05-08 (backend API slice shipped: `/dashboard/system-diagnostics` with topology/scheduler/replay/freshness + redacted config diagnostics + tests/docs)
 - **Related documents:** §5.1 Production readiness matrix
 
 ## 7) Plan-level execution strategy

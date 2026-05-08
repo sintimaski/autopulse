@@ -300,6 +300,20 @@ Operator validation:
 3. Trigger one handled page load and one synthetic browser error (`throw new Error("rum-smoke")` in devtools).
 4. Verify endpoint receives scrubbed payloads (no raw emails/tokens/query strings), then disable debug mode.
 
+## 6.3 Operator diagnostics surface (`/dashboard/system-diagnostics`)
+
+For common support triage without SSH, operators can query:
+
+- `GET /dashboard/system-diagnostics` (dashboard auth + admin/owner scope)
+
+The response includes:
+
+- topology and readiness guardrails (`topology.profile`, `topology.guardrails`)
+- scheduler state summary (`scheduler.*`)
+- replay/repair queue indicators (`replay_queue.pending_sql_tail_repairs`, `replay_queue.oldest_pending_age_seconds`, dead-letter counters)
+- project-scoped ingestion freshness (`ingestion_freshness.last_event_received_at`, `ingestion_freshness.lag_seconds`)
+- redacted config diagnostics (`config_diagnostics.database_url_redacted`, topology flags; no API keys/tokens)
+
 ## 7. SLO / SLI targets (initial release gates)
 
 Treat these as **starting budgets**; tighten per customer tier and measured baseline after two weeks of production traffic.

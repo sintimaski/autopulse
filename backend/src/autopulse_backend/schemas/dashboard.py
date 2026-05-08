@@ -116,6 +116,15 @@ class DashboardInternalMetricsResponse(BaseModel):
     metrics: dict[str, Any] | None = None
 
 
+class DashboardSystemDiagnosticsResponse(BaseModel):
+    generated_at: datetime
+    topology: dict[str, Any]
+    scheduler: dict[str, Any]
+    replay_queue: dict[str, Any]
+    ingestion_freshness: dict[str, Any]
+    config_diagnostics: dict[str, Any]
+
+
 class DashboardAlertSettings(BaseModel):
     enabled: bool
     destination_email: str | None = None

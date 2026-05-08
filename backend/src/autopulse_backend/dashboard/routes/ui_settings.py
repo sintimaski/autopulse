@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from autopulse_backend.api.routes.health import _build_metrics_snapshot
@@ -16,20 +17,23 @@ from autopulse_backend.auth import (
 )
 from autopulse_backend.auth.dashboard import get_dashboard_auth_session
 from autopulse_backend.auth.rbac import require_member_or_above, require_owner_or_admin
-from autopulse_backend.core.config import get_settings
+from autopulse_backend.core.config import get_settings, redact_database_url_for_log
 from autopulse_backend.dashboard.repositories.project_ui import get_or_create_project_ui_settings
 from autopulse_backend.dashboard.serializers import (
     serialize_retention_settings,
     serialize_theme_settings,
 )
+from autopulse_backend.dashboard.time_window import as_utc_datetime
 from autopulse_backend.database import get_db_session
 from autopulse_backend.metrics import service_metrics
+from autopulse_backend.models import Event, IngestAggregateDeadLetter, IngestSqlTailRepairItem
 from autopulse_backend.schemas import (
     DashboardEventPlaneCutoverSettings,
     DashboardEventPlaneCutoverSettingsUpdate,
     DashboardInternalMetricsResponse,
     DashboardRetentionSettings,
     DashboardRetentionSettingsUpdate,
+    DashboardSystemDiagnosticsResponse,
     DashboardThemeSettings,
     DashboardThemeSettingsUpdate,
 )
@@ -213,4 +217,123 @@ async def get_dashboard_internal_metrics(
         enabled=True,
         reason=None,
         metrics=_build_metrics_snapshot(request),
+    )
+
+
+@router.get("/system-diagnostics", response_model=DashboardSystemDiagnosticsResponse)
+async def get_dashboard_system_diagnostics(
+    request: Request,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    __: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardSystemDiagnosticsResponse:
+    now = datetime.now(tz=UTC)
+    settings = get_settings()
+    metrics = _build_metrics_snapshot(request)
+
+    project_id = context.project_id
+    latest_event_ts = await session.scalar(
+        select(func.max(Event.timestamp)).where(Event.project_id == project_id)
+    )
+    pending_repair_count = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestSqlTailRepairItem)
+                .where(
+                    IngestSqlTailRepairItem.project_id == project_id,
+                    IngestSqlTailRepairItem.resolved_at.is_(None),
+                    IngestSqlTailRepairItem.dead_lettered_at.is_(None),
+                )
+            )
+        )
+        or 0
+    )
+    dead_lettered_repair_count = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestSqlTailRepairItem)
+                .where(
+                    IngestSqlTailRepairItem.project_id == project_id,
+                    IngestSqlTailRepairItem.dead_lettered_at.is_not(None),
+                )
+            )
+        )
+        or 0
+    )
+    oldest_pending_ts = await session.scalar(
+        select(func.min(IngestSqlTailRepairItem.created_at)).where(
+            IngestSqlTailRepairItem.project_id == project_id,
+            IngestSqlTailRepairItem.resolved_at.is_(None),
+            IngestSqlTailRepairItem.dead_lettered_at.is_(None),
+        )
+    )
+    aggregate_dead_letter_backlog = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestAggregateDeadLetter)
+                .where(IngestAggregateDeadLetter.replayed_at.is_(None))
+            )
+        )
+        or 0
+    )
+
+    lag_seconds: float | None = None
+    if latest_event_ts is not None:
+        lag_seconds = max(0.0, (now - as_utc_datetime(latest_event_ts)).total_seconds())
+    oldest_pending_age_seconds: float | None = None
+    if oldest_pending_ts is not None:
+        oldest_pending_age_seconds = max(
+            0.0, (now - as_utc_datetime(oldest_pending_ts)).total_seconds()
+        )
+
+    topology = {
+        "profile": metrics.get("topology_profile"),
+        "guardrails": metrics.get("topology_guardrails"),
+    }
+    scheduler = {
+        "required_for_env": bool(
+            (metrics.get("topology_guardrails") or {}).get("scheduler_required")
+        ),
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
+        "scheduler_running": bool(metrics.get("scheduler_running")),
+        "retention_pressure_poll_running": bool(metrics.get("retention_pressure_poll_running")),
+    }
+    replay_queue = {
+        "project_id": str(project_id),
+        "pending_sql_tail_repairs": pending_repair_count,
+        "dead_lettered_sql_tail_repairs": dead_lettered_repair_count,
+        "oldest_pending_age_seconds": oldest_pending_age_seconds,
+        "aggregate_dead_letter_backlog_total": aggregate_dead_letter_backlog,
+    }
+    ingestion_freshness = {
+        "project_id": str(project_id),
+        "last_event_received_at": (
+            as_utc_datetime(latest_event_ts).isoformat() if latest_event_ts is not None else None
+        ),
+        "lag_seconds": lag_seconds,
+    }
+    config_diagnostics = {
+        "autopulse_env": settings.autopulse_env,
+        "event_store": settings.event_store,
+        "event_plane_mode": settings.event_plane_mode,
+        "database_url_redacted": redact_database_url_for_log(settings.database_url),
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
+        "dashboard_auth_enabled": settings.dashboard_auth_enabled,
+        "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
+        "ingest_require_https": settings.ingest_require_https,
+        "ingest_trust_forwarded_proto": settings.ingest_trust_forwarded_proto,
+        "internal_metrics_enabled": bool(settings.internal_metrics_bearer_token),
+    }
+    return DashboardSystemDiagnosticsResponse(
+        generated_at=now,
+        topology=topology,
+        scheduler=scheduler,
+        replay_queue=replay_queue,
+        ingestion_freshness=ingestion_freshness,
+        config_diagnostics=config_diagnostics,
     )

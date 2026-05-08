@@ -4,7 +4,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from db_reset import truncate_ingest_core_tables as _truncate_tables
@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from autopulse_backend.app import create_app
 from autopulse_backend.auth import generate_api_key
-from autopulse_backend.models import ApiKey, Project
+from autopulse_backend.models import (
+    ApiKey,
+    IngestAggregateDeadLetter,
+    IngestSqlTailRepairItem,
+    Project,
+)
 
 
 def _seed_project_and_key(database_url: str, project_name: str) -> tuple[str, str]:
@@ -82,10 +87,12 @@ def test_dashboard_reads_require_auth(backend_test_database_url: str) -> None:
         requests_response = client.get("/dashboard/requests")
         error_groups_response = client.get("/dashboard/error-groups")
         alert_settings_response = client.get("/dashboard/alert-settings")
+        system_diagnostics_response = client.get("/dashboard/system-diagnostics")
     assert overview_response.status_code == 401
     assert requests_response.status_code == 401
     assert error_groups_response.status_code == 401
     assert alert_settings_response.status_code == 401
+    assert system_diagnostics_response.status_code == 401
 
 
 def test_dashboard_bookmarks_require_cookie_session(backend_test_database_url: str) -> None:
@@ -1216,6 +1223,81 @@ def test_dashboard_internal_metrics_returns_snapshot_for_admin_scope(
     assert metrics.get("service") == "autopulse-backend"
     assert isinstance(metrics.get("ingest_pressure"), dict)
     assert isinstance(metrics.get("ingest_aggregate_queue"), dict)
+
+
+def test_dashboard_system_diagnostics_returns_supportability_snapshot(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, project_id = _seed_project_and_key(backend_test_database_url, "Project System Diagnostics")
+    project_uuid = UUID(project_id)
+    monkeypatch.setenv("INTERNAL_METRICS_BEARER_TOKEN", "test-dashboard-internal-metrics")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+
+    async def seed_reliability_rows() -> None:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                session.add(
+                    IngestSqlTailRepairItem(
+                        project_id=project_uuid,
+                        payload={"events": 1},
+                        last_error="pending failure",
+                        attempt_count=1,
+                        next_retry_at=base_time,
+                    )
+                )
+                session.add(
+                    IngestSqlTailRepairItem(
+                        project_id=project_uuid,
+                        payload={"events": 1},
+                        last_error="dead-lettered failure",
+                        attempt_count=4,
+                        next_retry_at=base_time,
+                        dead_lettered_at=datetime.now(tz=UTC) - timedelta(seconds=30),
+                    )
+                )
+                session.add(
+                    IngestAggregateDeadLetter(
+                        payload={"metric_bucket_deltas": []},
+                        last_error="aggregate failed",
+                    )
+                )
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 500, "GET", "/diag")
+        asyncio.run(seed_reliability_rows())
+        response = client.get(
+            "/dashboard/system-diagnostics",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert "generated_at" in payload
+    assert isinstance(payload.get("topology"), dict)
+    assert isinstance(payload.get("scheduler"), dict)
+    assert isinstance(payload.get("replay_queue"), dict)
+    assert isinstance(payload.get("ingestion_freshness"), dict)
+    assert isinstance(payload.get("config_diagnostics"), dict)
+    assert payload["replay_queue"]["project_id"] == project_id
+    assert payload["replay_queue"]["pending_sql_tail_repairs"] >= 1
+    assert payload["replay_queue"]["dead_lettered_sql_tail_repairs"] >= 1
+    assert payload["replay_queue"]["aggregate_dead_letter_backlog_total"] >= 1
+    assert "last_event_received_at" in payload["ingestion_freshness"]
+    if payload["ingestion_freshness"]["last_event_received_at"] is not None:
+        assert payload["ingestion_freshness"]["lag_seconds"] is not None
+    assert "database_url_redacted" in payload["config_diagnostics"]
+    assert "internal_metrics_enabled" in payload["config_diagnostics"]
+    assert "guardrails" in payload["topology"]
 
 
 def test_dashboard_overview_extended_and_diagnosis_endpoints(
