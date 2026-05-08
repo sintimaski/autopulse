@@ -45,7 +45,8 @@ Operational assumptions for this embedded mode:
 
 - `GET /internal/metrics` and `/metrics` are guarded by `INTERNAL_METRICS_BEARER_TOKEN` (operator token).
 - Dashboard auth credentials (session cookie or dashboard API key fallback when explicitly enabled) do **not** authorize `/internal/metrics`.
-- Keep `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK=false` by default in production; only enable temporarily for controlled troubleshooting.
+- `DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK=true` is rejected by production startup validation when dashboard auth is enabled; keep it false in production.
+- `CORS_ALLOW_ORIGINS` must be explicit in production dashboard-auth mode (wildcard `*` is rejected by startup validation).
 
 ## 2.1 Dashboard auth modes (production)
 
@@ -160,6 +161,7 @@ Staging evidence before go-live:
 - In staging/production profiles, `/ready` returns `503` with `status=degraded` when topology guardrails fail on **unsafe/risky** findings (`topology_guardrails.findings` explains unsafe/risky/non-ideal causes).
 - Startup now fails closed when a required in-process scheduler does not come up in staging/production (`Unsafe topology: scheduler is required ...`), instead of running in a partially unsafe state.
 - `/ready` and `/internal/metrics` include `topology_guardrails.non_ideal_count` for advisory states that should be corrected but do not block readiness (for example, external cron ownership enabled while in-process scheduler is also enabled).
+- In staging/production with non-SQLite metadata DBs, leaving `DATABASE_RUN_MIGRATIONS_ON_STARTUP=true` is reported as a **risky** topology finding (`non-sql-startup-migrations-enabled`) and degrades `/ready`; prefer one-shot migrations (`alembic upgrade head`) and disable startup migrations on steady-state replicas.
   - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
 - Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
 - SQL-tail repair queue (DuckDB authoritative ingest):

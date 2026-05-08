@@ -94,11 +94,41 @@ def test_validate_deployment_settings_production_requires_origin_enforcement_whe
         validate_deployment_settings(s)
 
 
+def test_validate_deployment_settings_production_rejects_api_key_fallback_when_auth_on() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_allow_api_key_fallback=True,
+    )
+    with pytest.raises(ValueError, match="DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK"):
+        validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_production_rejects_wildcard_cors_when_auth_on() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        cors_allow_origins=("*",),
+        dashboard_auth_allowed_email="ops@example.com",
+    )
+    with pytest.raises(ValueError, match="CORS_ALLOW_ORIGINS"):
+        validate_deployment_settings(s)
+
+
 def test_validate_deployment_settings_production_skips_dashboard_rules_when_auth_off() -> None:
     s = replace(
         _production_dashboard_base(),
         dashboard_auth_enabled=False,
         dashboard_enforce_origin_for_mutations=False,
+    )
+    validate_deployment_settings(s)
+
+
+def test_validate_deployment_settings_staging_allows_api_key_fallback() -> None:
+    s = replace(
+        _production_dashboard_base(),
+        autopulse_env="staging",
+        dashboard_auth_allowed_email="ops@example.com",
+        dashboard_auth_allow_api_key_fallback=True,
     )
     validate_deployment_settings(s)
 

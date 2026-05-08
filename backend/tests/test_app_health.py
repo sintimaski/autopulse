@@ -107,6 +107,8 @@ def test_internal_metrics_includes_ingest_pressure_view(
 def test_topology_guardrail_status_degraded_when_scheduler_required_but_not_running() -> None:
     status = _topology_guardrail_status(
         autopulse_env="production",
+        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=True,
         scheduler_required=True,
@@ -120,6 +122,8 @@ def test_topology_guardrail_status_degraded_when_scheduler_required_but_not_runn
 def test_topology_guardrail_status_degraded_when_scheduler_required_but_disabled() -> None:
     status = _topology_guardrail_status(
         autopulse_env="staging",
+        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=False,
         scheduler_required=True,
@@ -135,6 +139,8 @@ def test_topology_guardrail_status_degraded_when_scheduler_required_but_disabled
 def test_topology_guardrail_status_flags_realtime_risk_for_staging_without_shared_bus() -> None:
     status = _topology_guardrail_status(
         autopulse_env="staging",
+        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        database_run_migrations_on_startup=True,
         scheduler_running=True,
         jobs_enable_scheduler=True,
         scheduler_required=True,
@@ -148,6 +154,8 @@ def test_topology_guardrail_status_flags_realtime_risk_for_staging_without_share
 def test_topology_guardrail_status_reports_non_ideal_external_cron_mix_without_degrading() -> None:
     status = _topology_guardrail_status(
         autopulse_env="production",
+        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        database_run_migrations_on_startup=True,
         scheduler_running=True,
         jobs_enable_scheduler=True,
         scheduler_required=False,
@@ -166,6 +174,8 @@ def test_topology_guardrail_status_reports_non_ideal_external_cron_mix_without_d
 def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() -> None:
     status = _topology_guardrail_status(
         autopulse_env="development",
+        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/autopulse",
+        database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=False,
         scheduler_required=False,
@@ -175,6 +185,22 @@ def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() 
     assert status["unsafe_count"] == 0
     assert status["risky_count"] == 0
     assert status["non_ideal_count"] == 0
+
+
+def test_topology_guardrail_status_flags_risky_non_sql_startup_migrations() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="production",
+        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/autopulse",
+        database_run_migrations_on_startup=True,
+        scheduler_running=True,
+        jobs_enable_scheduler=True,
+        scheduler_required=True,
+        jobs_external_cron_ownership=False,
+        dashboard_realtime_bus_backend="postgres_notify",
+    )
+    assert status["status"] == "degraded"
+    assert "risky:non-sql-startup-migrations-enabled" in status["reasons"]
+    assert status["risky_count"] >= 1
 
 
 def test_startup_hard_fails_when_required_scheduler_does_not_start(

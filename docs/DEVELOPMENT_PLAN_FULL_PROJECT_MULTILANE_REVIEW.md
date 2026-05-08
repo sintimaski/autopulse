@@ -207,9 +207,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: In progress
-  - % complete: 55
-  - Last update: 2026-05-08 (aligned README first-ingest semantics to HTTP 200, added contract smoke checklist, added OpenAPI regression test, and updated onboarding first-ingest copy with frontend unit coverage for HTTP 200 accepted guidance)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-08 (completed contract/docs alignment to HTTP 200 ingest semantics, added backend/frontend regression tests, and verified first-ingest smoke with accepted response)
   - Owner: Product + Backend
 - **Related documents:** `docs/contracts/ingest-api.md`, `README.md`
 - **References / examples:** `backend/src/autopulse_backend/routes/ingest.py`
@@ -393,8 +393,8 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - If partial/no, guardrails required: migration toggles documented.
 - **State / progress tracking:**
   - Status: In progress
-  - % complete: 82
-  - Last update: 2026-05-08 (guardrail increment: required-scheduler startup hard-fail covered; non-ideal topology telemetry for mixed external-cron/in-process scheduler ownership added; `/ready` advisory behavior regression-tested alongside ops docs updates)
+  - % complete: 88
+  - Last update: 2026-05-08 (guardrail increment: required-scheduler startup hard-fail covered; mixed scheduler ownership non-ideal telemetry added; plus risky migration-mode guardrail for non-SQLite startup migrations with regression test and ops guidance)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - **References / examples:** `backend/src/autopulse_backend/core/config.py`, `backend/src/autopulse_backend/lifespan.py`
@@ -485,9 +485,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: staged rollout by environment.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: In progress
+  - % complete: 34
+  - Last update: 2026-05-08 (production startup validation now rejects dashboard API-key fallback and wildcard CORS when dashboard auth is enabled; added deployment-setting regression tests and ops docs alignment)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `agents/security-privacy.md`
 - **References / examples:** `backend/src/autopulse_backend/app.py`, `backend/src/autopulse_backend/auth/dashboard_security.py`

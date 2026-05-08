@@ -31,6 +31,8 @@ def _scheduler_running(scheduler: object) -> bool:
 def _topology_guardrail_status(
     *,
     autopulse_env: str,
+    database_url: str,
+    database_run_migrations_on_startup: bool,
     scheduler_running: bool,
     jobs_enable_scheduler: bool,
     scheduler_required: bool,
@@ -68,6 +70,22 @@ def _topology_guardrail_status(
                 "message": (
                     "multi-instance deployments must validate websocket stickiness "
                     "or dedicated ws routing when DASHBOARD_REALTIME_BUS_BACKEND=none"
+                ),
+            }
+        )
+    if (
+        env in {"staging", "production"}
+        and not database_url.startswith("sqlite")
+        and database_run_migrations_on_startup
+    ):
+        findings.append(
+            {
+                "severity": "risky",
+                "code": "non-sql-startup-migrations-enabled",
+                "message": (
+                    "DATABASE_RUN_MIGRATIONS_ON_STARTUP=true with non-SQLite metadata DB; "
+                    "prefer one-shot migrations before rollout and set startup migrations false "
+                    "on steady-state replicas"
                 ),
             }
         )
@@ -194,6 +212,8 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     scheduler_running = _scheduler_running(scheduler)
     topology_guardrails = _topology_guardrail_status(
         autopulse_env=settings.autopulse_env,
+        database_url=settings.database_url,
+        database_run_migrations_on_startup=settings.database_run_migrations_on_startup,
         scheduler_running=scheduler_running,
         jobs_enable_scheduler=settings.jobs_enable_scheduler,
         scheduler_required=scheduler_required_for_env(settings),
@@ -323,6 +343,8 @@ async def ready(request: Request) -> JSONResponse | dict[str, object]:
             ) from exc
     topology_guardrails = _topology_guardrail_status(
         autopulse_env=settings.autopulse_env,
+        database_url=settings.database_url,
+        database_run_migrations_on_startup=settings.database_run_migrations_on_startup,
         scheduler_running=scheduler_running,
         jobs_enable_scheduler=settings.jobs_enable_scheduler,
         scheduler_required=scheduler_required_for_env(settings),

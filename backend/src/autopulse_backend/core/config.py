@@ -207,6 +207,16 @@ def validate_deployment_settings(settings: Settings) -> None:
         raise ValueError("DEV_SCENARIOS_ENABLED must be false when AUTOPULSE_ENV=production")
     if not settings.dashboard_auth_enabled:
         return
+    if settings.dashboard_auth_allow_api_key_fallback:
+        raise ValueError(
+            "DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK must be false when AUTOPULSE_ENV=production "
+            "and DASHBOARD_AUTH_ENABLED is true"
+        )
+    if any(origin.strip() == "*" for origin in settings.cors_allow_origins):
+        raise ValueError(
+            "CORS_ALLOW_ORIGINS must not include '*' when AUTOPULSE_ENV=production "
+            "and DASHBOARD_AUTH_ENABLED is true"
+        )
     allow = (settings.dashboard_auth_allowed_email or "").strip()
     domains = settings.dashboard_allowed_email_domains
     if not allow and not domains and not _oidc_fully_configured(settings):
