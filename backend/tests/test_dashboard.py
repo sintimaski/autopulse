@@ -1307,6 +1307,8 @@ def test_dashboard_system_diagnostics_returns_supportability_snapshot(
     assert payload["replay_queue"]["pending_sql_tail_repairs"] >= 1
     assert payload["replay_queue"]["dead_lettered_sql_tail_repairs"] >= 1
     assert payload["replay_queue"]["aggregate_dead_letter_backlog_total"] >= 1
+    assert payload["replay_queue"]["oldest_pending_age_seconds"] is not None
+    assert payload["replay_queue"]["oldest_pending_age_seconds"] >= 0
     assert "last_event_received_at" in payload["ingestion_freshness"]
     if payload["ingestion_freshness"]["last_event_received_at"] is not None:
         assert payload["ingestion_freshness"]["lag_seconds"] is not None

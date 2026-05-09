@@ -137,7 +137,11 @@ export function TimeSeriesLineChart({
       </div>
       {values.length ? (
         <>
-          <div className={`relative w-full ${chartAreaHeightClass}`} aria-label={`${title} time series chart`}>
+          <div
+            className={`relative w-full ${chartAreaHeightClass}`}
+            role="img"
+            aria-label={`${title} time series chart`}
+          >
             <CanvasLine data={chartData} options={options} />
           </div>
           <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400">

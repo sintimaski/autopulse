@@ -204,6 +204,29 @@ def test_topology_guardrail_status_flags_risky_non_sql_startup_migrations() -> N
     assert status["risky_count"] >= 1
 
 
+def test_topology_guardrail_status_tracks_risky_and_non_ideal_counts() -> None:
+    status = _topology_guardrail_status(
+        autopulse_env="production",
+        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/autopulse",
+        database_run_migrations_on_startup=True,
+        scheduler_running=False,
+        jobs_enable_scheduler=True,
+        scheduler_required=True,
+        jobs_external_cron_ownership=True,
+        dashboard_realtime_bus_backend="none",
+    )
+    assert status["status"] == "degraded"
+    assert status["unsafe_count"] == 0
+    assert status["risky_count"] == 3
+    assert status["non_ideal_count"] == 1
+    assert "risky:scheduler-required-env-scheduler-not-running" in status["reasons"]
+    assert "risky:realtime-bus-none" in status["reasons"]
+    assert "risky:non-sql-startup-migrations-enabled" in status["reasons"]
+    assert (
+        "non-ideal:external-cron-ownership-with-in-process-scheduler-enabled" in status["reasons"]
+    )
+
+
 def test_startup_hard_fails_when_required_scheduler_does_not_start(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

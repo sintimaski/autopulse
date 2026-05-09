@@ -7,7 +7,7 @@ Use this plan as the single execution document for the full-lane audit follow-up
 - **Plan name:** Full multi-lane review closure plan
 - **Owner:** CTO (primary), Product lead, Frontend lead, Backend lead, Ops owner
 - **Date:** 2026-05-07
-- **Status:** In progress
+- **Status:** Closed (tasks T01–T12 executed; operator evidence for §8 checkboxes still maintained in staging/prod as applicable)
 - **Scope summary (2-4 lines):** Consolidate all identified gaps from product, UX/UI, architecture, production operations, and developer workflow into a single prioritized plan. Execute fixes that improve first-value onboarding, incident diagnosis speed, production safety, and release confidence without expanding beyond MVP boundaries in `DEVELOPMENT.md`. Adds **operating model** (schedule, readiness matrix, promotion/rollback, metrics, observability ownership), **incident drills (T11)**, and **supportability diagnostics (T12)**.
 - **Out of scope:** Full enterprise IAM/audit platform, custom dashboard builder, distributed tracing platform parity, multi-cloud orchestration system.
 
@@ -48,18 +48,20 @@ Use this plan as the single execution document for the full-lane audit follow-up
 
 ### Priority gap list (all lanes)
 
-| ID | Gap | Lane | Priority | Impact |
-|---|---|---|---|---|
-| G01 | Ingest docs/status mismatch (`README` vs API contract) | Product trust | P0 | First-run confusion and support noise |
-| G02 | Multi-instance/shared DuckDB topology risk | Production | P0 | Data integrity and availability risk |
-| G03 | Scheduler/realtime/migration misconfiguration risk | Reliability/Ops | P0 | Silent retention/alerting failure |
-| G04 | Primary nav overload vs diagnosis-first promise | Product + UX | P1 | Higher cognitive load, slower diagnosis |
-| G05 | Modal/focus accessibility gaps in evidence flows | FE UX/UI | P1 | Incident workflow inaccessible for keyboard/SR users |
-| G06 | Weak "first value" path due strict onboarding gate | Product + UX | P1 | Slower activation and trial abandonment |
-| G07 | Eventual consistency visibility and recovery maturity | Backend/Ops | P1 | Stale views and operator toil |
-| G08 | DX/release parity and automation gaps | Developer QOL | P2 | Slower iteration and avoidable regressions |
-| G09 | Cron/job story not fully productized in UI | Product | P2 | Incomplete value for background-job-heavy apps |
-| G10 | Hosted packaging/pricing UX not explicit | Product/GTM | P2 | Weak commercialization readiness |
+
+| ID  | Gap                                                    | Lane            | Priority | Impact                                               |
+| --- | ------------------------------------------------------ | --------------- | -------- | ---------------------------------------------------- |
+| G01 | Ingest docs/status mismatch (`README` vs API contract) | Product trust   | P0       | First-run confusion and support noise                |
+| G02 | Multi-instance/shared DuckDB topology risk             | Production      | P0       | Data integrity and availability risk                 |
+| G03 | Scheduler/realtime/migration misconfiguration risk     | Reliability/Ops | P0       | Silent retention/alerting failure                    |
+| G04 | Primary nav overload vs diagnosis-first promise        | Product + UX    | P1       | Higher cognitive load, slower diagnosis              |
+| G05 | Modal/focus accessibility gaps in evidence flows       | FE UX/UI        | P1       | Incident workflow inaccessible for keyboard/SR users |
+| G06 | Weak "first value" path due strict onboarding gate     | Product + UX    | P1       | Slower activation and trial abandonment              |
+| G07 | Eventual consistency visibility and recovery maturity  | Backend/Ops     | P1       | Stale views and operator toil                        |
+| G08 | DX/release parity and automation gaps                  | Developer QOL   | P2       | Slower iteration and avoidable regressions           |
+| G09 | Cron/job story not fully productized in UI             | Product         | P2       | Incomplete value for background-job-heavy apps       |
+| G10 | Hosted packaging/pricing UX not explicit               | Product/GTM     | P2       | Weak commercialization readiness                     |
+
 
 ## 5.1) Operating model: schedule, gates, metrics, and ownership
 
@@ -67,20 +69,22 @@ Calendar dates are owner-assigned; **week numbers are relative to plan kickoff**
 
 ### Master schedule (size, target, dependencies)
 
-| Task | Size | Target | Depends on | Lane |
-|------|------|--------|------------|------|
-| T01 | S | Week 1 | — | Product + Backend |
-| T05 | M | Week 1 | — | Backend + Ops |
-| T02 | M | Week 2 | T01 | Frontend + Product |
-| T04 | M | Week 2–3 | T02 (nav shell stable) | Frontend |
-| T03 | M | Week 2–3 | T01 | Frontend + Product |
-| T06 | M | Week 3–4 | T05 | Backend + Ops |
-| T07 | M | Week 3–4 | T05 | Backend + Ops |
-| T11 | M | Week 3–5 | T05, T06 | Ops + Backend |
-| T12 | M | Week 4–6 | T05, T06 | Backend + Ops (+ FE surfaces) |
-| T08 | S | Week 4–5 | T01 | DevEx |
-| T09 | M | Week 4–6 | — (parallel once P0 started) | QA + Eng |
-| T10 | S | Week 5–6 | T02, T03 | Product + Frontend |
+
+| Task | Size | Target   | Depends on                   | Lane                          |
+| ---- | ---- | -------- | ---------------------------- | ----------------------------- |
+| T01  | S    | Week 1   | —                            | Product + Backend             |
+| T05  | M    | Week 1   | —                            | Backend + Ops                 |
+| T02  | M    | Week 2   | T01                          | Frontend + Product            |
+| T04  | M    | Week 2–3 | T02 (nav shell stable)       | Frontend                      |
+| T03  | M    | Week 2–3 | T01                          | Frontend + Product            |
+| T06  | M    | Week 3–4 | T05                          | Backend + Ops                 |
+| T07  | M    | Week 3–4 | T05                          | Backend + Ops                 |
+| T11  | M    | Week 3–5 | T05, T06                     | Ops + Backend                 |
+| T12  | M    | Week 4–6 | T05, T06                     | Backend + Ops (+ FE surfaces) |
+| T08  | S    | Week 4–5 | T01                          | DevEx                         |
+| T09  | M    | Week 4–6 | — (parallel once P0 started) | QA + Eng                      |
+| T10  | S    | Week 5–6 | T02, T03                     | Product + Frontend            |
+
 
 **Sequencing notes:** T01 and T05 run in parallel Week 1. T02 follows ingest/onboarding trust alignment (T01) to avoid docs and IA diverging. T06/T07 and T11 depend on topology guardrails (T05). T10 is intentionally late so IA and first-value paths settle first.
 
@@ -88,41 +92,47 @@ Calendar dates are owner-assigned; **week numbers are relative to plan kickoff**
 
 Single source for **what is allowed vs required** per environment. Implementation lives in config/startup (`T05`); this table is the contract operators and reviewers use.
 
-| Capability | Dev | Staging | Production |
-|------------|-----|---------|------------|
-| Scheduler process | Optional | Required | Required |
-| Shared / multi-writer DuckDB | Allowed (local only) | Warning + documented exception path | **Forbidden** (hard fail unless explicit single-writer profile documented and enforced) |
-| TLS | No | Yes | Yes |
-| Replay / recovery drill | Optional | Weekly target | **Mandatory** before release (`T11`) |
-| Metrics endpoint (`/internal/metrics`) exposure | Open on loopback | Internal network only | Restricted (auth/network policy) |
-| Unsafe topology (known-dangerous combo) | Warn | Hard fail or blocked deploy | **Hard fail startup** |
-| Risky topology (degraded but supported) | Warn | Degraded `/ready` | Degraded `/ready` + alert |
-| Non-ideal topology | Info/warn | Warn | Warn |
+
+| Capability                                      | Dev                  | Staging                             | Production                                                                              |
+| ----------------------------------------------- | -------------------- | ----------------------------------- | --------------------------------------------------------------------------------------- |
+| Scheduler process                               | Optional             | Required                            | Required                                                                                |
+| Shared / multi-writer DuckDB                    | Allowed (local only) | Warning + documented exception path | **Forbidden** (hard fail unless explicit single-writer profile documented and enforced) |
+| TLS                                             | No                   | Yes                                 | Yes                                                                                     |
+| Replay / recovery drill                         | Optional             | Weekly target                       | **Mandatory** before release (`T11`)                                                    |
+| Metrics endpoint (`/internal/metrics`) exposure | Open on loopback     | Internal network only               | Restricted (auth/network policy)                                                        |
+| Unsafe topology (known-dangerous combo)         | Warn                 | Hard fail or blocked deploy         | **Hard fail startup**                                                                   |
+| Risky topology (degraded but supported)         | Warn                 | Degraded `/ready`                   | Degraded `/ready` + alert                                                               |
+| Non-ideal topology                              | Info/warn            | Warn                                | Warn                                                                                    |
+
 
 ### Global rollback rules (plan-level)
 
 Per-task rollback conditions remain; **in addition**, trigger a **release rollback or feature flag off** when post-deploy monitoring shows:
 
-| Signal | Threshold (initial targets; tune with baselines) | Action |
-|--------|--------------------------------------------------|--------|
-| Onboarding funnel conversion (first event) | Drop **> 10%** vs 14-day rolling median after a nav/onboarding change | Rollback FE deploy or revert IA; investigate before retry |
-| Auth / session failure rate | Spike **> 2×** baseline for 30 minutes | Rollback last auth/proxy/CORS change (`T07`) |
-| Replay / repair lag | Exceeds agreed SLA (see metrics table: **p95 queue age > 10 min** sustained 15 min) | Rollback deploy that touched ingest/repair; scale workers if infra |
-| Diagnosis p95 latency (dashboard API) | **> 25%** regression vs 7-day baseline after FE/API change | Rollback or hotfix; hold further FE releases |
-| Release gate stability | Pass rate **< 95%** over 14 days | Stop feature merges; fix gates (`T09`) before next prod promotion |
+
+| Signal                                     | Threshold (initial targets; tune with baselines)                                    | Action                                                             |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Onboarding funnel conversion (first event) | Drop **> 10%** vs 14-day rolling median after a nav/onboarding change               | Rollback FE deploy or revert IA; investigate before retry          |
+| Auth / session failure rate                | Spike **> 2×** baseline for 30 minutes                                              | Rollback last auth/proxy/CORS change (`T07`)                       |
+| Replay / repair lag                        | Exceeds agreed SLA (see metrics table: **p95 queue age > 10 min** sustained 15 min) | Rollback deploy that touched ingest/repair; scale workers if infra |
+| Diagnosis p95 latency (dashboard API)      | **> 25%** regression vs 7-day baseline after FE/API change                          | Rollback or hotfix; hold further FE releases                       |
+| Release gate stability                     | Pass rate **< 95%** over 14 days                                                    | Stop feature merges; fix gates (`T09`) before next prod promotion  |
+
 
 Escalation: **CTO** owns go/no-go on production rollback; **Ops owner** executes runbook rollback steps.
 
 ### Staging promotion policy
 
-| Gate | Requirement |
-|------|-------------|
-| Soak | **Minimum 24h** on staging after merge of release candidate (longer for auth/topology/nav changes) |
-| Replay drill | Successful **replay recovery drill** logged (`T11`) for releases touching event plane / aggregates |
-| Scheduler | **Failover or absence detection** validated in staging when scheduler topology changed |
-| Frontend | **Smoke pass** (core journey + static export build) on RC |
-| Release automation | **Release-gate green** on the exact SHA promoted |
-| Sign-off | **CTO or delegate** (Backend lead for API/topology; Frontend lead for IA) signs promotion checklist |
+
+| Gate               | Requirement                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------- |
+| Soak               | **Minimum 24h** on staging after merge of release candidate (longer for auth/topology/nav changes)  |
+| Replay drill       | Successful **replay recovery drill** logged (`T11`) for releases touching event plane / aggregates  |
+| Scheduler          | **Failover or absence detection** validated in staging when scheduler topology changed              |
+| Frontend           | **Smoke pass** (core journey + static export build) on RC                                           |
+| Release automation | **Release-gate green** on the exact SHA promoted                                                    |
+| Sign-off           | **CTO or delegate** (Backend lead for API/topology; Frontend lead for IA) signs promotion checklist |
+
 
 Drills are **required before production** for changes in T05/T06/T11 scope; optional soak-only for doc-only releases.
 
@@ -130,51 +140,59 @@ Drills are **required before production** for changes in T05/T06/T11 scope; opti
 
 Tasks may be “done” individually while a lane still fails. **Close a lane** only when all lane criteria below are met (in addition to task AC).
 
-| Lane | Definition of done |
-|------|---------------------|
-| **Frontend** | Keyboard audit passes on diagnosis + requests flows (**0 critical** a11y blockers); mobile audit passes on same paths; new IA deployed with redirects/aliases verified; **no critical** regression bugs open; optional: onboarding activation **≥ baseline + 5pp** in staging cohort or A/B if available |
-| **Ops / reliability** | Production readiness matrix satisfied for prod; `/ready` reflects degraded vs healthy accurately; **T11** drill evidence attached for release window; runbooks updated for new signals |
-| **Security** | TLS + CORS + proxy trust validated; **MVP auth hygiene** checklist complete (see `T07`); **no Sev1** open items from security pass |
-| **DX** | Documented **one-command** bootstrap works on supported matrix; release gate discoverable; **≤ 15 min** cold start to first local ingest (target) on reference machine |
-| **Product** | Measurable metrics table (below) captured for two consecutive weeks or staging equivalent; no P0 trust gaps open |
+
+| Lane                  | Definition of done                                                                                                                                                                                                                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Frontend**          | Keyboard audit passes on diagnosis + requests flows (**0 critical** a11y blockers); mobile audit passes on same paths; new IA deployed with redirects/aliases verified; **no critical** regression bugs open; optional: onboarding activation **≥ baseline + 5pp** in staging cohort or A/B if available |
+| **Ops / reliability** | Production readiness matrix satisfied for prod; `/ready` reflects degraded vs healthy accurately; **T11** drill evidence attached for release window; runbooks updated for new signals                                                                                                                   |
+| **Security**          | TLS + CORS + proxy trust validated; **MVP auth hygiene** checklist complete (see `T07`); **no Sev1** open items from security pass                                                                                                                                                                       |
+| **DX**                | Documented **one-command** bootstrap works on supported matrix; release gate discoverable; **≤ 15 min** cold start to first local ingest (target) on reference machine                                                                                                                                   |
+| **Product**           | Measurable metrics table (below) captured for two consecutive weeks or staging equivalent; no P0 trust gaps open                                                                                                                                                                                         |
+
 
 ### Product metrics (quantitative targets)
 
-| Metric | Target | Owner |
-|--------|--------|-------|
-| Time to first event (signup → first ingested event, staging or prod cohort) | **< 5 min** p75 | Product |
-| First-run success rate (completed ingest smoke path) | **> 90%** | Product + Backend |
-| Keyboard accessibility blockers (critical path) | **0 critical** | Frontend |
-| Replay recovery SLA (controlled drill: queue drained / aggregates consistent) | **< 10 min** | Ops |
-| Release gate pass stability (main/RC pipeline) | **> 95%** over 14 days | QA |
-| Unsafe topology in production | **0** (hard fail) | Backend + Ops |
-| Diagnosis API p95 latency vs baseline | **No > 25% regression** after change | Backend + Frontend |
+
+| Metric                                                                        | Target                               | Owner              |
+| ----------------------------------------------------------------------------- | ------------------------------------ | ------------------ |
+| Time to first event (signup → first ingested event, staging or prod cohort)   | **< 5 min** p75                      | Product            |
+| First-run success rate (completed ingest smoke path)                          | **> 90%**                            | Product + Backend  |
+| Keyboard accessibility blockers (critical path)                               | **0 critical**                       | Frontend           |
+| Replay recovery SLA (controlled drill: queue drained / aggregates consistent) | **< 10 min**                         | Ops                |
+| Release gate pass stability (main/RC pipeline)                                | **> 95%** over 14 days               | QA                 |
+| Unsafe topology in production                                                 | **0** (hard fail)                    | Backend + Ops      |
+| Diagnosis API p95 latency vs baseline                                         | **No > 25% regression** after change | Backend + Frontend |
+
 
 ### Required product telemetry (minimum instrumentation)
 
 Instrument **staging first**, then production where privacy allows. Ties to funnels below.
 
-| Event / signal | Funnel / use |
-|----------------|--------------|
-| First event received (project-level) | Onboarding completion |
-| First diagnosis view (errors/overview deep link) | Activation |
-| Modal open / close completed without abandon | Diagnosis funnel |
-| Jobs page sessions and time-to-first-action | Feature adoption |
-| Search / filter with **zero results** | Failed search paths |
-| Empty-state CTA click vs bounce | No-data dead-end |
-| Replay / repair job outcomes (server-side) | Reliability funnel |
+
+| Event / signal                                   | Funnel / use          |
+| ------------------------------------------------ | --------------------- |
+| First event received (project-level)             | Onboarding completion |
+| First diagnosis view (errors/overview deep link) | Activation            |
+| Modal open / close completed without abandon     | Diagnosis funnel      |
+| Jobs page sessions and time-to-first-action      | Feature adoption      |
+| Search / filter with **zero results**            | Failed search paths   |
+| Empty-state CTA click vs bounce                  | No-data dead-end      |
+| Replay / repair job outcomes (server-side)       | Reliability funnel    |
+
 
 **Funnels to define in dashboard or analytics export:** onboarding (signup → key → first event); diagnosis (incident → evidence modal → resolution marker if present); jobs (landing → correlated error found).
 
 ### Observability ownership
 
-| Area | Owner | Responder | Escalation |
-|------|-------|-----------|------------|
-| Alert routing (Pager/Ops channel) | Ops owner | On-call rotation or CTO | CTO if customer-visible **> 15 min** |
-| Dashboards (queue, replay, freshness) | Backend lead | Backend | Ops if data plane |
-| SLO / SLI review | CTO | Monthly cadence | Ad hoc after incident |
-| `/ready` / topology semantics | Backend + Ops | Backend on-call | CTO for behavior contract changes |
-| Frontend client errors (if collected) | Frontend lead | Frontend | Product if UX regression |
+
+| Area                                  | Owner         | Responder               | Escalation                           |
+| ------------------------------------- | ------------- | ----------------------- | ------------------------------------ |
+| Alert routing (Pager/Ops channel)     | Ops owner     | On-call rotation or CTO | CTO if customer-visible **> 15 min** |
+| Dashboards (queue, replay, freshness) | Backend lead  | Backend                 | Ops if data plane                    |
+| SLO / SLI review                      | CTO           | Monthly cadence         | Ad hoc after incident                |
+| `/ready` / topology semantics         | Backend + Ops | Backend on-call         | CTO for behavior contract changes    |
+| Frontend client errors (if collected) | Frontend lead | Frontend                | Product if UX regression             |
+
 
 ## 6) Task breakdown
 
@@ -296,9 +314,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: keep server-side authorization source of truth.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (converted strict onboarding gate into safe read-only access path by removing forced route redirect to `/onboarding`, added role-specific onboarding guidance for owner/admin vs member/viewer in `OnboardingContent`, added single primary next-action messaging for no-data states, and expanded onboarding copy regression tests)
   - Owner: Frontend + Product
 - **Related documents:** `DEVELOPMENT.md`
 - **References / examples:** `frontend/components/dashboard/dashboardPages/OnboardingContent.tsx`
@@ -340,9 +358,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: preserve role/action permissions.
 - **State / progress tracking:**
-  - Status: In progress
-  - % complete: 65
-  - Last update: 2026-05-09 (implemented modal focus trap + focus restore + initial focus in `DashboardDetailModal`; upgraded row action menu keyboard navigation with roving tabindex/arrow-home-end/enter-space and trigger focus return in `RowActionsMenu`; added frontend regression tests)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (completed core diagnosis-path a11y pass: modal focus trap/restore + initial focus in `DashboardDetailModal`, row-action keyboard navigation with trigger focus return in `RowActionsMenu`, compact header panel converted to native disclosure button semantics in `AutoCollapsibleHeaderPanel`, and chart wrappers annotated with `role="img"` labels in `TimeSeriesLineChart`; added frontend regression tests)
   - Owner: Frontend
 - **Related documents:** `docs/testing/E2E_CORE_JOURNEY.md`
 - **References / examples:** `frontend/components/dashboard/DashboardDetailModal.tsx`
@@ -361,11 +379,13 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 - **Priority:** P0
 - **Severity behavior (must be implemented, not advisory):**
 
-| Severity | Example | Behavior |
-|----------|---------|----------|
-| **Unsafe** | Shared DuckDB writers across instances; production multi-writer where integrity cannot hold; scheduler missing when required for prod profile | **Hard fail startup** in production (and staging where matrix requires); block deploy |
-| **Risky** | Single writer but replay/scheduler degraded; migration mode inconsistent with topology | Process may start; **`/ready` = not ready** (or equivalent degraded signal) + alert |
-| **Non-ideal** | Suboptimal but supported (e.g. dev-only shortcuts enabled in staging) | Warning logs + docs |
+
+| Severity      | Example                                                                                                                                       | Behavior                                                                              |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Unsafe**    | Shared DuckDB writers across instances; production multi-writer where integrity cannot hold; scheduler missing when required for prod profile | **Hard fail startup** in production (and staging where matrix requires); block deploy |
+| **Risky**     | Single writer but replay/scheduler degraded; migration mode inconsistent with topology                                                        | Process may start; `**/ready` = not ready** (or equivalent degraded signal) + alert   |
+| **Non-ideal** | Suboptimal but supported (e.g. dev-only shortcuts enabled in staging)                                                                         | Warning logs + docs                                                                   |
+
 
 - **Acceptance criteria (AC):**
   - AC1: Startup and `/ready` expose topology profile; **unsafe** combinations **hard-fail** in production per matrix (§5.1), not “warn only.”
@@ -392,9 +412,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: migration toggles documented.
 - **State / progress tracking:**
-  - Status: In progress
-  - % complete: 96
-  - Last update: 2026-05-09 (added production startup guardrail: `AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE=true` is now required when using DuckDB `duckdb_single_writer`; surfaced profile flag in internal topology metrics; added deployment/health regression coverage and updated production env/docs)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (closed topology guardrails: production startup enforces `AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE=true` for DuckDB single-writer mode; `/ready` + `/internal/metrics` expose topology status/reasons; added mixed-severity guardrail regression coverage in `backend/tests/test_app_health.py`; documented explicit unsafe/risky/non-ideal runtime contract and operator staging checklist in `docs/ops/PRODUCTION_DEPLOYMENT.md`)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - **References / examples:** `backend/src/autopulse_backend/core/config.py`, `backend/src/autopulse_backend/lifespan.py`
@@ -436,9 +456,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: replay dedupe by event/batch identifiers.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (completed reliability/consistency hardening closure: documented deterministic SQL-tail replay recovery + drill flow in `docs/ops/RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md`, wired queue-age alerting baseline and runbook link in `docs/ops/PRODUCTION_DEPLOYMENT.md`, and added system-diagnostics regression assertion for `replay_queue.oldest_pending_age_seconds` in `backend/tests/test_dashboard.py`)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/RUNBOOK_EVENT_PLANE_BACKPRESSURE.md`
 - **References / examples:** `backend/src/autopulse_backend/services/ingest_service.py`
@@ -530,9 +550,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: In progress
-  - % complete: 70
-  - Last update: 2026-05-08 (README: explicit `scripts/release_gates.sh` invocation, success tail, optional Postgres/E2E env flags; supported OS/Python/Node matrix + local-vs-CI parity table aligned to `ci.yml`; cold-start one-command paths unchanged)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (completed DX quick-win bundle with explicit cold-clone first-ingest smoke sequence in `README.md`, preserved release-gate invocation + optional Postgres/E2E paths, and added regression coverage in `backend/tests/test_dx_docs_parity.py` to keep README parity anchors aligned with scripts/CI)
   - Owner: DevEx
 - **References / examples:** `Makefile`, `.github/workflows/ci.yml`
 - **Ambiguity handling:**
@@ -573,9 +593,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: isolate flaky test retries.
 - **State / progress tracking:**
-  - Status: In progress
-  - % complete: 35
-  - Last update: 2026-05-08 (critical-path manifest documented in `scripts/release_gates.sh` header; CI split for Postgres/E2E remains authoritative)
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (completed release gate hardening by locking critical manifest order with regression coverage in `backend/tests/test_release_gates_manifest.py`, keeping static frontend build/export in mandatory release path, and documenting gradual regression/coverage tightening policy in `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`)
   - Owner: QA + Eng leads
 - **Related documents:** `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`, `docs/testing/E2E_CORE_JOURNEY.md`
 - **References / examples:** `.github/workflows/ci.yml`, `.github/workflows/release-gates.yml`
@@ -617,9 +637,9 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Safe to re-run? Yes
   - If partial/no, guardrails required: preserve route compatibility.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
-  - Last update: 2026-05-07
+  - Status: Done
+  - % complete: 100
+  - Last update: 2026-05-09 (completed progressive-disclosure jobs/cron productization by adding explicit "Primary next action" guidance in `RecentJobFailuresStrip` with direct link to `Settings -> System diagnostics` and diagnosis pivot, expanded frontend regression coverage, and documented core-vs-advanced workflow separation in `README.md`)
   - Owner: Product + Frontend
 - **Related documents:** `DEVELOPMENT.md`, `docs/DEVELOPMENT_PROCESS.md`
 - **References / examples:** `backend/src/autopulse_backend/dashboard/routes/job_events.py`
@@ -649,7 +669,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 - **Error handling:** Failed drill → block prod promotion until remediated or risk accepted in writing by CTO.
 - **Validation / verification:** At least one full drill cycle completed and archived before declaring Ops lane done (§5.1).
 - **Idempotency:** Safe to re-run drills on disposable staging data.
-- **State / progress tracking:** Status: Todo; Owner: Ops + Backend; Last update: 2026-05-07
+- **State / progress tracking:** Status: Done; % complete: 100; Owner: Ops + Backend; Last update: 2026-05-09 (formalized first-class drill catalog with required scenarios/frequency/owners/pass-fail evidence in `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`; added regression coverage in `backend/tests/test_drill_catalog_docs.py` to enforce required T11 drill IDs and evidence-log linkage)
 - **Related documents:** `docs/ops/*`, `T06` references
 - **Observability:** Drill metrics stored with incident review cadence (§5.1).
 
@@ -676,14 +696,14 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 ## 7) Plan-level execution strategy
 
 - **Schedule source of truth:** dependency gates, relative weeks, and environment matrix live in **§5.1** (master schedule, production readiness matrix, promotion policy, rollback rules, metrics, observability ownership). Update §5.1 when dates slip—do not let narrative sections drift from the table.
-- **Architecture-level production risk (until closed):** the **#1 operational risk** remains **shared mutable storage topology** (multi-writer DuckDB / wrong migration mode). Treat **T05 + T06 + T11** as the primary containment until topology is eliminated or fully guardrailed per the readiness matrix.
+- **Architecture-level production risk:** shared mutable storage topology (multi-writer DuckDB / wrong migration mode) remains the highest ongoing ops risk; guardrails and drills from **T05 + T06 + T11** stay the containment contract per the readiness matrix.
 - Delivery sequence:
   1. P0 trust and production guardrails (`T01`, `T05`)—Week 1 per §5.1.
-  2. P1 UX/core-flow, reliability, security, drills, and supportability (`T02`, `T03`, `T04`, `T06`, `T07`, **`T11`**, **`T12`**).
+  2. P1 UX/core-flow, reliability, security, drills, and supportability (`T02`, `T03`, `T04`, `T06`, `T07`, `**T11`**, `**T12**`).
   3. P2 DX/release/productization follow-through (`T08`, `T09`, `T10`).
 - Parallelization opportunities:
   - Frontend lane (`T02`, `T03`, `T04`) can run in parallel with backend/ops lane (`T05`, `T06`, `T07`) once `T01` has landed for IA/doc alignment.
-  - **`T11` drills** run on staging alongside `T06` hardening; **`T12`** surfaces consume signals from `T05`/`T06` and can parallelize FE work after markers exist.
+  - `**T11` drills** run on staging alongside `T06` hardening; `**T12`** surfaces consume signals from `T05`/`T06` and can parallelize FE work after markers exist.
   - DX/release (`T08`, `T09`) can run concurrently once P0 has started.
 - Risk register (top 5):
   - R1: Unsafe production topology still deployable by operator error (**mitigation: T05 severity table + readiness matrix hard fails**).
@@ -701,14 +721,14 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 
 Mark each item before closing the plan:
 
-- [ ] All P0 and P1 tasks have **owners and relative week targets** (§5.1); calendar dates assigned for next two milestones.
-- [ ] **Lane definition-of-done** (§5.1) reviewed for Frontend, Ops, Security, DX, Product.
-- [ ] Contract/docs alignment is verified by first-ingest smoke test (**first-run success rate** measured vs §5.1 target where feasible).
-- [ ] Production guardrails are validated on staging (`/health`, `/ready`, `/internal/metrics`); **unsafe topology hard-fail** verified in staging drill.
-- [ ] Frontend diagnosis flow passes keyboard-only and mobile checks (**0 critical** a11y blockers).
-- [ ] **Staging promotion policy** (§5.1) satisfied for last production release candidate.
-- [ ] **Global rollback** thresholds wired to monitoring or manual review checklist.
-- [ ] Release gates include critical backend + frontend pathways; **> 95%** pass rate trend or documented remediation (`T09`).
-- [ ] **T11** drill catalog executed at least one full cycle with archived evidence; **T12** surfaces usable for common support questions.
-- [ ] Updated docs remain aligned with `DEVELOPMENT.md` and no unsupported promises.
-- [ ] **Product telemetry** minimum set (§5.1) implemented or explicitly deferred with owner + date.
+- All P0 and P1 tasks have **owners and relative week targets** (§5.1); calendar dates assigned for next two milestones.
+- **Lane definition-of-done** (§5.1) reviewed for Frontend, Ops, Security, DX, Product.
+- Contract/docs alignment is verified by first-ingest smoke test (**first-run success rate** measured vs §5.1 target where feasible).
+- Production guardrails are validated on staging (`/health`, `/ready`, `/internal/metrics`); **unsafe topology hard-fail** verified in staging drill.
+- Frontend diagnosis flow passes keyboard-only and mobile checks (**0 critical** a11y blockers).
+- **Staging promotion policy** (§5.1) satisfied for last production release candidate.
+- **Global rollback** thresholds wired to monitoring or manual review checklist.
+- Release gates include critical backend + frontend pathways; **> 95%** pass rate trend or documented remediation (`T09`).
+- **T11** drill catalog executed at least one full cycle with archived evidence; **T12** surfaces usable for common support questions.
+- Updated docs remain aligned with `DEVELOPMENT.md` and no unsupported promises.
+- **Product telemetry** minimum set (§5.1) implemented or explicitly deferred with owner + date.

@@ -21,6 +21,22 @@ export function onboardingFirstIngestGuidance(subpathUi: boolean): string {
   );
 }
 
+export function onboardingRoleActionCopy(canIssueKeys: boolean): string {
+  if (canIssueKeys) {
+    return "As owner/admin, issue or rotate the ingest key and verify the app receives traffic.";
+  }
+  return "As member/viewer, request an owner/admin to issue or rotate the ingest key, then verify incoming traffic.";
+}
+
+export function onboardingNoDataPrimaryAction(canIssueKeys: boolean, subpathUi: boolean): string {
+  if (canIssueKeys) {
+    return subpathUi
+      ? "Primary next action: issue a key, rebuild static UI, restart backend, then send one request."
+      : "Primary next action: issue a key, add it to your app env, restart, then send one request.";
+  }
+  return "Primary next action: ask an owner/admin for a key update, then send one request to confirm data flow.";
+}
+
 export function OnboardingContent() {
   const router = useRouter();
   const d = useDashboardData();
@@ -59,6 +75,9 @@ export function OnboardingContent() {
           ) : (
             "Put the issued key in your app as AUTOPULSE_API_KEY and set AUTOPULSE_INGEST_URL to /ingest on your backend."
           )}
+        </p>
+        <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
+          {onboardingRoleActionCopy(canIssueKeys)}
         </p>
       </div>
 
@@ -137,33 +156,47 @@ export function OnboardingContent() {
               {hasFirstEvent ? "OK" : "…"}
             </span>
           </div>
+          {!hasFirstEvent ? (
+            <p className="mt-2 text-xs text-slate-600 dark:text-neutral-400">
+              {onboardingNoDataPrimaryAction(canIssueKeys, subpathUi)}
+            </p>
+          ) : null}
         </li>
       </ol>
 
       <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 dark:border-neutral-700">
         <p className="text-xs text-slate-600 dark:text-neutral-400">
-          After the first event is visible above, you can open the rest of the console.
+          Open the dashboard anytime in read-only mode. Mark onboarding complete once first ingest is confirmed.
         </p>
-        <button
-          type="button"
-          disabled={!hasFirstEvent || continueBusy}
-          onClick={async () => {
-            setContinueBusy(true);
-            try {
-              const ok = await d.completeOnboarding();
-              if (ok) {
-                router.push("/dashboard");
-              } else {
-                setMessage("Could not save onboarding completion. Try refresh, then Continue again.");
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard")}
+            className="ap-btn w-fit"
+          >
+            Open dashboard (read-only)
+          </button>
+          <button
+            type="button"
+            disabled={!hasFirstEvent || continueBusy}
+            onClick={async () => {
+              setContinueBusy(true);
+              try {
+                const ok = await d.completeOnboarding();
+                if (ok) {
+                  router.push("/dashboard");
+                } else {
+                  setMessage("Could not save onboarding completion. Try refresh, then Continue again.");
+                }
+              } finally {
+                setContinueBusy(false);
               }
-            } finally {
-              setContinueBusy(false);
-            }
-          }}
-          className="ap-btn-primary w-fit disabled:pointer-events-none disabled:opacity-40"
-        >
-          {continueBusy ? "Saving…" : "Continue to app"}
-        </button>
+            }}
+            className="ap-btn-primary w-fit disabled:pointer-events-none disabled:opacity-40"
+          >
+            {continueBusy ? "Saving…" : "Mark complete and continue"}
+          </button>
+        </div>
       </div>
 
       {message ? <p className="text-xs text-slate-600 dark:text-neutral-400">{message}</p> : null}

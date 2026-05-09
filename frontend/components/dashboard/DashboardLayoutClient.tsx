@@ -405,28 +405,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
     if (!onboardingStatusKnown) {
       return;
     }
-    if (onboardingCompleted) {
-      return;
-    }
-    if (pathname !== "/onboarding") {
-      router.replace("/onboarding");
-    }
-  }, [
-    d.authSessionResolved,
-    d.hasDashboardSession,
-    onboardingCompleted,
-    onboardingStatusKnown,
-    pathname,
-    router,
-  ]);
-
-  useEffect(() => {
-    if (!d.authSessionResolved || !d.hasDashboardSession) {
-      return;
-    }
-    if (!onboardingStatusKnown) {
-      return;
-    }
     if (!onboardingCompleted) {
       return;
     }

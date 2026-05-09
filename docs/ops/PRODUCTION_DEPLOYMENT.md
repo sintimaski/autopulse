@@ -140,6 +140,22 @@ Use this as the minimum production policy (MVP scope, not enterprise audit platf
 
 **Load balancer:** Prefer `/ready` for readiness probes when the data plane must be available. See [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md) for `/ready` scope (e.g. SMTP/OIDC not fully validated here).
 
+### 3.1 Topology guardrail severity contract (operator runbook)
+
+`/ready` and `/internal/metrics` expose `topology_guardrails` with standardized severities:
+
+| Severity | Example | Runtime behavior | Operator action |
+| --- | --- | --- | --- |
+| `unsafe` | Scheduler required for staging/production but disabled | Fail closed: startup validation failure or `/ready` degraded (503) | Block rollout; fix env/config before promotion |
+| `risky` | Scheduler required but not running, no shared realtime bus in staging/prod, non-SQL startup migrations enabled on replicas | Starts but `/ready` degraded (503) with reasons | Treat as release blocker until corrected or explicitly waived |
+| `non-ideal` | External cron ownership enabled while in-process scheduler is also enabled | `/ready` remains healthy; advisory reason only | Clean up configuration drift during next change window |
+
+Minimum staging verification for topology changes:
+
+1. `GET /ready` returns `status=ready` and `topology_guardrails.status=healthy` on the release candidate.
+2. `GET /internal/metrics` `topology_profile` matches intended topology (`event_plane_mode`, scheduler mode, realtime backend).
+3. Any non-empty `topology_guardrails.reasons` is captured in release notes with owner and remediation date.
+
 ## 4. Multi-instance and realtime
 
 - **WebSockets:** Default hub is in-process. For multi-replica freshness, either enable shared bus (`DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` on Postgres), configure LB stickiness, or route WS to a single replica. See [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md).
@@ -265,6 +281,11 @@ In typical deployments, **raw events** land in DuckDB (when enabled) while **rol
 - Run `replay-sql-tail-repairs-once` after remediation if the periodic queue cannot keep up.
 - Expect **event timeline** in DuckDB to remain authoritative for raw rows; SQL aggregates catch up as retries/replays succeed.
 
+**Queue-health alerting baseline**
+
+- Track `system_diagnostics.replay_queue.oldest_pending_age_seconds` and page when it exceeds **600s for 15m** (initial target, tune with observed baselines).
+- Use the deterministic replay runbook: [RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md](./RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md).
+
 ## 6. Observability (golden signals)
 
 Monitor at minimum:
@@ -382,6 +403,7 @@ Follow [BACKUP_RESTORE.md](./BACKUP_RESTORE.md). Before GA:
 - [agents/security-privacy.md](../../agents/security-privacy.md) — security review checklist.
 - [docs/contracts/ingest-api.md](../contracts/ingest-api.md) — ingest contract and status codes.
 - [RUNBOOK_EVENT_PLANE_BACKPRESSURE.md](./RUNBOOK_EVENT_PLANE_BACKPRESSURE.md) — low-disk/backlog reject remediation for Plan B shard appends.
+- [RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md](./RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md) — deterministic SQL-tail replay recovery and drill flow.
 - [EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md](./EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md) — quarterly drill procedure and latest evidence log.
 - [EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md](./EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md) — per-tick throughput evidence for compactor run-budget/concurrency controls.
 - [`../../Dockerfile`](../../Dockerfile) and [`./docker-compose.autopulse.yml`](./docker-compose.autopulse.yml) — official container artifact and minimal compose example.

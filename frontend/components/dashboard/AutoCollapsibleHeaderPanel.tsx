@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { ChevronDown, ChevronRight, FilterX, SlidersHorizontal } from "../../lib/icons";
 
@@ -21,6 +21,7 @@ export function AutoCollapsibleHeaderPanel({
   const expandedRef = useRef<HTMLDivElement>(null);
   const compactRef = useRef<HTMLDivElement>(null);
   const thresholdRef = useRef(0);
+  const compactPanelId = useId();
   const [showCompact, setShowCompact] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
 
@@ -87,34 +88,34 @@ export function AutoCollapsibleHeaderPanel({
       >
         <div
           ref={compactRef}
-          role="button"
-          tabIndex={0}
-          onClick={() => setCompactOpen((prev) => !prev)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              setCompactOpen((prev) => !prev);
-            }
-          }}
           onMouseEnter={() => setCompactOpen(true)}
           onMouseLeave={() => setCompactOpen(false)}
-          aria-expanded={compactOpen}
-          aria-label={compactLabel}
-          title={compactLabel}
-          className="flex h-20 w-full items-center justify-between border-y border-slate-200/90 bg-white/95 px-4 text-left text-sm font-semibold text-slate-700 backdrop-blur transition-colors hover:bg-white dark:border-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-200 dark:hover:bg-neutral-900 sm:px-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+          className="border-y border-slate-200/90 bg-white/95 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95"
         >
-          <span className="flex items-center gap-2">
-            <SlidersHorizontal className="size-5 shrink-0 text-slate-600 dark:text-neutral-300" aria-hidden />
-            <span className="sr-only">{compactLabel}</span>
-          </span>
-          <span className="flex items-center gap-2">
+          <div className="flex h-20 w-full items-center gap-3 px-4 sm:px-6">
+            <button
+              type="button"
+              onClick={() => setCompactOpen((prev) => !prev)}
+              aria-expanded={compactOpen}
+              aria-controls={compactPanelId}
+              aria-label={compactLabel}
+              title={compactLabel}
+              className="flex h-full min-w-0 flex-1 items-center justify-between text-left text-sm font-semibold text-slate-700 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:text-neutral-200 dark:hover:text-neutral-100 dark:focus-visible:ring-neutral-500/50"
+            >
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="size-5 shrink-0 text-slate-600 dark:text-neutral-300" aria-hidden />
+                <span className="sr-only">{compactLabel}</span>
+              </span>
+              {compactOpen ? (
+                <ChevronDown className="size-5 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
+              ) : (
+                <ChevronRight className="size-5 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
+              )}
+            </button>
             {onResetFilters ? (
               <button
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onResetFilters();
-                }}
+                onClick={onResetFilters}
                 title="Reset filters"
                 aria-label="Reset filters"
                 className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
@@ -122,15 +123,13 @@ export function AutoCollapsibleHeaderPanel({
                 <FilterX className="size-4" aria-hidden />
               </button>
             ) : null}
-            {compactOpen ? (
-              <ChevronDown className="size-5 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
-            ) : (
-              <ChevronRight className="size-5 shrink-0 text-slate-500 dark:text-neutral-400" aria-hidden />
-            )}
-          </span>
+          </div>
         </div>
         {compactOpen ? (
           <div
+            id={compactPanelId}
+            role="region"
+            aria-label={`${compactLabel} controls`}
             onMouseEnter={() => setCompactOpen(true)}
             onMouseLeave={() => setCompactOpen(false)}
             className="border-b border-slate-200/90 bg-white/95 px-4 pb-3 pt-2 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95 sm:px-6"

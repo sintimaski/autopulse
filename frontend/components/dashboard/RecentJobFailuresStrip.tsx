@@ -10,9 +10,15 @@ type RecentJobFailuresStripProps = {
   /** Optional link shown when failures exist (e.g. scoped diagnosis URL). */
   moreHref?: string;
   moreLabel?: string;
+  diagnosticsHref?: string;
 };
 
-export function RecentJobFailuresStrip({ data, moreHref, moreLabel }: RecentJobFailuresStripProps) {
+export function RecentJobFailuresStrip({
+  data,
+  moreHref,
+  moreLabel,
+  diagnosticsHref = "/settings#system-diagnostics",
+}: RecentJobFailuresStripProps) {
   if (!data?.items?.length) {
     return null;
   }
@@ -35,6 +41,13 @@ export function RecentJobFailuresStrip({ data, moreHref, moreLabel }: RecentJobF
       <p className="mt-1 text-xs text-amber-900/80 dark:text-amber-200/80">
         Failures from SDK <code className="rounded bg-amber-100/80 px-1 py-0.5 text-[11px] dark:bg-amber-900/60">capture_background_job</code>{" "}
         (HTTP traffic charts stay unchanged).
+      </p>
+      <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
+        Primary next action: open{" "}
+        <Link href={diagnosticsHref} className="font-medium underline-offset-2 hover:underline">
+          System diagnostics
+        </Link>{" "}
+        to check scheduler/replay health, then use diagnosis links for correlated request evidence.
       </p>
       <ul className="mt-3 space-y-2">
         {data.items.map((item) => (

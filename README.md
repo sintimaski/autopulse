@@ -250,6 +250,8 @@ make setup
 ./scripts/examples/synthetic_load_demo.sh
 ```
 
+From a cold clone: `make setup`, then the two script lines above, then `curl -s http://127.0.0.1:8000/health` and `curl -s http://127.0.0.1:8000/ready` (expect `{"status":"ok"}` and a ready JSON body). Ops and drill details: [docs/README.md](./docs/README.md).
+
 Core validation commands from repository root:
 
 ```bash
@@ -281,4 +283,4 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 | Frontend audit, lint, typecheck, test, build, bundle budget | `make check` / release gates | `frontend` job |
 | Browser smoke (Playwright) | Optional (`AUTOPULSE_RELEASE_GATES_E2E=1`) | `browser-smoke` job |
 
-**Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**.
+**Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**. Multi-lane closure plan (IA, onboarding, topology, drills): [DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md](./docs/DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md).

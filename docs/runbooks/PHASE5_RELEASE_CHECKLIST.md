@@ -56,3 +56,19 @@ Use this checklist before promoting any release-hardening changes.
 - [ ] Capture rollback command sequence and escalation owner in release notes.
 - [ ] Attach evidence links to PR before merge.
 - [ ] Multi-replica rollout uses one-shot migration (`alembic upgrade head`) and API replicas run with `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false`.
+
+## Regression and Coverage Policy (T09)
+
+Use this policy to tighten quality gradually without destabilizing cycle time:
+
+- Critical-path checks in `scripts/release_gates.sh` are mandatory and must stay in this order: backend static checks -> backend tests -> frontend checks (including static build/export) -> phase5 smoke.
+- Any release-gate command change must update docs and keep `backend/tests/test_release_gates_manifest.py` green to avoid local/CI drift.
+- UI-impacting work must continue to pass `npm --prefix frontend run build` in release gates; this validates static export output on every release run.
+
+Initial tightening targets (review monthly):
+
+| Window | Target |
+| --- | --- |
+| Baseline (current) | Keep release-gate pass trend >= 95% and fix flaky failures within 1 business day. |
+| Next cycle | Add/expand at least 1 regression test for each escaped critical-path bug category. |
+| Following cycle | Raise confidence by reducing quarantined/flaky critical-path tests by >= 50% versus baseline. |
