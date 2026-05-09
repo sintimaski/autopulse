@@ -80,25 +80,48 @@ async def execute_dashboard_query_explorer(
     query = _validate_query(payload.query)
     server_now = datetime.now(tz=UTC)
     ui_settings = await get_or_create_project_ui_settings(session, context.project_id)
-    max_minutes = max(
-        1,
-        int(ui_settings.logs_query_max_window_minutes or settings.logs_query_max_window_minutes),
-    )
-    resolved_from, resolved_to = resolve_time_window(
-        payload.from_timestamp,
-        payload.to_timestamp,
-        min(max_minutes, payload.window_minutes or DEFAULT_WINDOW_MINUTES),
-        now_utc=server_now,
-    )
-    if (resolved_to - resolved_from) > timedelta(minutes=max_minutes):
-        resolved_from = resolved_to - timedelta(minutes=max_minutes)
-    filters = build_filters(
-        project_id=context.project_id,
-        from_timestamp=resolved_from,
-        to_timestamp=resolved_to,
-        exclude_autopulse_traffic=bool(ui_settings.exclude_autopulse_traffic),
-        http_events_only=False,
-    )
+    project_wide = payload.scope_mode == "project_wide"
+    if project_wide:
+        resolved_from = datetime(1970, 1, 1, tzinfo=UTC)
+        resolved_to = server_now
+        filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            exclude_autopulse_traffic=bool(ui_settings.exclude_autopulse_traffic),
+            http_events_only=False,
+            skip_timestamp_filter=True,
+        )
+    else:
+        max_minutes = max(
+            1,
+            int(
+                ui_settings.logs_query_max_window_minutes or settings.logs_query_max_window_minutes
+            ),
+        )
+        resolved_from, resolved_to = resolve_time_window(
+            payload.from_timestamp,
+            payload.to_timestamp,
+            min(max_minutes, payload.window_minutes or DEFAULT_WINDOW_MINUTES),
+            now_utc=server_now,
+        )
+        if (resolved_to - resolved_from) > timedelta(minutes=max_minutes):
+            resolved_from = resolved_to - timedelta(minutes=max_minutes)
+        filters = build_filters(
+            project_id=context.project_id,
+            from_timestamp=resolved_from,
+            to_timestamp=resolved_to,
+            method=payload.method,
+            status_class=payload.status_class,
+            path_contains=payload.path_contains,
+            environments=payload.environments,
+            services=payload.services,
+            min_latency_ms=payload.min_latency_ms,
+            max_latency_ms=payload.max_latency_ms,
+            exclude_autopulse_traffic=bool(ui_settings.exclude_autopulse_traffic),
+            event_sql_filter=payload.event_sql_filter,
+            http_events_only=False,
+        )
     store = await resolve_dashboard_read_store(
         session=session,
         project_id=context.project_id,

@@ -62,6 +62,7 @@ def build_filters(
     http_events_only: bool = True,
     require_event_types: tuple[str, ...] | None = None,
     include_received_at_in_time_window: bool = False,
+    skip_timestamp_filter: bool = False,
 ) -> EventStoreFilters:
     return EventStoreFilters(
         project_id=project_id,
@@ -79,6 +80,7 @@ def build_filters(
         http_events_only=http_events_only,
         require_event_types=require_event_types,
         include_received_at_in_time_window=include_received_at_in_time_window,
+        skip_timestamp_filter=skip_timestamp_filter,
     )
 
 

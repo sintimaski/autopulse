@@ -1479,6 +1479,35 @@ def test_dashboard_query_explorer_executes_scoped_sql(backend_test_database_url:
     assert payload["rows"][0][1] == 2
 
 
+def test_dashboard_query_explorer_project_wide_counts_outside_time_window(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Query Explorer Wide")
+    old = datetime.now(tz=UTC) - timedelta(days=40)
+    recent = datetime.now(tz=UTC) - timedelta(minutes=5)
+    app = create_app()
+    headers = {"Authorization": f"Bearer {key}"}
+    count_sql = "SELECT COUNT(*)::BIGINT AS c FROM scoped_events"
+    with TestClient(app) as client:
+        _ingest(client, key, old, 200, "GET", "/old")
+        _ingest(client, key, recent, 200, "GET", "/new")
+        windowed = client.post(
+            "/dashboard/query-explorer/execute",
+            json={"query": count_sql, "row_limit": 10, "window_minutes": 60},
+            headers=headers,
+        )
+        wide = client.post(
+            "/dashboard/query-explorer/execute",
+            json={"query": count_sql, "row_limit": 10, "scope_mode": "project_wide"},
+            headers=headers,
+        )
+    assert windowed.status_code == 200
+    assert wide.status_code == 200
+    assert windowed.json()["rows"][0][0] == 1
+    assert wide.json()["rows"][0][0] == 2
+
+
 def test_dashboard_traces_search_and_detail(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, project_id = _seed_project_and_key(backend_test_database_url, "Project Traces")

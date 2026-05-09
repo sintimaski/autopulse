@@ -264,6 +264,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
     const previousPath = previousPathRef.current;
     if (isScopedPathRestoreRoute(previousPath)) {
       scopedStateRef.current[previousPath] = captureCurrentState();
+    } else if (previousPath === "/query-explorer") {
+      // Keep `/requests` snapshot fresh when scope was edited on Query Explorer (same shared context).
+      scopedStateRef.current["/requests"] = captureCurrentState();
     }
     if (isScopedPathRestoreRoute(pathname)) {
       // `useLayoutEffect` below applies `searchParams` to context before this `useEffect` runs.
@@ -441,7 +444,10 @@ function ShellWithData({ children }: { children: ReactNode }) {
     d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
   const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
   const showServerScope =
-    pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
+    pathname === "/diagnosis" ||
+    pathname === "/logs" ||
+    pathname === "/requests" ||
+    pathname === "/query-explorer";
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const subpathStaticUi = isApiSubpathDashboard();
@@ -573,7 +579,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       filterToolbarCompactLabel={
         pathname === "/diagnosis"
           ? "Diagnosis scope"
-          : pathname === "/logs" || pathname === "/requests"
+          : pathname === "/logs" || pathname === "/requests" || pathname === "/query-explorer"
             ? "Requests scope"
             : "Server scope"
       }
@@ -581,7 +587,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         showServerScope
           ? pathname === "/diagnosis"
             ? resetDiagnosisScope
-            : pathname === "/requests"
+            : pathname === "/requests" || pathname === "/query-explorer"
               ? () => resetRequestLikeScope("requests")
               : () => resetRequestLikeScope("logs")
           : undefined
@@ -592,7 +598,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
             variant={
               pathname === "/diagnosis"
                 ? "diagnosis"
-                : pathname === "/requests"
+                : pathname === "/requests" || pathname === "/query-explorer"
                   ? "requests"
                   : "logs"
             }

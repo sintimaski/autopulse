@@ -26,7 +26,8 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   },
   "/query-explorer": {
     title: "Query Explorer",
-    subtitle: "Run full SQL against project-scoped events with guardrails.",
+    subtitle:
+      "DuckDB SQL — use the header scope (same as Requests), or run unscoped against the full live database for this project.",
   },
   "/traces": {
     title: "Traces (OTLP)",
@@ -55,7 +56,8 @@ export function isScopedUrlSyncRoute(pathname: string): boolean {
     pathname === "/dashboard" ||
     pathname === "/diagnosis" ||
     pathname === "/logs" ||
-    pathname === "/requests"
+    pathname === "/requests" ||
+    pathname === "/query-explorer"
   );
 }
 

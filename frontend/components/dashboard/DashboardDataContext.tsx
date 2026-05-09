@@ -273,7 +273,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const scopedRoute =
       dashboardRoutePath === "/diagnosis" ||
       dashboardRoutePath === "/logs" ||
-      dashboardRoutePath === "/requests";
+      dashboardRoutePath === "/requests" ||
+      dashboardRoutePath === "/query-explorer";
     if (scopedRoute) {
       return;
     }
@@ -328,7 +329,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (
       dashboardRoutePath !== "/diagnosis" &&
       dashboardRoutePath !== "/logs" &&
-      dashboardRoutePath !== "/requests"
+      dashboardRoutePath !== "/requests" &&
+      dashboardRoutePath !== "/query-explorer"
     ) {
       return;
     }
@@ -353,7 +355,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterEnabled,
     };
     const timer = window.setTimeout(() => {
-      const persistenceRoute = dashboardRoutePath === "/requests" ? "/logs" : dashboardRoutePath;
+      const persistenceRoute =
+        dashboardRoutePath === "/requests" || dashboardRoutePath === "/query-explorer"
+          ? "/logs"
+          : dashboardRoutePath;
       mergePersistedScopedSession(persistenceRoute, scopedForPersist, {
         groupBy,
         sortKey,
@@ -1126,7 +1131,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
     const path = toDashboardRoutePath(window.location.pathname);
     const scoped: DashboardScopedQueryState | null =
-      path === "/logs" ? parsed.logsScoped : path === "/diagnosis" ? parsed.diagnosisScoped : null;
+      path === "/logs" || path === "/requests" || path === "/query-explorer"
+        ? parsed.logsScoped
+        : path === "/diagnosis"
+          ? parsed.diagnosisScoped
+          : null;
     if (scoped) {
       applyDashboardScopedQueryState(
         {

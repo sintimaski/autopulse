@@ -46,6 +46,10 @@ class EventStoreFilters:
     #: inside ``[from_timestamp, to_timestamp]``. Used by trace explorer so OTLP spans
     #: with stale or synthetic clock times still appear after ingest.
     include_received_at_in_time_window: bool = False
+    #: When True, omit timestamp bounds in SQL (still ``project_id``-scoped). Used by
+    #: dashboard Query Explorer "whole project" mode against the live DuckDB ``events``
+    #: table; parquet cold paths are skipped so exports are not scanned day-by-day.
+    skip_timestamp_filter: bool = False
 
 
 class DuckDbEventStore:
@@ -311,21 +315,22 @@ class DuckDbEventStore:
     def _compile_filters(self, filters: EventStoreFilters) -> tuple[str, list[Any]]:
         clauses = ["project_id = ?"]
         params: list[Any] = [str(filters.project_id)]
-        from_ts = as_duckdb_timestamp(filters.from_timestamp)
-        to_ts = as_duckdb_timestamp(filters.to_timestamp)
-        if filters.include_received_at_in_time_window:
-            clauses.append(
-                "("
-                "(timestamp >= CAST(? AS TIMESTAMP) AND timestamp <= CAST(? AS TIMESTAMP))"
-                " OR "
-                "(received_at >= CAST(? AS TIMESTAMP) AND received_at <= CAST(? AS TIMESTAMP))"
-                ")"
-            )
-            params.extend([from_ts, to_ts, from_ts, to_ts])
-        else:
-            clauses.append("timestamp >= CAST(? AS TIMESTAMP)")
-            clauses.append("timestamp <= CAST(? AS TIMESTAMP)")
-            params.extend([from_ts, to_ts])
+        if not filters.skip_timestamp_filter:
+            from_ts = as_duckdb_timestamp(filters.from_timestamp)
+            to_ts = as_duckdb_timestamp(filters.to_timestamp)
+            if filters.include_received_at_in_time_window:
+                clauses.append(
+                    "("
+                    "(timestamp >= CAST(? AS TIMESTAMP) AND timestamp <= CAST(? AS TIMESTAMP))"
+                    " OR "
+                    "(received_at >= CAST(? AS TIMESTAMP) AND received_at <= CAST(? AS TIMESTAMP))"
+                    ")"
+                )
+                params.extend([from_ts, to_ts, from_ts, to_ts])
+            else:
+                clauses.append("timestamp >= CAST(? AS TIMESTAMP)")
+                clauses.append("timestamp <= CAST(? AS TIMESTAMP)")
+                params.extend([from_ts, to_ts])
         if filters.exclude_autopulse_traffic:
             clauses.append("path NOT LIKE '/autopulse/%'")
         if filters.method:
@@ -431,6 +436,8 @@ class DuckDbEventStore:
         return unique_sorted
 
     def _resolve_events_source_sql(self, filters: EventStoreFilters) -> tuple[str, list[Any]]:
+        if filters.skip_timestamp_filter:
+            return "events", []
         settings = get_settings()
         if not settings.parquet_query_enabled or settings.event_store != "duckdb":
             return "events", []

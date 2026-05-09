@@ -344,6 +344,26 @@ class DashboardQueryExplorerRequest(BaseModel):
     to_timestamp: datetime | None = None
     window_minutes: int = 60
     row_limit: int = 200
+    #: ``time_window`` respects dashboard time bounds; ``project_wide`` runs against all
+    #: rows for this project in the live DuckDB ``events`` table (timestamp filter omitted).
+    scope_mode: Literal["time_window", "project_wide"] = "time_window"
+    #: Applied when ``scope_mode`` is ``time_window`` (same dimensions as Requests / header scope).
+    method: str | None = None
+    status_class: int | None = None
+    path_contains: str | None = None
+    environments: str | None = None
+    services: str | None = None
+    min_latency_ms: float | None = None
+    max_latency_ms: float | None = None
+    event_sql_filter: str | None = None
+
+    @field_validator("method", "path_contains", "environments", "services", "event_sql_filter")
+    @classmethod
+    def strip_optional_scope_strings(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     @field_validator("window_minutes")
     @classmethod

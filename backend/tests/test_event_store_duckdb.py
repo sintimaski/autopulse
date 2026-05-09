@@ -460,3 +460,56 @@ def test_list_parquet_export_files_inverted_date_window_returns_empty(tmp_path) 
         )
         == []
     )
+
+
+def test_query_scoped_events_sql_skip_timestamp_counts_full_project(tmp_path) -> None:
+    """Query Explorer project-wide mode relies on ``skip_timestamp_filter``."""
+    store = DuckDbEventStore(str(tmp_path / "qe_skip_ts.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    old = now - timedelta(days=60)
+    base_row = {
+        "project_id": project_id,
+        "received_at": now,
+        "sdk_version": "0.1.0",
+        "type": "request",
+        "service_name": "api",
+        "environment": "test",
+        "method": "GET",
+        "path": "/x",
+        "status_code": 200,
+        "latency_ms": 10.0,
+        "payload": {},
+        "request_id": "r-old",
+    }
+    store.insert_rows(
+        [
+            {**base_row, "timestamp": old, "request_id": "r-old"},
+            {
+                **base_row,
+                "timestamp": now - timedelta(minutes=1),
+                "request_id": "r-new",
+            },
+        ]
+    )
+    narrow = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now - timedelta(minutes=10),
+        to_timestamp=now,
+        http_events_only=False,
+    )
+    wide = EventStoreFilters(
+        project_id=project_id,
+        from_timestamp=now,
+        to_timestamp=now,
+        http_events_only=False,
+        skip_timestamp_filter=True,
+    )
+    _cols_n, rows_n = store.query_scoped_events_sql(
+        narrow, "SELECT COUNT(*)::BIGINT AS c FROM scoped_events", 50
+    )
+    _cols_w, rows_w = store.query_scoped_events_sql(
+        wide, "SELECT COUNT(*)::BIGINT AS c FROM scoped_events", 50
+    )
+    assert int(rows_n[0][0]) == 1
+    assert int(rows_w[0][0]) == 2

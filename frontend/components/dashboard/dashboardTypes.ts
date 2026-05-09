@@ -291,12 +291,23 @@ export type LogQueryPageResponse = {
   items: LogQueryItem[];
 };
 
+export type QueryExplorerScopeMode = "time_window" | "project_wide";
+
 export type QueryExplorerRequest = {
   query: string;
   from_timestamp?: string;
   to_timestamp?: string;
   window_minutes?: number;
   row_limit?: number;
+  scope_mode?: QueryExplorerScopeMode;
+  method?: string;
+  status_class?: number;
+  path_contains?: string;
+  environments?: string;
+  services?: string;
+  min_latency_ms?: number;
+  max_latency_ms?: number;
+  event_sql_filter?: string;
 };
 
 export type QueryExplorerResponse = {
