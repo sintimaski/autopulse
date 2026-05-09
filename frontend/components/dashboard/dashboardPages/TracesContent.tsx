@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { CardSpinner } from "../../ui/CardSpinner";
 import { useDashboardData } from "../DashboardDataContext";
 import { METHOD_OPTIONS, buildApiUrl, formatTimestamp, type TraceDetailResponse, type TraceSearchResponse } from "../dashboardTypes";
 
@@ -28,7 +29,8 @@ export function TracesContent() {
   const [methodFilter, setMethodFilter] = useState("");
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchData, setSearchData] = useState<TraceSearchResponse | null>(null);
   const [detailData, setDetailData] = useState<TraceDetailResponse | null>(null);
@@ -80,7 +82,7 @@ export function TracesContent() {
 
   const searchTraces = useCallback(
     async (timeOverride?: TraceTimeScope) => {
-      setLoading(true);
+      setSearchLoading(true);
       setError(null);
       const scope = resolveTimeScope(timeOverride);
       try {
@@ -118,7 +120,7 @@ export function TracesContent() {
         setError(err instanceof Error ? err.message : "Trace search request failed");
         setSearchData(null);
       } finally {
-        setLoading(false);
+        setSearchLoading(false);
       }
     },
     [appendFilterParams, query, resolveTimeScope],
@@ -179,7 +181,8 @@ export function TracesContent() {
 
   const openTrace = async (traceId: string) => {
     setSelectedTraceId(traceId);
-    setLoading(true);
+    setDetailData(null);
+    setDetailLoading(true);
     setError(null);
     const scope = resolveTimeScope();
     const timeParams = buildDetailTimeParams(scope);
@@ -200,7 +203,7 @@ export function TracesContent() {
       setError(err instanceof Error ? err.message : "Trace detail request failed");
       setDetailData(null);
     } finally {
-      setLoading(false);
+      setDetailLoading(false);
     }
   };
 
@@ -224,7 +227,7 @@ export function TracesContent() {
               key={preset.minutes}
               type="button"
               onClick={() => applyPreset(preset.minutes)}
-              disabled={loading}
+              disabled={searchLoading}
               className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                 !absoluteFrom && !absoluteTo && windowMinutes === preset.minutes
                   ? "border-sky-500 bg-sky-50 text-sky-900 dark:border-sky-500/60 dark:bg-sky-950/40 dark:text-sky-100"
@@ -236,10 +239,10 @@ export function TracesContent() {
           ))}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => shiftWindowEarlier()} disabled={loading || !searchData} className="ap-btn text-xs">
+          <button type="button" onClick={() => shiftWindowEarlier()} disabled={searchLoading || !searchData} className="ap-btn text-xs">
             ← Older window
           </button>
-          <button type="button" onClick={() => shiftWindowLater()} disabled={loading || !searchData} className="ap-btn text-xs">
+          <button type="button" onClick={() => shiftWindowLater()} disabled={searchLoading || !searchData} className="ap-btn text-xs">
             Newer window →
           </button>
           <span className="text-xs text-slate-500 dark:text-neutral-500">{timeModeLabel}</span>
@@ -306,14 +309,20 @@ export function TracesContent() {
           placeholder="Search by trace id, service, path, span name..."
           className="min-w-[280px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
         />
-        <button type="button" onClick={() => void searchTraces()} disabled={loading} className="ap-btn">
-          {loading ? "Loading..." : "Search traces"}
+        <button type="button" onClick={() => void searchTraces()} disabled={searchLoading} className="ap-btn">
+          {searchLoading ? "Searching…" : "Search traces"}
         </button>
       </div>
       {error ? (
         <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
           {error}
         </p>
+      ) : null}
+      {searchLoading && !searchData ? (
+        <CardSpinner className="mt-5" label="Searching traces…" description="Applying filters and time window." />
+      ) : null}
+      {searchLoading && searchData ? (
+        <CardSpinner className="mt-5" size="compact" label="Refreshing trace list…" />
       ) : null}
       {searchData ? (
         <div className="mt-5 grid gap-3">
@@ -382,7 +391,14 @@ export function TracesContent() {
           ) : null}
         </div>
       ) : null}
-      {detailData ? (
+      {detailLoading ? (
+        <CardSpinner
+          className="mt-6"
+          label="Loading span details…"
+          description={selectedTraceId ? `Trace ${selectedTraceId}` : undefined}
+        />
+      ) : null}
+      {detailData && !detailLoading ? (
         <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-slate-50 dark:bg-neutral-800">

@@ -27,7 +27,7 @@ import {
   type ScatterPlotPoint,
   type StackedAreaSeries,
 } from "../charts/lazyCharts";
-import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
+import { CardSpinner } from "../../ui/CardSpinner";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
@@ -108,7 +108,14 @@ export function DashboardHomeContent() {
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
         {d.loading && !d.errorMessage ? (
-          <InlineDataSpinner label="Loading dashboard metrics…" />
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <CardSpinner size="compact" label="Overview metrics" />
+              <CardSpinner size="compact" label="Traffic window" />
+              <CardSpinner size="compact" label="Request sample" />
+            </div>
+            <CardSpinner size="section" label="Loading charts & widgets…" />
+          </div>
         ) : (
           <div className="rounded-xl border border-slate-200/90 bg-slate-50 p-4 text-sm text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
             {d.errorMessage ?? "No metrics for this scope yet. Adjust filters or send traffic."}

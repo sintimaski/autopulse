@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import { CardSpinner } from "../../ui/CardSpinner";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, type QueryExplorerResponse } from "../dashboardTypes";
 
@@ -121,6 +122,9 @@ export function QueryExplorerContent() {
         <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
           {error}
         </p>
+      ) : null}
+      {loading ? (
+        <CardSpinner className="mt-5" label="Running query…" description="Waiting for DuckDB results." />
       ) : null}
       {data ? (
         <div className="mt-5">

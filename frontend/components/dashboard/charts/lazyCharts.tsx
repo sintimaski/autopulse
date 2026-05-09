@@ -2,6 +2,8 @@
 
 import dynamic from "next/dynamic";
 
+import { CardSpinner } from "../../ui/CardSpinner";
+
 export { ChartPanel } from "./ChartPanel";
 export type { HistogramBucket } from "./HistogramChart";
 export type { MultiSeriesLineChartSeries } from "./MultiSeriesLineChart";
@@ -9,9 +11,7 @@ export type { ScatterPlotPoint } from "./ScatterPlotChart";
 export type { StackedAreaSeries } from "./StackedAreaChart";
 
 function ChartSkeleton() {
-  return (
-    <div className="h-40 w-full animate-pulse rounded-md bg-slate-200/50 dark:bg-neutral-700/40" />
-  );
+  return <CardSpinner size="embed" label="Loading chart…" className="h-40 min-h-[10rem]" />;
 }
 
 export const BreakdownBarChart = dynamic(

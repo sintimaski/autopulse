@@ -8,7 +8,7 @@ import type { AlertSettings } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { canManageProjectAlertsAndRetention } from "../dashboardRoleHelpers";
 import { buildScopedQuery } from "../dashboardQueryState";
-import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
+import { CardSpinner } from "../../ui/CardSpinner";
 import { useDashboardAlertsSlice } from "../data/useDashboardSlices";
 
 export function AlertsContent() {
@@ -321,8 +321,9 @@ export function AlertsContent() {
               </div>
             </>
           ) : d.loading && !d.errorMessage ? (
-            <div className="mt-4">
-              <InlineDataSpinner label="Loading alert settings…" />
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <CardSpinner size="compact" label="Traffic & sparkline" />
+              <CardSpinner size="compact" label="Alert rules" />
             </div>
           ) : (
             <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">

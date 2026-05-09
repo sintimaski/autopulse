@@ -18,7 +18,7 @@ import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardDiagnosisSlice } from "../data/useDashboardSlices";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { RowActionsMenu } from "../RowActionsMenu";
-import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
+import { CardSpinner } from "../../ui/CardSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
@@ -216,7 +216,15 @@ export function DiagnosisContent() {
       return (
         <>
           <DiagnosisRequestsStickyScopeBar />
-          <InlineDataSpinner label="Loading diagnosis…" className="rounded-2xl" />
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <CardSpinner size="compact" label="Requests" />
+              <CardSpinner size="compact" label="Error groups" />
+              <CardSpinner size="compact" label="Timeline" />
+              <CardSpinner size="compact" label="Failure modes" />
+            </div>
+            <CardSpinner size="section" label="Loading diagnosis…" description="Correlating errors with traffic." />
+          </div>
         </>
       );
     }

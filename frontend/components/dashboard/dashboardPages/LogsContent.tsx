@@ -21,7 +21,7 @@ import {
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardLogsSlice } from "../data/useDashboardSlices";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
-import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
+import { CardSpinner } from "../../ui/CardSpinner";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { RowActionsMenu } from "../RowActionsMenu";
 import { TagSelector } from "../TagSelector";
@@ -151,7 +151,10 @@ export function LogsContent() {
       return (
         <>
           <DiagnosisRequestsStickyScopeBar />
-          <InlineDataSpinner label="Loading requests…" className="rounded-2xl" />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CardSpinner size="compact" label="Overview & window" />
+            <CardSpinner size="compact" label="Request log" />
+          </div>
         </>
       );
     }

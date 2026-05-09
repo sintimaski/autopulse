@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 
+import { CardSpinner } from "../../ui/CardSpinner";
 import { useDashboardData } from "../DashboardDataContext";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { DashboardChartShowcaseGrid } from "./DashboardChartShowcaseGrid";
@@ -76,12 +77,17 @@ export function DashboardWidgetGalleryContent() {
 
       {overview && requests ? (
         <DashboardWidgetGalleryBody d={d} homeSlice={homeSlice} overview={overview} requests={requests} />
+      ) : d.loading && !d.errorMessage ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CardSpinner size="compact" label="Overview scope" />
+          <CardSpinner size="compact" label="Request sample" />
+        </div>
       ) : (
         <div className="rounded-xl border border-amber-500/30 bg-amber-50/90 p-4 text-sm text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/30 dark:text-amber-100">
           <p className="font-medium">Live gallery waiting for data</p>
           <p className="mt-1 text-amber-900/90 dark:text-amber-100/90">
             {d.errorMessage ??
-              "Loading overview and request sample for this scope. Scroll down for the mock preview, which works immediately."}
+              "No overview or request sample for this scope yet. Scroll down for the mock preview, which works immediately."}
           </p>
         </div>
       )}

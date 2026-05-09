@@ -4,8 +4,10 @@ import "./chartJsRegister";
 
 import dynamic from "next/dynamic";
 
+import { CardSpinner } from "../../ui/CardSpinner";
+
 function ChartLoading() {
-  return <div className="h-full min-h-[4rem] w-full animate-pulse rounded-md bg-slate-200/40 dark:bg-neutral-700/40" />;
+  return <CardSpinner size="embed" label="Loading chart…" className="h-full min-h-[4rem]" />;
 }
 
 export const CanvasLine = dynamic(() => import("react-chartjs-2").then((m) => m.Line), {

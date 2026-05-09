@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useContext, useState } from "react";
 import type { ReactNode } from "react";
 
+import { DashboardInitialLoadGrid } from "../ui/DashboardInitialLoadGrid";
+import { CardSpinner, dashboardSpinnerRingClassName } from "../ui/CardSpinner";
 import { DashboardDataContext, useDashboardData } from "./DashboardDataContext";
 import type { DashboardMagicLinkRequestResponse } from "./dashboardTypes";
 import { buildApiUrl, isAbsoluteOriginOnlyApiBase, isApiSubpathDashboard } from "./dashboardTypes";
@@ -17,20 +19,20 @@ export function DashboardSessionRestoring({
   message?: string;
 } = {}) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 px-4 text-slate-600 dark:bg-neutral-950 dark:text-neutral-400">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-slate-100 px-4 py-10 text-slate-600 dark:bg-neutral-950 dark:text-neutral-400">
       <div
-        className="h-9 w-9 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600 dark:border-neutral-600 dark:border-t-sky-400"
+        className="w-full max-w-md rounded-2xl border border-slate-200/90 bg-white p-8 text-center shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
         role="status"
         aria-label={title}
-      />
-      <p className="text-sm font-medium text-slate-700 dark:text-neutral-300" aria-live="polite">
-        {title}
-      </p>
-      {message ? (
-        <p className="max-w-sm text-center text-xs text-slate-500 dark:text-neutral-500" aria-live="polite">
-          {message}
-        </p>
-      ) : null}
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div className={`mx-auto h-9 w-9 ${dashboardSpinnerRingClassName}`} aria-hidden />
+        <p className="mt-4 text-sm font-medium text-slate-800 dark:text-neutral-200">{title}</p>
+        {message ? (
+          <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-neutral-500">{message}</p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -209,15 +211,18 @@ export function DashboardPageBoundary({
 
   if (d.loading && !hasRenderableData) {
     return (
-      <div className="mx-auto max-w-[88rem]">
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-600 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
-          <p className="text-sm font-medium">Loading dashboard data…</p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <div className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-neutral-800" />
-            <div className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-neutral-800" />
-            <div className="h-20 animate-pulse rounded-xl bg-slate-100 dark:bg-neutral-800" />
+      <div className="mx-auto max-w-[88rem] space-y-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-500">
+          Loading dashboard
+        </p>
+        {dataReady === "onboarding" ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <CardSpinner size="compact" label="Workspace" />
+            <CardSpinner size="compact" label="Session & projects" />
           </div>
-        </section>
+        ) : (
+          <DashboardInitialLoadGrid dataReady={dataReady} />
+        )}
       </div>
     );
   }
