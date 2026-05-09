@@ -30,7 +30,7 @@ import {
 } from "./serverQueryToolbarUtils";
 import { TagSelector } from "./TagSelector";
 
-export type ServerScopeToolbarVariant = "diagnosis" | "logs" | "requests";
+export type ServerScopeToolbarVariant = "diagnosis" | "logs" | "requests" | "query-explorer";
 
 function gatherToolbarScopeSaveDraft(
   d: ReturnType<typeof useDashboardData>,
@@ -81,7 +81,11 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   const d = useDashboardData();
   const advancedQueryUiEnabled = process.env.NEXT_PUBLIC_LUMONOX_ADVANCED_QUERY_UI === "1";
   const scopeTitle =
-    variant === "diagnosis" ? "Diagnosis scope" : "Requests scope";
+    variant === "diagnosis"
+      ? "Diagnosis scope"
+      : variant === "query-explorer"
+        ? "Time scope"
+        : "Requests scope";
   const selectedEnvironmentTags = useMemo(
     () => new Set(d.serverEnvironmentTags),
     [d.serverEnvironmentTags],
@@ -96,16 +100,19 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
     [d.availableServices, d.serverServiceTags],
   );
   const sqlScopeActive = d.sqlFilterEnabled && d.sqlFilterApplied.trim() !== "";
-  const activeServerFilterCount = [
-    d.method !== "ALL",
-    d.statusClass !== "ALL",
-    d.pathQuery.trim() !== "",
-    d.minLatencyMs.trim() !== "",
-    d.maxLatencyMs.trim() !== "",
-    d.serverEnvironmentTags.length > 0,
-    d.serverServiceTags.length > 0,
-    advancedQueryUiEnabled && sqlScopeActive,
-  ].filter(Boolean).length;
+  const activeServerFilterCount =
+    variant === "query-explorer"
+      ? [d.isAbsoluteWindow].filter(Boolean).length
+      : [
+          d.method !== "ALL",
+          d.statusClass !== "ALL",
+          d.pathQuery.trim() !== "",
+          d.minLatencyMs.trim() !== "",
+          d.maxLatencyMs.trim() !== "",
+          d.serverEnvironmentTags.length > 0,
+          d.serverServiceTags.length > 0,
+          advancedQueryUiEnabled && sqlScopeActive,
+        ].filter(Boolean).length;
   const fromInputRef = useRef<HTMLInputElement>(null);
   const toInputRef = useRef<HTMLInputElement>(null);
   const methodRef = useRef<HTMLSelectElement>(null);
@@ -177,6 +184,11 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
   }, [d.method, d.statusClass, d.minLatencyMs, d.maxLatencyMs, d.pathQuery, d.errorGroupSort]);
 
   const resetServerFilters = () => {
+    if (variant === "query-explorer") {
+      d.clearAbsoluteWindow();
+      d.onServerWindowChange(60);
+      return;
+    }
     resetServerScope(
       {
         onServerMethodChange: d.onServerMethodChange,
@@ -212,7 +224,33 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
       d.setRequestPage(0);
     }
   };
+  const applyAbsoluteWindow = () => {
+    const fromRaw = fromInputRef.current?.value ?? "";
+    const toRaw = toInputRef.current?.value ?? "";
+    const fromDate = parseLocalDateTimeInput(fromRaw);
+    const toDate = parseLocalDateTimeInput(toRaw);
+    if (!fromDate || !toDate) {
+      setWindowError("Choose valid start and end date/time.");
+      return;
+    }
+    if (fromDate.getTime() >= toDate.getTime()) {
+      setWindowError("Start must be earlier than end.");
+      return;
+    }
+    d.setAbsoluteWindow(fromDate.toISOString(), toDate.toISOString());
+    setWindowError(null);
+  };
   const applyFilters = () => {
+    if (variant === "query-explorer") {
+      const fromRaw = fromInputRef.current?.value ?? "";
+      const toRaw = toInputRef.current?.value ?? "";
+      if (fromRaw.trim() && toRaw.trim()) {
+        applyAbsoluteWindow();
+      } else {
+        setWindowError(null);
+      }
+      return;
+    }
     const currentScrollY = window.scrollY;
     d.onServerMethodChange(methodRef.current?.value ?? "ALL");
     d.onServerStatusClassChange(statusClassRef.current?.value ?? "ALL");
@@ -229,22 +267,6 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: currentScrollY, behavior: "auto" });
     });
-  };
-  const applyAbsoluteWindow = () => {
-    const fromRaw = fromInputRef.current?.value ?? "";
-    const toRaw = toInputRef.current?.value ?? "";
-    const fromDate = parseLocalDateTimeInput(fromRaw);
-    const toDate = parseLocalDateTimeInput(toRaw);
-    if (!fromDate || !toDate) {
-      setWindowError("Choose valid start and end date/time.");
-      return;
-    }
-    if (fromDate.getTime() >= toDate.getTime()) {
-      setWindowError("Start must be earlier than end.");
-      return;
-    }
-    d.setAbsoluteWindow(fromDate.toISOString(), toDate.toISOString());
-    setWindowError(null);
   };
   const onToolbarKeyDown: KeyboardEventHandler<HTMLDivElement> = (event) => {
     if (event.key !== "Enter") {
@@ -278,7 +300,9 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               ? "Applies to grouped errors, diagnosis timeline, and the loaded request slice."
               : variant === "requests"
                 ? "Applies to the request evidence explorer and related drill-down panels."
-              : "Applies to the request evidence table and server-backed query results."}
+                : variant === "query-explorer"
+                  ? 'Bounds Query Explorer runs when "Limit to time window" is on. Filter rows in your SQL (WHERE / JOIN on scoped_events).'
+                  : "Applies to the request evidence table and server-backed query results."}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -302,6 +326,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           </button>
         </div>
       </div>
+      {variant === "query-explorer" ? null : (
       <details className="group mb-2 rounded-lg border border-slate-200 bg-white/90 dark:border-neutral-700 dark:bg-neutral-950/40">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-2 py-2 text-xs font-medium text-slate-700 dark:text-neutral-200 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 items-center gap-2">
@@ -401,8 +426,15 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           ) : null}
         </div>
       </details>
+      )}
 
-      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div
+        className={
+          variant === "query-explorer"
+            ? "grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4"
+            : "grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8"
+        }
+      >
         <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Quick range
           <select
@@ -470,62 +502,66 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             </button>
           )}
         </div>
-        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Method
-          <select
-            key={`method-${d.method}`}
-            ref={methodRef}
-            defaultValue={d.method}
-            className="ap-select"
-          >
-            {d.METHOD_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Status class
-          <select
-            key={`status-${d.statusClass}`}
-            ref={statusClassRef}
-            defaultValue={d.statusClass}
-            className="ap-select"
-          >
-            {d.STATUS_CLASS_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {value === "ALL" ? value : `${value}xx`}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Min latency (ms)
-          <input
-            key={`min-${d.minLatencyMs}`}
-            ref={minLatencyRef}
-            type="number"
-            min={0}
-            step="1"
-            defaultValue={d.minLatencyMs}
-            placeholder="0"
-            className="ap-input"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
-          Max latency (ms)
-          <input
-            key={`max-${d.maxLatencyMs}`}
-            ref={maxLatencyRef}
-            type="number"
-            min={0}
-            step="1"
-            defaultValue={d.maxLatencyMs}
-            placeholder="5000"
-            className="ap-input"
-          />
-        </label>
+        {variant !== "query-explorer" ? (
+          <>
+            <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
+              Method
+              <select
+                key={`method-${d.method}`}
+                ref={methodRef}
+                defaultValue={d.method}
+                className="ap-select"
+              >
+                {d.METHOD_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
+              Status class
+              <select
+                key={`status-${d.statusClass}`}
+                ref={statusClassRef}
+                defaultValue={d.statusClass}
+                className="ap-select"
+              >
+                {d.STATUS_CLASS_OPTIONS.map((value) => (
+                  <option key={value} value={value}>
+                    {value === "ALL" ? value : `${value}xx`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
+              Min latency (ms)
+              <input
+                key={`min-${d.minLatencyMs}`}
+                ref={minLatencyRef}
+                type="number"
+                min={0}
+                step="1"
+                defaultValue={d.minLatencyMs}
+                placeholder="0"
+                className="ap-input"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
+              Max latency (ms)
+              <input
+                key={`max-${d.maxLatencyMs}`}
+                ref={maxLatencyRef}
+                type="number"
+                min={0}
+                step="1"
+                defaultValue={d.maxLatencyMs}
+                placeholder="5000"
+                className="ap-input"
+              />
+            </label>
+          </>
+        ) : null}
       </div>
       {windowError ? (
         <p className="mt-2 text-xs text-rose-700 dark:text-rose-400">{windowError}</p>
@@ -542,6 +578,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         </p>
       ) : null}
 
+      {variant === "query-explorer" ? null : (
       <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
         <label className="md:col-span-2 lg:col-span-2 xl:col-span-4 flex flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-neutral-300">
           Path contains
@@ -606,7 +643,10 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           </label>
         ) : null}
       </div>
+      )}
 
+      {variant === "query-explorer" ? null : (
+        <>
       <div className="mt-3 grid gap-3 xl:grid-cols-2">
         <TagSelector
           id="server-environment-tags"
@@ -787,6 +827,8 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         <div className="mt-2.5 rounded-lg border border-slate-200 bg-white/90 p-2 text-xs text-slate-500 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-400">
           Advanced SQL scope controls are disabled by default to keep the MVP focused on fast diagnosis.
         </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -27,7 +27,7 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/query-explorer": {
     title: "Query Explorer",
     subtitle:
-      "DuckDB SQL — use the header scope (same as Requests), or run unscoped against the full live database for this project.",
+      "DuckDB SQL — header Time scope sets the window only; filter in SQL, or turn off the time limit for a full-project scan.",
   },
   "/traces": {
     title: "Traces (OTLP)",

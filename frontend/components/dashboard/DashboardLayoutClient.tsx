@@ -579,17 +579,24 @@ function ShellWithData({ children }: { children: ReactNode }) {
       filterToolbarCompactLabel={
         pathname === "/diagnosis"
           ? "Diagnosis scope"
-          : pathname === "/logs" || pathname === "/requests" || pathname === "/query-explorer"
-            ? "Requests scope"
-            : "Server scope"
+          : pathname === "/query-explorer"
+            ? "Time scope"
+            : pathname === "/logs" || pathname === "/requests"
+              ? "Requests scope"
+              : "Server scope"
       }
       onResetServerFilters={
         showServerScope
           ? pathname === "/diagnosis"
             ? resetDiagnosisScope
-            : pathname === "/requests" || pathname === "/query-explorer"
-              ? () => resetRequestLikeScope("requests")
-              : () => resetRequestLikeScope("logs")
+            : pathname === "/query-explorer"
+              ? () => {
+                  d.clearAbsoluteWindow();
+                  d.onServerWindowChange(60);
+                }
+              : pathname === "/requests"
+                ? () => resetRequestLikeScope("requests")
+                : () => resetRequestLikeScope("logs")
           : undefined
       }
       filterToolbar={
@@ -598,9 +605,11 @@ function ShellWithData({ children }: { children: ReactNode }) {
             variant={
               pathname === "/diagnosis"
                 ? "diagnosis"
-                : pathname === "/requests" || pathname === "/query-explorer"
-                  ? "requests"
-                  : "logs"
+                : pathname === "/query-explorer"
+                  ? "query-explorer"
+                  : pathname === "/requests"
+                    ? "requests"
+                    : "logs"
             }
           />
         ) : null

@@ -347,7 +347,7 @@ class DashboardQueryExplorerRequest(BaseModel):
     #: ``time_window`` respects dashboard time bounds; ``project_wide`` runs against all
     #: rows for this project in the live DuckDB ``events`` table (timestamp filter omitted).
     scope_mode: Literal["time_window", "project_wide"] = "time_window"
-    #: Applied when ``scope_mode`` is ``time_window`` (same dimensions as Requests / header scope).
+    #: Optional request-style dimensions for ``time_window`` (UI may send time bounds only).
     method: str | None = None
     status_class: int | None = None
     path_contains: str | None = None
