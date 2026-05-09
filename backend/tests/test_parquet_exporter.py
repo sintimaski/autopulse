@@ -10,9 +10,9 @@ from uuid import uuid4
 import duckdb
 import pytest
 
-import autopulse_backend.services.parquet_exporter as parquet_exporter_module
-from autopulse_backend.core.config import Settings
-from autopulse_backend.services.parquet_exporter import run_parquet_export_once
+import lumonox_backend.services.parquet_exporter as parquet_exporter_module
+from lumonox_backend.core.config import Settings
+from lumonox_backend.services.parquet_exporter import run_parquet_export_once
 
 
 def _base_settings(tmp_path: Path) -> Settings:
@@ -25,7 +25,7 @@ def _base_settings(tmp_path: Path) -> Settings:
         parquet_export_root=str(tmp_path / "parquet"),
         # Default window (900s); first run must still export events far from epoch watermark.
         parquet_export_window_seconds=900,
-        autopulse_env="development",
+        lumonox_env="development",
     )
 
 
@@ -126,7 +126,7 @@ def test_parquet_exporter_initial_catchup_ignores_short_window_after_epoch(tmp_p
         parquet_export_enabled=True,
         parquet_export_root=str(tmp_path / "parquet2"),
         parquet_export_window_seconds=900,
-        autopulse_env="development",
+        lumonox_env="development",
     )
     _seed_duckdb_events(db_path)
     result = run_parquet_export_once(settings=settings)
@@ -259,7 +259,7 @@ def test_parquet_exporter_sanitizes_partition_path_components(tmp_path: Path) ->
         parquet_export_enabled=True,
         parquet_export_root=str(tmp_path / "parquet-sanitize"),
         parquet_export_window_seconds=900,
-        autopulse_env="development",
+        lumonox_env="development",
     )
     conn = duckdb.connect(str(db_path))
     try:

@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from autopulse_backend.dashboard.payload_limits import MAX_WIDGET_POINTS_PER_INGEST_BATCH
-from autopulse_backend.models import Event
-from autopulse_backend.services.ingest_service import _extract_dashboard_widget_rows
+from lumonox_backend.dashboard.payload_limits import MAX_WIDGET_POINTS_PER_INGEST_BATCH
+from lumonox_backend.models import Event
+from lumonox_backend.services.ingest_service import _extract_dashboard_widget_rows
 
 
 def test_extract_dashboard_widget_rows_caps_datapoints() -> None:

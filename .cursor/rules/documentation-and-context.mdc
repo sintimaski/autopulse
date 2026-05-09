@@ -15,7 +15,7 @@ alwaysApply: true
 
 Material updates to governed documents (see `docs/DOCUMENTATION_GOVERNANCE.md`) require **explicit maintainer approval** before treating them as final. Do not rewrite canonical specs or rules on assumption.
 
-Iterative refinement of `.cursor/rules/*.mdc` is encouraged via **Rules self-review** in `autopulse-execution.mdc`: small clarity or convention updates are in scope; changes that **materially** alter MVP or security expectations still need the governance path above.
+Iterative refinement of `.cursor/rules/*.mdc` is encouraged via **Rules self-review** in `lumonox-execution.mdc`: small clarity or convention updates are in scope; changes that **materially** alter MVP or security expectations still need the governance path above.
 
 ## Speed and scope discipline
 
@@ -24,4 +24,4 @@ Iterative refinement of `.cursor/rules/*.mdc` is encouraged via **Rules self-rev
 
 ## Rule self-review
 
-When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

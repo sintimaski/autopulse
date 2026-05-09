@@ -44,7 +44,7 @@ export function DashboardCommandPalette() {
 
   const navigateTo = useCallback(
     (href: string) => {
-      // Use logical paths only: Next.js applies `basePath` (`/autopulse/ui` in static export).
+      // Use logical paths only: Next.js applies `basePath` (`/lumonox/ui` in static export).
       // Do not use `logicalDashboardLocationHref` here — that would double-prefix the UI mount.
       router.push(href);
       setOpen(false);

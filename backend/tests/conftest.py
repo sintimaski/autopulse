@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy.engine.url import make_url
 
-from autopulse_backend.database import upgrade_to_head
+from lumonox_backend.database import upgrade_to_head
 
 
 def _sqlite_file_paths(database_url: str) -> list[Path] | None:

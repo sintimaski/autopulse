@@ -1,7 +1,7 @@
 .PHONY: help setup sync frontend-install lint typecheck test check check-python check-frontend build release-gates
 
 help:
-	@echo "AutoPulse root commands"
+	@echo "Lumonox root commands"
 	@echo "  make setup           # install backend + frontend dependencies"
 	@echo "  make check-python    # ruff/mypy/bandit/python tests"
 	@echo "  make check-frontend  # frontend lint/typecheck/test/build"
@@ -30,7 +30,7 @@ check-python:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy
-	uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend
+	uv run bandit -c pyproject.toml -r sdk/src/lumonox backend/src/lumonox_backend
 	uv run pytest
 
 check-frontend:

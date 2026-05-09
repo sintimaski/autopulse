@@ -5,10 +5,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-SHARDS="${AUTOPULSE_EVENT_PLANE_LOAD_SHARDS:-200}"
-MAX_SHARDS_PER_RUN="${AUTOPULSE_EVENT_PLANE_LOAD_MAX_SHARDS_PER_RUN:-25}"
-LOW_RUNS="${AUTOPULSE_EVENT_PLANE_LOAD_LOW_RUNS:-1}"
-HIGH_RUNS="${AUTOPULSE_EVENT_PLANE_LOAD_HIGH_RUNS:-4}"
+SHARDS="${LUMONOX_EVENT_PLANE_LOAD_SHARDS:-200}"
+MAX_SHARDS_PER_RUN="${LUMONOX_EVENT_PLANE_LOAD_MAX_SHARDS_PER_RUN:-25}"
+LOW_RUNS="${LUMONOX_EVENT_PLANE_LOAD_LOW_RUNS:-1}"
+HIGH_RUNS="${LUMONOX_EVENT_PLANE_LOAD_HIGH_RUNS:-4}"
 export SHARDS MAX_SHARDS_PER_RUN LOW_RUNS HIGH_RUNS
 
 uv run python - <<'PY'
@@ -21,8 +21,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from autopulse_backend.services.event_plane_compactor import EventPlaneCompactor
-from autopulse_backend.services.event_plane_manifest import ShardManifestState, SqliteShardManifest
+from lumonox_backend.services.event_plane_compactor import EventPlaneCompactor
+from lumonox_backend.services.event_plane_manifest import ShardManifestState, SqliteShardManifest
 
 shards = max(1, int(os.environ["SHARDS"]))
 max_shards_per_run = max(1, int(os.environ["MAX_SHARDS_PER_RUN"]))
@@ -71,7 +71,7 @@ def prepare(root: Path) -> tuple[SqliteShardManifest, Path]:
 
 
 def run_probe(run_budget: int) -> tuple[int, float]:
-    with tempfile.TemporaryDirectory(prefix="autopulse-compactor-probe-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="lumonox-compactor-probe-") as tmp:
         root = Path(tmp)
         manifest, snapshots_root = prepare(root)
         compactor = EventPlaneCompactor(

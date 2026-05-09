@@ -50,6 +50,6 @@ describe("buildDashboardFetchError", () => {
 describe("buildDashboardNetworkError", () => {
   it("returns connectivity guidance for network-level failures", () => {
     const message = buildDashboardNetworkError(new TypeError("Failed to fetch"));
-    expect(message).toContain("NEXT_PUBLIC_AUTOPULSE_API_BASE_URL");
+    expect(message).toContain("NEXT_PUBLIC_LUMONOX_API_BASE_URL");
   });
 });

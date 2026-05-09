@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from autopulse_backend.commercial.plan_limits import retention_plan_ingest_rate_multiplier
+from lumonox_backend.commercial.plan_limits import retention_plan_ingest_rate_multiplier
 
 
 def test_retention_plan_ingest_rate_multiplier_starter() -> None:

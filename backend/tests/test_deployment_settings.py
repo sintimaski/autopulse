@@ -4,17 +4,17 @@ from dataclasses import replace
 
 import pytest
 
-from autopulse_backend.core.config import Settings, validate_deployment_settings
+from lumonox_backend.core.config import Settings, validate_deployment_settings
 
 
 def _production_dashboard_base() -> Settings:
     return Settings(
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
-        event_store_duckdb_path="./.autopulse/e.duckdb",
+        event_store_duckdb_path="./.lumonox/e.duckdb",
         event_store_duckdb_single_writer_profile=True,
         cors_allow_origins=("http://localhost:3000",),
-        autopulse_env="production",
+        lumonox_env="production",
         jobs_enable_scheduler=True,
         dev_scenarios_enabled=False,
         dashboard_auth_enabled=True,
@@ -35,9 +35,9 @@ def test_validate_deployment_settings_allows_development_with_dev_scenarios() ->
     s = Settings(
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
-        event_store_duckdb_path="./.autopulse/e.duckdb",
+        event_store_duckdb_path="./.lumonox/e.duckdb",
         cors_allow_origins=("http://localhost:3000",),
-        autopulse_env="development",
+        lumonox_env="development",
         dev_scenarios_enabled=True,
     )
     validate_deployment_settings(s)
@@ -47,10 +47,10 @@ def test_validate_deployment_settings_rejects_dev_scenarios_in_production() -> N
     s = Settings(
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
-        event_store_duckdb_path="./.autopulse/e.duckdb",
+        event_store_duckdb_path="./.lumonox/e.duckdb",
         event_store_duckdb_single_writer_profile=True,
         cors_allow_origins=("http://localhost:3000",),
-        autopulse_env="production",
+        lumonox_env="production",
         jobs_enable_scheduler=True,
         dev_scenarios_enabled=True,
     )
@@ -63,7 +63,7 @@ def test_validate_deployment_settings_rejects_unacknowledged_duckdb_single_write
         _production_dashboard_base(),
         event_store_duckdb_single_writer_profile=False,
     )
-    with pytest.raises(ValueError, match="AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE"):
+    with pytest.raises(ValueError, match="LUMONOX_DUCKDB_SINGLE_WRITER_PROFILE"):
         validate_deployment_settings(s)
 
 
@@ -215,7 +215,7 @@ def test_validate_deployment_settings_production_skips_dashboard_rules_when_auth
 def test_validate_deployment_settings_staging_allows_api_key_fallback() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         dashboard_auth_allow_api_key_fallback=True,
     )
@@ -225,7 +225,7 @@ def test_validate_deployment_settings_staging_allows_api_key_fallback() -> None:
 def test_validate_deployment_settings_staging_allows_short_session_ttl() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         dashboard_auth_session_ttl_minutes=15,
     )
@@ -235,7 +235,7 @@ def test_validate_deployment_settings_staging_allows_short_session_ttl() -> None
 def test_validate_deployment_settings_staging_allows_short_magic_link_ttl() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         dashboard_auth_magic_link_ttl_minutes=3,
     )
@@ -245,7 +245,7 @@ def test_validate_deployment_settings_staging_allows_short_magic_link_ttl() -> N
 def test_validate_deployment_settings_staging_allows_ingest_https_off() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         ingest_require_https=False,
     )
@@ -255,7 +255,7 @@ def test_validate_deployment_settings_staging_allows_ingest_https_off() -> None:
 def test_validate_deployment_settings_staging_allows_non_https_magic_link_base_url() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         dashboard_auth_allowed_email="ops@example.com",
         dashboard_auth_magic_link_base_url="http://staging.example.com/auth/magic-link",
     )
@@ -298,7 +298,7 @@ def test_validate_deployment_settings_allows_external_cron_ownership_in_producti
 def test_validate_deployment_settings_rejects_staging_without_scheduler_or_external_cron() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         jobs_enable_scheduler=False,
         jobs_external_cron_ownership=False,
     )
@@ -309,7 +309,7 @@ def test_validate_deployment_settings_rejects_staging_without_scheduler_or_exter
 def test_validate_deployment_settings_allows_staging_with_external_cron_ownership() -> None:
     s = replace(
         _production_dashboard_base(),
-        autopulse_env="staging",
+        lumonox_env="staging",
         jobs_enable_scheduler=False,
         jobs_external_cron_ownership=True,
     )

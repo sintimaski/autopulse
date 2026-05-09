@@ -25,7 +25,7 @@ Each required drill must include pass/fail result and a linked artifact.
   - `sql_tail_repair_dead_lettered_total` does not increase after remediation.
 - Evidence:
   - `/dashboard/system-diagnostics` replay queue snapshot before/after.
-  - Replay command output: `uv run python -m autopulse_backend.jobs replay-sql-tail-repairs-once`.
+  - Replay command output: `uv run python -m lumonox_backend.jobs replay-sql-tail-repairs-once`.
 
 ## Drill: scheduler-absence
 

@@ -8,9 +8,9 @@ from typing import Any
 import duckdb
 import pytest
 
-import autopulse_backend.services.parquet_lifecycle as parquet_lifecycle_module
-from autopulse_backend.core.config import Settings
-from autopulse_backend.services.parquet_lifecycle import run_parquet_lifecycle_once
+import lumonox_backend.services.parquet_lifecycle as parquet_lifecycle_module
+from lumonox_backend.core.config import Settings
+from lumonox_backend.services.parquet_lifecycle import run_parquet_lifecycle_once
 
 
 def _write_partition_file(
@@ -86,7 +86,7 @@ def _base_settings(tmp_path: Path, *, dry_run: bool = False) -> Settings:
         parquet_lifecycle_dry_run=dry_run,
         parquet_lifecycle_compaction_min_files=2,
         parquet_lifecycle_verify_sample_size=10,
-        autopulse_env="development",
+        lumonox_env="development",
     )
 
 
@@ -150,7 +150,7 @@ def test_parquet_lifecycle_returns_empty_when_disabled(tmp_path: Path) -> None:
         event_store_duckdb_path=str(tmp_path / "events.duckdb"),
         parquet_export_root=str(tmp_path / "parquet"),
         parquet_lifecycle_enabled=False,
-        autopulse_env="development",
+        lumonox_env="development",
     )
 
     result = run_parquet_lifecycle_once(settings=settings)
@@ -170,7 +170,7 @@ def test_parquet_lifecycle_returns_empty_when_event_store_not_duckdb(tmp_path: P
         event_store_duckdb_path=str(tmp_path / "unused.duckdb"),
         parquet_export_root=str(root),
         parquet_lifecycle_enabled=True,
-        autopulse_env="development",
+        lumonox_env="development",
     )
     result = run_parquet_lifecycle_once(settings=settings)
     assert result.compacted_partitions == 0
@@ -184,7 +184,7 @@ def test_parquet_lifecycle_returns_empty_when_export_root_missing(tmp_path: Path
         event_store_duckdb_path=str(tmp_path / "events.duckdb"),
         parquet_export_root=str(tmp_path / "no-such-parquet-dir"),
         parquet_lifecycle_enabled=True,
-        autopulse_env="development",
+        lumonox_env="development",
     )
     result = run_parquet_lifecycle_once(settings=settings)
     assert result.compacted_partitions == 0
@@ -200,7 +200,7 @@ def test_parquet_lifecycle_returns_empty_when_export_root_is_file(tmp_path: Path
         event_store_duckdb_path=str(tmp_path / "events.duckdb"),
         parquet_export_root=str(bogus),
         parquet_lifecycle_enabled=True,
-        autopulse_env="development",
+        lumonox_env="development",
     )
     result = run_parquet_lifecycle_once(settings=settings)
     assert result.compacted_partitions == 0

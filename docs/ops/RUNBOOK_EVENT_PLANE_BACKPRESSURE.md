@@ -11,10 +11,10 @@ This runbook covers Plan B shard append rejections caused by low disk headroom o
 ## Common causes
 
 - Disk free space dropped below:
-  - `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES`
-  - `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT`
+  - `LUMONOX_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES`
+  - `LUMONOX_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT`
 - Pending shard count exceeded:
-  - `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS`
+  - `LUMONOX_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS`
 
 ## Remediation steps
 
@@ -30,7 +30,7 @@ This runbook covers Plan B shard append rejections caused by low disk headroom o
 3. **Backlog remediation**
    - Run compactor until backlog stabilizes and snapshot publication resumes.
    - If compactor is down, restore worker health before increasing thresholds.
-   - Only as a temporary emergency measure, raise `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS`.
+   - Only as a temporary emergency measure, raise `LUMONOX_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS`.
 
 4. **Validation**
    - Send a small ingest batch and verify no new `event_plane_shard_append_rejected` entries.

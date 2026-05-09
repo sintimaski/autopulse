@@ -11,10 +11,10 @@ const DASHBOARD_THEME_BOOT_SCRIPT = `(function(){try{var k=${JSON.stringify(DASH
 
 export const metadata: Metadata = {
   title: {
-    default: "AutoPulse Dashboard",
-    template: "%s | AutoPulse Dashboard",
+    default: "Lumonox Dashboard",
+    template: "%s | Lumonox Dashboard",
   },
-  description: "Fast diagnosis dashboard for AutoPulse MVP.",
+  description: "Fast diagnosis dashboard for Lumonox MVP.",
 };
 
 export default function RootLayout({

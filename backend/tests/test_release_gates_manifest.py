@@ -18,7 +18,7 @@ def test_release_gates_script_keeps_critical_manifest_in_order() -> None:
         "uv run ruff check .",
         "uv run ruff format --check .",
         "uv run mypy",
-        "uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend",
+        "uv run bandit -c pyproject.toml -r sdk/src/lumonox backend/src/lumonox_backend",
         "uv run pytest",
         "npm --prefix frontend audit --audit-level=high",
         "npm --prefix frontend run lint",
@@ -26,8 +26,8 @@ def test_release_gates_script_keeps_critical_manifest_in_order() -> None:
         "npm --prefix frontend run test",
         "npm --prefix frontend run build",
         "npm --prefix frontend run check:bundle-budget",
-        "uv run python -m autopulse_backend.jobs alerts-once >/dev/null",
-        "uv run python -m autopulse_backend.jobs retention-once >/dev/null",
+        "uv run python -m lumonox_backend.jobs alerts-once >/dev/null",
+        "uv run python -m lumonox_backend.jobs retention-once >/dev/null",
     ]
 
     cursor = -1
@@ -42,5 +42,5 @@ def test_release_gates_script_keeps_critical_manifest_in_order() -> None:
 
 def test_release_gates_script_keeps_optional_paths_explicit() -> None:
     content = RELEASE_GATES_SCRIPT.read_text(encoding="utf-8")
-    assert "AUTOPULSE_RELEASE_GATES_POSTGRES" in content
-    assert "AUTOPULSE_RELEASE_GATES_E2E" in content
+    assert "LUMONOX_RELEASE_GATES_POSTGRES" in content
+    assert "LUMONOX_RELEASE_GATES_E2E" in content

@@ -1,4 +1,4 @@
-# Cursor development — AutoPulse
+# Cursor development — Lumonox
 
 This file explains how this repo uses Cursor: rules, agent playbooks, and which documents should inform work.
 
@@ -20,9 +20,9 @@ Rules use `.mdc` files with YAML frontmatter:
 
 Keep rules **short and enforceable**. Product nuance belongs in `DEVELOPMENT.md`, not duplicated at length in rules.
 
-New `.mdc` files **must** include the **Rule self-review** footer defined under **New `.cursor/rules/*.mdc` files** in `.cursor/rules/autopulse-execution.mdc` (every rule except `autopulse-execution.mdc` itself, which hosts the full process).
+New `.mdc` files **must** include the **Rule self-review** footer defined under **New `.cursor/rules/*.mdc` files** in `.cursor/rules/lumonox-execution.mdc` (every rule except `lumonox-execution.mdc` itself, which hosts the full process).
 
-For **bug hunts and “it doesn’t work”** reports, the always-on rule **`.cursor/rules/autopulse-debugging.mdc`** expects a **default repro** of file-backed SQLite from `backend/.env` (unless the issue is clearly Postgres-only), running backend/frontend when relevant, explicit repro steps and logs over guesses, and temporary probes removed before merge.
+For **bug hunts and “it doesn’t work”** reports, the always-on rule **`.cursor/rules/lumonox-debugging.mdc`** expects a **default repro** of file-backed SQLite from `backend/.env` (unless the issue is clearly Postgres-only), running backend/frontend when relevant, explicit repro steps and logs over guesses, and temporary probes removed before merge.
 
 ### Always-on rules (current)
 
@@ -30,10 +30,10 @@ These files use `alwaysApply: true` in Cursor:
 
 | File | Role |
 |------|------|
-| `autopulse-execution.mdc` | Delivery workflow, rules self-review, template for new rules |
-| `autopulse-product.mdc` | MVP boundaries and product filter |
-| `autopulse-engineering.mdc` | SDK/backend/security engineering constraints |
-| `autopulse-debugging.mdc` | Evidence-based debugging and default repro stack |
+| `lumonox-execution.mdc` | Delivery workflow, rules self-review, template for new rules |
+| `lumonox-product.mdc` | MVP boundaries and product filter |
+| `lumonox-engineering.mdc` | SDK/backend/security engineering constraints |
+| `lumonox-debugging.mdc` | Evidence-based debugging and default repro stack |
 | `documentation-and-context.mdc` | Governed docs policy; when to read `DEVELOPMENT.md` |
 | `post-task-manual-verification.mdc` | Final responses include manual verification steps |
 | `post-task-code-review.mdc` | Pre-handoff review gate |

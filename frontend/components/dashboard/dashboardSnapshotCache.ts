@@ -11,7 +11,7 @@ import type {
   RequestsResponse,
 } from "./dashboardTypes";
 
-const STORAGE_KEY = "autopulse.dashboard.data.v1";
+const STORAGE_KEY = "lumonox.dashboard.data.v1";
 const SNAPSHOT_TTL_MS = 20_000;
 const inMemorySnapshots = new Map<string, DashboardSnapshotRecord>();
 

@@ -5,13 +5,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from autopulse_backend.core.config import Settings
-from autopulse_backend.metrics import service_metrics
-from autopulse_backend.services.event_plane_shards import (
+from lumonox_backend.core.config import Settings
+from lumonox_backend.metrics import service_metrics
+from lumonox_backend.services.event_plane_shards import (
     EventPlaneBackpressureError,
     ShardWriteResult,
 )
-from autopulse_backend.services.ingest_service import (
+from lumonox_backend.services.ingest_service import (
     _maybe_shadow_write_event_plane_shards,
     _record_shadow_window_parity,
     _shadow_parity_window_counts,
@@ -22,7 +22,7 @@ def _base_settings(*, event_plane_mode: str) -> Settings:
     return Settings(
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
-        event_store_duckdb_path="./.autopulse/events.duckdb",
+        event_store_duckdb_path="./.lumonox/events.duckdb",
         event_plane_mode=event_plane_mode,
     )
 
@@ -30,7 +30,7 @@ def _base_settings(*, event_plane_mode: str) -> Settings:
 def test_shadow_write_appends_and_increments_success_metric(monkeypatch) -> None:
     baseline = service_metrics.snapshot().get("event_plane.shards.appended_total", 0)
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.get_settings",
+        "lumonox_backend.services.ingest_service.get_settings",
         lambda: _base_settings(event_plane_mode="duckdb_log_shards"),
     )
 
@@ -45,7 +45,7 @@ def test_shadow_write_appends_and_increments_success_metric(monkeypatch) -> None
         )
 
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.append_events_to_shards",
+        "lumonox_backend.services.ingest_service.append_events_to_shards",
         _append_events_to_shards,
     )
 
@@ -63,7 +63,7 @@ def test_shadow_write_appends_and_increments_success_metric(monkeypatch) -> None
 def test_shadow_write_failure_is_swallowed_and_counts_failure_metric(monkeypatch) -> None:
     baseline = service_metrics.snapshot().get("event_plane.shards.append_failed_total", 0)
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.get_settings",
+        "lumonox_backend.services.ingest_service.get_settings",
         lambda: _base_settings(event_plane_mode="duckdb_log_shards"),
     )
 
@@ -71,7 +71,7 @@ def test_shadow_write_failure_is_swallowed_and_counts_failure_metric(monkeypatch
         raise RuntimeError("simulated shard write failure")
 
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.append_events_to_shards",
+        "lumonox_backend.services.ingest_service.append_events_to_shards",
         _append_events_to_shards,
     )
 
@@ -89,7 +89,7 @@ def test_shadow_write_failure_is_swallowed_and_counts_failure_metric(monkeypatch
 def test_shadow_write_backpressure_rejection_counts_rejected_metric(monkeypatch) -> None:
     baseline = service_metrics.snapshot().get("event_plane.shards.append_rejected_total", 0)
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.get_settings",
+        "lumonox_backend.services.ingest_service.get_settings",
         lambda: _base_settings(event_plane_mode="duckdb_log_shards"),
     )
 
@@ -97,7 +97,7 @@ def test_shadow_write_backpressure_rejection_counts_rejected_metric(monkeypatch)
         raise EventPlaneBackpressureError("low disk")
 
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.append_events_to_shards",
+        "lumonox_backend.services.ingest_service.append_events_to_shards",
         _append_events_to_shards,
     )
 
@@ -114,7 +114,7 @@ def test_shadow_write_backpressure_rejection_counts_rejected_metric(monkeypatch)
 
 def test_shadow_write_skips_when_event_plane_mode_not_log_shards(monkeypatch) -> None:
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.get_settings",
+        "lumonox_backend.services.ingest_service.get_settings",
         lambda: _base_settings(event_plane_mode="duckdb_single_writer"),
     )
 
@@ -122,7 +122,7 @@ def test_shadow_write_skips_when_event_plane_mode_not_log_shards(monkeypatch) ->
         raise AssertionError("append_events_to_shards should not run in single-writer mode")
 
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.append_events_to_shards",
+        "lumonox_backend.services.ingest_service.append_events_to_shards",
         _append_events_to_shards,
     )
 
@@ -138,7 +138,7 @@ def test_shadow_write_skips_when_event_plane_mode_not_log_shards(monkeypatch) ->
 def test_shadow_write_tracks_count_mismatch_metric(monkeypatch) -> None:
     baseline = service_metrics.snapshot().get("event_plane.shards.shadow_count_mismatch_total", 0)
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.get_settings",
+        "lumonox_backend.services.ingest_service.get_settings",
         lambda: _base_settings(event_plane_mode="duckdb_log_shards"),
     )
 
@@ -153,7 +153,7 @@ def test_shadow_write_tracks_count_mismatch_metric(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(
-        "autopulse_backend.services.ingest_service.append_events_to_shards",
+        "lumonox_backend.services.ingest_service.append_events_to_shards",
         _append_events_to_shards,
     )
 

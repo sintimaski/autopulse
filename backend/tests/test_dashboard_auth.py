@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.app import create_app
-from autopulse_backend.auth import generate_api_key
-from autopulse_backend.dashboard.routes import auth_routes as auth_routes_module
-from autopulse_backend.models import ApiKey, Event, Project
+from lumonox_backend.app import create_app
+from lumonox_backend.auth import generate_api_key
+from lumonox_backend.dashboard.routes import auth_routes as auth_routes_module
+from lumonox_backend.models import ApiKey, Event, Project
 
 
 def _seed_singleton_bootstrap_project(database_url: str) -> str:
@@ -25,7 +25,7 @@ def _seed_singleton_bootstrap_project(database_url: str) -> str:
         session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
         try:
             async with session_maker() as session:
-                project = Project(name="AutoPulse Embedded Project")
+                project = Project(name="Lumonox Embedded Project")
                 session.add(project)
                 await session.commit()
                 await session.refresh(project)
@@ -184,7 +184,7 @@ def test_dashboard_magic_link_request_exposes_dev_token_when_enabled(
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
     monkeypatch.setenv("DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN", "1")
     monkeypatch.setenv(
-        "DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "http://localhost:8000/autopulse/ui/auth/magic-link"
+        "DASHBOARD_AUTH_MAGIC_LINK_BASE_URL", "http://localhost:8000/lumonox/ui/auth/magic-link"
     )
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
@@ -388,7 +388,7 @@ def test_dashboard_member_cannot_invite_organization_members(
         assert deny.status_code == 403
 
 
-def test_dashboard_member_cannot_toggle_exclude_autopulse_via_theme_settings(
+def test_dashboard_member_cannot_toggle_exclude_lumonox_via_theme_settings(
     backend_test_database_url: str,
     monkeypatch,
     tmp_path,
@@ -439,13 +439,13 @@ def test_dashboard_member_cannot_toggle_exclude_autopulse_via_theme_settings(
         read = member_client.get("/dashboard/theme-settings")
         assert read.status_code == 200
         initial = read.json()
-        assert initial["exclude_autopulse_traffic"] is True
+        assert initial["exclude_lumonox_traffic"] is True
 
         deny_exclude = member_client.put(
             "/dashboard/theme-settings",
             json={
                 "theme_preference": initial["theme_preference"],
-                "exclude_autopulse_traffic": False,
+                "exclude_lumonox_traffic": False,
             },
         )
         assert deny_exclude.status_code == 403
@@ -454,7 +454,7 @@ def test_dashboard_member_cannot_toggle_exclude_autopulse_via_theme_settings(
             "/dashboard/theme-settings",
             json={
                 "theme_preference": "dark",
-                "exclude_autopulse_traffic": initial["exclude_autopulse_traffic"],
+                "exclude_lumonox_traffic": initial["exclude_lumonox_traffic"],
             },
         )
         assert allow_theme.status_code == 200
@@ -813,7 +813,7 @@ def test_dashboard_api_key_lifecycle_emits_governance_audit_events(
         assert replacement_raw_key not in detail_text
 
 
-def test_dashboard_issue_key_syncs_env_autopulse_file(
+def test_dashboard_issue_key_syncs_env_lumonox_file(
     backend_test_database_url: str,
     monkeypatch,
     tmp_path,
@@ -825,8 +825,8 @@ def test_dashboard_issue_key_syncs_env_autopulse_file(
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(outbox))
     monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
-    env_autopulse_path = tmp_path / ".env.autopulse"
-    monkeypatch.setenv("AUTOPULSE_ENV_AUTOPULSE_FILE", str(env_autopulse_path))
+    env_lumonox_path = tmp_path / ".env.lumonox"
+    monkeypatch.setenv("LUMONOX_ENV_FILE", str(env_lumonox_path))
     app = create_app()
 
     with TestClient(app) as client:
@@ -838,9 +838,9 @@ def test_dashboard_issue_key_syncs_env_autopulse_file(
         assert issue_response.status_code == 200
         issued = issue_response.json()["api_key"]
 
-    content = env_autopulse_path.read_text(encoding="utf-8")
-    assert f"AUTOPULSE_API_KEY={issued}" in content
-    assert f"NEXT_PUBLIC_AUTOPULSE_API_KEY={issued}" in content
+    content = env_lumonox_path.read_text(encoding="utf-8")
+    assert f"LUMONOX_API_KEY={issued}" in content
+    assert f"NEXT_PUBLIC_LUMONOX_API_KEY={issued}" in content
 
 
 def test_dashboard_member_cannot_manage_api_keys(

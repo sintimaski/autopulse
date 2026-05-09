@@ -12,7 +12,7 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from autopulse_backend.ingestion.body_size import IngestBodySizeLimitMiddleware
+from lumonox_backend.ingestion.body_size import IngestBodySizeLimitMiddleware
 
 
 def _make_scope(*, path: str = "/ingest") -> dict[str, Any]:

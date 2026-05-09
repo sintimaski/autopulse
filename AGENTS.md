@@ -1,4 +1,4 @@
-# AGENTS.md — AutoPulse
+# AGENTS.md — Lumonox
 
 Guidance for AI coding agents and humans pairing with them in this repository.
 

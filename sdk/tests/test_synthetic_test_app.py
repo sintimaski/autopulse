@@ -1,7 +1,7 @@
 from client_lifespan import lifespan_test_client
 
-from autopulse.fixtures.synthetic_test_app import create_app
-from autopulse.widgets import serialize_dashboard_widgets
+from lumonox.fixtures.synthetic_test_app import create_app
+from lumonox.widgets import serialize_dashboard_widgets
 
 
 def test_synthetic_app_health_endpoint_starts_cleanly() -> None:
@@ -24,7 +24,7 @@ def test_synthetic_app_boom_endpoint_returns_500() -> None:
 
 def test_synthetic_app_registers_all_demo_widget_types() -> None:
     app = create_app(enable_monitor=True)
-    widgets = getattr(app.state, "_autopulse_config", None).dashboard_widgets
+    widgets = getattr(app.state, "_lumonox_config", None).dashboard_widgets
     payload = serialize_dashboard_widgets(list(widgets))
     widget_types = {item["type"] for item in payload["definitions"]}
     assert widget_types == {"card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"}

@@ -6,19 +6,19 @@ alwaysApply: false
 
 # Synthetic Stack Storage Rule
 
-- Treat `scripts/run_synthetic_stack.sh` (backend :8000 + synthetic app :8001 + default Next **sidecar** on :3000) and `scripts/run_remote_stack.sh` (split stack hints) as DuckDB-first local integration paths. **`run_synthetic_stack.sh` always runs `npm --prefix frontend run build`** (static export); `AUTOPULSE_FRONTEND_MODE=static` vs sidecar only affects how you run or mount the UI afterward, not whether the export is built.
-- Keep `AUTOPULSE_EVENT_STORE=duckdb` explicit in script defaults.
-- Export **`AUTOPULSE_DATA_DIR`** (repo root) plus an absolute **`AUTOPULSE_DUCKDB_PATH`** (see scripts). The backend also normalizes relative `AUTOPULSE_DUCKDB_PATH` against that data root via `resolve_autopulse_data_root` / `normalize_event_store_duckdb_path` in `core/config.py`.
+- Treat `scripts/run_synthetic_stack.sh` (backend :8000 + synthetic app :8001 + default Next **sidecar** on :3000) and `scripts/run_remote_stack.sh` (split stack hints) as DuckDB-first local integration paths. **`run_synthetic_stack.sh` always runs `npm --prefix frontend run build`** (static export); `LUMONOX_FRONTEND_MODE=static` vs sidecar only affects how you run or mount the UI afterward, not whether the export is built.
+- Keep `LUMONOX_EVENT_STORE=duckdb` explicit in script defaults.
+- Export **`LUMONOX_DATA_DIR`** (repo root) plus an absolute **`LUMONOX_DUCKDB_PATH`** (see scripts). The backend also normalizes relative `LUMONOX_DUCKDB_PATH` against that data root via `resolve_lumonox_data_root` / `normalize_event_store_duckdb_path` in `core/config.py`.
 - Do not silently switch these scripts to SQLite for raw event storage.
 
 Example:
 
 ```bash
-export AUTOPULSE_EVENT_STORE="duckdb"
-export AUTOPULSE_DATA_DIR="${AUTOPULSE_DATA_DIR:-$ROOT_DIR}"
-export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-$AUTOPULSE_DATA_DIR/.autopulse/events.duckdb}"
+export LUMONOX_EVENT_STORE="duckdb"
+export LUMONOX_DATA_DIR="${LUMONOX_DATA_DIR:-$ROOT_DIR}"
+export LUMONOX_DUCKDB_PATH="${LUMONOX_DUCKDB_PATH:-$LUMONOX_DATA_DIR/.lumonox/events.duckdb}"
 ```
 
 ## Rule self-review
 
-When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

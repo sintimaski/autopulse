@@ -1,4 +1,4 @@
-# AutoPulse Development Plan: Full Multi-Lane Product, UX, and Production Review
+# Lumonox Development Plan: Full Multi-Lane Product, UX, and Production Review
 
 Use this plan as the single execution document for the full-lane audit follow-up across product design, CTO/production readiness, developer experience, and frontend UX/UI quality.
 
@@ -13,7 +13,7 @@ Use this plan as the single execution document for the full-lane audit follow-up
 
 ## 2) Context / background
 
-- Problem statement: AutoPulse has strong core functionality and operations docs, but the shipped surface and production posture still contain mismatches and high-risk operator failure modes.
+- Problem statement: Lumonox has strong core functionality and operations docs, but the shipped surface and production posture still contain mismatches and high-risk operator failure modes.
 - Why now: The product is close to production-safe, and this is the lowest-cost moment to remove trust gaps, reduce UX friction, and harden deployment defaults before broader rollout.
 - Current behavior (as-is): Core diagnosis flow exists and is usable; advanced features are visible in primary navigation; production runbooks are detailed; ingest and scheduler paths are resilient but operationally sensitive.
 - Desired behavior (to-be): New users reach value quickly, core diagnosis remains the obvious path, production deployments are guardrailed and observable, and developers can ship safely with low friction.
@@ -180,7 +180,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 | Replay / repair job outcomes (server-side)       | Reliability funnel    |
 
 
-**Implementation status (repo, 2026-05-09):** When `NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED=1`, the dashboard emits sampled RUM payloads via `frontend/lib/rumRuntime.ts` and `frontend/app/RumClient.tsx` for `route_view`, `session_performance`, `runtime_error`, `unhandled_rejection`, plus **`diagnosis_activation`** (once per browser session on `/diagnosis`), **`modal_lifecycle`** (evidence modal open/close in `DashboardDetailModal`), **`filter_zero_results`** (diagnosis route filter with zero matching groups), **`jobs_primary_action`** (System diagnostics link in `RecentJobFailuresStrip`), and existing client error hooks. **First event (project-level)** is counted server-side as `ingest.first_event_by_project_total` (increment once per project when the first durable ingest batch lands; see `persist_ingest_batch`). **Jobs page sessions** remain covered indirectly by `route_view` on dashboard routes (no dedicated `/jobs` route). **Empty-state CTA** beyond the jobs strip is not separately instrumented in MVP (owner: Product; revisit with dashboard empty-state audit). **Replay/repair outcomes** remain on internal metrics / system-diagnostics (`T06`/`T12`), not duplicated into browser RUM.
+**Implementation status (repo, 2026-05-09):** When `NEXT_PUBLIC_LUMONOX_RUM_ENABLED=1`, the dashboard emits sampled RUM payloads via `frontend/lib/rumRuntime.ts` and `frontend/app/RumClient.tsx` for `route_view`, `session_performance`, `runtime_error`, `unhandled_rejection`, plus **`diagnosis_activation`** (once per browser session on `/diagnosis`), **`modal_lifecycle`** (evidence modal open/close in `DashboardDetailModal`), **`filter_zero_results`** (diagnosis route filter with zero matching groups), **`jobs_primary_action`** (System diagnostics link in `RecentJobFailuresStrip`), and existing client error hooks. **First event (project-level)** is counted server-side as `ingest.first_event_by_project_total` (increment once per project when the first durable ingest batch lands; see `persist_ingest_batch`). **Jobs page sessions** remain covered indirectly by `route_view` on dashboard routes (no dedicated `/jobs` route). **Empty-state CTA** beyond the jobs strip is not separately instrumented in MVP (owner: Product; revisit with dashboard empty-state audit). **Replay/repair outcomes** remain on internal metrics / system-diagnostics (`T06`/`T12`), not duplicated into browser RUM.
 
 **Funnels to define in dashboard or analytics export:** onboarding (signup → key → first event); diagnosis (incident → evidence modal → resolution marker if present); jobs (landing → correlated error found).
 
@@ -232,7 +232,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Last update: 2026-05-08 (completed contract/docs alignment to HTTP 200 ingest semantics, added backend/frontend regression tests, and verified first-ingest smoke with accepted response)
   - Owner: Product + Backend
 - **Related documents:** `docs/contracts/ingest-api.md`, `README.md`
-- **References / examples:** `backend/src/autopulse_backend/routes/ingest.py`
+- **References / examples:** `backend/src/lumonox_backend/routes/ingest.py`
 - **Ambiguity handling:**
   - If requirement is unclear: follow backend contract as source of truth.
   - If data conflicts: defer to route implementation + contract doc.
@@ -416,10 +416,10 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 - **State / progress tracking:**
   - Status: Done
   - % complete: 100
-  - Last update: 2026-05-09 (closed topology guardrails: production startup enforces `AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE=true` for DuckDB single-writer mode; `/ready` + `/internal/metrics` expose topology status/reasons; added mixed-severity guardrail regression coverage in `backend/tests/test_app_health.py`; documented explicit unsafe/risky/non-ideal runtime contract and operator staging checklist in `docs/ops/PRODUCTION_DEPLOYMENT.md`)
+  - Last update: 2026-05-09 (closed topology guardrails: production startup enforces `LUMONOX_DUCKDB_SINGLE_WRITER_PROFILE=true` for DuckDB single-writer mode; `/ready` + `/internal/metrics` expose topology status/reasons; added mixed-severity guardrail regression coverage in `backend/tests/test_app_health.py`; documented explicit unsafe/risky/non-ideal runtime contract and operator staging checklist in `docs/ops/PRODUCTION_DEPLOYMENT.md`)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
-- **References / examples:** `backend/src/autopulse_backend/core/config.py`, `backend/src/autopulse_backend/lifespan.py`
+- **References / examples:** `backend/src/lumonox_backend/core/config.py`, `backend/src/lumonox_backend/lifespan.py`
 - **Ambiguity handling:**
   - If requirement is unclear: prefer safer fail-closed production behavior.
   - If data conflicts: use ops docs + runtime checks as source of truth.
@@ -463,7 +463,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Last update: 2026-05-09 (completed reliability/consistency hardening closure: documented deterministic SQL-tail replay recovery + drill flow in `docs/ops/RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md`, wired queue-age alerting baseline and runbook link in `docs/ops/PRODUCTION_DEPLOYMENT.md`, and added system-diagnostics regression assertion for `replay_queue.oldest_pending_age_seconds` in `backend/tests/test_dashboard.py`)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/RUNBOOK_EVENT_PLANE_BACKPRESSURE.md`
-- **References / examples:** `backend/src/autopulse_backend/services/ingest_service.py`
+- **References / examples:** `backend/src/lumonox_backend/services/ingest_service.py`
 - **Ambiguity handling:**
   - If requirement is unclear: favor correctness over partial freshness.
   - If data conflicts: use raw persisted events as replay source.
@@ -512,7 +512,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Last update: 2026-05-08 (completed production security posture pass with enforced dashboard/ingest guardrails: fallback/CORS/TTL/HTTPS/token checks, https URL validation for magic-link and OIDC redirect settings, documented secret rotation + MVP audit logging policy, and deployment-setting regression coverage)
   - Owner: Backend + Ops
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`, `agents/security-privacy.md`
-- **References / examples:** `backend/src/autopulse_backend/app.py`, `backend/src/autopulse_backend/auth/dashboard_security.py`
+- **References / examples:** `backend/src/lumonox_backend/app.py`, `backend/src/lumonox_backend/auth/dashboard_security.py`
 - **Ambiguity handling:**
   - If requirement is unclear: choose stricter production-safe behavior.
   - If data conflicts: prioritize documented security constraints.
@@ -644,7 +644,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - Last update: 2026-05-09 (completed progressive-disclosure jobs/cron productization by adding explicit "Primary next action" guidance in `RecentJobFailuresStrip` with direct link to `Settings -> System diagnostics` and diagnosis pivot, expanded frontend regression coverage, and documented core-vs-advanced workflow separation in `README.md`)
   - Owner: Product + Frontend
 - **Related documents:** `DEVELOPMENT.md`, `docs/DEVELOPMENT_PROCESS.md`
-- **References / examples:** `backend/src/autopulse_backend/dashboard/routes/job_events.py`
+- **References / examples:** `backend/src/lumonox_backend/dashboard/routes/job_events.py`
 - **Ambiguity handling:**
   - If requirement is unclear: default to minimal UI with clear value.
   - If data conflicts: preserve current stable behavior and phase changes.

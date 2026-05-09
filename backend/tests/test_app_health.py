@@ -6,9 +6,9 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from autopulse_backend.api.routes.health import _topology_guardrail_status
-from autopulse_backend.app import create_app
-from autopulse_backend.jobs import SchedulerHandle
+from lumonox_backend.api.routes.health import _topology_guardrail_status
+from lumonox_backend.app import create_app
+from lumonox_backend.jobs import SchedulerHandle
 
 
 def test_health_endpoint_returns_ok(backend_test_database_url: str) -> None:
@@ -28,7 +28,7 @@ def test_ready_endpoint_returns_ready_when_database_is_available(
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ready"
-    assert "autopulse_env" in body
+    assert "lumonox_env" in body
     assert "event_plane_mode" in body
     assert "dashboard_auth_enabled" in body
     assert "jobs_enable_scheduler" in body
@@ -107,8 +107,8 @@ def test_internal_metrics_includes_ingest_pressure_view(
 
 def test_topology_guardrail_status_degraded_when_scheduler_required_but_not_running() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="production",
-        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        lumonox_env="production",
+        database_url="sqlite+aiosqlite:///./.lumonox/lumonox.db",
         database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=True,
@@ -122,8 +122,8 @@ def test_topology_guardrail_status_degraded_when_scheduler_required_but_not_runn
 
 def test_topology_guardrail_status_degraded_when_scheduler_required_but_disabled() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="staging",
-        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        lumonox_env="staging",
+        database_url="sqlite+aiosqlite:///./.lumonox/lumonox.db",
         database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=False,
@@ -139,8 +139,8 @@ def test_topology_guardrail_status_degraded_when_scheduler_required_but_disabled
 
 def test_topology_guardrail_status_flags_realtime_risk_for_staging_without_shared_bus() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="staging",
-        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        lumonox_env="staging",
+        database_url="sqlite+aiosqlite:///./.lumonox/lumonox.db",
         database_run_migrations_on_startup=True,
         scheduler_running=True,
         jobs_enable_scheduler=True,
@@ -154,8 +154,8 @@ def test_topology_guardrail_status_flags_realtime_risk_for_staging_without_share
 
 def test_topology_guardrail_status_reports_non_ideal_external_cron_mix_without_degrading() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="production",
-        database_url="sqlite+aiosqlite:///./.autopulse/autopulse.db",
+        lumonox_env="production",
+        database_url="sqlite+aiosqlite:///./.lumonox/lumonox.db",
         database_run_migrations_on_startup=True,
         scheduler_running=True,
         jobs_enable_scheduler=True,
@@ -174,8 +174,8 @@ def test_topology_guardrail_status_reports_non_ideal_external_cron_mix_without_d
 
 def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="development",
-        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/autopulse",
+        lumonox_env="development",
+        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/lumonox",
         database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=False,
@@ -190,8 +190,8 @@ def test_topology_guardrail_status_is_healthy_for_dev_with_scheduler_optional() 
 
 def test_topology_guardrail_status_flags_risky_non_sql_startup_migrations() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="production",
-        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/autopulse",
+        lumonox_env="production",
+        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/lumonox",
         database_run_migrations_on_startup=True,
         scheduler_running=True,
         jobs_enable_scheduler=True,
@@ -206,8 +206,8 @@ def test_topology_guardrail_status_flags_risky_non_sql_startup_migrations() -> N
 
 def test_topology_guardrail_status_tracks_risky_and_non_ideal_counts() -> None:
     status = _topology_guardrail_status(
-        autopulse_env="production",
-        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/autopulse",
+        lumonox_env="production",
+        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/lumonox",
         database_run_migrations_on_startup=True,
         scheduler_running=False,
         jobs_enable_scheduler=True,
@@ -230,11 +230,11 @@ def test_topology_guardrail_status_tracks_risky_and_non_ideal_counts() -> None:
 def test_startup_hard_fails_when_required_scheduler_does_not_start(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("AUTOPULSE_ENV", "staging")
+    monkeypatch.setenv("LUMONOX_ENV", "staging")
     monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "true")
     monkeypatch.setenv("JOBS_EXTERNAL_CRON_OWNERSHIP", "false")
     monkeypatch.setattr(
-        "autopulse_backend.lifespan.start_scheduler",
+        "lumonox_backend.lifespan.start_scheduler",
         lambda settings: SchedulerHandle(stop_event=asyncio.Event(), tasks=[]),
     )
     app = create_app()
@@ -248,7 +248,7 @@ def test_startup_hard_fails_when_required_scheduler_does_not_start(
 def test_ready_stays_ready_with_non_ideal_scheduler_ownership_mix(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("AUTOPULSE_ENV", "staging")
+    monkeypatch.setenv("LUMONOX_ENV", "staging")
     monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "true")
     monkeypatch.setenv("JOBS_EXTERNAL_CRON_OWNERSHIP", "true")
     app = create_app()

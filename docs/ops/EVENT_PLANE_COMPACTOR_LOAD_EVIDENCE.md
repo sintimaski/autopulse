@@ -12,10 +12,10 @@ scripts/event_plane_compactor_load_probe.sh
 
 Optional env overrides:
 
-- `AUTOPULSE_EVENT_PLANE_LOAD_SHARDS` (default `200`)
-- `AUTOPULSE_EVENT_PLANE_LOAD_MAX_SHARDS_PER_RUN` (default `25`)
-- `AUTOPULSE_EVENT_PLANE_LOAD_LOW_RUNS` (default `1`)
-- `AUTOPULSE_EVENT_PLANE_LOAD_HIGH_RUNS` (default `4`)
+- `LUMONOX_EVENT_PLANE_LOAD_SHARDS` (default `200`)
+- `LUMONOX_EVENT_PLANE_LOAD_MAX_SHARDS_PER_RUN` (default `25`)
+- `LUMONOX_EVENT_PLANE_LOAD_LOW_RUNS` (default `1`)
+- `LUMONOX_EVENT_PLANE_LOAD_HIGH_RUNS` (default `4`)
 
 ## Latest run evidence
 

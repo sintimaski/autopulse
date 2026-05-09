@@ -181,7 +181,7 @@ export function DashboardHomeContent() {
       />
     </>
   );
-  const phasedLiteDashboard = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REWRITE_PHASED !== "0";
+  const phasedLiteDashboard = process.env.NEXT_PUBLIC_LUMONOX_DASHBOARD_REWRITE_PHASED !== "0";
   if (phasedLiteDashboard) {
     const totalRequests = homeSlice.sparklineSeries.reduce(
       (sum, bucket) => sum + Number(bucket.request_count || 0),

@@ -1,13 +1,13 @@
 * @dd
 
 # Critical security and ingest paths require maintainer review.
-/backend/src/autopulse_backend/auth/ @dd
-/backend/src/autopulse_backend/ingestion/ @dd
-/backend/src/autopulse_backend/routes/ingest.py @dd
-/backend/src/autopulse_backend/services/ingest* @dd
-/backend/src/autopulse_backend/schemas/ingest.py @dd
-/backend/src/autopulse_backend/repositories/ingest_reliability.py @dd
-/sdk/src/autopulse/middleware.py @dd
+/backend/src/lumonox_backend/auth/ @dd
+/backend/src/lumonox_backend/ingestion/ @dd
+/backend/src/lumonox_backend/routes/ingest.py @dd
+/backend/src/lumonox_backend/services/ingest* @dd
+/backend/src/lumonox_backend/schemas/ingest.py @dd
+/backend/src/lumonox_backend/repositories/ingest_reliability.py @dd
+/sdk/src/lumonox/middleware.py @dd
 /docs/ops/* @dd
 /docs/runbooks/* @dd
 

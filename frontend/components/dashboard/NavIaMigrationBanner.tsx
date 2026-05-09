@@ -2,7 +2,7 @@
 
 import { useReducer } from "react";
 
-const STORAGE_KEY = "autopulse.dismissedNavMigrationBanner.v1";
+const STORAGE_KEY = "lumonox.dismissedNavMigrationBanner.v1";
 
 function readDismissedFromStorage(): boolean {
   if (typeof window === "undefined") {

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for contributing to AutoPulse.
+Thanks for contributing to Lumonox.
 
 ## First read
 
@@ -51,4 +51,4 @@ make release-gates
 
 ## Scope guardrails
 
-AutoPulse MVP is diagnosis-first and low-config. If a change adds observability-engineering complexity, discuss it before implementation.
+Lumonox MVP is diagnosis-first and low-config. If a change adds observability-engineering complexity, discuss it before implementation.

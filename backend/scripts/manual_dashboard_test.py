@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from autopulse_backend.ingestion.scenario_events import (
+from lumonox_backend.ingestion.scenario_events import (
     generate_manual_batch_events,
     split_csv_values,
 )
@@ -27,11 +27,11 @@ def _iso(dt: datetime) -> str:
 
 
 def _resolve_api_key(cli_value: str | None) -> str:
-    key = (cli_value or os.environ.get("AUTOPULSE_API_KEY", "")).strip()
+    key = (cli_value or os.environ.get("LUMONOX_API_KEY", "")).strip()
     if not key:
         raise SystemExit(
-            "Missing API key: pass --api-key or set AUTOPULSE_API_KEY "
-            "(same value as NEXT_PUBLIC_AUTOPULSE_API_KEY in frontend/.env.local)."
+            "Missing API key: pass --api-key or set LUMONOX_API_KEY "
+            "(same value as NEXT_PUBLIC_LUMONOX_API_KEY in frontend/.env.local)."
         )
     if key in ("YOUR_REAL_KEY", "ap_live_your_key_here"):
         raise SystemExit(
@@ -66,13 +66,13 @@ def _fetch_dashboard_snapshot(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Continuously send dashboard test traffic to a running AutoPulse backend."
+        description="Continuously send dashboard test traffic to a running Lumonox backend."
     )
     parser.add_argument("--api-base-url", default="http://127.0.0.1:8000")
     parser.add_argument(
         "--api-key",
         default=None,
-        help="Bearer token (ap_live_...). If omitted, uses AUTOPULSE_API_KEY from the environment.",
+        help="Bearer token (ap_live_...). If omitted, uses LUMONOX_API_KEY from the environment.",
     )
     parser.add_argument("--service-name", default="manual-test-api")
     parser.add_argument("--environment", default="dev")
@@ -220,7 +220,7 @@ def main() -> int:
     except httpx.ConnectError as exc:
         raise SystemExit(
             f"Cannot connect to {base_url} ({exc}). "
-            "Start the API from the repo root (`uv run python -m autopulse_backend.main`) "
+            "Start the API from the repo root (`uv run python -m lumonox_backend.main`) "
             "or pass --api-base-url if the server uses another host/port."
         ) from exc
 

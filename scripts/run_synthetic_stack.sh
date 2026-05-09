@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local integration: AutoPulse backend (:8000) + synthetic sample app (:8001) + optional Next sidecar.
+# Local integration: Lumonox backend (:8000) + synthetic sample app (:8001) + optional Next sidecar.
 # Always runs `npm --prefix frontend run build` first (static export → frontend/out/).
 set -euo pipefail
 
@@ -12,19 +12,19 @@ set -a
 source backend/.env
 set +a
 
-if [ -f .env.autopulse ]; then
-  echo "Loading .env.autopulse (overrides NEXT_PUBLIC_* / ingest key for local UI builds)…"
+if [ -f .env.lumonox ]; then
+  echo "Loading .env.lumonox (overrides NEXT_PUBLIC_* / ingest key for local UI builds)…"
   set -a
   # shellcheck disable=SC1091
-  source .env.autopulse
+  source .env.lumonox
   set +a
 fi
 
 # ``npm run build`` inlines ``NEXT_PUBLIC_*`` at compile time. Force the standalone-backend API
-# origin here so stale ``/autopulse`` API bases from older .env files cannot bake into ``frontend/out``.
-export NEXT_PUBLIC_AUTOPULSE_API_BASE_URL="${NEXT_PUBLIC_AUTOPULSE_API_BASE_URL:-http://127.0.0.1:8000}"
-export NEXT_PUBLIC_AUTOPULSE_DEV_API_ORIGIN="${NEXT_PUBLIC_AUTOPULSE_DEV_API_ORIGIN:-http://127.0.0.1:8000}"
-echo "For frontend build: NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=${NEXT_PUBLIC_AUTOPULSE_API_BASE_URL}"
+# origin here so stale ``/lumonox`` API bases from older .env files cannot bake into ``frontend/out``.
+export NEXT_PUBLIC_LUMONOX_API_BASE_URL="${NEXT_PUBLIC_LUMONOX_API_BASE_URL:-http://127.0.0.1:8000}"
+export NEXT_PUBLIC_LUMONOX_DEV_API_ORIGIN="${NEXT_PUBLIC_LUMONOX_DEV_API_ORIGIN:-http://127.0.0.1:8000}"
+echo "For frontend build: NEXT_PUBLIC_LUMONOX_API_BASE_URL=${NEXT_PUBLIC_LUMONOX_API_BASE_URL}"
 
 FRONTEND_DIR="$ROOT_DIR/frontend"
 if [[ ! -f "$FRONTEND_DIR/node_modules/next/dist/bin/next" ]]; then
@@ -36,39 +36,39 @@ fi
 echo "Building frontend (Next static export → frontend/out/)…"
 npm --prefix frontend run build
 
-export AUTOPULSE_FRONTEND_STATIC_DIR="${AUTOPULSE_FRONTEND_STATIC_DIR:-$ROOT_DIR/frontend/out}"
+export LUMONOX_FRONTEND_STATIC_DIR="${LUMONOX_FRONTEND_STATIC_DIR:-$ROOT_DIR/frontend/out}"
 
-FRONTEND_MODE="${AUTOPULSE_FRONTEND_MODE:-sidecar}"
-export AUTOPULSE_FRONTEND_MODE="$FRONTEND_MODE"
+FRONTEND_MODE="${LUMONOX_FRONTEND_MODE:-sidecar}"
+export LUMONOX_FRONTEND_MODE="$FRONTEND_MODE"
 
 if [[ "$FRONTEND_MODE" == "static" ]]; then
-  echo "AUTOPULSE_FRONTEND_MODE=static: dashboard export is served from the backend under …/autopulse/ui/."
+  echo "LUMONOX_FRONTEND_MODE=static: dashboard export is served from the backend under …/lumonox/ui/."
 else
-  echo "Frontend: Next dev sidecar (AUTOPULSE_FRONTEND_MODE=$FRONTEND_MODE); static export was built above for the backend mount."
-  _ui_mount="${AUTOPULSE_MOUNT_PREFIX:-/autopulse}"
+  echo "Frontend: Next dev sidecar (LUMONOX_FRONTEND_MODE=$FRONTEND_MODE); static export was built above for the backend mount."
+  _ui_mount="${LUMONOX_MOUNT_PREFIX:-/lumonox}"
   echo "  Dashboard UI (Next):  http://localhost:3000/"
-  echo "  API (backend):        http://127.0.0.1:8000 (JSON under /dashboard and /autopulse/dashboard; ingest at /ingest and /autopulse/ingest; static UI at http://127.0.0.1:8000${_ui_mount}/ui/ when mounted)"
+  echo "  API (backend):        http://127.0.0.1:8000 (JSON under /dashboard and /lumonox/dashboard; ingest at /ingest and /lumonox/ingest; static UI at http://127.0.0.1:8000${_ui_mount}/ui/ when mounted)"
   echo "  Synthetic sample app: http://127.0.0.1:8001/health"
-  echo "  Tip: UI on port 8000 only → AUTOPULSE_FRONTEND_MODE=static and open …/ui/ (export is already built at script start)."
+  echo "  Tip: UI on port 8000 only → LUMONOX_FRONTEND_MODE=static and open …/ui/ (export is already built at script start)."
   echo "  For Next dev: run \`npm --prefix frontend run dev\` in another shell (this script already exported NEXT_PUBLIC_* for sidecar)."
-  if [[ -z "${AUTOPULSE_NEXT_ALLOWED_DEV_ORIGINS:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+  if [[ -z "${LUMONOX_NEXT_ALLOWED_DEV_ORIGINS:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
     _ap_lan_ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
     if [[ -n "$_ap_lan_ip" ]]; then
-      export AUTOPULSE_NEXT_ALLOWED_DEV_ORIGINS="$_ap_lan_ip"
-      echo "AUTOPULSE_NEXT_ALLOWED_DEV_ORIGINS=${AUTOPULSE_NEXT_ALLOWED_DEV_ORIGINS} (auto en0; override in .env if HMR still blocked)"
+      export LUMONOX_NEXT_ALLOWED_DEV_ORIGINS="$_ap_lan_ip"
+      echo "LUMONOX_NEXT_ALLOWED_DEV_ORIGINS=${LUMONOX_NEXT_ALLOWED_DEV_ORIGINS} (auto en0; override in .env if HMR still blocked)"
     fi
   fi
 fi
 
-export AUTOPULSE_EVENT_STORE="duckdb"
-export AUTOPULSE_DATA_DIR="${AUTOPULSE_DATA_DIR:-$ROOT_DIR}"
-export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-$AUTOPULSE_DATA_DIR/.autopulse/events.duckdb}"
+export LUMONOX_EVENT_STORE="duckdb"
+export LUMONOX_DATA_DIR="${LUMONOX_DATA_DIR:-$ROOT_DIR}"
+export LUMONOX_DUCKDB_PATH="${LUMONOX_DUCKDB_PATH:-$LUMONOX_DATA_DIR/.lumonox/events.duckdb}"
 
-if [[ -z "${AUTOPULSE_API_KEY:-}" ]]; then
-  if [[ -n "${NEXT_PUBLIC_AUTOPULSE_API_KEY:-}" ]]; then
-    export AUTOPULSE_API_KEY="$NEXT_PUBLIC_AUTOPULSE_API_KEY"
+if [[ -z "${LUMONOX_API_KEY:-}" ]]; then
+  if [[ -n "${NEXT_PUBLIC_LUMONOX_API_KEY:-}" ]]; then
+    export LUMONOX_API_KEY="$NEXT_PUBLIC_LUMONOX_API_KEY"
   else
-    echo "error: set AUTOPULSE_API_KEY (or NEXT_PUBLIC_AUTOPULSE_API_KEY) for the synthetic app to ingest into the backend." >&2
+    echo "error: set LUMONOX_API_KEY (or NEXT_PUBLIC_LUMONOX_API_KEY) for the synthetic app to ingest into the backend." >&2
     exit 1
   fi
 fi
@@ -94,11 +94,11 @@ fi
 
 echo "Starting backend on :8000…"
 BACKEND_LOG="$(mktemp)"
-uv run uvicorn autopulse_backend.main:app --host 0.0.0.0 --port 8000 --log-level info >>"$BACKEND_LOG" 2>&1 &
+uv run uvicorn lumonox_backend.main:app --host 0.0.0.0 --port 8000 --log-level info >>"$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 
 # Startup can exceed 30s when Alembic runs, DuckDB opens under lock contention
-# (see AUTOPULSE_DUCKDB_CONNECT_RETRIES in event_store), or cold disk — allow ~100s.
+# (see LUMONOX_DUCKDB_CONNECT_RETRIES in event_store), or cold disk — allow ~100s.
 for _ in $(seq 1 400); do
   if curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
     break
@@ -113,25 +113,25 @@ for _ in $(seq 1 400); do
 done
 if ! curl -sf "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   echo "error: backend did not become healthy on http://127.0.0.1:8000/health within ~100s." >&2
-  echo "  Common causes: port 8000 in use, DuckDB file locked by another AutoPulse process, or very slow first migration." >&2
-  echo "  Tip: ensure no other uvicorn is using this repo's .autopulse/events.duckdb; try lsof on that path." >&2
+  echo "  Common causes: port 8000 in use, DuckDB file locked by another Lumonox process, or very slow first migration." >&2
+  echo "  Tip: ensure no other uvicorn is using this repo's .lumonox/events.duckdb; try lsof on that path." >&2
   echo "--- tail ${BACKEND_LOG} ---" >&2
   tail -n 120 "$BACKEND_LOG" >&2 || true
   exit 1
 fi
 
-export AUTOPULSE_MODE=remote
-export AUTOPULSE_INGEST_URL="${AUTOPULSE_INGEST_URL:-http://127.0.0.1:8000/ingest}"
+export LUMONOX_MODE=remote
+export LUMONOX_INGEST_URL="${LUMONOX_INGEST_URL:-http://127.0.0.1:8000/ingest}"
 
 echo "DATABASE_URL=${DATABASE_URL:-<unset>}"
-echo "AUTOPULSE_EVENT_STORE=${AUTOPULSE_EVENT_STORE}"
-echo "AUTOPULSE_DATA_DIR=${AUTOPULSE_DATA_DIR}"
-echo "AUTOPULSE_DUCKDB_PATH=${AUTOPULSE_DUCKDB_PATH}"
-echo "AUTOPULSE_FRONTEND_MODE=${AUTOPULSE_FRONTEND_MODE}"
-echo "AUTOPULSE_INGEST_URL=${AUTOPULSE_INGEST_URL}"
+echo "LUMONOX_EVENT_STORE=${LUMONOX_EVENT_STORE}"
+echo "LUMONOX_DATA_DIR=${LUMONOX_DATA_DIR}"
+echo "LUMONOX_DUCKDB_PATH=${LUMONOX_DUCKDB_PATH}"
+echo "LUMONOX_FRONTEND_MODE=${LUMONOX_FRONTEND_MODE}"
+echo "LUMONOX_INGEST_URL=${LUMONOX_INGEST_URL}"
 _backend_ui_url=""
-if curl -sf "http://127.0.0.1:8000/autopulse/ui/" >/dev/null 2>&1; then
-  _backend_ui_url="http://127.0.0.1:8000/autopulse/ui/"
+if curl -sf "http://127.0.0.1:8000/lumonox/ui/" >/dev/null 2>&1; then
+  _backend_ui_url="http://127.0.0.1:8000/lumonox/ui/"
 elif curl -sf "http://127.0.0.1:8000/ui/" >/dev/null 2>&1; then
   _backend_ui_url="http://127.0.0.1:8000/ui/"
 fi
@@ -139,7 +139,7 @@ if [[ -n "$_backend_ui_url" ]]; then
   echo "Dashboard UI (backend static): ${_backend_ui_url}"
 else
   echo "Dashboard UI (backend static): not mounted (expected in sidecar-only setups)."
-  echo "  If you open /autopulse/ui/ on :8000 in this state, backend access logs will show 404."
+  echo "  If you open /lumonox/ui/ on :8000 in this state, backend access logs will show 404."
 fi
-echo "Starting synthetic app: uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info"
-uv run uvicorn autopulse.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info
+echo "Starting synthetic app: uv run uvicorn lumonox.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info"
+uv run uvicorn lumonox.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info

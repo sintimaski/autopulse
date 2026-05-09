@@ -3,21 +3,21 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from autopulse_backend.core.config import Settings
-from autopulse_backend.metrics import service_metrics
-from autopulse_backend.services.event_plane_compactor import CompactionTickResult
-from autopulse_backend.services.event_plane_compactor_worker import (
+from lumonox_backend.core.config import Settings
+from lumonox_backend.metrics import service_metrics
+from lumonox_backend.services.event_plane_compactor import CompactionTickResult
+from lumonox_backend.services.event_plane_compactor_worker import (
     _run_compactor_tick_once,
     start_event_plane_compactor_worker,
 )
-from autopulse_backend.services.event_plane_manifest import ShardManifestState
+from lumonox_backend.services.event_plane_manifest import ShardManifestState
 
 
 def _settings(*, mode: str) -> Settings:
     return Settings(
         database_url="sqlite+aiosqlite:///./x.db",
         event_store="duckdb",
-        event_store_duckdb_path="./.autopulse/events.duckdb",
+        event_store_duckdb_path="./.lumonox/events.duckdb",
         event_plane_mode=mode,
     )
 
@@ -45,7 +45,7 @@ def test_compactor_worker_tick_increments_metrics(monkeypatch) -> None:
         ),
     )
     monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_compactor_worker.make_event_plane_compactor",
+        "lumonox_backend.services.event_plane_compactor_worker.make_event_plane_compactor",
         lambda settings=None: fake_compactor,
     )
 

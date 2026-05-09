@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.app import create_app
-from autopulse_backend.auth import generate_api_key
-from autopulse_backend.metrics import service_metrics
-from autopulse_backend.models import ApiKey, Project
+from lumonox_backend.app import create_app
+from lumonox_backend.auth import generate_api_key
+from lumonox_backend.metrics import service_metrics
+from lumonox_backend.models import ApiKey, Project
 
 
 def _seed_project_and_key(database_url: str) -> tuple[str, str]:
@@ -557,12 +557,12 @@ def test_prometheus_metrics_endpoint_exposes_ingest_counters(
         )
     assert ingest.status_code == 200
     assert metrics.status_code == 200
-    assert "autopulse_ingest_accepted_batches" in metrics.text
-    assert "autopulse_ingest_first_event_by_project_total" in metrics.text
+    assert "lumonox_ingest_accepted_batches" in metrics.text
+    assert "lumonox_ingest_first_event_by_project_total" in metrics.text
     for needle in (
-        "autopulse_ingest_pressure_sql_tail_repair_queued_total",
-        "autopulse_ingest_pressure_sql_tail_repair_succeeded_total",
-        "autopulse_ingest_pressure_sql_tail_repair_dead_lettered_total",
+        "lumonox_ingest_pressure_sql_tail_repair_queued_total",
+        "lumonox_ingest_pressure_sql_tail_repair_succeeded_total",
+        "lumonox_ingest_pressure_sql_tail_repair_dead_lettered_total",
     ):
         assert needle in metrics.text, f"missing prometheus series: {needle}"
 
@@ -603,7 +603,7 @@ def test_ingest_accepts_optional_unknown_event_fields(
     assert response.json()["accepted"] == 1
 
 
-def test_ingest_can_drop_autopulse_internal_traffic_before_db_write(
+def test_ingest_can_drop_lumonox_internal_traffic_before_db_write(
     backend_test_database_url: str,
 ) -> None:
     _truncate_tables(backend_test_database_url)
@@ -618,7 +618,7 @@ def test_ingest_can_drop_autopulse_internal_traffic_before_db_write(
                 "service_name": "api",
                 "environment": "test",
                 "method": "GET",
-                "path": "/autopulse/dashboard/overview",
+                "path": "/lumonox/dashboard/overview",
                 "status_code": 200,
                 "latency_ms": 10.0,
                 "request_id": "internal-1",
@@ -765,7 +765,7 @@ def test_ingest_distributed_rate_limit_db_error_fails_open_and_increments_metric
     baseline = service_metrics.snapshot().get("ingest.rate_limit.distributed_fallback", 0)
     with (
         patch(
-            "autopulse_backend.routes.ingest.allow_distributed_ingest_request",
+            "lumonox_backend.routes.ingest.allow_distributed_ingest_request",
             side_effect=RuntimeError("simulated db limiter failure"),
         ),
         TestClient(app) as client,
@@ -791,7 +791,7 @@ def test_ingest_async_aggregate_sync_fallback_when_enqueue_returns_false(
         return False
 
     monkeypatch.setattr(
-        "autopulse_backend.routes.ingest.enqueue_ingest_aggregate_payload",
+        "lumonox_backend.routes.ingest.enqueue_ingest_aggregate_payload",
         enqueue_denied,
     )
     baseline = service_metrics.snapshot().get("ingest.aggregate_worker.sync_fallback", 0)
@@ -840,7 +840,7 @@ def test_ingest_queues_sql_tail_repair_when_event_store_is_authoritative(
     }
     with (
         patch(
-            "autopulse_backend.services.ingest_service.dashboard_widgets_repo.upsert_widget_definitions",
+            "lumonox_backend.services.ingest_service.dashboard_widgets_repo.upsert_widget_definitions",
             side_effect=RuntimeError("simulated sql tail write failure"),
         ),
         TestClient(app) as client,

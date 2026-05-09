@@ -5,12 +5,12 @@ import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from autopulse_backend.realtime import (
+from lumonox_backend.realtime import (
     DashboardUpdateMessage,
     IngestBroadcastMessage,
     project_websocket_hub,
 )
-from autopulse_backend.realtime import bus as realtime_bus
+from lumonox_backend.realtime import bus as realtime_bus
 
 
 class _FakeWebSocket:

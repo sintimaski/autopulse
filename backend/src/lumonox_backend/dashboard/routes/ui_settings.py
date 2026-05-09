@@ -1,0 +1,402 @@
+from __future__ import annotations
+
+import logging
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from lumonox_backend.api.routes.health import _build_metrics_snapshot
+from lumonox_backend.auth import (
+    DashboardAuthSession,
+    ProjectContext,
+    authenticate_dashboard_project,
+    ensure_dashboard_admin_or_owner,
+)
+from lumonox_backend.auth.dashboard import get_dashboard_auth_session
+from lumonox_backend.auth.rbac import require_member_or_above, require_owner_or_admin
+from lumonox_backend.core.config import get_settings, redact_database_url_for_log
+from lumonox_backend.dashboard.repositories.project_ui import get_or_create_project_ui_settings
+from lumonox_backend.dashboard.serializers import (
+    serialize_retention_settings,
+    serialize_theme_settings,
+)
+from lumonox_backend.dashboard.time_window import as_utc_datetime
+from lumonox_backend.database import get_db_session
+from lumonox_backend.metrics import service_metrics
+from lumonox_backend.models import Event, IngestAggregateDeadLetter, IngestSqlTailRepairItem
+from lumonox_backend.schemas import (
+    DashboardEventPlaneCutoverSettings,
+    DashboardEventPlaneCutoverSettingsUpdate,
+    DashboardInternalMetricsResponse,
+    DashboardRetentionSettings,
+    DashboardRetentionSettingsUpdate,
+    DashboardSystemDiagnosticsResponse,
+    DashboardThemeSettings,
+    DashboardThemeSettingsUpdate,
+)
+from lumonox_backend.services.event_plane_parity import build_cutover_decision
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+_CUTOVER_PARITY_WINDOW_MINUTES = 60
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    return as_utc_datetime(parsed)
+
+
+def _scheduler_interval_seconds_for_job(job_name: str, settings: Any) -> float | None:
+    intervals: dict[str, float] = {
+        "alerts": float(settings.jobs_alert_interval_seconds),
+        "retention": float(settings.jobs_retention_interval_seconds),
+        "sql_tail_repair": float(settings.ingest_sql_tail_repair_interval_seconds),
+        "parquet_export": float(settings.parquet_export_interval_seconds),
+        "parquet_lifecycle": float(settings.parquet_lifecycle_interval_seconds),
+        "parquet_object_storage_sync": float(settings.parquet_object_storage_interval_seconds),
+    }
+    return intervals.get(job_name)
+
+
+def _build_scheduler_job_snapshots(metrics: dict[str, Any], settings: Any) -> list[dict[str, Any]]:
+    raw_jobs = metrics.get("jobs")
+    if not isinstance(raw_jobs, dict):
+        return []
+    snapshots: list[dict[str, Any]] = []
+    for job_name in sorted(raw_jobs):
+        telemetry = raw_jobs.get(job_name)
+        if not isinstance(telemetry, dict):
+            continue
+        started_at = _parse_iso_datetime(telemetry.get("started_at"))
+        finished_at = _parse_iso_datetime(telemetry.get("finished_at"))
+        interval_seconds = _scheduler_interval_seconds_for_job(job_name, settings)
+        next_scheduled_at: str | None = None
+        if finished_at is not None and interval_seconds is not None:
+            next_scheduled_at = (
+                finished_at + timedelta(seconds=max(interval_seconds, 0.0))
+            ).isoformat()
+        snapshots.append(
+            {
+                "job_name": job_name,
+                "status": telemetry.get("status"),
+                "started_at": started_at.isoformat() if started_at is not None else None,
+                "finished_at": finished_at.isoformat() if finished_at is not None else None,
+                "next_scheduled_at": next_scheduled_at,
+                "duration_ms": telemetry.get("duration_ms"),
+                "records_processed": telemetry.get("records_processed"),
+                "failure_reason": telemetry.get("failure_reason"),
+                "interval_seconds": interval_seconds,
+            }
+        )
+    return snapshots
+
+
+async def _optional_dashboard_auth_session(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardAuthSession | None:
+    """Cookie session when present; ``None`` for API-key-only dashboard clients."""
+    settings = get_settings()
+    return await get_dashboard_auth_session(session=session, settings=settings, request=request)
+
+
+@router.get("/theme-settings", response_model=DashboardThemeSettings)
+async def get_dashboard_theme_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardThemeSettings:
+    settings = await get_or_create_project_ui_settings(session, context.project_id)
+    await session.commit()
+    await session.refresh(settings)
+    return serialize_theme_settings(settings)
+
+
+@router.put("/theme-settings", response_model=DashboardThemeSettings)
+async def update_dashboard_theme_settings(
+    payload: DashboardThemeSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    auth_session: Annotated[DashboardAuthSession | None, Depends(_optional_dashboard_auth_session)],
+) -> DashboardThemeSettings:
+    settings = await get_or_create_project_ui_settings(session, context.project_id)
+    exclude_changed = payload.exclude_lumonox_traffic != settings.exclude_lumonox_traffic
+    theme_changed = payload.theme_preference != settings.theme_preference
+    if auth_session is not None:
+        if exclude_changed:
+            require_owner_or_admin(auth_session)
+        if theme_changed:
+            require_member_or_above(auth_session)
+    # API-key-only requests have no cookie session; ``authenticate_dashboard_project`` treats them
+    # as operator/owner scope (see ``ProjectContext.membership_role`` on fallback).
+    settings.theme_preference = payload.theme_preference
+    settings.exclude_lumonox_traffic = payload.exclude_lumonox_traffic
+    await session.commit()
+    await session.refresh(settings)
+    return serialize_theme_settings(settings)
+
+
+@router.get("/event-plane-cutover", response_model=DashboardEventPlaneCutoverSettings)
+async def get_dashboard_event_plane_cutover_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardEventPlaneCutoverSettings:
+    settings = await get_or_create_project_ui_settings(session, context.project_id)
+    await session.commit()
+    await session.refresh(settings)
+    return DashboardEventPlaneCutoverSettings(
+        use_snapshot_read=bool(settings.event_plane_use_snapshot_read)
+    )
+
+
+@router.put("/event-plane-cutover", response_model=DashboardEventPlaneCutoverSettings)
+async def update_dashboard_event_plane_cutover_settings(
+    payload: DashboardEventPlaneCutoverSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    auth_session: Annotated[DashboardAuthSession | None, Depends(_optional_dashboard_auth_session)],
+    _: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardEventPlaneCutoverSettings:
+    app_settings = get_settings()
+    if payload.use_snapshot_read and app_settings.event_plane_mode == "duckdb_log_shards":
+        window_end = datetime.now(tz=UTC)
+        window_start = window_end - timedelta(minutes=_CUTOVER_PARITY_WINDOW_MINUTES)
+        try:
+            allowed, report = build_cutover_decision(
+                project_id=str(context.project_id),
+                window_start=window_start,
+                window_end=window_end,
+                legacy_db_path=app_settings.event_store_duckdb_path,
+                snapshots_root=app_settings.event_plane_snapshots_path,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Snapshot cutover blocked: {exc}",
+            ) from exc
+        if not allowed:
+            mismatch_count = len(report.mismatches)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Snapshot cutover blocked by parity gate "
+                    f"(mismatches={mismatch_count} "
+                    f"window_minutes={_CUTOVER_PARITY_WINDOW_MINUTES})"
+                ),
+            )
+    settings = await get_or_create_project_ui_settings(session, context.project_id)
+    previous = bool(settings.event_plane_use_snapshot_read)
+    updated = bool(payload.use_snapshot_read)
+    settings.event_plane_use_snapshot_read = updated
+    await session.commit()
+    await session.refresh(settings)
+    if previous != updated:
+        service_metrics.increment("event_plane.cutover_toggle_changes_total")
+    logger.info(
+        "event_plane_project_cutover_toggled",
+        extra={
+            "event": "event_plane_project_cutover_toggled",
+            "project_id": str(context.project_id),
+            "previous_use_snapshot_read": previous,
+            "use_snapshot_read": updated,
+            "actor_email": (auth_session.email if auth_session is not None else None),
+        },
+    )
+    return DashboardEventPlaneCutoverSettings(
+        use_snapshot_read=bool(settings.event_plane_use_snapshot_read)
+    )
+
+
+@router.get("/retention-settings", response_model=DashboardRetentionSettings)
+async def get_dashboard_retention_settings(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> DashboardRetentionSettings:
+    settings = get_settings()
+    ui_settings = await get_or_create_project_ui_settings(session, context.project_id)
+    await session.commit()
+    await session.refresh(ui_settings)
+    return serialize_retention_settings(
+        ui_settings,
+        settings.retention_raw_events_days,
+        settings.logs_query_max_window_minutes,
+    )
+
+
+@router.put("/retention-settings", response_model=DashboardRetentionSettings)
+async def update_dashboard_retention_settings(
+    payload: DashboardRetentionSettingsUpdate,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardRetentionSettings:
+    settings = get_settings()
+    ui_settings = await get_or_create_project_ui_settings(session, context.project_id)
+    ui_settings.retention_raw_events_days = payload.raw_events_days
+    ui_settings.logs_query_max_window_minutes = payload.logs_query_max_window_minutes
+    ui_settings.retention_max_db_size_mb = payload.retention_max_db_size_mb
+    ui_settings.retention_max_log_rows = payload.retention_max_log_rows
+    ui_settings.retention_plan = payload.retention_plan
+    ui_settings.archival_enabled = payload.archival_enabled
+    ui_settings.archival_mode = payload.archival_mode
+    await session.commit()
+    await session.refresh(ui_settings)
+    return serialize_retention_settings(
+        ui_settings,
+        settings.retention_raw_events_days,
+        settings.logs_query_max_window_minutes,
+    )
+
+
+@router.get("/internal-metrics", response_model=DashboardInternalMetricsResponse)
+async def get_dashboard_internal_metrics(
+    request: Request,
+    _: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    __: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardInternalMetricsResponse:
+    settings = get_settings()
+    if not settings.internal_metrics_bearer_token:
+        return DashboardInternalMetricsResponse(
+            enabled=False,
+            reason="INTERNAL_METRICS_BEARER_TOKEN is not configured on the server.",
+            metrics=None,
+        )
+    return DashboardInternalMetricsResponse(
+        enabled=True,
+        reason=None,
+        metrics=_build_metrics_snapshot(request),
+    )
+
+
+@router.get("/system-diagnostics", response_model=DashboardSystemDiagnosticsResponse)
+async def get_dashboard_system_diagnostics(
+    request: Request,
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    __: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardSystemDiagnosticsResponse:
+    now = datetime.now(tz=UTC)
+    settings = get_settings()
+    metrics = _build_metrics_snapshot(request)
+
+    project_id = context.project_id
+    latest_event_ts = await session.scalar(
+        select(func.max(Event.timestamp)).where(Event.project_id == project_id)
+    )
+    pending_repair_count = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestSqlTailRepairItem)
+                .where(
+                    IngestSqlTailRepairItem.project_id == project_id,
+                    IngestSqlTailRepairItem.resolved_at.is_(None),
+                    IngestSqlTailRepairItem.dead_lettered_at.is_(None),
+                )
+            )
+        )
+        or 0
+    )
+    dead_lettered_repair_count = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestSqlTailRepairItem)
+                .where(
+                    IngestSqlTailRepairItem.project_id == project_id,
+                    IngestSqlTailRepairItem.dead_lettered_at.is_not(None),
+                )
+            )
+        )
+        or 0
+    )
+    oldest_pending_ts = await session.scalar(
+        select(func.min(IngestSqlTailRepairItem.created_at)).where(
+            IngestSqlTailRepairItem.project_id == project_id,
+            IngestSqlTailRepairItem.resolved_at.is_(None),
+            IngestSqlTailRepairItem.dead_lettered_at.is_(None),
+        )
+    )
+    aggregate_dead_letter_backlog = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestAggregateDeadLetter)
+                .where(IngestAggregateDeadLetter.replayed_at.is_(None))
+            )
+        )
+        or 0
+    )
+
+    lag_seconds: float | None = None
+    if latest_event_ts is not None:
+        lag_seconds = max(0.0, (now - as_utc_datetime(latest_event_ts)).total_seconds())
+    oldest_pending_age_seconds: float | None = None
+    if oldest_pending_ts is not None:
+        oldest_pending_age_seconds = max(
+            0.0, (now - as_utc_datetime(oldest_pending_ts)).total_seconds()
+        )
+
+    topology = {
+        "profile": metrics.get("topology_profile"),
+        "guardrails": metrics.get("topology_guardrails"),
+    }
+    topology_guardrails_raw = metrics.get("topology_guardrails")
+    topology_guardrails_dict = (
+        topology_guardrails_raw if isinstance(topology_guardrails_raw, dict) else {}
+    )
+    scheduler = {
+        "required_for_env": bool(topology_guardrails_dict.get("scheduler_required")),
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
+        "scheduler_running": bool(metrics.get("scheduler_running")),
+        "retention_pressure_poll_running": bool(metrics.get("retention_pressure_poll_running")),
+        "jobs": _build_scheduler_job_snapshots(metrics, settings),
+    }
+    replay_queue = {
+        "project_id": str(project_id),
+        "pending_sql_tail_repairs": pending_repair_count,
+        "dead_lettered_sql_tail_repairs": dead_lettered_repair_count,
+        "oldest_pending_age_seconds": oldest_pending_age_seconds,
+        "aggregate_dead_letter_backlog_total": aggregate_dead_letter_backlog,
+    }
+    ingestion_freshness = {
+        "project_id": str(project_id),
+        "last_event_received_at": (
+            as_utc_datetime(latest_event_ts).isoformat() if latest_event_ts is not None else None
+        ),
+        "lag_seconds": lag_seconds,
+    }
+    config_diagnostics = {
+        "lumonox_env": settings.lumonox_env,
+        "event_store": settings.event_store,
+        "event_plane_mode": settings.event_plane_mode,
+        "database_url_redacted": redact_database_url_for_log(settings.database_url),
+        "jobs_enable_scheduler": settings.jobs_enable_scheduler,
+        "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
+        "dashboard_auth_enabled": settings.dashboard_auth_enabled,
+        "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
+        "ingest_require_https": settings.ingest_require_https,
+        "ingest_trust_forwarded_proto": settings.ingest_trust_forwarded_proto,
+        "internal_metrics_enabled": bool(settings.internal_metrics_bearer_token),
+    }
+    return DashboardSystemDiagnosticsResponse(
+        generated_at=now,
+        topology=topology,
+        scheduler=scheduler,
+        replay_queue=replay_queue,
+        ingestion_freshness=ingestion_freshness,
+        config_diagnostics=config_diagnostics,
+    )

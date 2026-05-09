@@ -12,7 +12,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from autopulse_backend.middleware.gzip_request_body import GzipRequestBodyMiddleware
+from lumonox_backend.middleware.gzip_request_body import GzipRequestBodyMiddleware
 
 
 async def _echo_json(request: Request) -> JSONResponse:
@@ -65,8 +65,8 @@ def test_invalid_gzip_returns_400(gzip_decode_app: Starlette) -> None:
 def test_create_app_registers_gzip_middleware() -> None:
     from starlette.middleware.gzip import GZipMiddleware
 
-    from autopulse_backend.app import create_app
-    from autopulse_backend.middleware.gzip_request_body import GzipRequestBodyMiddleware
+    from lumonox_backend.app import create_app
+    from lumonox_backend.middleware.gzip_request_body import GzipRequestBodyMiddleware
 
     app = create_app()
     classes = [m.cls for m in app.user_middleware]

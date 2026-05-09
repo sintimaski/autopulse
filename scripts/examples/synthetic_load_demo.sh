@@ -8,7 +8,7 @@ cd "$ROOT_DIR"
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8001}"
 
-uv run python -m autopulse.fixtures.synthetic_load \
+uv run python -m lumonox.fixtures.synthetic_load \
   --base-url "$BASE_URL" \
   --duration-minutes "${DURATION_MINUTES:-5}" \
   --target-requests "${TARGET_REQUESTS:-200}" \

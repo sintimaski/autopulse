@@ -10,9 +10,9 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.core.config import get_settings, normalize_database_url
-from autopulse_backend.maintenance.retention import sqlite_retention_pressure_pending
-from autopulse_backend.models import Base, Event, Project, ProjectUiSettings
+from lumonox_backend.core.config import get_settings, normalize_database_url
+from lumonox_backend.maintenance.retention import sqlite_retention_pressure_pending
+from lumonox_backend.models import Base, Event, Project, ProjectUiSettings
 
 
 def test_sqlite_retention_pressure_pending_true_when_events_exceed_row_cap(

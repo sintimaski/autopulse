@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from autopulse_backend.services.event_plane_manifest import (
+from lumonox_backend.services.event_plane_manifest import (
     ShardManifestState,
     SqliteShardManifest,
 )

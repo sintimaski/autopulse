@@ -12,10 +12,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.app import create_app
-from autopulse_backend.auth import generate_api_key
-from autopulse_backend.metrics import JobExecutionTelemetry, service_metrics
-from autopulse_backend.models import (
+from lumonox_backend.app import create_app
+from lumonox_backend.auth import generate_api_key
+from lumonox_backend.metrics import JobExecutionTelemetry, service_metrics
+from lumonox_backend.models import (
     ApiKey,
     IngestAggregateDeadLetter,
     IngestSqlTailRepairItem,
@@ -1050,13 +1050,13 @@ def test_dashboard_alert_test_dispatch_records_attempt(
     assert project_id
 
 
-def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
+def test_dashboard_theme_settings_can_exclude_lumonox_traffic(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project UI Settings")
     base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
-    monkeypatch.setenv("INGEST_DROP_AUTOPULSE_TRAFFIC_FROM_DB", "false")
+    monkeypatch.setenv("INGEST_DROP_LUMONOX_TRAFFIC_FROM_DB", "false")
     # Do not inherit host .env allowlist-only auth (Bearer ingest key must reach dashboard reads).
     monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
     monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
@@ -1068,20 +1068,20 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
         assert read_response.status_code == 200
         initial = read_response.json()
         assert initial["theme_preference"] == "system"
-        assert initial["exclude_autopulse_traffic"] is True
+        assert initial["exclude_lumonox_traffic"] is True
 
         disable_filter = client.put(
             "/dashboard/theme-settings",
             json={
                 "theme_preference": "system",
-                "exclude_autopulse_traffic": False,
+                "exclude_lumonox_traffic": False,
             },
             headers=headers,
         )
         assert disable_filter.status_code == 200
-        assert disable_filter.json()["exclude_autopulse_traffic"] is False
+        assert disable_filter.json()["exclude_lumonox_traffic"] is False
 
-        _ingest(client, key, base_time, 200, "GET", "/autopulse/dashboard/overview")
+        _ingest(client, key, base_time, 200, "GET", "/lumonox/dashboard/overview")
         _ingest(client, key, base_time + timedelta(seconds=10), 200, "GET", "/users/42")
         _ingest(client, key, base_time + timedelta(seconds=11), 200, "GET", "/dashboard/overview")
         _ingest(client, key, base_time + timedelta(seconds=12), 200, "POST", "/ingest")
@@ -1101,12 +1101,12 @@ def test_dashboard_theme_settings_can_exclude_autopulse_traffic(
             "/dashboard/theme-settings",
             json={
                 "theme_preference": "system",
-                "exclude_autopulse_traffic": True,
+                "exclude_lumonox_traffic": True,
             },
             headers=headers,
         )
         assert enable_filter.status_code == 200
-        assert enable_filter.json()["exclude_autopulse_traffic"] is True
+        assert enable_filter.json()["exclude_lumonox_traffic"] is True
 
         overview_filtered = client.get(
             "/dashboard/overview",
@@ -1160,10 +1160,10 @@ def test_dashboard_event_plane_cutover_enable_blocked_on_parity_mismatch(
     monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
     monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
-    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_log_shards")
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_EVENT_PLANE_MODE", "duckdb_log_shards")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
     monkeypatch.setattr(
-        "autopulse_backend.dashboard.routes.ui_settings.build_cutover_decision",
+        "lumonox_backend.dashboard.routes.ui_settings.build_cutover_decision",
         lambda **_: (False, SimpleNamespace(mismatches=[object()])),
     )
     app = create_app()
@@ -1221,7 +1221,7 @@ def test_dashboard_internal_metrics_returns_snapshot_for_admin_scope(
     assert payload["reason"] is None
     metrics = payload["metrics"]
     assert isinstance(metrics, dict)
-    assert metrics.get("service") == "autopulse-api"
+    assert metrics.get("service") == "lumonox-api"
     assert isinstance(metrics.get("ingest_pressure"), dict)
     assert isinstance(metrics.get("ingest_aggregate_queue"), dict)
 

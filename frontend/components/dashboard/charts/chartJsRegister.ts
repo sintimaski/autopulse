@@ -30,8 +30,8 @@ type ChartWithTooltipPreserve = Chart & {
 };
 
 /** Keeps hover tooltip active across `chart.update()` when live data refreshes (no re-hover). */
-const autopulseTooltipPersistAcrossUpdate: Plugin = {
-  id: "autopulseTooltipPersistAcrossUpdate",
+const lumonoxTooltipPersistAcrossUpdate: Plugin = {
+  id: "lumonoxTooltipPersistAcrossUpdate",
   beforeUpdate(chart) {
     const c = chart as ChartWithTooltipPreserve;
     const fromChart = chart.getActiveElements();
@@ -89,5 +89,5 @@ ChartJS.register(
   PointElement,
   ScatterController,
   Tooltip,
-  autopulseTooltipPersistAcrossUpdate,
+  lumonoxTooltipPersistAcrossUpdate,
 );

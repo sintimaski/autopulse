@@ -17,10 +17,10 @@ scripts/event_plane_disaster_recovery_drill.sh
 
 Modes:
 
-- `AUTOPULSE_EVENT_PLANE_DRILL_MODE=simulate` (default): builds synthetic snapshot assets, restores them, and verifies readable row count.
-- `AUTOPULSE_EVENT_PLANE_DRILL_MODE=real`: restores from an operator-provided snapshot root:
-  - `AUTOPULSE_EVENT_PLANE_DRILL_SOURCE_SNAPSHOTS_ROOT`
-  - `AUTOPULSE_EVENT_PLANE_DRILL_RESTORE_ROOT`
+- `LUMONOX_EVENT_PLANE_DRILL_MODE=simulate` (default): builds synthetic snapshot assets, restores them, and verifies readable row count.
+- `LUMONOX_EVENT_PLANE_DRILL_MODE=real`: restores from an operator-provided snapshot root:
+  - `LUMONOX_EVENT_PLANE_DRILL_SOURCE_SNAPSHOTS_ROOT`
+  - `LUMONOX_EVENT_PLANE_DRILL_RESTORE_ROOT`
 
 ## Evidence log
 

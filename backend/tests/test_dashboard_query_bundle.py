@@ -4,9 +4,9 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from autopulse_backend.auth import ProjectContext
-from autopulse_backend.dashboard.routes import query_bundle
-from autopulse_backend.schemas import (
+from lumonox_backend.auth import ProjectContext
+from lumonox_backend.dashboard.routes import query_bundle
+from lumonox_backend.schemas import (
     DashboardDataQueryRequest,
     DashboardDataQueryResponse,
     DashboardDataQueryScope,

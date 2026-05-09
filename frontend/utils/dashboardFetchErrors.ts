@@ -39,7 +39,7 @@ export function buildDashboardNetworkError(error: unknown): string {
     return "Dashboard request was aborted.";
   }
   if (error instanceof TypeError) {
-    return "Cannot reach dashboard API. Check NEXT_PUBLIC_AUTOPULSE_API_BASE_URL, backend status, and CORS settings.";
+    return "Cannot reach dashboard API. Check NEXT_PUBLIC_LUMONOX_API_BASE_URL, backend status, and CORS settings.";
   }
   if (error instanceof Error) {
     return error.message;

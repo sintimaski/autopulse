@@ -13,13 +13,13 @@ if [[ -f backend/.env ]]; then
   set +a
 fi
 
-export AUTOPULSE_DATA_DIR="${AUTOPULSE_DATA_DIR:-$ROOT_DIR}"
-export AUTOPULSE_DUCKDB_PATH="${AUTOPULSE_DUCKDB_PATH:-$AUTOPULSE_DATA_DIR/.autopulse/events.duckdb}"
+export LUMONOX_DATA_DIR="${LUMONOX_DATA_DIR:-$ROOT_DIR}"
+export LUMONOX_DUCKDB_PATH="${LUMONOX_DUCKDB_PATH:-$LUMONOX_DATA_DIR/.lumonox/events.duckdb}"
 
-echo "AUTOPULSE_DATA_DIR=${AUTOPULSE_DATA_DIR}"
-echo "AUTOPULSE_DUCKDB_PATH=${AUTOPULSE_DUCKDB_PATH}"
+echo "LUMONOX_DATA_DIR=${LUMONOX_DATA_DIR}"
+echo "LUMONOX_DUCKDB_PATH=${LUMONOX_DUCKDB_PATH}"
 echo
 echo "Next steps (two terminals, repo root):"
-echo "  1) uv run python -m autopulse_backend.main   # or uvicorn from backend with same env"
+echo "  1) uv run python -m lumonox_backend.main   # or uvicorn from backend with same env"
 echo "  2) npm --prefix frontend install && npm --prefix frontend run dev"
-echo "Set frontend NEXT_PUBLIC_AUTOPULSE_API_BASE_URL to match your API (see README)."
+echo "Set frontend NEXT_PUBLIC_LUMONOX_API_BASE_URL to match your API (see README)."

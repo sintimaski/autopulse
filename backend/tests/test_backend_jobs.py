@@ -13,11 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from test_alerts import _seed_request_events
 from test_parquet_exporter import _seed_duckdb_events
 
-from autopulse_backend import jobs
-from autopulse_backend.database import dispose_engine_for_url
-from autopulse_backend.metrics import service_metrics
-from autopulse_backend.models import IngestSqlTailRepairItem, Project
-from autopulse_backend.services.ingest_sql_tail_codec import encode_ingest_sql_tail_payload
+from lumonox_backend import jobs
+from lumonox_backend.database import dispose_engine_for_url
+from lumonox_backend.metrics import service_metrics
+from lumonox_backend.models import IngestSqlTailRepairItem, Project
+from lumonox_backend.services.ingest_sql_tail_codec import encode_ingest_sql_tail_payload
 
 
 def _insert_sql_tail_repair_item(database_url: str) -> None:
@@ -162,7 +162,7 @@ def test_run_retention_sync_runs_on_fresh_sqlite(
     db_path = tmp_path / "sync_retention.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
 
-    from autopulse_backend.jobs import run_retention_sync
+    from lumonox_backend.jobs import run_retention_sync
 
     n = run_retention_sync()
     assert isinstance(n, int)
@@ -211,10 +211,10 @@ def test_replay_sql_tail_repairs_dead_letters_after_repeated_failure(
         raise RuntimeError("simulated replay failure")
 
     monkeypatch.setattr(
-        "autopulse_backend.jobs.dashboard_widgets_repo.upsert_widget_definitions",
+        "lumonox_backend.jobs.dashboard_widgets_repo.upsert_widget_definitions",
         boom,
     )
-    from autopulse_backend.jobs import run_replay_sql_tail_repairs_once
+    from lumonox_backend.jobs import run_replay_sql_tail_repairs_once
 
     repaired = asyncio.run(run_replay_sql_tail_repairs_once())
     assert repaired == 0
@@ -248,7 +248,7 @@ def test_replay_sql_tail_repairs_skips_rows_until_next_retry_at(
     asyncio.run(bump_next_retry())
     assert _count_pending_sql_tail_repairs(backend_test_database_url) == 1
 
-    from autopulse_backend.jobs import run_replay_sql_tail_repairs_once
+    from lumonox_backend.jobs import run_replay_sql_tail_repairs_once
 
     assert asyncio.run(run_replay_sql_tail_repairs_once()) == 0
 
@@ -264,14 +264,14 @@ def test_jobs_cli_parquet_export_once(
     parquet_root = tmp_path / "parquet-out"
     database_url = f"sqlite+aiosqlite:///{meta_db}"
     monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("AUTOPULSE_ENV", "development")
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
-    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer")
-    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(db_path.resolve()))
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ENABLED", "true")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("LUMONOX_ENV", "development")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_EVENT_PLANE_MODE", "duckdb_single_writer")
+    monkeypatch.setenv("LUMONOX_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(db_path.resolve()))
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ROOT", str(parquet_root))
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_WINDOW_SECONDS", "900")
     try:
         exit_code = jobs.main(["parquet-export-once"])
     finally:
@@ -293,17 +293,17 @@ def test_jobs_cli_parquet_lifecycle_once(
     parquet_root = tmp_path / "parquet-out"
     database_url = f"sqlite+aiosqlite:///{meta_db}"
     monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("AUTOPULSE_ENV", "development")
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
-    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer")
-    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(db_path.resolve()))
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ENABLED", "true")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS", "900")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_LIFECYCLE_ENABLED", "true")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES", "2")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_LIFECYCLE_RETENTION_DAYS", "3650")
+    monkeypatch.setenv("LUMONOX_ENV", "development")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_EVENT_PLANE_MODE", "duckdb_single_writer")
+    monkeypatch.setenv("LUMONOX_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(db_path.resolve()))
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ROOT", str(parquet_root))
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("LUMONOX_PARQUET_LIFECYCLE_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES", "2")
+    monkeypatch.setenv("LUMONOX_PARQUET_LIFECYCLE_RETENTION_DAYS", "3650")
     try:
         export_exit_code = jobs.main(["parquet-export-once"])
         lifecycle_exit_code = jobs.main(["parquet-lifecycle-once"])
@@ -328,21 +328,21 @@ def test_jobs_cli_parquet_object_sync_and_restore_once(
     restore_root = tmp_path / "restored"
     database_url = f"sqlite+aiosqlite:///{meta_db}"
     monkeypatch.setenv("DATABASE_URL", database_url)
-    monkeypatch.setenv("AUTOPULSE_ENV", "development")
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
-    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer")
-    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("AUTOPULSE_DUCKDB_PATH", str(db_path.resolve()))
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ENABLED", "true")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS", "900")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_ENV", "development")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_EVENT_PLANE_MODE", "duckdb_single_writer")
+    monkeypatch.setenv("LUMONOX_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(db_path.resolve()))
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ROOT", str(parquet_root))
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("LUMONOX_PARQUET_OBJECT_STORAGE_ENABLED", "true")
     monkeypatch.setenv(
-        "AUTOPULSE_PARQUET_OBJECT_STORAGE_URI",
+        "LUMONOX_PARQUET_OBJECT_STORAGE_URI",
         f"file://{object_store_root.resolve()}",
     )
-    monkeypatch.setenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_PREFIX", "snapshots")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT", str(restore_root))
+    monkeypatch.setenv("LUMONOX_PARQUET_OBJECT_STORAGE_PREFIX", "snapshots")
+    monkeypatch.setenv("LUMONOX_PARQUET_OBJECT_STORAGE_RESTORE_ROOT", str(restore_root))
     try:
         export_exit_code = jobs.main(["parquet-export-once"])
         sync_exit_code = jobs.main(["parquet-object-sync-once"])

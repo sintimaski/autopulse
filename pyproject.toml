@@ -1,19 +1,19 @@
 [project]
-name = "autopulse-workspace"
+name = "lumonox-workspace"
 version = "0.0.0"
-description = "Monorepo root for AutoPulse tooling"
+description = "Monorepo root for Lumonox tooling"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "autopulse-sdk",
-    "autopulse-api",
+    "lumonox-sdk",
+    "lumonox-api",
     "dotenv>=0.9.9",
     "pytz>=2026.1.post1",
 ]
 
 [tool.uv.sources]
-autopulse-sdk = { workspace = true }
-autopulse-api = { workspace = true }
+lumonox-sdk = { workspace = true }
+lumonox-api = { workspace = true }
 
 [tool.uv.workspace]
 members = ["sdk", "backend"]
@@ -39,7 +39,9 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 # FastAPI dependency defaults use `Query(...)` / `Depends(...)` calls (B008); keep explicit here.
-"backend/src/autopulse_backend/dashboard/routes/traces.py" = ["B008"]
+"backend/src/lumonox_backend/dashboard/routes/traces.py" = ["B008"]
+# Alembic autogenerate emits long single-line DDL.
+"backend/src/lumonox_backend/alembic/versions/*.py" = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -56,16 +58,16 @@ skip_covered = true
 [tool.mypy]
 python_version = "3.11"
 strict = true
-packages = ["autopulse", "autopulse_backend"]
+packages = ["lumonox", "lumonox_backend"]
 mypy_path = "sdk/src:backend/src"
 explicit_package_bases = true
 namespace_packages = true
 
 [[tool.mypy.overrides]]
-module = "autopulse_backend.alembic.*"
+module = "lumonox_backend.alembic.*"
 # Alembic revision modules use dynamic SQLAlchemy typing patterns; keep them out of strict checks.
 ignore_errors = true
 
 [tool.bandit]
-targets = ["sdk/src/autopulse", "backend/src/autopulse_backend"]
+targets = ["sdk/src/lumonox", "backend/src/lumonox_backend"]
 skips = ["B101"]

@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from autopulse_backend.core.config import Settings
-from autopulse_backend.services.event_plane_shards import (
+from lumonox_backend.core.config import Settings
+from lumonox_backend.services.event_plane_shards import (
     EventPlaneBackpressureError,
     LocalAppendOnlyShardWriter,
     ShardDurabilityMode,
@@ -24,9 +24,7 @@ def _read_lines(path: Path) -> list[dict[str, object]]:
 
 def test_append_rows_writes_jsonl_and_fsyncs_in_always_mode(tmp_path: Path, monkeypatch) -> None:
     fsync_calls: list[int] = []
-    monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_shards.os.fsync", fsync_calls.append
-    )
+    monkeypatch.setattr("lumonox_backend.services.event_plane_shards.os.fsync", fsync_calls.append)
     writer = LocalAppendOnlyShardWriter(
         root_dir=tmp_path / "events-log",
         max_shard_bytes=10_000,
@@ -112,9 +110,7 @@ def test_rotates_shard_when_age_limit_is_reached(tmp_path: Path) -> None:
 
 def test_close_forces_fsync_even_when_runtime_mode_is_none(tmp_path: Path, monkeypatch) -> None:
     fsync_calls: list[int] = []
-    monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_shards.os.fsync", fsync_calls.append
-    )
+    monkeypatch.setattr("lumonox_backend.services.event_plane_shards.os.fsync", fsync_calls.append)
     writer = LocalAppendOnlyShardWriter(
         root_dir=tmp_path / "events-log",
         max_shard_bytes=10_000,
@@ -145,7 +141,7 @@ def test_append_events_to_shards_rejects_when_disk_below_backpressure_threshold(
         event_plane_backpressure_min_free_percent=10,
     )
     monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_shards.shutil.disk_usage",
+        "lumonox_backend.services.event_plane_shards.shutil.disk_usage",
         lambda _: SimpleNamespace(total=10_000, used=9_500, free=500),
     )
 
@@ -172,11 +168,11 @@ def test_append_events_to_shards_rejects_when_pending_shards_exceed_threshold(
         event_plane_backpressure_max_pending_shards=3,
     )
     monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_shards.shutil.disk_usage",
+        "lumonox_backend.services.event_plane_shards.shutil.disk_usage",
         lambda _: SimpleNamespace(total=10_000, used=1_000, free=9_000),
     )
     monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_shards._probe_pending_shards",
+        "lumonox_backend.services.event_plane_shards._probe_pending_shards",
         lambda *_: 4,
     )
     with pytest.raises(
@@ -205,7 +201,7 @@ def test_append_events_to_shards_registers_manifest_and_seals_rotated_shard(
         event_plane_backpressure_max_pending_shards=10_000,
     )
     monkeypatch.setattr(
-        "autopulse_backend.services.event_plane_shards.shutil.disk_usage",
+        "lumonox_backend.services.event_plane_shards.shutil.disk_usage",
         lambda _: SimpleNamespace(total=10_000, used=1_000, free=9_000),
     )
     shutdown_event_plane_shard_writer()
@@ -226,7 +222,7 @@ def test_append_events_to_shards_registers_manifest_and_seals_rotated_shard(
         assert second is not None
         manifest_path = tmp_path / "events-index" / "manifest.sqlite"
         assert manifest_path.is_file()
-        from autopulse_backend.services.event_plane_manifest import (
+        from lumonox_backend.services.event_plane_manifest import (
             ShardManifestState,
             SqliteShardManifest,
         )

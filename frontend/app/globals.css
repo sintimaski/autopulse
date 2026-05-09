@@ -88,7 +88,7 @@ body {
   @apply w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2;
 }
 
-/* Design tokens (Tailwind v4 @theme) — surfaces reference AutoPulse console chrome */
+/* Design tokens (Tailwind v4 @theme) — surfaces reference Lumonox console chrome */
 @theme {
   --color-ap-canvas: #f1f5f9;
   --radius-ap-card: 1rem;

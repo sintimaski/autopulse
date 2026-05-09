@@ -220,7 +220,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [themePreference, setThemePreference] = useState<ThemePreference>(
     () => readStoredDashboardThemePreference() ?? "system",
   );
-  const [excludeAutopulseTraffic, setExcludeAutopulseTraffic] = useState(true);
+  const [excludeLumonoxTraffic, setExcludeLumonoxTraffic] = useState(true);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -434,7 +434,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAlertSettings(bootstrapData.alert_settings);
         setThemePreference(bootstrapData.theme_settings.theme_preference);
         writeStoredDashboardThemePreference(bootstrapData.theme_settings.theme_preference);
-        setExcludeAutopulseTraffic(bootstrapData.theme_settings.exclude_autopulse_traffic);
+        setExcludeLumonoxTraffic(bootstrapData.theme_settings.exclude_lumonox_traffic);
         setApiKeys(bootstrapData.api_keys.items ?? []);
         setAlertCapabilities(bootstrapData.alert_capabilities.channels ?? []);
         setOnboardingStatus(bootstrapData.onboarding_status);
@@ -1309,7 +1309,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           credentials: "include",
           body: JSON.stringify({
             theme_preference: next,
-            exclude_autopulse_traffic: excludeAutopulseTraffic,
+            exclude_lumonox_traffic: excludeLumonoxTraffic,
           }),
         });
         if (!response.ok) {
@@ -1318,7 +1318,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const updated = (await response.json()) as ThemeSettings;
         setThemePreference(updated.theme_preference);
         writeStoredDashboardThemePreference(updated.theme_preference);
-        setExcludeAutopulseTraffic(updated.exclude_autopulse_traffic);
+        setExcludeLumonoxTraffic(updated.exclude_lumonox_traffic);
         return true;
       } catch {
         return false;
@@ -1326,10 +1326,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setThemeSettingsSaving(false);
       }
     },
-    [excludeAutopulseTraffic, hasDashboardSession],
+    [excludeLumonoxTraffic, hasDashboardSession],
   );
 
-  const saveExcludeAutopulseTraffic = useCallback(
+  const saveExcludeLumonoxTraffic = useCallback(
     async (next: boolean): Promise<boolean> => {
       if (!hasDashboardSession) {
         return false;
@@ -1344,7 +1344,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           credentials: "include",
           body: JSON.stringify({
             theme_preference: themePreference,
-            exclude_autopulse_traffic: next,
+            exclude_lumonox_traffic: next,
           }),
         });
         if (!response.ok) {
@@ -1353,7 +1353,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         const updated = (await response.json()) as ThemeSettings;
         setThemePreference(updated.theme_preference);
         writeStoredDashboardThemePreference(updated.theme_preference);
-        setExcludeAutopulseTraffic(updated.exclude_autopulse_traffic);
+        setExcludeLumonoxTraffic(updated.exclude_lumonox_traffic);
         setRefreshToken((n) => n + 1);
         return true;
       } catch {
@@ -1530,12 +1530,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   }, [reloadDashboardAuthSession]);
 
   const sqlFilterStorageKey = useMemo(
-    () => `autopulse.sql-filter-presets.${(sessionEmail ?? "anonymous").toLowerCase()}`,
+    () => `lumonox.sql-filter-presets.${(sessionEmail ?? "anonymous").toLowerCase()}`,
     [sessionEmail],
   );
   const scopePresetStorageKey = useMemo(
     () =>
-      `autopulse.scope-presets.${(sessionProjectId ?? "no-project").toLowerCase()}.${(sessionEmail ?? "anonymous").toLowerCase()}`,
+      `lumonox.scope-presets.${(sessionProjectId ?? "no-project").toLowerCase()}.${(sessionEmail ?? "anonymous").toLowerCase()}`,
     [sessionProjectId, sessionEmail],
   );
 
@@ -2385,7 +2385,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       retryWorkspaceBootstrap,
       retentionSettings,
       themePreference,
-      excludeAutopulseTraffic,
+      excludeLumonoxTraffic,
       errorGroupSort,
       loading,
       errorMessage,
@@ -2423,7 +2423,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       copyRunbookCommand,
       saveAlertSettings,
       saveThemePreference,
-      saveExcludeAutopulseTraffic,
+      saveExcludeLumonoxTraffic,
       saveRetentionSettings,
       refreshApiKeys,
       setActiveDashboardProject,
@@ -2524,7 +2524,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       retryWorkspaceBootstrap,
       retentionSettings,
       themePreference,
-      excludeAutopulseTraffic,
+      excludeLumonoxTraffic,
       errorGroupSort,
       loading,
       errorMessage,
@@ -2550,7 +2550,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       copyRunbookCommand,
       saveAlertSettings,
       saveThemePreference,
-      saveExcludeAutopulseTraffic,
+      saveExcludeLumonoxTraffic,
       saveRetentionSettings,
       refreshApiKeys,
       setActiveDashboardProject,

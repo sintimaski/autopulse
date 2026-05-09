@@ -1,7 +1,7 @@
 [project]
-name = "autopulse-api"
-version = "0.1.5"
-description = "AutoPulse backend ingestion API"
+name = "lumonox-api"
+version = "0.2.0"
+description = "Lumonox backend ingestion API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
@@ -33,7 +33,7 @@ build-backend = "hatchling.build"
 # Ship the Next static export inside the extracted tree used for wheels (nested under ``packages``)—avoids editable-install
 # breakage from wheel-only forced paths while keeping ``frontend/out`` out of Git.
 [tool.hatch.build.targets.sdist.force-include]
-"../frontend/out" = "src/autopulse_backend/dashboard_static"
+"../frontend/out" = "src/lumonox_backend/dashboard_static"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/autopulse_backend"]
+packages = ["src/lumonox_backend"]

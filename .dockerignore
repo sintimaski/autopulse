@@ -11,7 +11,7 @@ agents
 scripts
 
 # Local / editor / agent state
-.autopulse
+.lumonox
 .cursor
 .idea
 .vscode
@@ -41,7 +41,7 @@ frontend/playwright-report
 frontend/test-results
 frontend/tests
 
-# Backend: wheel only ships `src/autopulse_backend`; tests are not needed to install
+# Backend: wheel only ships `src/lumonox_backend`; tests are not needed to install
 backend/**/__pycache__
 backend/**/*.py[cod]
 backend/.pytest_cache

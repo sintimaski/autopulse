@@ -1,4 +1,4 @@
-# AutoPulse Detailed Development Process
+# Lumonox Detailed Development Process
 
 This document defines how we execute MVP delivery work in this repository.
 
@@ -26,7 +26,7 @@ uv sync --group dev
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+uv run bandit -c pyproject.toml -r sdk/src/lumonox -r backend/src/lumonox_backend
 uv run pytest
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
@@ -186,13 +186,13 @@ uv run mypy
 uv run pytest
 uv run ruff check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+uv run bandit -c pyproject.toml -r sdk/src/lumonox -r backend/src/lumonox_backend
 ```
 
 **Operational run modes (M5)**
 
-- One-off alert evaluation (cron/external scheduler): `uv run python -m autopulse_backend.jobs alerts-once`
-- One-off retention cleanup (cron/external scheduler): `uv run python -m autopulse_backend.jobs retention-once`
+- One-off alert evaluation (cron/external scheduler): `uv run python -m lumonox_backend.jobs alerts-once`
+- One-off retention cleanup (cron/external scheduler): `uv run python -m lumonox_backend.jobs retention-once`
 - Optional local/dev in-process scheduler: set `JOBS_ENABLE_SCHEDULER=true` and tune intervals with
   `JOBS_ALERT_INTERVAL_SECONDS` and `JOBS_RETENTION_INTERVAL_SECONDS`.
 - SDK benchmark command: `uv run pytest sdk/tests/test_benchmarks.py`
@@ -315,7 +315,7 @@ uv run mypy
 uv run pytest
 uv run ruff check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+uv run bandit -c pyproject.toml -r sdk/src/lumonox -r backend/src/lumonox_backend
 ```
 
 ## 6) Test Strategy by Repository Phase
@@ -347,7 +347,7 @@ All checks below must pass in one verification cycle and include evidence links
 
 ### 7.1 Required gate checks
 
-- **One-line integration:** verify a clean FastAPI sample app can enable AutoPulse with one line and no extra observability configuration.
+- **One-line integration:** verify a clean FastAPI sample app can enable Lumonox with one line and no extra observability configuration.
 - **First value speed:** after generating traffic, requests are visible in the dashboard within a few seconds.
 - **Error diagnosis:** induced exceptions are grouped and visible with stack traces.
 - **Core overview signals:** request rate, error rate, and average latency are visible and numerically plausible.
@@ -367,7 +367,7 @@ uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy
-uv run bandit -c pyproject.toml -r sdk/src/autopulse -r backend/src/autopulse_backend
+uv run bandit -c pyproject.toml -r sdk/src/lumonox -r backend/src/lumonox_backend
 npm --prefix frontend install
 npm --prefix frontend run lint
 npm --prefix frontend run typecheck
@@ -377,7 +377,7 @@ npm --prefix frontend run build
 
 Then perform the manual MVP scenario:
 
-1. Start `./scripts/run_synthetic_stack.sh` (or backend + synthetic app separately) and confirm the dashboard under `/autopulse/ui/` and ingest on the backend.
+1. Start `./scripts/run_synthetic_stack.sh` (or backend + synthetic app separately) and confirm the dashboard under `/lumonox/ui/` and ingest on the backend.
 2. Generate normal and failing traffic.
 3. Capture evidence for first-value time, grouped errors, and overview metrics.
 4. Simulate backend outage and verify host app continuity.

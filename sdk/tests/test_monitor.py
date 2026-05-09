@@ -12,11 +12,11 @@ import pytest
 from client_lifespan import lifespan_test_client
 from fastapi import FastAPI, Response
 
-from autopulse._infrastructure import InfrastructureSampler
-from autopulse._monitor import (
-    _AutoPulseMiddleware,
+from lumonox._infrastructure import InfrastructureSampler
+from lumonox._monitor import (
     _build_infrastructure_widget_payload,
     _EventDispatcher,
+    _LumonoxMiddleware,
     _MonitorConfig,
     _stable_error_hash,
     monitor,
@@ -75,7 +75,7 @@ def test_infrastructure_sampler_permission_error_fails_soft(
         def net_io_counters() -> object:
             raise PermissionError("sysctl denied")
 
-    monkeypatch.setattr("autopulse._infrastructure.psutil", _PsutilPermissionErrorStub)
+    monkeypatch.setattr("lumonox._infrastructure.psutil", _PsutilPermissionErrorStub)
     sampler = InfrastructureSampler(ttl_seconds=0.0)
     assert sampler.sample() == {}
     # Repeated failures should remain non-fatal.
@@ -133,7 +133,7 @@ def test_middleware_dashboard_widgets_attach_throttles() -> None:
         infrastructure_sampler=_StaticInfrastructureSampler({"host_cpu_percent": 1.0}),
         dashboard_widgets_attach_interval_s=3600.0,
     )
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/a")
     async def a() -> dict[str, bool]:
@@ -285,13 +285,13 @@ def test_monitor_rolls_back_when_startup_handler_registration_fails(
     startup_before = len(app.router.on_startup)
     shutdown_before = len(app.router.on_shutdown)
 
-    monkeypatch.setattr("autopulse._monitor._add_event_handler", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("lumonox._monitor._add_event_handler", lambda *_args, **_kwargs: False)
     monitor(app, api_key="k", ingest_url="https://example.test/ingest")
 
     assert len(app.user_middleware) == middleware_before
     assert len(app.router.on_startup) == startup_before
     assert len(app.router.on_shutdown) == shutdown_before
-    assert getattr(app.state, "_autopulse_configured", False) is False
+    assert getattr(app.state, "_lumonox_configured", False) is False
 
 
 def test_monitor_rolls_back_when_shutdown_handler_registration_fails(
@@ -307,13 +307,13 @@ def test_monitor_rolls_back_when_shutdown_handler_registration_fails(
         calls["n"] += 1
         return calls["n"] == 1
 
-    monkeypatch.setattr("autopulse._monitor._add_event_handler", _add_event_handler_once_then_fail)
+    monkeypatch.setattr("lumonox._monitor._add_event_handler", _add_event_handler_once_then_fail)
     monitor(app, api_key="k", ingest_url="https://example.test/ingest")
 
     assert len(app.user_middleware) == middleware_before
     assert len(app.router.on_startup) == startup_before
     assert len(app.router.on_shutdown) == shutdown_before
-    assert getattr(app.state, "_autopulse_configured", False) is False
+    assert getattr(app.state, "_lumonox_configured", False) is False
 
 
 def test_monitor_rolls_back_handlers_when_middleware_attach_fails() -> None:
@@ -331,7 +331,7 @@ def test_monitor_rolls_back_handlers_when_middleware_attach_fails() -> None:
     assert len(app.user_middleware) == middleware_before
     assert len(app.router.on_startup) == startup_before
     assert len(app.router.on_shutdown) == shutdown_before
-    assert getattr(app.state, "_autopulse_configured", False) is False
+    assert getattr(app.state, "_lumonox_configured", False) is False
 
 
 def test_middleware_records_wire_path_when_request_is_under_mount_prefix() -> None:
@@ -342,24 +342,24 @@ def test_middleware_records_wire_path_when_request_is_under_mount_prefix() -> No
     async def inner_health() -> dict[str, str]:
         return {"ok": "true"}
 
-    main.mount("/autopulse", inner)
+    main.mount("/lumonox", inner)
     dispatcher = _CapturingDispatcher()
-    config = _make_config(mount_prefix="/autopulse")
-    main.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    config = _make_config(mount_prefix="/lumonox")
+    main.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     with lifespan_test_client(main) as client:
-        response = client.get("/autopulse/dashboard/health")
+        response = client.get("/lumonox/dashboard/health")
 
     assert response.status_code == 200
     assert len(dispatcher.events) == 1
-    assert dispatcher.events[0]["path"] == "/autopulse/dashboard/health"
+    assert dispatcher.events[0]["path"] == "/lumonox/dashboard/health"
 
 
 def test_middleware_captures_request_event_with_route_template() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()
     config = _make_config()
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/items/{item_id}")
     async def read_item(item_id: int) -> dict[str, int]:
@@ -385,7 +385,7 @@ def test_middleware_respects_capture_toggles() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()
     config = _make_config(capture_headers=False, capture_query_params=False)
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/items/{item_id}")
     async def read_item(item_id: int) -> dict[str, int]:
@@ -405,7 +405,7 @@ def test_middleware_ignores_configured_path_prefixes() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()
     config = _make_config(ignore_path_prefixes=("/health",))
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/health")
     async def health() -> dict[str, bool]:
@@ -422,7 +422,7 @@ def test_middleware_sampling_drops_success_events_but_keeps_5xx() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()
     config = _make_config(request_sample_rate=0.0)
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/ok")
     async def ok() -> dict[str, bool]:
@@ -455,7 +455,7 @@ def test_middleware_attaches_infrastructure_metrics_when_enabled() -> None:
             }
         )
     )
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/status")
     async def status() -> dict[str, bool]:
@@ -511,7 +511,7 @@ def test_dispatcher_emits_infrastructure_probe_events() -> None:
         probe_events = [
             event
             for event in flattened_events
-            if event.get("path") == "/autopulse/internal/infrastructure-probe"
+            if event.get("path") == "/lumonox/internal/infrastructure-probe"
         ]
         assert probe_events
         first = probe_events[0]
@@ -527,7 +527,7 @@ def test_middleware_captures_error_and_reraises_original_exception() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()
     config = _make_config()
-    app.add_middleware(_AutoPulseMiddleware, dispatcher=dispatcher, config=config)
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
 
     @app.get("/boom/{item_id}")
     async def explode(item_id: int) -> dict[str, int]:

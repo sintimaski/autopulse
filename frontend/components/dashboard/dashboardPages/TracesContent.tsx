@@ -370,11 +370,11 @@ export function TracesContent() {
                 </li>
                 <li>
                   <code className="font-mono text-[0.7rem]">curl</code> and this dashboard must hit the{" "}
-                  <strong>same backend</strong> and DuckDB file (same <code className="font-mono text-[0.7rem]">AUTOPULSE_DATA_DIR</code>{" "}
+                  <strong>same backend</strong> and DuckDB file (same <code className="font-mono text-[0.7rem]">LUMONOX_DATA_DIR</code>{" "}
                   / event store path).
                 </li>
                 <li>
-                  Tracing explorer needs <code className="font-mono text-[0.7rem]">AUTOPULSE_EVENT_STORE=duckdb</code>
+                  Tracing explorer needs <code className="font-mono text-[0.7rem]">LUMONOX_EVENT_STORE=duckdb</code>
                   . If search returns 400 mentioning DuckDB, the store is off.
                 </li>
               </ul>

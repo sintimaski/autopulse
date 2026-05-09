@@ -12,7 +12,7 @@ import {
   isRumClientSampled,
 } from "../lib/rumRuntime";
 
-const RUM_ENABLED = process.env.NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED === "1";
+const RUM_ENABLED = process.env.NEXT_PUBLIC_LUMONOX_RUM_ENABLED === "1";
 
 export function RumClient() {
   const pathname = usePathname() ?? "/";

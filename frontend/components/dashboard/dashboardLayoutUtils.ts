@@ -47,7 +47,7 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   },
   "/onboarding": {
     title: "Onboarding",
-    subtitle: ".env.autopulse, first ingest, diagnosis.",
+    subtitle: ".env.lumonox, first ingest, diagnosis.",
   },
 };
 

@@ -7,9 +7,9 @@ from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.app import create_app
-from autopulse_backend.auth import generate_api_key
-from autopulse_backend.models import ApiKey, Project
+from lumonox_backend.app import create_app
+from lumonox_backend.auth import generate_api_key
+from lumonox_backend.models import ApiKey, Project
 
 
 def _seed_project_and_key(database_url: str) -> str:

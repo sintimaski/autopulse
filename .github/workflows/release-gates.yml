@@ -9,10 +9,10 @@ jobs:
   release-gates:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: sqlite+aiosqlite:///./autopulse_release_gates.db
-      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./autopulse_release_gates_test.db
-      AUTOPULSE_EVENT_STORE: duckdb
-      AUTOPULSE_DUCKDB_PATH: ./.autopulse/release-gates-events.duckdb
+      DATABASE_URL: sqlite+aiosqlite:///./lumonox_release_gates.db
+      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./lumonox_release_gates_test.db
+      LUMONOX_EVENT_STORE: duckdb
+      LUMONOX_DUCKDB_PATH: ./.lumonox/release-gates-events.duckdb
     steps:
       - uses: actions/checkout@v4
 

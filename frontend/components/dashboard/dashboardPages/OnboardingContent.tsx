@@ -64,7 +64,7 @@ export function OnboardingContent() {
             <>
               Static UI on the API host uses a repo-root{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-950">
-                .env.autopulse
+                .env.lumonox
               </code>{" "}
               file for ingest + Next public keys. Source it before{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-950">
@@ -73,7 +73,7 @@ export function OnboardingContent() {
               , then restart the backend if needed.
             </>
           ) : (
-            "Put the issued key in your app as AUTOPULSE_API_KEY and set AUTOPULSE_INGEST_URL to /ingest on your backend."
+            "Put the issued key in your app as LUMONOX_API_KEY and set LUMONOX_INGEST_URL to /ingest on your backend."
           )}
         </p>
         <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
@@ -95,8 +95,8 @@ export function OnboardingContent() {
           <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
             {canIssueKeys
               ? subpathUi
-                ? "Issue below only if you want a new token; dashboard auto-syncs .env.autopulse. Rebuild UI after key changes."
-                : "Issue, then copy into host env as AUTOPULSE_API_KEY."
+                ? "Issue below only if you want a new token; dashboard auto-syncs .env.lumonox. Rebuild UI after key changes."
+                : "Issue, then copy into host env as LUMONOX_API_KEY."
               : "Ask an organization owner or admin to issue or rotate the ingest key."}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -108,7 +108,7 @@ export function OnboardingContent() {
                 setMessage(
                   ok
                     ? subpathUi
-                      ? "Issued — .env.autopulse synced automatically. Rebuild UI + restart host."
+                      ? "Issued — .env.lumonox synced automatically. Rebuild UI + restart host."
                       : "Issued — copy into host env and restart app."
                     : "Issue failed.",
                 );

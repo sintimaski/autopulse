@@ -115,7 +115,7 @@ describe("dashboardSnapshotCache", () => {
     dateNowSpy.mockReturnValue(now);
     const scopeKey = "ttl-scope";
     window.localStorage.setItem(
-      "autopulse.dashboard.data.v1",
+      "lumonox.dashboard.data.v1",
       JSON.stringify({
         scopeKey,
         savedAt: new Date(now - 30_000).toISOString(),

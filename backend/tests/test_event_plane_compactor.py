@@ -10,12 +10,12 @@ from uuid import uuid4
 import duckdb
 import pytest
 
-from autopulse_backend.services.event_plane_compactor import EventPlaneCompactor
-from autopulse_backend.services.event_plane_manifest import (
+from lumonox_backend.services.event_plane_compactor import EventPlaneCompactor
+from lumonox_backend.services.event_plane_manifest import (
     ShardManifestState,
     SqliteShardManifest,
 )
-from autopulse_backend.services.event_store import (
+from lumonox_backend.services.event_store import (
     EventStoreFilters,
     get_duckdb_read_store_for_path,
     shutdown_duckdb_event_store,

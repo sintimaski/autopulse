@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import duckdb
 
-from autopulse_backend.services.event_store import DuckDbEventStore, EventStoreFilters
+from lumonox_backend.services.event_store import DuckDbEventStore, EventStoreFilters
 
 
 def test_duckdb_event_store_insert_filter_and_delete(tmp_path) -> None:
@@ -329,10 +329,10 @@ def test_duckdb_event_rotation_deletes_eldest_by_event_timestamp(tmp_path) -> No
 def test_duckdb_hybrid_hot_cold_reads_old_data_from_parquet(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "events_hybrid.duckdb"
     parquet_root = tmp_path / "parquet"
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_QUERY_ENABLED", "true")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_HOT_WINDOW_HOURS", "24")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(parquet_root))
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_PARQUET_QUERY_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_PARQUET_HOT_WINDOW_HOURS", "24")
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ROOT", str(parquet_root))
     store = DuckDbEventStore(str(db_path))
     project_id = uuid4()
     now = datetime.now(tz=UTC)
@@ -398,10 +398,10 @@ def test_duckdb_hybrid_hot_cold_reads_old_data_from_parquet(tmp_path, monkeypatc
 
 def test_duckdb_hybrid_falls_back_to_hot_store_when_no_parquet_files(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "events_hybrid_fallback.duckdb"
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_QUERY_ENABLED", "true")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_HOT_WINDOW_HOURS", "24")
-    monkeypatch.setenv("AUTOPULSE_PARQUET_EXPORT_ROOT", str(tmp_path / "missing-parquet"))
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_PARQUET_QUERY_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_PARQUET_HOT_WINDOW_HOURS", "24")
+    monkeypatch.setenv("LUMONOX_PARQUET_EXPORT_ROOT", str(tmp_path / "missing-parquet"))
     store = DuckDbEventStore(str(db_path))
     project_id = uuid4()
     now = datetime.now(tz=UTC)

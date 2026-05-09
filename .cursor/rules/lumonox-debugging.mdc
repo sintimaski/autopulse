@@ -1,0 +1,35 @@
+---
+description: Debug with reproducible evidence, not guesses
+alwaysApply: true
+---
+
+# Lumonox — evidence-based debugging
+
+When a report is vague ("doesn't work", "retention never runs", UI wrong), do not guess. Build a short repro, gather runtime evidence, and only then patch.
+
+## Standard repro stack (default)
+
+- Default DB: file-backed SQLite from `backend/.env` unless issue is clearly Postgres-only.
+- Backend from `backend/`; validate startup plus `/health`, `/ready`, and `/internal/metrics` when jobs or retention are involved.
+- Frontend from `frontend/` for dashboard/auth/browser API issues.
+
+## Evidence checklist before code changes
+
+- Exact repro steps: URL, action, expected, actual.
+- Observable signals: status codes, response JSON fields, log lines, and relevant metrics flags.
+- Search for swallowed exceptions (`suppress`, broad `except`) and add targeted logging where needed.
+
+## Temporary instrumentation policy
+
+- Prefer `logging` in backend code; avoid permanent `print`.
+- Temporary probes/scratch scripts are allowed only during investigation and must be removed before final handoff.
+- Never log API keys, magic link tokens, or full PII.
+
+## Retry discipline
+
+- Do not repeat the same failed action without new evidence.
+- After 3 failed attempts, summarize blocker, evidence gathered, and best next action.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

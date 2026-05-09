@@ -14,4 +14,4 @@ alwaysApply: false
 
 ## Rule self-review
 
-When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

@@ -10,7 +10,7 @@ import { DASHBOARD_NAV_SECTIONS } from "./dashboardNavConfig";
 import { isApiSubpathDashboard } from "./dashboardTypes";
 import { NavIaMigrationBanner } from "./NavIaMigrationBanner";
 
-const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
+const SIDEBAR_COLLAPSED_KEY = "lumonox.sidebarCollapsed";
 
 const DEV_NAV: readonly { href: string; label: string; Icon: LucideIcon }[] = [
   { href: "/widgets-showcase", label: "Widgets", Icon: LayoutGrid },
@@ -124,7 +124,7 @@ export function DashboardAppShell({
                 <div className="min-w-0 flex-1 px-1">
                   <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-sky-400/90 dark:text-neutral-400">
                     <Activity className="size-3.5 shrink-0 text-sky-400/90 dark:text-sky-400/70" aria-hidden />
-                    AutoPulse
+                    Lumonox
                   </p>
                   <p className="mt-1 text-sm font-semibold tracking-tight">Console</p>
                 </div>
@@ -279,7 +279,7 @@ export function DashboardAppShell({
           </main>
 
           <footer className="border-t border-slate-200/80 bg-white/85 px-4 py-4 text-center text-sm text-slate-500 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/80 dark:text-neutral-400 sm:px-6">
-            <span className="text-slate-600 dark:text-neutral-300">AutoPulse</span>
+            <span className="text-slate-600 dark:text-neutral-300">Lumonox</span>
             {" — "}
             Ingest at{" "}
             <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">
@@ -288,7 +288,7 @@ export function DashboardAppShell({
             {" · "}
             {isApiSubpathDashboard() ? (
               <>
-                Local UI bundle: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">.env.autopulse</code>
+                Local UI bundle: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">.env.lumonox</code>
                 ping.
               </>
             ) : (

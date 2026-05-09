@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from autopulse._jobs import capture_background_job
+from lumonox._jobs import capture_background_job
 
 
 def test_capture_background_job_is_silent_without_dispatcher() -> None:
@@ -27,8 +27,8 @@ def test_capture_background_job_enqueues_when_dispatcher_present() -> None:
 
     app = SimpleNamespace(
         state=SimpleNamespace(
-            _autopulse_dispatcher=_Disp(),
-            _autopulse_config=SimpleNamespace(service_name="svc", environment="staging"),
+            _lumonox_dispatcher=_Disp(),
+            _lumonox_config=SimpleNamespace(service_name="svc", environment="staging"),
         )
     )
     capture_background_job(

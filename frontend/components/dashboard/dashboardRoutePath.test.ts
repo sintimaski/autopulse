@@ -4,8 +4,8 @@ import { logicalDashboardLocationHrefWithPrefix, toDashboardRoutePath } from "./
 
 describe("toDashboardRoutePath", () => {
   it("strips static UI base path", () => {
-    expect(toDashboardRoutePath("/autopulse/ui/dashboard/")).toBe("/dashboard");
-    expect(toDashboardRoutePath("/autopulse/ui")).toBe("/");
+    expect(toDashboardRoutePath("/lumonox/ui/dashboard/")).toBe("/dashboard");
+    expect(toDashboardRoutePath("/lumonox/ui")).toBe("/");
   });
 });
 
@@ -15,19 +15,19 @@ describe("logicalDashboardLocationHrefWithPrefix", () => {
   });
 
   it("prefixes static export base path and adds trailing slash before query", () => {
-    expect(logicalDashboardLocationHrefWithPrefix("/dashboard?w=5", "/autopulse/ui")).toBe(
-      "/autopulse/ui/dashboard/?w=5",
+    expect(logicalDashboardLocationHrefWithPrefix("/dashboard?w=5", "/lumonox/ui")).toBe(
+      "/lumonox/ui/dashboard/?w=5",
     );
   });
 
   it("handles hash-only suffix", () => {
-    expect(logicalDashboardLocationHrefWithPrefix("/dashboard#x", "/autopulse/ui")).toBe(
-      "/autopulse/ui/dashboard/#x",
+    expect(logicalDashboardLocationHrefWithPrefix("/dashboard#x", "/lumonox/ui")).toBe(
+      "/lumonox/ui/dashboard/#x",
     );
   });
 
   it("maps logical root", () => {
-    expect(logicalDashboardLocationHrefWithPrefix("/", "/autopulse/ui")).toBe("/autopulse/ui/");
-    expect(logicalDashboardLocationHrefWithPrefix("/?x=1", "/autopulse/ui")).toBe("/autopulse/ui/?x=1");
+    expect(logicalDashboardLocationHrefWithPrefix("/", "/lumonox/ui")).toBe("/lumonox/ui/");
+    expect(logicalDashboardLocationHrefWithPrefix("/?x=1", "/lumonox/ui")).toBe("/lumonox/ui/?x=1");
   });
 });

@@ -6,7 +6,7 @@ from time import perf_counter
 from client_lifespan import lifespan_test_client
 from fastapi import FastAPI
 
-from autopulse import monitor
+from lumonox import monitor
 
 _ITERATIONS = 80
 _WARMUP_REQUESTS = 10

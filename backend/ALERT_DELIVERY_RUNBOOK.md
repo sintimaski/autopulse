@@ -14,7 +14,7 @@ Set one of the minimal sender configurations:
 - Email (zero-config dev outbox; writes `.eml` locally):
   - `ALERT_SENDER_MODE=email`
   - `ALERT_EMAIL_PROVIDER=file`
-  - optional: `ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails`
+  - optional: `ALERT_EMAIL_FILE_OUTBOX_DIR=./.lumonox/emails`
   - optional: `ALERT_EMAIL_FROM=alerts@localhost`
 - Email (no SaaS, requires local MTA present):
   - `ALERT_SENDER_MODE=email`
@@ -41,7 +41,7 @@ Set one of the minimal sender configurations:
 ## 2) Trigger one evaluation pass
 
 ```bash
-uv run python -m autopulse_backend.jobs alerts-once
+uv run python -m lumonox_backend.jobs alerts-once
 ```
 
 The command prints the number of successfully sent alerts in that run.

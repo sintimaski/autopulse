@@ -1,6 +1,6 @@
-# AutoPulse Development Brief
+# Lumonox Development Brief
 
-AutoPulse is a plug-and-play observability product for FastAPI applications. The core promise is:
+Lumonox is a plug-and-play observability product for FastAPI applications. The core promise is:
 
 > Useful visibility into a FastAPI app in two minutes, without learning observability infrastructure.
 
@@ -8,7 +8,7 @@ This document is the cleaned development source of truth.
 
 ## Product Positioning
 
-AutoPulse is not a general-purpose Grafana, Datadog, or Sentry replacement. It is an opinionated, Python-native tool for solo developers, indie hackers, and small backend teams that want instant insight into API traffic, errors, and latency.
+Lumonox is not a general-purpose Grafana, Datadog, or Sentry replacement. It is an opinionated, Python-native tool for solo developers, indie hackers, and small backend teams that want instant insight into API traffic, errors, and latency.
 
 Primary wedge:
 
@@ -61,7 +61,7 @@ SDK:
 - Async, non-blocking buffering.
 - Background batch sender.
 - Retry with bounded attempts.
-- Silent failure when AutoPulse is unavailable.
+- Silent failure when Lumonox is unavailable.
 - Default sensitive data scrubbing.
 
 Backend:
@@ -115,7 +115,7 @@ Start as hosted SaaS. Add self-hosting later only if there is clear demand.
 ```
 FastAPI App
   |
-  | AutoPulse SDK middleware
+  | Lumonox SDK middleware
   v
 In-memory async buffer
   |
@@ -141,11 +141,11 @@ Next.js dashboard
 ### Storage note (local dev defaults)
 
 - Keep relational metadata (projects, keys, UI settings, alerts) in SQL (`DATABASE_URL`).
-- Store high-volume raw events in DuckDB by default (`AUTOPULSE_EVENT_STORE=duckdb`).
-- **DuckDB file path:** relative `AUTOPULSE_DUCKDB_PATH` values are anchored to the **AutoPulse data root** (monorepo checkout root, or `AUTOPULSE_DATA_DIR` / `AUTOPULSE_PROJECT_ROOT`), not the process cwd—so ingest, dashboard queries, retention, and CLI jobs always open the same file. See `normalize_event_store_duckdb_path` / `resolve_autopulse_data_root` in `backend/src/autopulse_backend/core/config.py` and `docs/ops/BACKUP_RESTORE.md` (migration note if you previously relied on cwd-relative files).
+- Store high-volume raw events in DuckDB by default (`LUMONOX_EVENT_STORE=duckdb`).
+- **DuckDB file path:** relative `LUMONOX_DUCKDB_PATH` values are anchored to the **Lumonox data root** (monorepo checkout root, or `LUMONOX_DATA_DIR` / `LUMONOX_PROJECT_ROOT`), not the process cwd—so ingest, dashboard queries, retention, and CLI jobs always open the same file. See `normalize_event_store_duckdb_path` / `resolve_lumonox_data_root` in `backend/src/lumonox_backend/core/config.py` and `docs/ops/BACKUP_RESTORE.md` (migration note if you previously relied on cwd-relative files).
 - Preserve dashboard API contracts while event reads migrate behind an event-store abstraction.
 - Keep a `sqlite` event-store fallback mode for rollout safety.
-- **Parquet cold storage (optional):** on-disk Parquet export, retention/compaction lifecycle, hybrid hot/cold reads, and S3-compatible object sync are operator-facing in **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (see the Parquet / lifecycle / object storage section). Relative `AUTOPULSE_PARQUET_EXPORT_ROOT` and `AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT` values are resolved under the same AutoPulse data root as the DuckDB path helpers in `backend/src/autopulse_backend/core/config.py`.
+- **Parquet cold storage (optional):** on-disk Parquet export, retention/compaction lifecycle, hybrid hot/cold reads, and S3-compatible object sync are operator-facing in **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (see the Parquet / lifecycle / object storage section). Relative `LUMONOX_PARQUET_EXPORT_ROOT` and `LUMONOX_PARQUET_OBJECT_STORAGE_RESTORE_ROOT` values are resolved under the same Lumonox data root as the DuckDB path helpers in `backend/src/lumonox_backend/core/config.py`.
 - **Production rollout:** topology, health probes, SLO budgets, backups, and drills are summarized in **[docs/ops/PRODUCTION_DEPLOYMENT.md](./docs/ops/PRODUCTION_DEPLOYMENT.md)** (canonical; use it instead of piecing ops docs ad hoc).
 
 SDK:
@@ -183,7 +183,7 @@ Ideal integration:
 
 ```python
 from fastapi import FastAPI
-from autopulse import monitor
+from lumonox import monitor
 
 app = FastAPI()
 monitor(app)
@@ -206,12 +206,12 @@ DX principles:
 - No config file required.
 - Environment variables are supported but not required for local use.
 - Local development should degrade gracefully, such as console output or no-op mode.
-- Missing or invalid AutoPulse configuration must never break the user's app.
+- Missing or invalid Lumonox configuration must never break the user's app.
 - Documentation should fit on one page for the MVP.
 
 ## SDK Behavior
 
-The SDK must be safe to install in production apps. It should never make the observed application depend on AutoPulse availability.
+The SDK must be safe to install in production apps. It should never make the observed application depend on Lumonox availability.
 
 Request lifecycle:
 
@@ -480,7 +480,7 @@ Avoid complex alert builders in the MVP.
 
 ## Security And Privacy
 
-AutoPulse may receive sensitive application metadata. Default behavior must be conservative.
+Lumonox may receive sensitive application metadata. Default behavior must be conservative.
 
 Never capture by default:
 
@@ -532,7 +532,7 @@ Better Stack / Logtail:
 - Cleaner logging experience.
 - Weakness for this niche: not FastAPI-native and still requires users to think about log shipping or pipelines.
 
-AutoPulse assumption:
+Lumonox assumption:
 
 > The user refuses to configure observability.
 
@@ -581,7 +581,7 @@ SDK slows user app:
 
 - Use async middleware, bounded queues, batching, and benchmarks.
 
-AutoPulse outage affects user app:
+Lumonox outage affects user app:
 
 - Fail silently and drop events after bounded retries.
 
@@ -680,10 +680,10 @@ Post-MVP directions worth tracking; not required to validate the core loop.
 
 ### 1. Local agent (sidecar)
 
-**Idea:** instead of the SDK sending directly to AutoPulse over the internet on every batch:
+**Idea:** instead of the SDK sending directly to Lumonox over the internet on every batch:
 
 ```
-FastAPI app  →  local agent  →  AutoPulse backend
+FastAPI app  →  local agent  →  Lumonox backend
 ```
 
 The app talks to a process on `localhost` (or a Unix socket); the agent owns outbound HTTPS.
@@ -695,7 +695,7 @@ The app talks to a process on `localhost` (or a Unix socket); the agent owns out
 - **Operational fit** — one agent per host or per container can serve several processes; easier firewall rules (egress from agent only).
 - **Language-agnostic path** — same agent could eventually accept OTLP-like or JSON from other runtimes.
 
-A **Rust** (or otherwise native) agent is a reasonable implementation choice for CPU-efficient serialization, compression, and long-lived connection handling. It is an optimization and deployment story, not the initial reason someone adopts AutoPulse.
+A **Rust** (or otherwise native) agent is a reasonable implementation choice for CPU-efficient serialization, compression, and long-lived connection handling. It is an optimization and deployment story, not the initial reason someone adopts Lumonox.
 
 **Tradeoffs:** extra install step, versioning the agent with the SDK, and debugging “app vs agent” when misconfigured. Keep direct SDK → `POST /ingest` as the default until agent demand is clear.
 
@@ -711,7 +711,7 @@ A **Rust** (or otherwise native) agent is a reasonable implementation choice for
 
 The MVP is ready to launch when:
 
-- A FastAPI developer can integrate AutoPulse with one line.
+- A FastAPI developer can integrate Lumonox with one line.
 - Requests appear in the dashboard within a few seconds.
 - Exceptions are grouped and visible with stack traces.
 - Basic request rate, error rate, and latency are visible.

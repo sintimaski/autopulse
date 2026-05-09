@@ -13,10 +13,10 @@ jobs:
   python-sqlite:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: sqlite+aiosqlite:///./autopulse_ci.db
-      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./autopulse_ci_test.db
-      AUTOPULSE_EVENT_STORE: duckdb
-      AUTOPULSE_DUCKDB_PATH: ./.autopulse/ci-events.duckdb
+      DATABASE_URL: sqlite+aiosqlite:///./lumonox_ci.db
+      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./lumonox_ci_test.db
+      LUMONOX_EVENT_STORE: duckdb
+      LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events.duckdb
     steps:
       - uses: actions/checkout@v4
 
@@ -38,21 +38,21 @@ jobs:
         run: uv run mypy
 
       - name: Bandit
-        run: uv run bandit -c pyproject.toml -r sdk/src/autopulse backend/src/autopulse_backend
+        run: uv run bandit -c pyproject.toml -r sdk/src/lumonox backend/src/lumonox_backend
 
       - name: pip-audit
         run: uv run pip-audit
 
       - name: Pytest (SQLite + coverage)
-        run: uv run pytest --cov=autopulse --cov=autopulse_backend --cov-report=term-missing
+        run: uv run pytest --cov=lumonox --cov=lumonox_backend --cov-report=term-missing
 
-      - name: Packaging smoke (autopulse-sdk wheel)
-        run: uv build --package autopulse-sdk --wheel -o packaging-dist && rm -rf packaging-dist
+      - name: Packaging smoke (lumonox-sdk wheel)
+        run: uv build --package lumonox-sdk --wheel -o packaging-dist && rm -rf packaging-dist
 
       - name: Backend job smoke (alerts + retention once)
         run: |
-          uv run python -m autopulse_backend.jobs alerts-once >/dev/null
-          uv run python -m autopulse_backend.jobs retention-once >/dev/null
+          uv run python -m lumonox_backend.jobs alerts-once >/dev/null
+          uv run python -m lumonox_backend.jobs retention-once >/dev/null
 
   python-postgres:
     runs-on: ubuntu-latest
@@ -60,21 +60,21 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: autopulse
-          POSTGRES_PASSWORD: autopulse
-          POSTGRES_DB: autopulse_ci
+          POSTGRES_USER: lumonox
+          POSTGRES_PASSWORD: lumonox
+          POSTGRES_DB: lumonox_ci
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U autopulse -d autopulse_ci"
+          --health-cmd "pg_isready -U lumonox -d lumonox_ci"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgresql+asyncpg://autopulse:autopulse@127.0.0.1:5432/autopulse_ci
-      BACKEND_TEST_DATABASE_URL: postgresql+asyncpg://autopulse:autopulse@127.0.0.1:5432/autopulse_ci
-      AUTOPULSE_EVENT_STORE: duckdb
-      AUTOPULSE_DUCKDB_PATH: ./.autopulse/ci-events-postgres.duckdb
+      DATABASE_URL: postgresql+asyncpg://lumonox:lumonox@127.0.0.1:5432/lumonox_ci
+      BACKEND_TEST_DATABASE_URL: postgresql+asyncpg://lumonox:lumonox@127.0.0.1:5432/lumonox_ci
+      LUMONOX_EVENT_STORE: duckdb
+      LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events-postgres.duckdb
     steps:
       - uses: actions/checkout@v4
 
@@ -132,21 +132,21 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           uv build backend -o /tmp/ap-wheel-smoke
-          unzip -l /tmp/ap-wheel-smoke/autopulse_api-*-py3-none-any.whl | grep -Fq "autopulse_backend/dashboard_static/index.html"
+          unzip -l /tmp/ap-wheel-smoke/lumonox_api-*-py3-none-any.whl | grep -Fq "lumonox_backend/dashboard_static/index.html"
 
   browser-smoke:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: sqlite+aiosqlite:///./autopulse_e2e.db
-      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./autopulse_e2e_test.db
-      AUTOPULSE_EVENT_STORE: duckdb
-      AUTOPULSE_DUCKDB_PATH: ./.autopulse/e2e-events.duckdb
-      AUTOPULSE_FRONTEND_STATIC_DIR: frontend/out
+      DATABASE_URL: sqlite+aiosqlite:///./lumonox_e2e.db
+      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./lumonox_e2e_test.db
+      LUMONOX_EVENT_STORE: duckdb
+      LUMONOX_DUCKDB_PATH: ./.lumonox/e2e-events.duckdb
+      LUMONOX_FRONTEND_STATIC_DIR: frontend/out
       DASHBOARD_AUTH_ENABLED: "true"
       DASHBOARD_AUTH_ALLOWED_EMAIL: e2e@example.com
       DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN: "true"
       INTERNAL_METRICS_BEARER_TOKEN: e2e-internal-token
-      E2E_BASE_URL: http://127.0.0.1:8000/autopulse/ui
+      E2E_BASE_URL: http://127.0.0.1:8000/lumonox/ui
       E2E_DASHBOARD_EMAIL: e2e@example.com
     steps:
       - uses: actions/checkout@v4
@@ -180,8 +180,8 @@ jobs:
 
       - name: Start backend
         run: |
-          uv run uvicorn autopulse_backend.main:app --app-dir backend/src --host 127.0.0.1 --port 8000 --log-level info &
-          echo $! > /tmp/autopulse-api.pid
+          uv run uvicorn lumonox_backend.main:app --app-dir backend/src --host 127.0.0.1 --port 8000 --log-level info &
+          echo $! > /tmp/lumonox-api.pid
 
       - name: Wait for backend readiness
         run: |
@@ -201,6 +201,6 @@ jobs:
       - name: Stop backend
         if: always()
         run: |
-          if [ -f /tmp/autopulse-api.pid ]; then
-            kill "$(cat /tmp/autopulse-api.pid)" || true
+          if [ -f /tmp/lumonox-api.pid ]; then
+            kill "$(cat /tmp/lumonox-api.pid)" || true
           fi

@@ -477,7 +477,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
               ? "DB has a key"
               : "Ready"
             : subpathStaticUi
-              ? "Issue or .env.autopulse"
+              ? "Issue or .env.lumonox"
               : "Issue in onboarding"}
         </p>
       </div>

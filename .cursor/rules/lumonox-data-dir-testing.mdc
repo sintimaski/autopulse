@@ -1,0 +1,30 @@
+---
+description: LUMONOX_DATA_DIR=/tmp/lx-test only for tests/debug; normal runs use repo .lumonox
+alwaysApply: false
+---
+# Lumonox data dir — tests and debug only
+
+## When to use a clean temp root (`LUMONOX_DATA_DIR=/tmp/lx-test`)
+
+- **Pytest / integration tests**: set `LUMONOX_DATA_DIR` to a **disposable directory** (e.g. `tmp_path` via `monkeypatch.setenv("LUMONOX_DATA_DIR", ...)`, or `/tmp/lx-test` for ad-hoc local runs) so DuckDB and other file-backed state **do not** pollute the repo’s `.lumonox/` tree or collide with a dev server.
+- **Short-lived debug sessions**: same pattern if you need a guaranteed-clean slate.
+
+Prefer **`tmp_path`** in committed tests over a hardcoded `/tmp/lx-test` path so runs are parallel-safe and CI-friendly.
+
+## Normal development and production
+
+- **Do not** set `LUMONOX_DATA_DIR=/tmp/lx-test` (or any `/tmp/...`) for regular API/dashboard/synthetic-stack usage.
+- Leave **`LUMONOX_DATA_DIR` unset** so `resolve_lumonox_data_root()` in `backend/src/lumonox_backend/core/config.py` picks the monorepo root (or your explicit production data directory). DuckDB then lives under **`{data_root}/.lumonox/`** (default relative `LUMONOX_DUCKDB_PATH` → e.g. repo `.lumonox/events.duckdb`).
+- **Never** commit `backend/.env` (or similar) with production pointed at `/tmp`.
+
+## Scripts
+
+- `scripts/run_synthetic_stack.sh` / `scripts/run_remote_stack.sh` set `LUMONOX_DATA_DIR` to the **repo root** for predictable paths—not `/tmp`. Do not change those scripts to use `/tmp` for “convenience.”
+
+## Quick check
+
+After starting the backend, confirm logs: `Startup settings [event_store]: … data_root=…` matches your intent (repo root for normal runs; temp dir only when you intentionally isolated tests/debug).
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

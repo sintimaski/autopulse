@@ -3,7 +3,7 @@ description: Run a project-specific code review pass before handoff
 alwaysApply: true
 ---
 
-# Post-task code review gate (AutoPulse)
+# Post-task code review gate (Lumonox)
 
 Before finalizing any implementation, run a short code review pass on changed files focused on regressions and production risk.
 
@@ -27,8 +27,8 @@ Before finalizing any implementation, run a short code review pass on changed fi
 - List findings first, ordered by severity; include file paths and concrete risk.
 - If no findings, state that clearly and call out any remaining test gaps or residual risk.
 - Include tests/checks run and a concise manual verification section.
-- If `.cursor/rules/` files were updated after **Rules self-review** (`autopulse-execution.mdc`), confirm they stay within non-material governance bounds (`documentation-and-context.mdc`).
+- If `.cursor/rules/` files were updated after **Rules self-review** (`lumonox-execution.mdc`), confirm they stay within non-material governance bounds (`documentation-and-context.mdc`).
 
 ## Rule self-review
 
-When this rule materially guided the task, follow **Rules self-review** in `autopulse-execution.mdc` and apply it to this file.
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

@@ -52,7 +52,7 @@ out/
 .env
 .env.*
 !.env.example
-!.env.autopulse.example
+!.env.lumonox.example
 
 # Local SQLite (dev)
 *.db
@@ -60,10 +60,14 @@ out/
 # Logs
 *.log
 
+.lumonox/
+# Legacy local data dir name (pre-rename checkouts); never commit.
 .autopulse/
+backend/.autopulse/
+sdk/.autopulse/
 
 # Local stray copies of dashboard static export (canonical build is frontend/out)
-sdk/src/autopulse/ui/
+sdk/src/lumonox/ui/
 
 # Hatch sdist staging for shipped wheels (never commit baked export under src)
-backend/src/autopulse_backend/dashboard_static/
+backend/src/lumonox_backend/dashboard_static/

@@ -7,8 +7,8 @@ from urllib.parse import unquote, urlparse
 
 import pytest
 
-import autopulse_backend.core.config as _config
-import autopulse_backend.core.config_env as _config_env
+import lumonox_backend.core.config as _config
+import lumonox_backend.core.config_env as _config_env
 
 
 @pytest.fixture(autouse=True)
@@ -24,29 +24,29 @@ def _disable_runtime_dotenv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_config_env, "_RUNTIME_DOTENV_LOADED", False)
 
 
-def test_legacy_data_root_autopulse_db_normalizes_under_dot_autopulse(
+def test_legacy_data_root_lumonox_db_normalizes_under_dot_lumonox(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("AUTOPULSE_DATA_DIR", str(tmp_path))
-    from autopulse_backend.core.config import normalize_database_url
+    monkeypatch.setenv("LUMONOX_DATA_DIR", str(tmp_path))
+    from lumonox_backend.core.config import normalize_database_url
 
-    for name in ("autopulse.db", "autopulse_embedded.db"):
+    for name in ("lumonox.db", "lumonox_embedded.db"):
         out = normalize_database_url(f"sqlite+aiosqlite:///./{name}")
         parsed = urlparse(out)
-        assert unquote(parsed.path or "").endswith(f"/.autopulse/{name}")
+        assert unquote(parsed.path or "").endswith(f"/.lumonox/{name}")
 
 
-def test_autopulse_db_url_enables_retention_scheduler_and_default_file_cap(
+def test_lumonox_db_url_enables_retention_scheduler_and_default_file_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("JOBS_ENABLE_SCHEDULER", raising=False)
-    monkeypatch.delenv("AUTOPULSE_SQLITE_MAX_DB_FILE_MB", raising=False)
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_SQLITE_MAX_DB_FILE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
     monkeypatch.delenv("JOBS_RETENTION_INTERVAL_SECONDS", raising=False)
-    monkeypatch.delenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+    monkeypatch.delenv("LUMONOX_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./lumonox.db")
 
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     settings = get_settings()
     assert settings.jobs_enable_scheduler is True
@@ -55,17 +55,17 @@ def test_autopulse_db_url_enables_retention_scheduler_and_default_file_cap(
     assert settings.retention_pressure_poll_seconds == 1.0
 
 
-def test_autopulse_legacy_embedded_db_filename_gets_same_retention_defaults(
+def test_lumonox_legacy_embedded_db_filename_gets_same_retention_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("JOBS_ENABLE_SCHEDULER", raising=False)
-    monkeypatch.delenv("AUTOPULSE_SQLITE_MAX_DB_FILE_MB", raising=False)
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_SQLITE_MAX_DB_FILE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
     monkeypatch.delenv("JOBS_RETENTION_INTERVAL_SECONDS", raising=False)
-    monkeypatch.delenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse_embedded.db")
+    monkeypatch.delenv("LUMONOX_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./lumonox_embedded.db")
 
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     settings = get_settings()
     assert settings.jobs_enable_scheduler is True
@@ -77,21 +77,21 @@ def test_jobs_retention_interval_seconds_accepts_five_second_floor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("JOBS_RETENTION_INTERVAL_SECONDS", "5")
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./lumonox.db")
 
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     assert get_settings().jobs_retention_interval_seconds == 5.0
 
 
-def test_autopulse_db_explicit_jobs_scheduler_false_stays_false(
+def test_lumonox_db_explicit_jobs_scheduler_false_stays_false(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./lumonox.db")
     monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "false")
-    monkeypatch.delenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
+    monkeypatch.delenv("LUMONOX_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
 
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     assert get_settings().jobs_enable_scheduler is False
 
@@ -100,12 +100,12 @@ def test_explicit_zero_retention_pressure_poll_disables_poll(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("JOBS_ENABLE_SCHEDULER", raising=False)
-    monkeypatch.delenv("AUTOPULSE_SQLITE_MAX_DB_FILE_MB", raising=False)
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
-    monkeypatch.setenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS", "0")
+    monkeypatch.delenv("LUMONOX_SQLITE_MAX_DB_FILE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./lumonox.db")
+    monkeypatch.setenv("LUMONOX_RETENTION_PRESSURE_POLL_SECONDS", "0")
 
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     assert get_settings().retention_pressure_poll_seconds == 0.0
 
@@ -116,12 +116,12 @@ def test_custom_sqlite_filename_does_not_auto_enable_scheduler(
 ) -> None:
     db_path = tmp_path / "custom_events.db"
     monkeypatch.delenv("JOBS_ENABLE_SCHEDULER", raising=False)
-    monkeypatch.delenv("AUTOPULSE_SQLITE_MAX_DB_FILE_MB", raising=False)
-    monkeypatch.delenv("AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
-    monkeypatch.delenv("AUTOPULSE_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
+    monkeypatch.delenv("LUMONOX_SQLITE_MAX_DB_FILE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_EMBEDDED_MAX_DB_SIZE_MB", raising=False)
+    monkeypatch.delenv("LUMONOX_RETENTION_PRESSURE_POLL_SECONDS", raising=False)
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
 
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     settings = get_settings()
     assert settings.jobs_enable_scheduler is False
@@ -132,9 +132,9 @@ def test_custom_sqlite_filename_does_not_auto_enable_scheduler(
 def test_database_run_migrations_on_startup_defaults_true_but_can_be_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./autopulse.db")
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./lumonox.db")
     monkeypatch.delenv("DATABASE_RUN_MIGRATIONS_ON_STARTUP", raising=False)
-    from autopulse_backend.core.config import get_settings
+    from lumonox_backend.core.config import get_settings
 
     assert get_settings().database_run_migrations_on_startup is True
 

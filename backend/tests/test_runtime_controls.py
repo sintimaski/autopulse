@@ -6,9 +6,9 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from autopulse_backend.models import IngestRateLimitWindow
-from autopulse_backend.repositories import runtime_controls
-from autopulse_backend.repositories.runtime_controls import allow_distributed_ingest_request
+from lumonox_backend.models import IngestRateLimitWindow
+from lumonox_backend.repositories import runtime_controls
+from lumonox_backend.repositories.runtime_controls import allow_distributed_ingest_request
 
 
 class _FakeSession:

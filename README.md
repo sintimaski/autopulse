@@ -1,8 +1,8 @@
-# AutoPulse 🚀
+# Lumonox 🚀
 
 > ⚡ FastAPI observability in minutes: know what broke, when, and which requests caused it.
 
-AutoPulse gives Python teams a fast path to useful production visibility without observability-infra overhead.
+Lumonox gives Python teams a fast path to useful production visibility without observability-infra overhead.
 
 ### Highlights
 
@@ -11,7 +11,7 @@ AutoPulse gives Python teams a fast path to useful production visibility without
 - **Custom + built-in insights:** add your own widgets next to system diagnostics.
 - **Self-hosted control:** tune auth, retention, storage, and alerting for your environment.
 
-<img width="1440" height="813" alt="AutoPulse dashboard overview" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" />
+<img width="1440" height="813" alt="Lumonox dashboard overview" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" />
 
 ---
 
@@ -22,7 +22,7 @@ AutoPulse gives Python teams a fast path to useful production visibility without
 - ⚙️ [Runtime modes](#runtime-modes)
 - 🔐 [Auth and options](#auth-and-options)
 - 🌍 [Environment reference](#environment-reference)
-- 🛠️ [Develop AutoPulse from this repo](#develop-autopulse-from-this-repo)
+- 🛠️ [Develop Lumonox from this repo](#develop-lumonox-from-this-repo)
 - 📦 [PyPI publishing & install links](./docs/ops/PYPI_PUBLISHING.md)
 
 ---
@@ -34,55 +34,55 @@ AutoPulse gives Python teams a fast path to useful production visibility without
 Three steps: install the SDK, set ingest URL + project key, add one middleware call. Sending stays async and bounded; failures are quiet by default so a bad observability rollout cannot take down production.
 
 ```bash
-pip install autopulse-sdk
+pip install lumonox-sdk
 ```
 
 ```python
 from fastapi import FastAPI
-from autopulse import autopulse
+from lumonox import lumonox
 
 app = FastAPI()
-autopulse(app)
+lumonox(app)
 ```
 
 ```bash
-export AUTOPULSE_INGEST_URL="http://127.0.0.1:8000/ingest"   # or https://your-host/your-mount/ingest
-export AUTOPULSE_API_KEY="<project ingest key from dashboard>"
+export LUMONOX_INGEST_URL="http://127.0.0.1:8000/ingest"   # or https://your-host/your-mount/ingest
+export LUMONOX_API_KEY="<project ingest key from dashboard>"
 ```
 
 🔑 Copy the ingest key from the dashboard (project settings / onboarding).
 
-### Run the AutoPulse API from another repo 🖥️
+### Run the Lumonox API from another repo 🖥️
 
-Two **PyPI** install lines (import for the API remains **`autopulse_backend`**):
+Two **PyPI** install lines (import for the API remains **`lumonox_backend`**):
 
 | What you need | One line |
 |-----------------|----------|
-| **API + pre-built dashboard** (wheel bundles static UI; published on pushes to `main` via `.github/workflows/publish-autopulse-api-pypi.yml` after PyPI trusted publishing is set up) | `pip install autopulse-api` or `uv add autopulse-api` |
-| **Same as above + FastAPI SDK** (`from autopulse import autopulse` in your app) | `pip install "autopulse-sdk[stack]"` or `uv add "autopulse-sdk[stack]"` |
+| **API + pre-built dashboard** (wheel bundles static UI; published on pushes to `main` via `.github/workflows/publish-lumonox-api-pypi.yml` after PyPI trusted publishing is set up) | `pip install lumonox-api` or `uv add lumonox-api` |
+| **Same as above + FastAPI SDK** (`from lumonox import lumonox` in your app) | `pip install "lumonox-sdk[stack]"` or `uv add "lumonox-sdk[stack]"` |
 
 **Git** (always works; pin `main` to a tag or commit SHA in production):
 
 ```bash
-uv add "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+uv add "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
 ```
 
 ```bash
-pip install "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend"
+pip install "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
 ```
 
 ```bash
-uv run uvicorn autopulse_backend.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn lumonox_backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 **API + SDK from Git in one line:**
 
 ```bash
-uv add "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend" "autopulse-sdk @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=sdk"
+uv add "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend" "lumonox-sdk @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=sdk"
 ```
 
 ```bash
-pip install "autopulse-api @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=backend" "autopulse-sdk @ git+https://github.com/sintimaski/autopulse.git@main#subdirectory=sdk"
+pip install "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend" "lumonox-sdk @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=sdk"
 ```
 
 Use `--env-file /path/to/.env` only when that file exists. Otherwise omit it or create one (see `backend/.env.example` in the repo).
@@ -110,15 +110,15 @@ First-ingest smoke checklist (contract-aligned):
 
 ## Custom dashboard widgets 📊
 
-Pass `dashboard_widgets=(...)` into `autopulse()`. Built-in types include `CardWidget`, `LineChartWidget`, `BarChartWidget`, `DonutChartWidget`, `HistogramWidget`, `ScatterPlotWidget`, and `StackedAreaWidget`. The backend merges them into the dashboard so teams see **your** KPIs next to AutoPulse traffic and errors—no separate “dashboard builder” product to learn.
+Pass `dashboard_widgets=(...)` into `lumonox()`. Built-in types include `CardWidget`, `LineChartWidget`, `BarChartWidget`, `DonutChartWidget`, `HistogramWidget`, `ScatterPlotWidget`, and `StackedAreaWidget`. The backend merges them into the dashboard so teams see **your** KPIs next to Lumonox traffic and errors—no separate “dashboard builder” product to learn.
 
 ```python
 from datetime import UTC, datetime, timedelta
 from fastapi import FastAPI
-from autopulse import CardWidget, LineChartWidget, autopulse
+from lumonox import CardWidget, LineChartWidget, lumonox
 
 app = FastAPI()
-autopulse(
+lumonox(
     app,
     dashboard_widgets=[
         CardWidget(widget_id="n", title="Count", value=42.0, unit="n", order=10),
@@ -137,9 +137,9 @@ autopulse(
 
 **📚 Reference**
 
-- Widget definitions: `sdk/src/autopulse/widgets.py`
-- Rich demo fixture: `sdk/src/autopulse/fixtures/synthetic_test_app.py` (`_build_demo_dashboard_widgets`)
-- UI showcase: `/autopulse/ui/widgets-showcase`
+- Widget definitions: `sdk/src/lumonox/widgets.py`
+- Rich demo fixture: `sdk/src/lumonox/fixtures/synthetic_test_app.py` (`_build_demo_dashboard_widgets`)
+- UI showcase: `/lumonox/ui/widgets-showcase`
 
 ---
 
@@ -148,9 +148,9 @@ autopulse(
 
 | Use case                          | What to run                                 | When to use                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **🏗️ Full local stack**          | `./scripts/run_synthetic_stack.sh`          | End-to-end demo or integration work: API on `:8000`, synthetic FastAPI app on `:8001`, dashboard (static mount or Next sidecar per `AUTOPULSE_FRONTEND_MODE`).       |
-| **🖥️ Backend only**              | `uv run python -m autopulse_backend.main` (requires **`autopulse-api`**; [install](./backend/README.md#install-outside-the-monorepo) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
-| **🔥 API + Next with hot reload** | Backend + `npm --prefix frontend run dev`   | Frontend iteration: HMR on the dashboard while the API serves JSON; point `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (and related `NEXT_PUBLIC_`* vars) at the API origin. |
+| **🏗️ Full local stack**          | `./scripts/run_synthetic_stack.sh`          | End-to-end demo or integration work: API on `:8000`, synthetic FastAPI app on `:8001`, dashboard (static mount or Next sidecar per `LUMONOX_FRONTEND_MODE`).       |
+| **🖥️ Backend only**              | `uv run python -m lumonox_backend.main` (requires **`lumonox-api`**; [install](./backend/README.md#install-outside-the-monorepo) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
+| **🔥 API + Next with hot reload** | Backend + `npm --prefix frontend run dev`   | Frontend iteration: HMR on the dashboard while the API serves JSON; point `NEXT_PUBLIC_LUMONOX_API_BASE_URL` (and related `NEXT_PUBLIC_`* vars) at the API origin. |
 | **📈 Synthetic load**             | `./scripts/examples/synthetic_load_demo.sh` | Generate realistic mixed traffic against the sample app; override `BASE_URL`, `DURATION_MINUTES`, `TARGET_REQUESTS`, `ROLE_MODE`, or `SCENARIO` as needed.           |
 
 
@@ -176,7 +176,7 @@ How operators sign into the dashboard (separate from per-project ingest keys):
 
 ```bash
 export ALERT_EMAIL_PROVIDER=file
-export ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails
+export ALERT_EMAIL_FILE_OUTBOX_DIR=./.lumonox/emails
 ```
 
 ### Multi-channel alerts 📣
@@ -187,9 +187,9 @@ export ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails
 
 Details: [backend/ALERT_DELIVERY_RUNBOOK.md](./backend/ALERT_DELIVERY_RUNBOOK.md).
 
-### SDK: `autopulse(app, **kwargs)` 🎛️
+### SDK: `lumonox(app, **kwargs)` 🎛️
 
-Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (or pass `ingest_url` / `api_key`). Tune batching, privacy, and volume from code or environment.
+Remote mode is the default: set `LUMONOX_INGEST_URL` and `LUMONOX_API_KEY` (or pass `ingest_url` / `api_key`). Tune batching, privacy, and volume from code or environment.
 
 
 | Parameter                                                                           | Purpose                                                                                   |
@@ -197,7 +197,7 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 | `api_key`, `ingest_url`                                                             | Override environment                                                                      |
 | `service_name`, `environment`                                                       | Labels on every event                                                                     |
 | `queue_maxsize`, `batch_size`, `flush_interval_s`, `max_retries`, `retry_backoff_s` | Sender batching and backoff                                                               |
-| `debug`                                                                             | Verbose SDK logging (`AUTOPULSE_DEBUG`)                                                   |
+| `debug`                                                                             | Verbose SDK logging (`LUMONOX_DEBUG`)                                                   |
 | `capture_headers`, `capture_query_params`, `scrub_keys`                             | Privacy and capture policy                                                                |
 | `request_sample_rate`, `ignore_path_prefixes`                                       | Traffic shaping                                                                           |
 | `dashboard_widgets`                                                                 | Custom dashboard cards and charts ([Custom dashboard widgets](#custom-dashboard-widgets)) |
@@ -211,18 +211,18 @@ Remote mode is the default: set `AUTOPULSE_INGEST_URL` and `AUTOPULSE_API_KEY` (
 
 | Area                  | Highlights                                                                                                                                                                                                                                                                                                                       | Full lists                                                                               |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| **📘 SDK**            | `AUTOPULSE_API_KEY`, `AUTOPULSE_INGEST_URL` / `AUTOPULSE_ENDPOINT`, batching (`AUTOPULSE_BATCH_MAX_EVENTS`, `AUTOPULSE_FLUSH_INTERVAL_SECONDS`, `AUTOPULSE_MAX_QUEUE_SIZE`), `AUTOPULSE_DEBUG`, `AUTOPULSE_REQUEST_SAMPLE_RATE`, `AUTOPULSE_IGNORE_PATH_PREFIXES`, `AUTOPULSE_CAPTURE_HEADERS`, `AUTOPULSE_CAPTURE_QUERY_PARAMS` | [sdk/README.md](./sdk/README.md)                                                         |
-| **🗄️ Backend**       | `DATABASE_URL`, `AUTOPULSE_EVENT_STORE`, `AUTOPULSE_DUCKDB_PATH`, `AUTOPULSE_DATA_DIR`, `DASHBOARD_AUTH_`*, `ALERT_`*, `INGEST_*`, `JOBS_*`, dashboard rate limits                                                                                                                                                               | [backend/.env.example](./backend/.env.example), [backend/README.md](./backend/README.md) |
-| **📱 Frontend build** | `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL`, `NEXT_PUBLIC_AUTOPULSE_FRONTEND_MODE`, related `NEXT_PUBLIC_`* toggles                                                                                                                                                                                                                     | [frontend/.env.example](./frontend/.env.example)                                         |
+| **📘 SDK**            | `LUMONOX_API_KEY`, `LUMONOX_INGEST_URL` / `LUMONOX_ENDPOINT`, batching (`LUMONOX_BATCH_MAX_EVENTS`, `LUMONOX_FLUSH_INTERVAL_SECONDS`, `LUMONOX_MAX_QUEUE_SIZE`), `LUMONOX_DEBUG`, `LUMONOX_REQUEST_SAMPLE_RATE`, `LUMONOX_IGNORE_PATH_PREFIXES`, `LUMONOX_CAPTURE_HEADERS`, `LUMONOX_CAPTURE_QUERY_PARAMS` | [sdk/README.md](./sdk/README.md)                                                         |
+| **🗄️ Backend**       | `DATABASE_URL`, `LUMONOX_EVENT_STORE`, `LUMONOX_DUCKDB_PATH`, `LUMONOX_DATA_DIR`, `DASHBOARD_AUTH_`*, `ALERT_`*, `INGEST_*`, `JOBS_*`, dashboard rate limits                                                                                                                                                               | [backend/.env.example](./backend/.env.example), [backend/README.md](./backend/README.md) |
+| **📱 Frontend build** | `NEXT_PUBLIC_LUMONOX_API_BASE_URL`, `NEXT_PUBLIC_LUMONOX_FRONTEND_MODE`, related `NEXT_PUBLIC_`* toggles                                                                                                                                                                                                                     | [frontend/.env.example](./frontend/.env.example)                                         |
 
 
 📖 For architecture, event shapes, and scope boundaries: [DEVELOPMENT.md](./DEVELOPMENT.md).
 
 ---
 
-## Develop AutoPulse from this repo 🛠️
+## Develop Lumonox from this repo 🛠️
 
-🔧 Fork or clone AutoPulse when you want to **shape it to your org** — extend widgets, ingest rules, retention, alert channels, or dashboard behavior without fighting a black-box SaaS installer.
+🔧 Fork or clone Lumonox when you want to **shape it to your org** — extend widgets, ingest rules, retention, alert channels, or dashboard behavior without fighting a black-box SaaS installer.
 
 📦 One install line:
 
@@ -242,7 +242,7 @@ make setup
 ./scripts/run_synthetic_stack.sh
 ```
 
-💡 Then open the dashboard (`http://127.0.0.1:8000/autopulse/ui/dashboard/` when serving the static export from the backend, or the Next dev URL printed if you run in sidecar mode), sign in, and copy an ingest key for experiments.
+💡 Then open the dashboard (`http://127.0.0.1:8000/lumonox/ui/dashboard/` when serving the static export from the backend, or the Next dev URL printed if you run in sidecar mode), sign in, and copy an ingest key for experiments.
 
 🚦 Optional traffic against the sample app (`:8001`):
 
@@ -265,7 +265,7 @@ Same full gate as a copy-paste script (equivalent to `make release-gates`; see `
 bash ./scripts/release_gates.sh
 ```
 
-On success the final line is `[release-gates] all checks passed`. Optional: set `AUTOPULSE_RELEASE_GATES_POSTGRES=1` to include Postgres-backed pytest, or `AUTOPULSE_RELEASE_GATES_E2E=1` to run Playwright smoke (both are separate jobs in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
+On success the final line is `[release-gates] all checks passed`. Optional: set `LUMONOX_RELEASE_GATES_POSTGRES=1` to include Postgres-backed pytest, or `LUMONOX_RELEASE_GATES_E2E=1` to run Playwright smoke (both are separate jobs in [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)).
 
 #### Supported matrix and CI parity
 
@@ -279,8 +279,8 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 | Check | Local default | CI |
 | --- | --- | --- |
 | Ruff, mypy, bandit, pytest | `make check` / release gates | `python-sqlite` job |
-| Backend tests on Postgres | Optional (`AUTOPULSE_RELEASE_GATES_POSTGRES=1`) | `python-postgres` job |
+| Backend tests on Postgres | Optional (`LUMONOX_RELEASE_GATES_POSTGRES=1`) | `python-postgres` job |
 | Frontend audit, lint, typecheck, test, build, bundle budget | `make check` / release gates | `frontend` job |
-| Browser smoke (Playwright) | Optional (`AUTOPULSE_RELEASE_GATES_E2E=1`) | `browser-smoke` job |
+| Browser smoke (Playwright) | Optional (`LUMONOX_RELEASE_GATES_E2E=1`) | `browser-smoke` job |
 
 **Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**. Multi-lane closure plan (IA, onboarding, topology, drills): [DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md](./docs/DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md).

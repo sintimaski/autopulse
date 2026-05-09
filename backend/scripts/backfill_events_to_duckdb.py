@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from autopulse_backend.database import AsyncSessionLocal
-from autopulse_backend.models import Event
-from autopulse_backend.services.duckdb_async import run_duckdb_write_sync
-from autopulse_backend.services.event_store import get_duckdb_event_store
+from lumonox_backend.database import AsyncSessionLocal
+from lumonox_backend.models import Event
+from lumonox_backend.services.duckdb_async import run_duckdb_write_sync
+from lumonox_backend.services.event_store import get_duckdb_event_store
 
 
 async def run_backfill(*, batch_size: int, since: datetime | None) -> int:

@@ -71,10 +71,10 @@ export function ApiKeyMissing() {
           `Request failed (${response.status}). ${detail || "See browser Network tab and backend logs."} ` +
             "Typical fixes: set DASHBOARD_AUTH_ALLOWED_EMAIL to this address (or use dev allowlist), " +
             "ensure ALERT_EMAIL_PROVIDER + keys/outbox for delivery, add your UI origin to CORS_ALLOW_ORIGINS " +
-            "if the API is on another host/port, and set NEXT_PUBLIC_AUTOPULSE_API_BASE_URL to the API origin " +
+            "if the API is on another host/port, and set NEXT_PUBLIC_LUMONOX_API_BASE_URL to the API origin " +
             "(e.g. http://127.0.0.1:8000 for standalone backend; leave unset for same-origin /dashboard paths)." +
             (response.status === 404 && isAbsoluteOriginOnlyApiBase()
-              ? " 404 here often means an extra path segment (e.g. …/autopulse/dashboard/…): use http://127.0.0.1:8000 with no /autopulse prefix for the default backend."
+              ? " 404 here often means an extra path segment (e.g. …/lumonox/dashboard/…): use http://127.0.0.1:8000 with no /lumonox prefix for the default backend."
               : ""),
         );
         return;
@@ -95,7 +95,7 @@ export function ApiKeyMissing() {
     } catch (err) {
       const hint =
         err instanceof TypeError
-          ? "Network error (wrong API URL, CORS, or server down). For static UI on the API host use NEXT_PUBLIC_AUTOPULSE_API_BASE_URL=http://127.0.0.1:8000 (origin only) or leave unset for same-origin /dashboard calls."
+          ? "Network error (wrong API URL, CORS, or server down). For static UI on the API host use NEXT_PUBLIC_LUMONOX_API_BASE_URL=http://127.0.0.1:8000 (origin only) or leave unset for same-origin /dashboard calls."
           : err instanceof Error
             ? err.message
             : String(err);
@@ -108,14 +108,14 @@ export function ApiKeyMissing() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-14 text-slate-100">
       <div className="mx-auto max-w-lg rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/50 backdrop-blur">
-        <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
+        <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">Lumonox</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
           Enter your email for a magic link. Session-first.
           {isApiSubpathDashboard() ? (
             <>
               {" "}
-              Static UI reads <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.7rem]">.env.autopulse</code> (see onboarding).
+              Static UI reads <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.7rem]">.env.lumonox</code> (see onboarding).
             </>
           ) : (
             <> SDK keys are for your app, not this screen.</>
@@ -265,7 +265,7 @@ export function DashboardPageBoundary({
           {bootstrapIssue ? (
             <p className="mt-2 text-sm">
               Dashboard bootstrap failed before traffic queries completed: {bootstrapIssue}. Verify backend
-              readiness (`/health`, `/ready`) and confirm `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` points to
+              readiness (`/health`, `/ready`) and confirm `NEXT_PUBLIC_LUMONOX_API_BASE_URL` points to
               the API origin
               {isAbsoluteOriginOnlyApiBase()
                 ? " (origin-only URL detected)."
@@ -280,12 +280,12 @@ export function DashboardPageBoundary({
               >
                 Onboarding
               </Link>{" "}
-              (or `Settings` for existing projects), add it as `AUTOPULSE_API_KEY`, then send a request.
+              (or `Settings` for existing projects), add it as `LUMONOX_API_KEY`, then send a request.
             </p>
           ) : likelyMissingFirstEvent ? (
             <p className="mt-2 text-sm">
               Ingest key exists, but no events were received for this project yet. Check that your app
-              sends to backend `POST /ingest`, confirm `AUTOPULSE_INGEST_URL` points at the correct backend,
+              sends to backend `POST /ingest`, confirm `LUMONOX_INGEST_URL` points at the correct backend,
               and verify the key belongs to this dashboard project.
             </p>
           ) : (

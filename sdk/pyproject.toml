@@ -1,11 +1,11 @@
 [project]
-name = "autopulse-sdk"
-version = "0.1.4"
-description = "FastAPI observability SDK for AutoPulse"
+name = "lumonox-sdk"
+version = "0.2.0"
+description = "FastAPI observability SDK for Lumonox"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-authors = [{ name = "AutoPulse maintainers" }]
+authors = [{ name = "Lumonox maintainers" }]
 keywords = ["fastapi", "observability", "monitoring", "apm", "errors", "telemetry"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -24,20 +24,20 @@ dependencies = [
     "psutil>=6.0.0",
 ]
 
-# ``pip install "autopulse-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``autopulse-api``) alongside this SDK.
+# ``pip install "lumonox-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``lumonox-api``) alongside this SDK.
 [project.optional-dependencies]
-stack = ["autopulse-api>=0.1.5"]
+stack = ["lumonox-api>=0.2.0"]
 
 [project.urls]
-Homepage = "https://github.com/sintimaski/autopulse"
-Repository = "https://github.com/sintimaski/autopulse"
-Documentation = "https://github.com/sintimaski/autopulse/blob/main/sdk/README.md"
-Changelog = "https://github.com/sintimaski/autopulse/blob/main/sdk/CHANGELOG.md"
-Issues = "https://github.com/sintimaski/autopulse/issues"
+Homepage = "https://github.com/sintimaski/lumonox"
+Repository = "https://github.com/sintimaski/lumonox"
+Documentation = "https://github.com/sintimaski/lumonox/blob/main/sdk/README.md"
+Changelog = "https://github.com/sintimaski/lumonox/blob/main/sdk/CHANGELOG.md"
+Issues = "https://github.com/sintimaski/lumonox/issues"
 
 [build-system]
 requires = ["hatchling>=1.26.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/autopulse"]
+packages = ["src/lumonox"]

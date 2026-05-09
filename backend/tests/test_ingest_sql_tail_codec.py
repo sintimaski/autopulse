@@ -5,9 +5,9 @@ from uuid import uuid4
 
 import pytest
 
-from autopulse_backend.repositories.aggregates import ErrorGroupAggregateDelta, MetricBucketDelta
-from autopulse_backend.services.aggregate_delta_codec import encode_aggregate_payload
-from autopulse_backend.services.ingest_sql_tail_codec import (
+from lumonox_backend.repositories.aggregates import ErrorGroupAggregateDelta, MetricBucketDelta
+from lumonox_backend.services.aggregate_delta_codec import encode_aggregate_payload
+from lumonox_backend.services.ingest_sql_tail_codec import (
     decode_ingest_sql_tail_payload,
     encode_ingest_sql_tail_payload,
 )

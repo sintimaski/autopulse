@@ -1,6 +1,6 @@
 # Docs index (production-first)
 
-This index keeps documentation focused on shipping and operating AutoPulse safely.
+This index keeps documentation focused on shipping and operating Lumonox safely.
 
 ## Start here
 
@@ -26,7 +26,7 @@ This index keeps documentation focused on shipping and operating AutoPulse safel
 - SQL-tail replay recovery: `docs/ops/RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md`
 - E2E core journey: `docs/testing/E2E_CORE_JOURNEY.md`
 - Development plan/task template: `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`
-- Production+Parquet development plan: `docs/DEVELOPMENT_PLAN_AUTOPULSE_PRODUCTION_AND_PARQUET.md`
+- Production+Parquet development plan: `docs/DEVELOPMENT_PLAN_LUMONOX_PRODUCTION_AND_PARQUET.md`
 
 ## Contracts and governance
 

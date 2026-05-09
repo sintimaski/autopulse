@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from autopulse_backend.core.config import redact_database_url_for_log
+from lumonox_backend.core.config import redact_database_url_for_log
 
 
 def test_redact_database_url_for_log_strips_password() -> None:
-    raw = "postgresql+asyncpg://appuser:supersecret@db.example.com:5432/autopulse"
+    raw = "postgresql+asyncpg://appuser:supersecret@db.example.com:5432/lumonox"
     redacted = redact_database_url_for_log(raw)
     assert "supersecret" not in redacted
     assert ":***@" in redacted
@@ -13,5 +13,5 @@ def test_redact_database_url_for_log_strips_password() -> None:
 
 
 def test_redact_database_url_for_log_sqlite_unchanged() -> None:
-    url = "sqlite+aiosqlite:///./autopulse.db"
+    url = "sqlite+aiosqlite:///./lumonox.db"
     assert redact_database_url_for_log(url) == url

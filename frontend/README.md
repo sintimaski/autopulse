@@ -11,12 +11,12 @@ npm run dev
 
 Environment variables:
 
-- `NEXT_PUBLIC_AUTOPULSE_API_BASE_URL` (default: `/autopulse`)
+- `NEXT_PUBLIC_LUMONOX_API_BASE_URL` (default: `/lumonox`)
 
 Build modes:
 
-- `AUTOPULSE_FRONTEND_MODE=static` (default): builds static export for embedding.
-- `AUTOPULSE_FRONTEND_MODE=sidecar`: keeps regular Next runtime output.
+- `LUMONOX_FRONTEND_MODE=static` (default): builds static export for embedding.
+- `LUMONOX_FRONTEND_MODE=sidecar`: keeps regular Next runtime output.
 
 Bundle budget guardrails:
 
@@ -25,10 +25,10 @@ Bundle budget guardrails:
 
 Optional frontend RUM (disabled by default):
 
-- `NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED=1` enables client telemetry capture.
-- `NEXT_PUBLIC_AUTOPULSE_RUM_ENDPOINT=<absolute-or-relative-url>` overrides sink endpoint (default: `/autopulse/rum`).
-- `NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE=0.2` samples sessions (0.0-1.0, default `1`).
-- `NEXT_PUBLIC_AUTOPULSE_RUM_DEBUG=1` logs scrubbed payloads to browser console.
+- `NEXT_PUBLIC_LUMONOX_RUM_ENABLED=1` enables client telemetry capture.
+- `NEXT_PUBLIC_LUMONOX_RUM_ENDPOINT=<absolute-or-relative-url>` overrides sink endpoint (default: `/lumonox/rum`).
+- `NEXT_PUBLIC_LUMONOX_RUM_SAMPLE_RATE=0.2` samples sessions (0.0-1.0, default `1`).
+- `NEXT_PUBLIC_LUMONOX_RUM_DEBUG=1` logs scrubbed payloads to browser console.
 
 Captured fields are intentionally minimal and scrubbed: route path (query/hash removed, id-like segments masked), runtime error message, short stack preview, coarse navigation timing (`dom_content_loaded_ms`, `load_event_ms`), and optional funnel signals (`diagnosis_activation`, `modal_lifecycle`, `filter_zero_results`, `jobs_primary_action`) emitted from `lib/rumRuntime.ts` when sampled.
 

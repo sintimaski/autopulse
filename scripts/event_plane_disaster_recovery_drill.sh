@@ -5,14 +5,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-MODE="${AUTOPULSE_EVENT_PLANE_DRILL_MODE:-simulate}"
-SOURCE_SNAPSHOTS_ROOT="${AUTOPULSE_EVENT_PLANE_DRILL_SOURCE_SNAPSHOTS_ROOT:-$ROOT/.autopulse/events-duckdb}"
-RESTORE_ROOT="${AUTOPULSE_EVENT_PLANE_DRILL_RESTORE_ROOT:-$ROOT/.autopulse/drill-restore}"
+MODE="${LUMONOX_EVENT_PLANE_DRILL_MODE:-simulate}"
+SOURCE_SNAPSHOTS_ROOT="${LUMONOX_EVENT_PLANE_DRILL_SOURCE_SNAPSHOTS_ROOT:-$ROOT/.lumonox/events-duckdb}"
+RESTORE_ROOT="${LUMONOX_EVENT_PLANE_DRILL_RESTORE_ROOT:-$ROOT/.lumonox/drill-restore}"
 
 echo "[event-plane-drill] mode=${MODE}"
 
 if [[ "$MODE" == "simulate" ]]; then
-  WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/autopulse-event-plane-drill-XXXXXX")"
+  WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/lumonox-event-plane-drill-XXXXXX")"
   SOURCE_SNAPSHOTS_ROOT="${WORKDIR}/source-events-duckdb"
   RESTORE_ROOT="${WORKDIR}/restore-events-duckdb"
   mkdir -p "$SOURCE_SNAPSHOTS_ROOT"
@@ -84,7 +84,7 @@ cp -R "${SOURCE_SNAPSHOTS_ROOT}/${LATEST_DIR}" "${RESTORE_ROOT}/${LATEST_DIR}"
 
 uv run python - <<'PY'
 from pathlib import Path
-from autopulse_backend.services.event_plane_parity import resolve_current_snapshot_duckdb_path
+from lumonox_backend.services.event_plane_parity import resolve_current_snapshot_duckdb_path
 import duckdb
 import os
 

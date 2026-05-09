@@ -8,9 +8,9 @@ import duckdb
 import pytest
 from test_parquet_exporter import _base_settings, _seed_duckdb_events
 
-from autopulse_backend.services import parquet_object_storage as pos
-from autopulse_backend.services.parquet_exporter import run_parquet_export_once
-from autopulse_backend.services.parquet_object_storage import (
+from lumonox_backend.services import parquet_object_storage as pos
+from lumonox_backend.services.parquet_exporter import run_parquet_export_once
+from lumonox_backend.services.parquet_object_storage import (
     run_parquet_object_storage_restore_once,
     run_parquet_object_storage_sync_once,
 )
@@ -155,7 +155,7 @@ def test_object_storage_sync_raises_when_enabled_without_uri(tmp_path: Path) -> 
         parquet_object_storage_enabled=True,
         parquet_object_storage_uri=None,
     )
-    with pytest.raises(ValueError, match="AUTOPULSE_PARQUET_OBJECT_STORAGE_URI"):
+    with pytest.raises(ValueError, match="LUMONOX_PARQUET_OBJECT_STORAGE_URI"):
         run_parquet_object_storage_sync_once(settings=bad)
 
 

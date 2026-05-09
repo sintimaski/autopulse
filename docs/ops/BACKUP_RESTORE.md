@@ -1,24 +1,24 @@
 # Backup and restore
 
-AutoPulse durable state may include:
+Lumonox durable state may include:
 
 - **SQL metadata** (`DATABASE_URL`): projects, API key hashes, dashboard sessions, aggregate tables, idempotency keys, dead-letter rows, etc.
-- **DuckDB event store** (`AUTOPULSE_EVENT_STORE=duckdb`, path from `AUTOPULSE_DUCKDB_PATH` / settings): raw request/error payloads used by dashboard queries. Relative paths resolve under the **data root** (`AUTOPULSE_DATA_DIR`, `AUTOPULSE_PROJECT_ROOT`, or monorepo parent of `backend/`—see `resolve_autopulse_data_root` in `backend/src/autopulse_backend/core/config.py`), never raw process cwd.
+- **DuckDB event store** (`LUMONOX_EVENT_STORE=duckdb`, path from `LUMONOX_DUCKDB_PATH` / settings): raw request/error payloads used by dashboard queries. Relative paths resolve under the **data root** (`LUMONOX_DATA_DIR`, `LUMONOX_PROJECT_ROOT`, or monorepo parent of `backend/`—see `resolve_lumonox_data_root` in `backend/src/lumonox_backend/core/config.py`), never raw process cwd.
 
 Default embedded topology path map:
 
-- Metadata DB (SQLite default): `{data_root}/.autopulse/autopulse.db`
-- DuckDB event store default: `{data_root}/.autopulse/events.duckdb`
-- SQLite sidecars when present: `{data_root}/.autopulse/autopulse.db-wal`, `{data_root}/.autopulse/autopulse.db-shm`
+- Metadata DB (SQLite default): `{data_root}/.lumonox/lumonox.db`
+- DuckDB event store default: `{data_root}/.lumonox/events.duckdb`
+- SQLite sidecars when present: `{data_root}/.lumonox/lumonox.db-wal`, `{data_root}/.lumonox/lumonox.db-shm`
 
-`data_root` is `AUTOPULSE_DATA_DIR` when set; otherwise the monorepo root in checkout layouts.
+`data_root` is `LUMONOX_DATA_DIR` when set; otherwise the monorepo root in checkout layouts.
 
 ### Migrating from cwd-relative DuckDB files
 
-If you previously ran the API or tools from different directories, you may have **multiple** `.autopulse/events.duckdb` files (for example under `backend/.autopulse/` and repo root `.autopulse/`). After upgrading:
+If you previously ran the API or tools from different directories, you may have **multiple** `.lumonox/events.duckdb` files (for example under `backend/.lumonox/` and repo root `.lumonox/`). After upgrading:
 
 1. Pick the file that contains the events you care about (inspect size / `mtime` / row counts).
-2. Set `AUTOPULSE_DUCKDB_PATH` to an **absolute** path pointing at that file, **or** move/copy it to `{data_root}/.autopulse/events.duckdb` where `data_root` is your chosen `AUTOPULSE_DATA_DIR` / monorepo root.
+2. Set `LUMONOX_DUCKDB_PATH` to an **absolute** path pointing at that file, **or** move/copy it to `{data_root}/.lumonox/events.duckdb` where `data_root` is your chosen `LUMONOX_DATA_DIR` / monorepo root.
 3. Remove or archive stale copies to avoid confusion.
 - **SQLite files** when used for metadata (including WAL/SHM sidecars).
 
@@ -32,7 +32,7 @@ If you previously ran the API or tools from different directories, you may have 
 
 1. Restore SQL + DuckDB files to the configured paths.
 2. Run migrations to the expected head if restoring onto a newer binary (`uv run alembic upgrade head` for Postgres-oriented flows; SQLite file-backed dev DBs often use `create_all`—match how the environment was created).
-3. Verify `/ready`, send a synthetic ingest batch, and replay aggregate dead letters if operators used that path during the incident (`uv run python -m autopulse_backend.jobs replay-aggregate-dead-letters-once`).
+3. Verify `/ready`, send a synthetic ingest batch, and replay aggregate dead letters if operators used that path during the incident (`uv run python -m lumonox_backend.jobs replay-aggregate-dead-letters-once`).
 
 ## Testing restores
 

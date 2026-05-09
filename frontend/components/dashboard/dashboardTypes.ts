@@ -242,7 +242,7 @@ export type ThemePreference = "system" | "light" | "dark";
 
 export type ThemeSettings = {
   theme_preference: ThemePreference;
-  exclude_autopulse_traffic: boolean;
+  exclude_lumonox_traffic: boolean;
 };
 
 export type RetentionSettings = {
@@ -538,16 +538,16 @@ export type DashboardDataQueryResponse = {
 
 /**
  * Default API base when unset: same-origin root (``/dashboard/...``, ``/ingest`` on the backend).
- * Static UI lives under ``/autopulse/ui`` only; the API is not prefixed with ``/autopulse`` for
- * standalone ``autopulse_backend`` (see ``app.include_router(api_router)`` with no mount prefix).
+ * Static UI lives under ``/lumonox/ui`` only; the API is not prefixed with ``/lumonox`` for
+ * standalone ``lumonox_backend`` (see ``app.include_router(api_router)`` with no mount prefix).
  */
 export const DEFAULT_MOUNTED_API_BASE = "";
 
 export const apiBaseUrl =
-  process.env.NEXT_PUBLIC_AUTOPULSE_API_BASE_URL ?? DEFAULT_MOUNTED_API_BASE;
+  process.env.NEXT_PUBLIC_LUMONOX_API_BASE_URL ?? DEFAULT_MOUNTED_API_BASE;
 
 const _isNextSidecarDev: boolean =
-  process.env.NEXT_PUBLIC_AUTOPULSE_FRONTEND_MODE === "sidecar";
+  process.env.NEXT_PUBLIC_LUMONOX_FRONTEND_MODE === "sidecar";
 
 /** True when the dashboard calls the API on the same origin via a path prefix (static UI on the API host). */
 export function isApiSubpathDashboard(): boolean {
@@ -572,27 +572,27 @@ function resolveApiBaseForRequests(): string {
   const relative = !base.startsWith("http://") && !base.startsWith("https://");
   if (relative && _isNextSidecarDev) {
     const origin = (
-      process.env.NEXT_PUBLIC_AUTOPULSE_DEV_API_ORIGIN ?? "http://127.0.0.1:8000"
+      process.env.NEXT_PUBLIC_LUMONOX_DEV_API_ORIGIN ?? "http://127.0.0.1:8000"
     ).replace(/\/+$/, "");
     if (!base) {
       return origin;
     }
     return `${origin}${base.startsWith("/") ? base : `/${base}`}`;
   }
-  // Static export is served under ``/autopulse/ui`` on the API host; API routes are on the same
-  // origin at ``/dashboard/...`` (no ``/autopulse`` API prefix for standalone backend).
+  // Static export is served under ``/lumonox/ui`` on the API host; API routes are on the same
+  // origin at ``/dashboard/...`` (no ``/lumonox`` API prefix for standalone backend).
   if (typeof window !== "undefined") {
     const href = window.location.href || "";
     const locPath = window.location.pathname || "";
     let looksLikeMountedStaticUi =
-      href.includes("/autopulse/ui") ||
-      locPath === "/autopulse/ui" ||
-      locPath.startsWith("/autopulse/ui/");
+      href.includes("/lumonox/ui") ||
+      locPath === "/lumonox/ui" ||
+      locPath.startsWith("/lumonox/ui/");
     if (!looksLikeMountedStaticUi && typeof document !== "undefined") {
       const scripts = document.getElementsByTagName("script");
       for (let i = 0; i < scripts.length; i++) {
         const src = scripts[i]?.getAttribute("src") ?? "";
-        if (src.includes("/autopulse/ui/_next/")) {
+        if (src.includes("/lumonox/ui/_next/")) {
           looksLikeMountedStaticUi = true;
           break;
         }
@@ -635,7 +635,7 @@ export function buildApiUrl(path: string): string {
   return `${normalizedBase}${normalizedPath}`;
 }
 
-/** Build WS URL from the same path rules as {@link buildApiUrl} so mounts like `/autopulse` stay in sync. */
+/** Build WS URL from the same path rules as {@link buildApiUrl} so mounts like `/lumonox` stay in sync. */
 function httpToWebsocketUrl(httpRef: string): string {
   const origin =
     typeof window !== "undefined" && window.location?.origin
@@ -693,6 +693,6 @@ export const RUNBOOK_ALERTS_CMD = [
   "# stdout: number of alert dispatches this run (0 if no rule matched, e.g. empty DB or traffic below thresholds).",
   "# Exit code from the CLI is always 0; read the printed integer for dispatch count.",
   "# Ensure ALERTS_ENABLED is true (default) and the DB has recent request events in the evaluation windows.",
-  "uv run python -m autopulse_backend.jobs alerts-once",
+  "uv run python -m lumonox_backend.jobs alerts-once",
 ].join("\n");
-export const RUNBOOK_RETENTION_CMD = "uv run python -m autopulse_backend.jobs retention-once";
+export const RUNBOOK_RETENTION_CMD = "uv run python -m lumonox_backend.jobs retention-once";

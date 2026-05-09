@@ -9,15 +9,15 @@ from pathlib import Path
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from autopulse_backend.core.config import get_settings
-from autopulse_backend.database import get_engine
-from autopulse_backend.jobs import run_retention_once
-from autopulse_backend.maintenance.retention import (
+from lumonox_backend.core.config import get_settings
+from lumonox_backend.database import get_engine
+from lumonox_backend.jobs import run_retention_once
+from lumonox_backend.maintenance.retention import (
     _resolve_sqlite_db_path,
     _sqlite_db_disk_footprint_bytes,
     sqlite_retention_pressure_pending,
 )
-from autopulse_backend.models import Event
+from lumonox_backend.models import Event
 
 
 def _fmt_mb(value: int) -> str:

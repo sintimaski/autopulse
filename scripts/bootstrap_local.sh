@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bootstrap local AutoPulse development dependencies and env files.
+# Bootstrap local Lumonox development dependencies and env files.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,13 +28,13 @@ else
   echo "backend/.env already exists; keeping current file."
 fi
 
-if [[ ! -f .env.autopulse ]]; then
-  echo "Creating .env.autopulse from .env.autopulse.example..."
-  cp .env.autopulse.example .env.autopulse
+if [[ ! -f .env.lumonox ]]; then
+  echo "Creating .env.lumonox from .env.lumonox.example..."
+  cp .env.lumonox.example .env.lumonox
 else
-  echo ".env.autopulse already exists; keeping current file."
+  echo ".env.lumonox already exists; keeping current file."
 fi
 
 echo "Bootstrap complete."
-echo "Next: set AUTOPULSE_API_KEY in backend/.env or .env.autopulse, then run:"
+echo "Next: set LUMONOX_API_KEY in backend/.env or .env.lumonox, then run:"
 echo "  ./scripts/run_synthetic_stack.sh"

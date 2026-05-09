@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from autopulse_backend.dashboard.routes.query_explorer import _validate_query
+from lumonox_backend.dashboard.routes.query_explorer import _validate_query
 
 
 def test_validate_accepts_select_followed_by_newline() -> None:

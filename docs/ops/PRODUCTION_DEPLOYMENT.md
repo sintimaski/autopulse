@@ -1,6 +1,6 @@
 # Production deployment (canonical guide)
 
-This document is the **single entry point** for shipping AutoPulse to production. It ties together topology, health checks, scaling limits, backups, and release gates. Deep dives live in linked docs.
+This document is the **single entry point** for shipping Lumonox to production. It ties together topology, health checks, scaling limits, backups, and release gates. Deep dives live in linked docs.
 
 ## 1. Choose your topology
 
@@ -9,7 +9,7 @@ This document is the **single entry point** for shipping AutoPulse to production
 | **Split stack** (SDK → remote `POST /ingest`, dashboard API + Next.js UI) | Default: hosted or self-managed API + UI, Postgres metadata, optional DuckDB for events. | [backend/.env.example](../../backend/.env.example), [README.md](../../README.md) |
 | **Multi-instance API** | Horizontal scale behind a load balancer. | [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md) |
 
-**Storage note:** Metadata (projects, API key hashes, aggregates, sessions) lives in the **SQL database** (`DATABASE_URL`). Raw request/error events for the MVP stack typically use **DuckDB** when enabled (`AUTOPULSE_DUCKDB_*`), not “Postgres-only raw rows” unless you operate a custom deployment. Set **`AUTOPULSE_DATA_DIR`** (or an absolute `AUTOPULSE_DUCKDB_PATH`) in production so every process agrees on the DuckDB file regardless of cwd. Align backup procedures with both stores ([BACKUP_RESTORE.md](./BACKUP_RESTORE.md)).
+**Storage note:** Metadata (projects, API key hashes, aggregates, sessions) lives in the **SQL database** (`DATABASE_URL`). Raw request/error events for the MVP stack typically use **DuckDB** when enabled (`LUMONOX_DUCKDB_*`), not “Postgres-only raw rows” unless you operate a custom deployment. Set **`LUMONOX_DATA_DIR`** (or an absolute `LUMONOX_DUCKDB_PATH`) in production so every process agrees on the DuckDB file regardless of cwd. Align backup procedures with both stores ([BACKUP_RESTORE.md](./BACKUP_RESTORE.md)).
 
 ## 1.1 Golden path: embedded SQLite metadata + DuckDB events
 
@@ -17,17 +17,17 @@ Use this as the default single-node topology unless your expected traffic/ops pr
 
 | Component | Default setting | Effective default path |
 |----------|------------------|------------------------|
-| Metadata DB (SQLite) | `DATABASE_URL=sqlite+aiosqlite:///./.autopulse/autopulse.db` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/autopulse.db` |
-| Event store (DuckDB) | `AUTOPULSE_EVENT_STORE=duckdb`, `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`, `AUTOPULSE_DUCKDB_PATH=.autopulse/events.duckdb` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events.duckdb` |
-| Plan B shard log root | `AUTOPULSE_EVENT_PLANE_SHARDS_PATH=.autopulse/events-log` (used when `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards`) | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events-log` |
-| Plan B snapshot root | `AUTOPULSE_EVENT_PLANE_SNAPSHOTS_PATH=.autopulse/events-duckdb` (compactor output) | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/events-duckdb` |
-| Plan B compactor fairness cap | `AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN=1024` | Limits shards per compaction run and enables project-round-robin selection to reduce noisy-tenant starvation |
-| Plan B append backpressure | `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES=536870912`, `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT=5`, `AUTOPULSE_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS=20000` | Reject shard appends when disk headroom or pending-shard backlog exceeds thresholds (metered in internal metrics) |
-| File alert outbox (optional) | `ALERT_EMAIL_FILE_OUTBOX_DIR=./.autopulse/emails` | `{AUTOPULSE_DATA_DIR or repo-root}/.autopulse/emails` |
+| Metadata DB (SQLite) | `DATABASE_URL=sqlite+aiosqlite:///./.lumonox/lumonox.db` | `{LUMONOX_DATA_DIR or repo-root}/.lumonox/lumonox.db` |
+| Event store (DuckDB) | `LUMONOX_EVENT_STORE=duckdb`, `LUMONOX_EVENT_PLANE_MODE=duckdb_single_writer`, `LUMONOX_DUCKDB_PATH=.lumonox/events.duckdb` | `{LUMONOX_DATA_DIR or repo-root}/.lumonox/events.duckdb` |
+| Plan B shard log root | `LUMONOX_EVENT_PLANE_SHARDS_PATH=.lumonox/events-log` (used when `LUMONOX_EVENT_PLANE_MODE=duckdb_log_shards`) | `{LUMONOX_DATA_DIR or repo-root}/.lumonox/events-log` |
+| Plan B snapshot root | `LUMONOX_EVENT_PLANE_SNAPSHOTS_PATH=.lumonox/events-duckdb` (compactor output) | `{LUMONOX_DATA_DIR or repo-root}/.lumonox/events-duckdb` |
+| Plan B compactor fairness cap | `LUMONOX_COMPACTOR_MAX_SHARDS_PER_RUN=1024` | Limits shards per compaction run and enables project-round-robin selection to reduce noisy-tenant starvation |
+| Plan B append backpressure | `LUMONOX_EVENT_PLANE_BACKPRESSURE_MIN_FREE_BYTES=536870912`, `LUMONOX_EVENT_PLANE_BACKPRESSURE_MIN_FREE_PERCENT=5`, `LUMONOX_EVENT_PLANE_BACKPRESSURE_MAX_PENDING_SHARDS=20000` | Reject shard appends when disk headroom or pending-shard backlog exceeds thresholds (metered in internal metrics) |
+| File alert outbox (optional) | `ALERT_EMAIL_FILE_OUTBOX_DIR=./.lumonox/emails` | `{LUMONOX_DATA_DIR or repo-root}/.lumonox/emails` |
 
-`AUTOPULSE_DATA_DIR` re-anchors relative metadata/event paths so API, jobs, and restore tooling all target the same files independent of process cwd.
+`LUMONOX_DATA_DIR` re-anchors relative metadata/event paths so API, jobs, and restore tooling all target the same files independent of process cwd.
 
-When `AUTOPULSE_EVENT_PLANE_MODE=duckdb_log_shards`, the backend now runs a periodic in-process compactor worker on `AUTOPULSE_COMPACTOR_INTERVAL_SECONDS` with bounded per-tick work (`AUTOPULSE_COMPACTOR_MAX_CONCURRENCY`, `AUTOPULSE_COMPACTOR_MAX_SHARDS_PER_RUN`).
+When `LUMONOX_EVENT_PLANE_MODE=duckdb_log_shards`, the backend now runs a periodic in-process compactor worker on `LUMONOX_COMPACTOR_INTERVAL_SECONDS` with bounded per-tick work (`LUMONOX_COMPACTOR_MAX_CONCURRENCY`, `LUMONOX_COMPACTOR_MAX_SHARDS_PER_RUN`).
 
 Operational assumptions for this embedded mode:
 
@@ -37,9 +37,9 @@ Operational assumptions for this embedded mode:
 
 ## 2. Environment and secrets
 
-1. Set `AUTOPULSE_ENV=production` and run through production guardrails (dashboard auth, HTTPS ingest, origin enforcement). See [test_deployment_settings.py](../../backend/tests/test_deployment_settings.py) and `validate_deployment_settings` in [`backend/src/autopulse_backend/core/config.py`](../../backend/src/autopulse_backend/core/config.py).
+1. Set `LUMONOX_ENV=production` and run through production guardrails (dashboard auth, HTTPS ingest, origin enforcement). See [test_deployment_settings.py](../../backend/tests/test_deployment_settings.py) and `validate_deployment_settings` in [`backend/src/lumonox_backend/core/config.py`](../../backend/src/lumonox_backend/core/config.py).
 2. Never commit real secrets. Use your platform’s secret manager for `DATABASE_URL`, OIDC client secrets, SMTP, and `INTERNAL_METRICS_BEARER_TOKEN`.
-3. **SDK (remote ingest):** set `AUTOPULSE_API_KEY` and `AUTOPULSE_INGEST_URL`. Production-safe capture defaults are **off** for full headers/query strings unless you opt in (`capture_headers` / `capture_query_params` or `AUTOPULSE_CAPTURE_HEADERS` / `AUTOPULSE_CAPTURE_QUERY_PARAMS`). See [sdk/README.md](../../sdk/README.md).
+3. **SDK (remote ingest):** set `LUMONOX_API_KEY` and `LUMONOX_INGEST_URL`. Production-safe capture defaults are **off** for full headers/query strings unless you opt in (`capture_headers` / `capture_query_params` or `LUMONOX_CAPTURE_HEADERS` / `LUMONOX_CAPTURE_QUERY_PARAMS`). See [sdk/README.md](../../sdk/README.md).
 
 Production startup validation enforces `INGEST_REQUIRE_HTTPS=true` and requires `INTERNAL_METRICS_BEARER_TOKEN` to be set.
 
@@ -55,11 +55,11 @@ Production startup validation enforces `INGEST_REQUIRE_HTTPS=true` and requires 
 
 ## 2.1 Dashboard auth modes (production)
 
-AutoPulse supports two production-ready dashboard auth modes:
+Lumonox supports two production-ready dashboard auth modes:
 
 ### Mode A — Basic first-party magic-link auth
 
-Use this when AutoPulse owns sign-in directly.
+Use this when Lumonox owns sign-in directly.
 
 Required:
 
@@ -167,10 +167,10 @@ Minimum staging verification for topology changes:
 
 Set these explicitly in production deployment config (do not rely on implicit local defaults):
 
-- `AUTOPULSE_ENV=production`
-- `AUTOPULSE_EVENT_STORE=duckdb`
-- `AUTOPULSE_EVENT_PLANE_MODE=duckdb_single_writer`
-- `AUTOPULSE_DUCKDB_SINGLE_WRITER_PROFILE=true` (required startup ack for single-writer DuckDB topology in production)
+- `LUMONOX_ENV=production`
+- `LUMONOX_EVENT_STORE=duckdb`
+- `LUMONOX_EVENT_PLANE_MODE=duckdb_single_writer`
+- `LUMONOX_DUCKDB_SINGLE_WRITER_PROFILE=true` (required startup ack for single-writer DuckDB topology in production)
 - `JOBS_ENABLE_SCHEDULER=true` (recommended default)
 - If scheduler is intentionally externalized, set `JOBS_EXTERNAL_CRON_OWNERSHIP=true` and document the external cron owner/runbook.
 - `DASHBOARD_AUTH_ENABLED=true`
@@ -185,12 +185,12 @@ Staging evidence before go-live:
    - `jobs_enable_scheduler`
    - `dashboard_auth_enabled`
    - `dashboard_realtime_bus_backend`
-3. Capture `/ready` confirming `autopulse_env`, `event_plane_mode`, scheduler status, realtime backend, and `topology_guardrails.status=healthy`.
+3. Capture `/ready` confirming `lumonox_env`, `event_plane_mode`, scheduler status, realtime backend, and `topology_guardrails.status=healthy`.
 
 ## 5. Jobs, retention, and aggregation
 
 - Enable `JOBS_ENABLE_SCHEDULER=true` where you need scheduled alerts + retention.
-- Auto-enable on unset `JOBS_ENABLE_SCHEDULER` only applies to local default SQLite metadata files under `.autopulse/` (`autopulse.db` / `autopulse_embedded.db`).
+- Auto-enable on unset `JOBS_ENABLE_SCHEDULER` only applies to local default SQLite metadata files under `.lumonox/` (`lumonox.db` / `lumonox_embedded.db`).
 - For non-default SQLite paths and Postgres metadata, treat missing scheduler as a release **No-Go** unless you run equivalent external cron jobs for alerts/retention.
 - Validate scheduler state after deploy:
   - `GET /ready` should report `jobs_enable_scheduler=true` and `scheduler_running=true` (or your documented external-cron mode).
@@ -199,48 +199,48 @@ Staging evidence before go-live:
 - `/ready` and `/internal/metrics` include `topology_guardrails.non_ideal_count` for advisory states that should be corrected but do not block readiness (for example, external cron ownership enabled while in-process scheduler is also enabled).
 - In staging/production with non-SQLite metadata DBs, leaving `DATABASE_RUN_MIGRATIONS_ON_STARTUP=true` is reported as a **risky** topology finding (`non-sql-startup-migrations-enabled`) and degrades `/ready`; prefer one-shot migrations (`alembic upgrade head`) and disable startup migrations on steady-state replicas.
   - `/internal/metrics` and `/metrics` should expose scheduler and job counters.
-- Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/autopulse_backend/jobs/__init__.py`](../../backend/src/autopulse_backend/jobs/__init__.py).
+- Async aggregate worker + dead letters: see [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) and backend `replay-aggregate-dead-letters-once` CLI in [`backend/src/lumonox_backend/jobs/__init__.py`](../../backend/src/lumonox_backend/jobs/__init__.py).
 - SQL-tail repair queue (DuckDB authoritative ingest):
   - Keep `INGEST_SQL_TAIL_REPAIR_ENABLED=true` in production.
   - Tune cadence with `INGEST_SQL_TAIL_REPAIR_INTERVAL_SECONDS` and `INGEST_SQL_TAIL_REPAIR_BATCH_SIZE`.
   - Bound retry depth with `INGEST_SQL_TAIL_REPAIR_MAX_RETRIES`; dead letters expose via `ingest_pressure.sql_tail_repair_dead_lettered_total`.
-  - Manual replay CLI: `uv run python -m autopulse_backend.jobs replay-sql-tail-repairs-once`.
+  - Manual replay CLI: `uv run python -m lumonox_backend.jobs replay-sql-tail-repairs-once`.
 - Parquet phase-1 export (optional cold layer):
-  - Enable with `AUTOPULSE_PARQUET_EXPORT_ENABLED=true`.
-  - Set export target root: `AUTOPULSE_PARQUET_EXPORT_ROOT` (partitioned as `date=YYYY-MM-DD/service=.../environment=...`).
+  - Enable with `LUMONOX_PARQUET_EXPORT_ENABLED=true`.
+  - Set export target root: `LUMONOX_PARQUET_EXPORT_ROOT` (partitioned as `date=YYYY-MM-DD/service=.../environment=...`).
   - Tune cadence and incremental window with:
-    - `AUTOPULSE_PARQUET_EXPORT_INTERVAL_SECONDS`
-    - `AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS`
-  - Manual run: `uv run python -m autopulse_backend.jobs parquet-export-once`.
-  - First export (no `watermark.json` or watermark before 1971-01-01 UTC): one catch-up tick exports through “now”; later ticks use `AUTOPULSE_PARQUET_EXPORT_WINDOW_SECONDS` for incremental windows.
+    - `LUMONOX_PARQUET_EXPORT_INTERVAL_SECONDS`
+    - `LUMONOX_PARQUET_EXPORT_WINDOW_SECONDS`
+  - Manual run: `uv run python -m lumonox_backend.jobs parquet-export-once`.
+  - First export (no `watermark.json` or watermark before 1971-01-01 UTC): one catch-up tick exports through “now”; later ticks use `LUMONOX_PARQUET_EXPORT_WINDOW_SECONDS` for incremental windows.
   - Verify `/internal/metrics` counters: `parquet.export.rows`, `parquet.export.partitions`, `parquet.export.bytes`, and `parquet.export.runs.succeeded`.
 - Parquet phase-2 hybrid reads (optional hot/cold routing):
-  - Enable with `AUTOPULSE_PARQUET_QUERY_ENABLED=true`.
-  - Set hot-window boundary with `AUTOPULSE_PARQUET_HOT_WINDOW_HOURS` (newer windows stay on DuckDB; older windows route to Parquet partitions when present).
+  - Enable with `LUMONOX_PARQUET_QUERY_ENABLED=true`.
+  - Set hot-window boundary with `LUMONOX_PARQUET_HOT_WINDOW_HOURS` (newer windows stay on DuckDB; older windows route to Parquet partitions when present).
   - `/internal/metrics` reports `parquet_export.query_enabled` and `parquet_export.hot_window_hours` for topology verification.
 - Parquet phase-3 lifecycle (optional compaction + retention + verify):
-  - Enable with `AUTOPULSE_PARQUET_LIFECYCLE_ENABLED=true`.
+  - Enable with `LUMONOX_PARQUET_LIFECYCLE_ENABLED=true`.
   - Tune cadence and policies with:
-    - `AUTOPULSE_PARQUET_LIFECYCLE_INTERVAL_SECONDS`
-    - `AUTOPULSE_PARQUET_LIFECYCLE_RETENTION_DAYS`
-    - `AUTOPULSE_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES`
-    - `AUTOPULSE_PARQUET_LIFECYCLE_VERIFY_SAMPLE_SIZE`
-    - `AUTOPULSE_PARQUET_LIFECYCLE_DRY_RUN` (stage-first safety mode)
-  - Manual run: `uv run python -m autopulse_backend.jobs parquet-lifecycle-once`.
+    - `LUMONOX_PARQUET_LIFECYCLE_INTERVAL_SECONDS`
+    - `LUMONOX_PARQUET_LIFECYCLE_RETENTION_DAYS`
+    - `LUMONOX_PARQUET_LIFECYCLE_COMPACTION_MIN_FILES`
+    - `LUMONOX_PARQUET_LIFECYCLE_VERIFY_SAMPLE_SIZE`
+    - `LUMONOX_PARQUET_LIFECYCLE_DRY_RUN` (stage-first safety mode)
+  - Manual run: `uv run python -m lumonox_backend.jobs parquet-lifecycle-once`.
   - Verify lifecycle counters in `/internal/metrics`: `parquet.lifecycle.*` (compaction, retention, verify, reclaimed bytes).
 - Parquet phase-4 object storage + DR restore (optional):
-  - Enable with `AUTOPULSE_PARQUET_OBJECT_STORAGE_ENABLED=true`.
-  - Configure target with `AUTOPULSE_PARQUET_OBJECT_STORAGE_URI` (`s3://bucket/prefix` or `file:///...`).
-  - **`s3://` requires `boto3` in the Python environment.** The repo Dockerfile installs `autopulse-api[parquet-s3]` so the shipped runtime image includes it. Custom images or bare-metal installs must add the same extra (for example `pip install -e "./backend[parquet-s3]"` from the repository root, or `pip install boto3` equivalent). `file://` targets do not need `boto3`.
+  - Enable with `LUMONOX_PARQUET_OBJECT_STORAGE_ENABLED=true`.
+  - Configure target with `LUMONOX_PARQUET_OBJECT_STORAGE_URI` (`s3://bucket/prefix` or `file:///...`).
+  - **`s3://` requires `boto3` in the Python environment.** The repo Dockerfile installs `lumonox-api[parquet-s3]` so the shipped runtime image includes it. Custom images or bare-metal installs must add the same extra (for example `pip install -e "./backend[parquet-s3]"` from the repository root, or `pip install boto3` equivalent). `file://` targets do not need `boto3`.
   - Optional tuning:
-    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_PREFIX`
-    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_INTERVAL_SECONDS`
-    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_VERIFY_UPLOAD`
-    - `AUTOPULSE_PARQUET_OBJECT_STORAGE_ENDPOINT_URL` (S3-compatible providers)
-  - Manual sync run: `uv run python -m autopulse_backend.jobs parquet-object-sync-once`.
+    - `LUMONOX_PARQUET_OBJECT_STORAGE_PREFIX`
+    - `LUMONOX_PARQUET_OBJECT_STORAGE_INTERVAL_SECONDS`
+    - `LUMONOX_PARQUET_OBJECT_STORAGE_VERIFY_UPLOAD`
+    - `LUMONOX_PARQUET_OBJECT_STORAGE_ENDPOINT_URL` (S3-compatible providers)
+  - Manual sync run: `uv run python -m lumonox_backend.jobs parquet-object-sync-once`.
   - Restore latest manifest into local restore root:
-    - Set `AUTOPULSE_PARQUET_OBJECT_STORAGE_RESTORE_ROOT`
-    - Run `uv run python -m autopulse_backend.jobs parquet-object-restore-once`
+    - Set `LUMONOX_PARQUET_OBJECT_STORAGE_RESTORE_ROOT`
+    - Run `uv run python -m lumonox_backend.jobs parquet-object-restore-once`
   - Verify `/internal/metrics` counters: `parquet.object_storage.sync.*` and `parquet.object_storage.restore.*`.
   - Automated regression coverage: `backend/tests/test_parquet_exporter.py` (export + watermark), `backend/tests/test_parquet_lifecycle.py` (compaction, retention, dry-run, malformed partitions, export-root guards), `backend/tests/test_parquet_object_storage.py` (local `file://` store, manifest continuity, restore checksums, corrupt state recovery), and CLI / async tick wiring in `backend/tests/test_backend_jobs.py`.
 
@@ -319,14 +319,14 @@ Dashboard client telemetry is **opt-in** and disabled by default.
 
 Enable only when you need browser-side runtime/perf visibility:
 
-- `NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED=1`
-- `NEXT_PUBLIC_AUTOPULSE_RUM_ENDPOINT=<URL>` (optional override; default is backend `POST /autopulse/rum`)
-- `NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE=<0..1>` (default `1`)
-- `NEXT_PUBLIC_AUTOPULSE_RUM_DEBUG=1` (optional debug logging; keep `0` in production)
+- `NEXT_PUBLIC_LUMONOX_RUM_ENABLED=1`
+- `NEXT_PUBLIC_LUMONOX_RUM_ENDPOINT=<URL>` (optional override; default is backend `POST /lumonox/rum`)
+- `NEXT_PUBLIC_LUMONOX_RUM_SAMPLE_RATE=<0..1>` (default `1`)
+- `NEXT_PUBLIC_LUMONOX_RUM_DEBUG=1` (optional debug logging; keep `0` in production)
 
 Backend endpoint defaults:
 
-- `POST /autopulse/rum` (also reachable at `/rum` on the unprefixed router)
+- `POST /lumonox/rum` (also reachable at `/rum` on the unprefixed router)
 - `DASHBOARD_RUM_MAX_REQUEST_BYTES` (default `8192`, minimum clamp `256`)
 - `DASHBOARD_RUM_LOG_PAYLOADS=true` for temporary staging validation only
 
@@ -341,7 +341,7 @@ No cookies, local storage values, full URLs with query strings, request/response
 Operator validation:
 
 1. Deploy with RUM disabled and confirm no RUM requests are emitted from dashboard sessions.
-2. Enable RUM and set `NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE=1` (default sink `/autopulse/rum` unless overridden).
+2. Enable RUM and set `NEXT_PUBLIC_LUMONOX_RUM_SAMPLE_RATE=1` (default sink `/lumonox/rum` unless overridden).
 3. Trigger one handled page load and one synthetic browser error (`throw new Error("rum-smoke")` in devtools).
 4. Verify endpoint receives scrubbed payloads (no raw emails/tokens/query strings), then disable debug mode.
 
@@ -386,7 +386,7 @@ Policy for metadata DB confidence signals:
 References:
 
 - CI matrix: `.github/workflows/ci.yml` (`python-sqlite`, `python-postgres`).
-- Local release gate script: `scripts/release_gates.sh` (set `AUTOPULSE_RELEASE_GATES_POSTGRES=1` to run optional-path Postgres backend tests locally).
+- Local release gate script: `scripts/release_gates.sh` (set `LUMONOX_RELEASE_GATES_POSTGRES=1` to run optional-path Postgres backend tests locally).
 
 ## 8. Backup, restore, and drills
 
@@ -406,7 +406,7 @@ Follow [BACKUP_RESTORE.md](./BACKUP_RESTORE.md). Before GA:
 - [RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md](./RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md) — deterministic SQL-tail replay recovery and drill flow.
 - [EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md](./EVENT_PLANE_DISASTER_RECOVERY_DRILLS.md) — quarterly drill procedure and latest evidence log.
 - [EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md](./EVENT_PLANE_COMPACTOR_LOAD_EVIDENCE.md) — per-tick throughput evidence for compactor run-budget/concurrency controls.
-- [`../../Dockerfile`](../../Dockerfile) and [`./docker-compose.autopulse.yml`](./docker-compose.autopulse.yml) — official container artifact and minimal compose example.
+- [`../../Dockerfile`](../../Dockerfile) and [`./docker-compose.lumonox.yml`](./docker-compose.lumonox.yml) — official container artifact and minimal compose example.
 
 ## 9.1 No-Go triggers (topology)
 
@@ -435,24 +435,24 @@ If another doc conflicts with product scope, **[DEVELOPMENT.md](../../DEVELOPMEN
 
 ## 11. Official container artifact (backend + static dashboard)
 
-AutoPulse ships an official `Dockerfile` at repo root that:
+Lumonox ships an official `Dockerfile` at repo root that:
 
 - Builds the Next static export (`frontend/out`) in a Node build stage.
-- Installs backend dependencies and runs `uvicorn` for `autopulse_backend.main:app`.
-- Serves the static dashboard from `AUTOPULSE_FRONTEND_STATIC_DIR=/app/frontend/out`.
-- Root [`.dockerignore`](../../.dockerignore) limits build context (for example `.git`, local `node_modules`, `.venv`, `.autopulse`, and trees not used by the Dockerfile) so `docker build` stays fast.
+- Installs backend dependencies and runs `uvicorn` for `lumonox_backend.main:app`.
+- Serves the static dashboard from `LUMONOX_FRONTEND_STATIC_DIR=/app/frontend/out`.
+- Root [`.dockerignore`](../../.dockerignore) limits build context (for example `.git`, local `node_modules`, `.venv`, `.lumonox`, and trees not used by the Dockerfile) so `docker build` stays fast.
 
 ### Build and smoke test
 
 ```bash
-docker build -t autopulse:local .
+docker build -t lumonox:local .
 docker run --rm -p 8000:8000 \
-  -e AUTOPULSE_ENV=production \
+  -e LUMONOX_ENV=production \
   -e DASHBOARD_AUTH_ENABLED=true \
   -e DASHBOARD_AUTH_ALLOWED_EMAIL=you@example.com \
   -e DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true \
   -e INTERNAL_METRICS_BEARER_TOKEN=change-me \
-  autopulse:local
+  lumonox:local
 ```
 
 In another terminal:
@@ -469,4 +469,4 @@ Expected:
 
 From repo root, a non-interactive equivalent is `bash scripts/docker_smoke.sh` (requires Docker running).
 
-For a persistent local deployment example, use `docs/ops/docker-compose.autopulse.yml`.
+For a persistent local deployment example, use `docs/ops/docker-compose.lumonox.yml`.

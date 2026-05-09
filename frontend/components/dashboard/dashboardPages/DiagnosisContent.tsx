@@ -101,7 +101,7 @@ export function DiagnosisContent() {
     if (typeof window === "undefined") {
       return;
     }
-    const k = "autopulse.rum.diagnosis_activation_emitted";
+    const k = "lumonox.rum.diagnosis_activation_emitted";
     try {
       if (window.sessionStorage.getItem(k) === "1") {
         return;

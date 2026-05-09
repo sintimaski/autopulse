@@ -1,0 +1,26 @@
+services:
+  lumonox:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: lumonox:local
+    ports:
+      - "8000:8000"
+    environment:
+      LUMONOX_ENV: production
+      DATABASE_URL: sqlite+aiosqlite:///./.lumonox/lumonox.db
+      LUMONOX_EVENT_STORE: duckdb
+      LUMONOX_DUCKDB_PATH: .lumonox/events.duckdb
+      LUMONOX_DATA_DIR: /data
+      DASHBOARD_AUTH_ENABLED: "true"
+      DASHBOARD_AUTH_ALLOWED_EMAIL: you@example.com
+      DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "true"
+      INTERNAL_METRICS_BEARER_TOKEN: change-me
+      JOBS_ENABLE_SCHEDULER: "true"
+      DATABASE_RUN_MIGRATIONS_ON_STARTUP: "true"
+    volumes:
+      - lumonox_data:/data
+    restart: unless-stopped
+
+volumes:
+  lumonox_data:

@@ -1,0 +1,32 @@
+---
+description: Non-negotiable engineering constraints (SDK/backend/security)
+alwaysApply: true
+---
+
+# Lumonox engineering constraints
+
+## SDK (Python)
+
+- Never break the user's app when Lumonox is misconfigured/down/slow.
+- Keep hot path async/non-blocking with bounded queue; drop when full (document behavior).
+- Use background batching with bounded retries/backoff; drop exhausted batches.
+- Keep failure mode quiet by default; allow explicit debug mode.
+- Scrub sensitive data by default; on middleware exceptions capture data then re-raise original exception.
+
+## Backend
+
+- Keep ingest endpoint fast and resilient; move heavy processing off request path.
+- Authenticate API keys and store hashes only (never plaintext keys).
+- Validate/normalize events and attach server metadata (project id, receive time, SDK version).
+
+## Security defaults
+
+Use HTTPS in production and conservative capture defaults (no full request/response bodies unless explicitly enabled).
+
+## Implementation style
+
+Prefer small focused diffs, keep naming consistent, and avoid scope expansion without explicit approval.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

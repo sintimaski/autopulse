@@ -147,7 +147,7 @@ export type DashboardDataContextValue = {
   retryWorkspaceBootstrap: () => void;
   retentionSettings: RetentionSettings | null;
   themePreference: ThemePreference;
-  excludeAutopulseTraffic: boolean;
+  excludeLumonoxTraffic: boolean;
   errorGroupSort: "last_seen" | "count";
   loading: boolean;
   errorMessage: string | null;
@@ -187,7 +187,7 @@ export type DashboardDataContextValue = {
   copyRunbookCommand: (command: string, label: string) => Promise<void>;
   saveAlertSettings: (next: AlertSettings) => Promise<boolean>;
   saveThemePreference: (next: ThemePreference) => Promise<boolean>;
-  saveExcludeAutopulseTraffic: (next: boolean) => Promise<boolean>;
+  saveExcludeLumonoxTraffic: (next: boolean) => Promise<boolean>;
   saveRetentionSettings: (next: RetentionSettings) => Promise<boolean>;
   refreshApiKeys: () => Promise<void>;
   /** Rebind the dashboard cookie session to another project you belong to (refreshes data). */

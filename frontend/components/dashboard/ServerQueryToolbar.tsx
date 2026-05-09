@@ -79,7 +79,7 @@ function gatherToolbarScopeSaveDraft(
 
 export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVariant }) {
   const d = useDashboardData();
-  const advancedQueryUiEnabled = process.env.NEXT_PUBLIC_AUTOPULSE_ADVANCED_QUERY_UI === "1";
+  const advancedQueryUiEnabled = process.env.NEXT_PUBLIC_LUMONOX_ADVANCED_QUERY_UI === "1";
   const scopeTitle =
     variant === "diagnosis" ? "Diagnosis scope" : "Requests scope";
   const selectedEnvironmentTags = useMemo(

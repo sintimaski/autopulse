@@ -75,7 +75,7 @@ export function MagicLinkVerifyClient() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-14 text-slate-100">
       <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/60 backdrop-blur">
-        <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">AutoPulse</p>
+        <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">Lumonox</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p
           className="mt-3 text-sm leading-relaxed text-slate-300"

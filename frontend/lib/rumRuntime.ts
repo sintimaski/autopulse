@@ -2,12 +2,12 @@
 
 import { sanitizeRumPath, sanitizeRumStack, sanitizeRumText } from "./rumSanitize";
 
-const RUM_ENABLED = process.env.NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED === "1";
+const RUM_ENABLED = process.env.NEXT_PUBLIC_LUMONOX_RUM_ENABLED === "1";
 const RUM_ENDPOINT =
-  process.env.NEXT_PUBLIC_AUTOPULSE_RUM_ENDPOINT?.trim() || "/autopulse/rum";
-const RUM_DEBUG = process.env.NEXT_PUBLIC_AUTOPULSE_RUM_DEBUG === "1";
+  process.env.NEXT_PUBLIC_LUMONOX_RUM_ENDPOINT?.trim() || "/lumonox/rum";
+const RUM_DEBUG = process.env.NEXT_PUBLIC_LUMONOX_RUM_DEBUG === "1";
 const RUM_SAMPLE_RATE = (() => {
-  const raw = process.env.NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE;
+  const raw = process.env.NEXT_PUBLIC_LUMONOX_RUM_SAMPLE_RATE;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
     return 1;
@@ -78,7 +78,7 @@ function sendRumEvent(endpoint: string, payload: RumEventPayload): void {
 }
 
 /**
- * Emit a sampled RUM event when `NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED=1`.
+ * Emit a sampled RUM event when `NEXT_PUBLIC_LUMONOX_RUM_ENABLED=1`.
  * Uses the same session + sample draw as `RumClient` route views.
  */
 export function emitRumEvent(
@@ -101,7 +101,7 @@ export function emitRumEvent(
     data,
   };
   if (RUM_DEBUG) {
-    console.info("[autopulse-rum]", payload);
+    console.info("[lumonox-rum]", payload);
   }
   sendRumEvent(RUM_ENDPOINT, payload);
 }

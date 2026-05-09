@@ -26,7 +26,7 @@ Initial alert target (tune per environment baseline):
 3. Run one manual replay pass:
 
 ```bash
-uv run python -m autopulse_backend.jobs replay-sql-tail-repairs-once
+uv run python -m lumonox_backend.jobs replay-sql-tail-repairs-once
 ```
 
 4. Re-check diagnostics:

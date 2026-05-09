@@ -7,7 +7,7 @@
 
 ## Context
 
-AutoPulse MVP uses DuckDB as the raw event plane and treats writes as single-writer per file. This matches the MVP promise (fast diagnosis with low setup overhead), but creates a known scale and availability ceiling:
+Lumonox MVP uses DuckDB as the raw event plane and treats writes as single-writer per file. This matches the MVP promise (fast diagnosis with low setup overhead), but creates a known scale and availability ceiling:
 
 - One active writer per DuckDB file.
 - Operational risk grows with write concurrency, file size, and restore windows.

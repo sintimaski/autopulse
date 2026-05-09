@@ -10,21 +10,21 @@ from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.alerts import (
+from lumonox_backend.alerts import (
     AlertDeliveryResult,
     AlertSignal,
     EmailAlertSender,
     StubAlertSender,
     evaluate_alerts_once,
 )
-from autopulse_backend.core.config import get_settings
-from autopulse_backend.models import Event, Project
+from lumonox_backend.core.config import get_settings
+from lumonox_backend.models import Event, Project
 
 
 @pytest.fixture(autouse=True)
 def _sqlite_event_store_for_alert_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     """These tests seed the SQL ``events`` table; DuckDB-backed reads would return zero counts."""
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "sqlite")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "sqlite")
 
 
 def _seed_request_events(
@@ -244,11 +244,11 @@ def test_alert_sender_defaults_to_stub_when_webhook_mode_missing_url(
 ) -> None:
     from dataclasses import replace
 
-    from autopulse_backend.alerts import StubAlertSender, build_alert_sender
+    from lumonox_backend.alerts import StubAlertSender, build_alert_sender
 
     # Avoid invalid combinations from developer env (e.g. log_shards + sqlite).
-    monkeypatch.setenv("AUTOPULSE_EVENT_STORE", "duckdb")
-    monkeypatch.setenv("AUTOPULSE_EVENT_PLANE_MODE", "duckdb_single_writer")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_EVENT_PLANE_MODE", "duckdb_single_writer")
 
     settings = replace(get_settings(), alert_sender_mode="webhook", alert_webhook_url=None)
     sender = build_alert_sender(settings)

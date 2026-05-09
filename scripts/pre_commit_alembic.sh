@@ -16,6 +16,12 @@ fi
 uv run alembic upgrade head --sql >/dev/null
 
 # Online smoke: apply full chain on a throwaway SQLite file (catches dialect-only breakage).
-rm -f .pre-commit-alembic.db .pre-commit-alembic.db-wal .pre-commit-alembic.db-shm
-export DATABASE_URL="sqlite+aiosqlite:///./.pre-commit-alembic.db"
-uv run alembic upgrade head
+# Relative DATABASE_URL paths are anchored to LUMONOX_DATA_DIR / monorepo root (see
+# normalize_database_url), not backend cwd — rm the resolved repo-root file, not backend/.
+pre_db="${ROOT}/.pre-commit-alembic.db"
+rm -f "$pre_db" "${pre_db}-wal" "${pre_db}-shm"
+(
+  export LUMONOX_DATA_DIR="$ROOT"
+  export DATABASE_URL="sqlite+aiosqlite:///./.pre-commit-alembic.db"
+  uv run alembic upgrade head
+)

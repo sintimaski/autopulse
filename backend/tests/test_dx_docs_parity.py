@@ -11,8 +11,8 @@ def test_readme_keeps_release_gates_entrypoints_and_ci_parity_notes() -> None:
     readme = README_PATH.read_text(encoding="utf-8")
     required_snippets = [
         "bash ./scripts/release_gates.sh",
-        "AUTOPULSE_RELEASE_GATES_POSTGRES=1",
-        "AUTOPULSE_RELEASE_GATES_E2E=1",
+        "LUMONOX_RELEASE_GATES_POSTGRES=1",
+        "LUMONOX_RELEASE_GATES_E2E=1",
         "#### Supported matrix and CI parity",
         "| Python | **3.11+**",
         "| Node.js | **22.x**",
@@ -35,5 +35,5 @@ def test_readme_keeps_cold_clone_first_ingest_smoke_sequence() -> None:
 
 def test_release_gates_script_keeps_optional_ci_parity_switches() -> None:
     script = RELEASE_GATES_SCRIPT_PATH.read_text(encoding="utf-8")
-    assert "AUTOPULSE_RELEASE_GATES_POSTGRES" in script
-    assert "AUTOPULSE_RELEASE_GATES_E2E" in script
+    assert "LUMONOX_RELEASE_GATES_POSTGRES" in script
+    assert "LUMONOX_RELEASE_GATES_E2E" in script

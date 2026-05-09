@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from autopulse.widgets import (
+from lumonox.widgets import (
     BarChartWidget,
     CardWidget,
     DonutChartWidget,

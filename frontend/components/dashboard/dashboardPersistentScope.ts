@@ -11,7 +11,7 @@ import {
   type DashboardScopedQueryState,
 } from "./dashboardQueryState";
 
-const STORAGE_KEY = "autopulse.dashboard.session.v1";
+const STORAGE_KEY = "lumonox.dashboard.session.v1";
 
 const GROUP_VALUES = new Set<string>(GROUP_OPTIONS.map((o) => o.value));
 

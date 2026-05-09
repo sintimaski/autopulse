@@ -4,8 +4,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
-IMAGE="${AUTOPULSE_DOCKER_IMAGE:-autopulse:local}"
-PORT="${AUTOPULSE_DOCKER_SMOKE_PORT:-8000}"
+IMAGE="${LUMONOX_DOCKER_IMAGE:-lumonox:local}"
+PORT="${LUMONOX_DOCKER_SMOKE_PORT:-8000}"
 
 if ! docker info >/dev/null 2>&1; then
   echo "error: docker daemon not reachable (start Docker Desktop or similar)" >&2
@@ -18,7 +18,7 @@ docker build -t "$IMAGE" "$ROOT"
 CID="$(
   docker run -d \
     -p "${PORT}:8000" \
-    -e AUTOPULSE_ENV=production \
+    -e LUMONOX_ENV=production \
     -e DASHBOARD_AUTH_ENABLED=true \
     -e DASHBOARD_AUTH_ALLOWED_EMAIL=smoke@example.com \
     -e DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS=true \

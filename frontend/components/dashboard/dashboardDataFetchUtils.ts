@@ -18,7 +18,7 @@ export const DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS = 2_000;
 export const DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_CAP_MS = 60_000;
 export const DASHBOARD_WS_HANDSHAKE_FAIL_EXP_CAP = 5;
 export const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
-  const raw = process.env.NEXT_PUBLIC_AUTOPULSE_DASHBOARD_REFRESH_INTERVAL_SECONDS;
+  const raw = process.env.NEXT_PUBLIC_LUMONOX_DASHBOARD_REFRESH_INTERVAL_SECONDS;
   const parsedSeconds = Number(raw);
   if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
     return Math.max(250, Math.floor(parsedSeconds * 1000));

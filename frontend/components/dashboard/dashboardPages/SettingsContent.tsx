@@ -798,11 +798,11 @@ export function SettingsContent() {
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
               Optional rotation caps apply to the active log store (DuckDB or SQLite). The backend also honors{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
-                AUTOPULSE_SQLITE_MAX_DB_FILE_MB
+                LUMONOX_SQLITE_MAX_DB_FILE_MB
               </code>{" "}
               (deprecated alias{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
-                AUTOPULSE_EMBEDDED_MAX_DB_SIZE_MB
+                LUMONOX_EMBEDDED_MAX_DB_SIZE_MB
               </code>
               ) as a whole-file ceiling (default 512 on dev SQLite filenames unless overridden).
             </p>
@@ -1194,7 +1194,7 @@ export function SettingsContent() {
 
       <section className="rounded-2xl border-2 border-sky-400/50 bg-gradient-to-br from-sky-50 to-white p-5 shadow-md dark:border-sky-600/40 dark:from-sky-950/40 dark:to-neutral-900">
         <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-neutral-50">
-          Exclude AutoPulse internal traffic
+          Exclude Lumonox internal traffic
         </h2>
         {!canEditRetention ? (
           <p className="mt-2 text-sm text-slate-700 dark:text-neutral-200">
@@ -1202,7 +1202,7 @@ export function SettingsContent() {
           </p>
         ) : null}
         <p className="mt-2 text-sm font-medium text-slate-700 dark:text-neutral-200">
-          When enabled, requests to <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/autopulse/*</code>,{" "}
+          When enabled, requests to <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/lumonox/*</code>,{" "}
           <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/dashboard/*</code>, and{" "}
           <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/ingest</code> are omitted from analytics,
           logs, SQL queries, and alert evaluation so console and ingest noise does not skew your app metrics.
@@ -1211,17 +1211,17 @@ export function SettingsContent() {
           <input
             type="checkbox"
             className="mt-1 size-4 shrink-0 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
-            checked={d.excludeAutopulseTraffic}
+            checked={d.excludeLumonoxTraffic}
             disabled={!canEditRetention || d.themeSettingsSaving}
             onChange={async (event) => {
-              const ok = await d.saveExcludeAutopulseTraffic(event.target.checked);
+              const ok = await d.saveExcludeLumonoxTraffic(event.target.checked);
               setThemeMessage(
                 ok ? "Saved." : "Could not save. Try again.",
               );
             }}
           />
           <span>
-            <span className="text-base font-bold text-slate-900 dark:text-neutral-100">Hide internal AutoPulse traffic</span>
+            <span className="text-base font-bold text-slate-900 dark:text-neutral-100">Hide internal Lumonox traffic</span>
             <span className="mt-1 block text-sm font-normal text-slate-600 dark:text-neutral-400">
               Recommended for production projects. Toggle off only when debugging the dashboard itself.
             </span>
@@ -1305,7 +1305,7 @@ export function SettingsContent() {
                   />
                 </label>
                 <span className="mt-2 block text-xs text-slate-500 dark:text-neutral-400">
-                  SMTP, Resend, SendGrid, etc. are configured on the AutoPulse server (environment variables), not in
+                  SMTP, Resend, SendGrid, etc. are configured on the Lumonox server (environment variables), not in
                   this form—you only choose who receives mail. See readiness below.
                 </span>
               </div>
@@ -1404,7 +1404,7 @@ export function SettingsContent() {
                   placeholder="https://example.com/alerts/webhook"
                 />
                 <span className="mt-2 block text-xs text-slate-500 dark:text-neutral-400">
-                  AutoPulse POSTs a JSON payload to this URL. There is no separate API-key field; if your endpoint
+                  Lumonox POSTs a JSON payload to this URL. There is no separate API-key field; if your endpoint
                   needs auth, use a signed URL or terminate TLS at a gateway you control (custom headers are not
                   configured here yet).
                 </span>
@@ -1821,7 +1821,7 @@ export function SettingsContent() {
         </p>
         {isApiSubpathDashboard() ? (
           <p className="mt-2 text-xs text-slate-600 dark:text-neutral-400">
-            First boot writes <code className="rounded bg-slate-100 px-1 font-mono dark:bg-neutral-950">.env.autopulse</code> — source before{" "}
+            First boot writes <code className="rounded bg-slate-100 px-1 font-mono dark:bg-neutral-950">.env.lumonox</code> — source before{" "}
             <code className="rounded bg-slate-100 px-1 font-mono dark:bg-neutral-950">npm run build</code>. New keys here: paste both API_KEY lines there, rebuild, restart.
           </p>
         ) : null}

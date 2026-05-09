@@ -1,9 +1,9 @@
 /** Matches `basePath` in `frontend/next.config.ts`. */
-const DASHBOARD_UI_BASE_PATH = "/autopulse/ui";
+const DASHBOARD_UI_BASE_PATH = "/lumonox/ui";
 
 /**
- * UI prefix for same-origin navigation (static export under ``/autopulse/ui``, or ``""`` when
- * ``AUTOPULSE_FRONTEND_MODE=sidecar`` with no basePath).
+ * UI prefix for same-origin navigation (static export under ``/lumonox/ui``, or ``""`` when
+ * ``LUMONOX_FRONTEND_MODE=sidecar`` with no basePath).
  */
 function resolveDashboardUiPrefix(): string {
   if (typeof window === "undefined") {
@@ -67,8 +67,8 @@ export function logicalDashboardLocationHrefWithPrefix(logicalHref: string, uiPr
 
 /**
  * Turn a logical dashboard URL (no `basePath`) into the path+search+hash string the browser
- * should show after `history.replaceState`, e.g. `/dashboard?…` → `/autopulse/ui/dashboard/?…`
- * when the bundle is served under `/autopulse/ui` (see `next.config.ts`). Without this, a path
+ * should show after `history.replaceState`, e.g. `/dashboard?…` → `/lumonox/ui/dashboard/?…`
+ * when the bundle is served under `/lumonox/ui` (see `next.config.ts`). Without this, a path
  * starting with `/` is resolved from the site root and drops the UI prefix.
  */
 export function logicalDashboardLocationHref(logicalHref: string): string {

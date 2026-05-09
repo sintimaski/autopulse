@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# POST one sample AutoPulse ingest event (for manual smoke checks).
+# POST one sample Lumonox ingest event (for manual smoke checks).
 #
 # Usage:
 #   export INGEST_KEY='ap_live_…'
 #   ./scripts/examples/ingest_sample_event.sh
 #
 # Optional:
-#   INGEST_URL=https://your-host/autopulse/ingest ./scripts/examples/ingest_sample_event.sh
+#   INGEST_URL=https://your-host/lumonox/ingest ./scripts/examples/ingest_sample_event.sh
 set -euo pipefail
 
 INGEST_URL="${INGEST_URL:-http://127.0.0.1:8000/ingest}"

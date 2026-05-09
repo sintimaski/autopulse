@@ -1,6 +1,6 @@
 # Multi-instance deployment notes
 
-AutoPulse can run multiple API processes behind a load balancer. A few subsystems are **single-process by default** unless you add infrastructure.
+Lumonox can run multiple API processes behind a load balancer. A few subsystems are **single-process by default** unless you add infrastructure.
 
 ## WebSocket dashboard updates
 
@@ -27,7 +27,7 @@ If neither is configured, stale/partial live updates are expected and deployment
 Required for cross-replica WS freshness without stickiness:
 
 - `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify`
-- optional `DASHBOARD_REALTIME_BUS_CHANNEL=autopulse_dashboard_realtime` (letters/digits/underscore only)
+- optional `DASHBOARD_REALTIME_BUS_CHANNEL=lumonox_dashboard_realtime` (letters/digits/underscore only)
 
 Behavior/fallback:
 

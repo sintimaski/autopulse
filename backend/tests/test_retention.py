@@ -12,10 +12,10 @@ from db_reset import truncate_full_schema
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from autopulse_backend.core.config import get_settings, normalize_database_url
-from autopulse_backend.maintenance import retention as retention_mod
-from autopulse_backend.maintenance import run_retention_cleanup_once
-from autopulse_backend.models import Base, Event, Project, ProjectUiSettings
+from lumonox_backend.core.config import get_settings, normalize_database_url
+from lumonox_backend.maintenance import retention as retention_mod
+from lumonox_backend.maintenance import run_retention_cleanup_once
+from lumonox_backend.models import Base, Event, Project, ProjectUiSettings
 
 
 def _seed_old_and_fresh_events(database_url: str, now: datetime) -> None:
@@ -117,7 +117,7 @@ def test_retention_cleanup_respects_project_override(
                     ProjectUiSettings(
                         project_id=project.id,
                         theme_preference="system",
-                        exclude_autopulse_traffic=True,
+                        exclude_lumonox_traffic=True,
                         retention_raw_events_days=2,
                         logs_query_max_window_minutes=60,
                     )
@@ -171,7 +171,7 @@ def test_retention_cleanup_archives_before_delete_when_enabled(
                     ProjectUiSettings(
                         project_id=project.id,
                         theme_preference="system",
-                        exclude_autopulse_traffic=True,
+                        exclude_lumonox_traffic=True,
                         retention_raw_events_days=2,
                         retention_plan="extended",
                         archival_enabled=True,
@@ -233,7 +233,7 @@ def test_retention_cleanup_enforces_project_log_row_cap_for_sqlite(
                     ProjectUiSettings(
                         project_id=project.id,
                         theme_preference="system",
-                        exclude_autopulse_traffic=True,
+                        exclude_lumonox_traffic=True,
                         retention_raw_events_days=90,
                         retention_max_log_rows=2,
                         logs_query_max_window_minutes=60,
@@ -385,7 +385,7 @@ def test_sqlite_global_file_cap_uses_min_ui_when_sqlite_cap_unset(
                     ProjectUiSettings(
                         project_id=project.id,
                         theme_preference="system",
-                        exclude_autopulse_traffic=True,
+                        exclude_lumonox_traffic=True,
                         retention_raw_events_days=90,
                         retention_max_db_size_mb=50,
                         logs_query_max_window_minutes=60,
@@ -460,7 +460,7 @@ def test_sqlite_global_file_cap_uses_min_ui_when_sqlite_cap_unset(
 def test_duckdb_size_shrink_falls_back_to_widget_points(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from autopulse_backend.maintenance import retention_duckdb
+    from lumonox_backend.maintenance import retention_duckdb
 
     class _FakeStore:
         def __init__(self) -> None:
