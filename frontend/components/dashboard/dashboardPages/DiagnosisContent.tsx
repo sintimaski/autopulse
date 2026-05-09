@@ -29,6 +29,7 @@ import {
   nextDeepLinkRetryAction,
   parseErrorGroupHash,
 } from "../diagnosisDeepLink";
+import { emitRumEvent } from "../../../lib/rumRuntime";
 
 export function DiagnosisContent() {
   const d = useDashboardData();
@@ -91,6 +92,49 @@ export function DiagnosisContent() {
   const timeline = diagnosisSlice.diagnosisTimeline;
   const failures = diagnosisSlice.diagnosisFailures;
   const groupEvents = diagnosisSlice.diagnosisErrorGroupEvents;
+  const zeroResultEmittedKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (routePath !== "/diagnosis") {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const k = "autopulse.rum.diagnosis_activation_emitted";
+    try {
+      if (window.sessionStorage.getItem(k) === "1") {
+        return;
+      }
+      emitRumEvent("diagnosis_activation", { surface: "diagnosis_page" });
+      window.sessionStorage.setItem(k, "1");
+    } catch {
+      emitRumEvent("diagnosis_activation", { surface: "diagnosis_page" });
+    }
+  }, [routePath]);
+
+  useEffect(() => {
+    if (!errorGroups) {
+      return;
+    }
+    if (errorGroups.items.length > 0) {
+      zeroResultEmittedKeyRef.current = null;
+      return;
+    }
+    const pq = d.pathQuery.trim();
+    if (!pq) {
+      return;
+    }
+    const key = `path:${pq}`;
+    if (zeroResultEmittedKeyRef.current === key) {
+      return;
+    }
+    zeroResultEmittedKeyRef.current = key;
+    emitRumEvent("filter_zero_results", {
+      surface: "diagnosis_error_groups",
+      query_len: pq.length,
+    });
+  }, [d.pathQuery, errorGroups]);
 
   useLayoutEffect(() => {
     if (typeof window === "undefined") {

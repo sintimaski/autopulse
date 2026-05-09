@@ -180,6 +180,8 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 | Replay / repair job outcomes (server-side)       | Reliability funnel    |
 
 
+**Implementation status (repo, 2026-05-09):** When `NEXT_PUBLIC_AUTOPULSE_RUM_ENABLED=1`, the dashboard emits sampled RUM payloads via `frontend/lib/rumRuntime.ts` and `frontend/app/RumClient.tsx` for `route_view`, `session_performance`, `runtime_error`, `unhandled_rejection`, plus **`diagnosis_activation`** (once per browser session on `/diagnosis`), **`modal_lifecycle`** (evidence modal open/close in `DashboardDetailModal`), **`filter_zero_results`** (diagnosis route filter with zero matching groups), **`jobs_primary_action`** (System diagnostics link in `RecentJobFailuresStrip`), and existing client error hooks. **First event (project-level)** is counted server-side as `ingest.first_event_by_project_total` (increment once per project when the first durable ingest batch lands; see `persist_ingest_batch`). **Jobs page sessions** remain covered indirectly by `route_view` on dashboard routes (no dedicated `/jobs` route). **Empty-state CTA** beyond the jobs strip is not separately instrumented in MVP (owner: Product; revisit with dashboard empty-state audit). **Replay/repair outcomes** remain on internal metrics / system-diagnostics (`T06`/`T12`), not duplicated into browser RUM.
+
 **Funnels to define in dashboard or analytics export:** onboarding (signup → key → first event); diagnosis (incident → evidence modal → resolution marker if present); jobs (landing → correlated error found).
 
 ### Observability ownership
@@ -252,7 +254,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
 - **Outputs:** updated IA/nav and migration notes for links.
 - **Dependencies:** Frontend + Product.
 - **Constraints:** Preserve existing functionality and route compatibility.
-- **Dependency / change risk:** Nav changes break mental models, bookmarks, and external docs. Mitigations are **in scope:** in-app **migration banner** (time-boxed), **command palette / search** fallback for “lost” actions, **preserved keyboard shortcuts** where they exist, **release notes** and doc updates, **route-level analytics** (see §5.1 telemetry) to detect dead-ends.
+- **Dependency / change risk:** Nav changes break mental models, bookmarks, and external docs. Mitigations are **in scope:** in-app **migration banner** (dismissible tip under the sidebar header in `NavIaMigrationBanner.tsx`), **command palette** (`DashboardCommandPalette.tsx`, **⌘K / Ctrl+K**), **preserved keyboard shortcuts** where they exist, **release notes** and doc updates, **route-level analytics** via optional RUM (`RumClient` + §5.1 telemetry mapping).
 - **Tools available:** frontend components, E2E tests.
 - **Steps / plan:**
   1. Define target IA with primary vs advanced tiers.
@@ -707,7 +709,7 @@ Instrument **staging first**, then production where privacy allows. Ties to funn
   - DX/release (`T08`, `T09`) can run concurrently once P0 has started.
 - Risk register (top 5):
   - R1: Unsafe production topology still deployable by operator error (**mitigation: T05 severity table + readiness matrix hard fails**).
-  - R2: UX simplification causes regressions in power-user workflows (**mitigation: T02 migration banner, palette, shortcuts, route analytics, §5.1 rollback thresholds**).
+  - R2: UX simplification causes regressions in power-user workflows (**mitigation: T02 migration banner + command palette shipped; optional RUM route analytics; §5.1 rollback thresholds**).
   - R3: Security hardening changes inadvertently break auth/session (**mitigation: T07 AC4–8, staging soak, global rollback auth spike rule**).
   - R4: Reliability drill gaps remain untested in realistic staging conditions (**mitigation: T11 mandatory catalog + promotion policy**).
   - R5: Execution drift from **uncalendared** work (**mitigation: §5.1 master schedule + weekly owner review of metrics table**).
@@ -732,3 +734,5 @@ Mark each item before closing the plan:
 - **T11** drill catalog executed at least one full cycle with archived evidence; **T12** surfaces usable for common support questions.
 - Updated docs remain aligned with `DEVELOPMENT.md` and no unsupported promises.
 - **Product telemetry** minimum set (§5.1) implemented or explicitly deferred with owner + date.
+
+**Repo vs operator evidence (2026-05-09):** Implementation and regression tests cover **T01–T12** as listed in §6. Items that remain **operator-owned** (calendar milestones, measured funnel baselines, staging drill log attachments, wiring rollback thresholds into external monitoring, §5.1 empty-state CTA granularity) are tracked in staging/prod checklists and `docs/runbooks/PHASE5_DRILL_EVIDENCE_LOG.md` rather than as code assertions.

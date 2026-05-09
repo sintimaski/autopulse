@@ -48,6 +48,7 @@ from autopulse_backend.services.ingest_widgets import (
     extract_dashboard_widget_rows,
     extract_operational_widget_rows,
 )
+from autopulse_backend.services.project_activity import project_has_received_any_event
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +238,11 @@ async def persist_ingest_batch(
         }
         for event in incoming_events
     ]
+    had_events_before_batch = False
+    if rows:
+        had_events_before_batch = await project_has_received_any_event(
+            session, project_id=project_id, settings=settings
+        )
     if event_store_enabled():
         await insert_events_duckdb(duckdb_rows)
         accepted = len(duckdb_rows)
@@ -256,6 +262,8 @@ async def persist_ingest_batch(
                 )
     else:
         accepted = await events_repo.insert_ingest_events(session, rows)
+    if rows and not had_events_before_batch and accepted > 0:
+        service_metrics.increment("ingest.first_event_by_project_total")
     metric_bucket_deltas, error_group_deltas = _build_aggregate_deltas(
         project_id=project_id,
         rows=rows,

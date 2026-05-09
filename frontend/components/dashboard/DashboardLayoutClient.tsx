@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 
 import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import { DashboardAppShell } from "./AppShell";
+import { DashboardCommandPalette } from "./DashboardCommandPalette";
 import { ApiKeyMissing, DashboardSessionRestoring } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
 import { buildLiveDashboardSearchString, parseLogsClientSearchParams } from "./dashboardLogsViewUrl";
@@ -557,7 +558,9 @@ function ShellWithData({ children }: { children: ReactNode }) {
     ) : null;
 
   return (
-    <DashboardAppShell
+    <>
+      <DashboardCommandPalette />
+      <DashboardAppShell
       pathname={pathname}
       title={meta.title}
       subtitle={meta.subtitle}
@@ -599,6 +602,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     >
       {children}
     </DashboardAppShell>
+    </>
   );
 }
 

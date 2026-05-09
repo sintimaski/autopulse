@@ -8,6 +8,7 @@ import type { LucideIcon } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
 import { DASHBOARD_NAV_SECTIONS } from "./dashboardNavConfig";
 import { isApiSubpathDashboard } from "./dashboardTypes";
+import { NavIaMigrationBanner } from "./NavIaMigrationBanner";
 
 const SIDEBAR_COLLAPSED_KEY = "autopulse.sidebarCollapsed";
 
@@ -138,6 +139,7 @@ export function DashboardAppShell({
               </div>
             )}
           </div>
+          {!sidebarCollapsed ? <NavIaMigrationBanner /> : null}
           <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-4 text-sm">
             {DASHBOARD_NAV_SECTIONS.map((section, sectionIndex) => (
               <div

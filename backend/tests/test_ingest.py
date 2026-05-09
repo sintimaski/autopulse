@@ -494,6 +494,39 @@ def test_internal_metrics_tracks_ingest_counters(
     counters = metrics.json()["counters"]
     assert counters["ingest.accepted.batches"] >= 1
     assert counters["ingest.accepted.events"] >= 1
+    assert counters.get("ingest.first_event_by_project_total", 0) >= 1
+
+
+def test_ingest_first_event_by_project_metric_increments_once_per_project(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/first-event-metric",
+                "status_code": 200,
+                "latency_ms": 3.0,
+            }
+        ]
+    }
+    before = int(service_metrics.snapshot().get("ingest.first_event_by_project_total", 0))
+    with TestClient(app) as client:
+        first = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+        mid = int(service_metrics.snapshot().get("ingest.first_event_by_project_total", 0))
+        second = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+        after = int(service_metrics.snapshot().get("ingest.first_event_by_project_total", 0))
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert mid == before + 1
+    assert after == mid
 
 
 def test_prometheus_metrics_endpoint_exposes_ingest_counters(
@@ -525,6 +558,7 @@ def test_prometheus_metrics_endpoint_exposes_ingest_counters(
     assert ingest.status_code == 200
     assert metrics.status_code == 200
     assert "autopulse_ingest_accepted_batches" in metrics.text
+    assert "autopulse_ingest_first_event_by_project_total" in metrics.text
     for needle in (
         "autopulse_ingest_pressure_sql_tail_repair_queued_total",
         "autopulse_ingest_pressure_sql_tail_repair_succeeded_total",

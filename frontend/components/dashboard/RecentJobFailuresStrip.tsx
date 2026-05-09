@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { emitRumEvent } from "../../lib/rumRuntime";
 import type { RecentJobFailuresResponse } from "./dashboardTypes";
 import { formatTimestamp } from "./dashboardTypes";
 
@@ -44,7 +45,11 @@ export function RecentJobFailuresStrip({
       </p>
       <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
         Primary next action: open{" "}
-        <Link href={diagnosticsHref} className="font-medium underline-offset-2 hover:underline">
+        <Link
+          href={diagnosticsHref}
+          className="font-medium underline-offset-2 hover:underline"
+          onClick={() => emitRumEvent("jobs_primary_action", { target: "system_diagnostics" })}
+        >
           System diagnostics
         </Link>{" "}
         to check scheduler/replay health, then use diagnosis links for correlated request evidence.

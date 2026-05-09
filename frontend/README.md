@@ -30,7 +30,7 @@ Optional frontend RUM (disabled by default):
 - `NEXT_PUBLIC_AUTOPULSE_RUM_SAMPLE_RATE=0.2` samples sessions (0.0-1.0, default `1`).
 - `NEXT_PUBLIC_AUTOPULSE_RUM_DEBUG=1` logs scrubbed payloads to browser console.
 
-Captured fields are intentionally minimal and scrubbed: route path (query/hash removed, id-like segments masked), runtime error message, short stack preview, and coarse navigation timing (`dom_content_loaded_ms`, `load_event_ms`).
+Captured fields are intentionally minimal and scrubbed: route path (query/hash removed, id-like segments masked), runtime error message, short stack preview, coarse navigation timing (`dom_content_loaded_ms`, `load_event_ms`), and optional funnel signals (`diagnosis_activation`, `modal_lifecycle`, `filter_zero_results`, `jobs_primary_action`) emitted from `lib/rumRuntime.ts` when sampled.
 
 Core surfaces:
 

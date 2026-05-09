@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
+import { emitRumEvent } from "../../lib/rumRuntime";
+import { sanitizeRumText } from "../../lib/rumSanitize";
 import { X } from "../../lib/icons";
 
 type DashboardDetailModalProps = {
@@ -31,6 +33,23 @@ export function DashboardDetailModal({ open, title, onClose, children, size = "l
       (node) => !node.hasAttribute("disabled") && node.getAttribute("aria-hidden") !== "true",
     );
   };
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    emitRumEvent("modal_lifecycle", {
+      phase: "open",
+      title_len: title.length,
+      title_snip: sanitizeRumText(title.slice(0, 64)),
+    });
+    return () => {
+      emitRumEvent("modal_lifecycle", {
+        phase: "close",
+        title_len: title.length,
+      });
+    };
+  }, [open, title]);
 
   useEffect(() => {
     if (!open) {

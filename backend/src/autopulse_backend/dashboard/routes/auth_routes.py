@@ -36,7 +36,6 @@ from autopulse_backend.database import get_db_session
 from autopulse_backend.models import (
     ApiKey,
     ErrorGroupAggregate,
-    Event,
     GovernanceAuditEvent,
     Project,
 )
@@ -58,6 +57,7 @@ from autopulse_backend.schemas import (
 )
 from autopulse_backend.services.duckdb_async import run_duckdb_read_sync, run_duckdb_write_sync
 from autopulse_backend.services.event_store import event_store_enabled, try_get_duckdb_event_store
+from autopulse_backend.services.project_activity import project_has_received_any_event
 
 OnboardingStep = Literal[
     "authenticate_session",
@@ -70,29 +70,6 @@ OnboardingStep = Literal[
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-async def _project_has_received_any_event(
-    session: AsyncSession,
-    *,
-    project_id: UUID,
-    settings: Settings,
-) -> bool:
-    """True when SQL ``events`` or DuckDB has at least one row for the project."""
-    has_sql_event = bool(
-        await session.scalar(select(exists().where(Event.project_id == project_id)))
-    )
-    if has_sql_event:
-        return True
-    if not event_store_enabled(settings):
-        return False
-    store = try_get_duckdb_event_store()
-    if store is None:
-        return False
-    with suppress(Exception):
-        duckdb_count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
-        return bool(duckdb_count > 0)
-    return False
 
 
 async def _maybe_align_singleton_duckdb_project(
@@ -475,7 +452,7 @@ async def get_dashboard_onboarding_status(
             )
         )
     )
-    has_first_event = await _project_has_received_any_event(
+    has_first_event = await project_has_received_any_event(
         session, project_id=auth_session.project_id, settings=settings
     )
     has_diagnostic_signal = await session.scalar(
@@ -529,7 +506,7 @@ async def post_dashboard_onboarding_complete(
     project = await session.get(Project, auth_session.project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Project not found")
-    has_first_event = await _project_has_received_any_event(
+    has_first_event = await project_has_received_any_event(
         session, project_id=auth_session.project_id, settings=settings
     )
     if not has_first_event:
