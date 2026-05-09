@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DASHBOARD_NAV_SECTIONS } from "./dashboardNavConfig";
-import { logicalDashboardLocationHref } from "./dashboardRoutePath";
 
 type PaletteEntry = { href: string; label: string; group: string };
 
@@ -45,7 +44,9 @@ export function DashboardCommandPalette() {
 
   const navigateTo = useCallback(
     (href: string) => {
-      router.push(logicalDashboardLocationHref(href));
+      // Use logical paths only: Next.js applies `basePath` (`/autopulse/ui` in static export).
+      // Do not use `logicalDashboardLocationHref` here — that would double-prefix the UI mount.
+      router.push(href);
       setOpen(false);
       setQuery("");
       setActiveIndex(0);
