@@ -21,6 +21,7 @@ from lumonox_backend.auth import (
     require_dashboard_auth_session,
 )
 from lumonox_backend.core.config import get_settings
+from lumonox_backend.dashboard.overview_derived_widgets import merge_overview_derived_widgets
 from lumonox_backend.dashboard.read_rate_limit import enforce_dashboard_read_rate_limit
 from lumonox_backend.dashboard.routes.alert_routes import (
     get_dashboard_alert_capabilities,
@@ -583,6 +584,8 @@ async def _run_bundle_query(
         next(optional_iter) if diagnosis_error_group_events_task is not None else None
     )
     alert_dispatches = next(optional_iter) if alert_dispatches_task is not None else None
+    if widgets is not None:
+        widgets = merge_overview_derived_widgets(widgets, overview)
     return DashboardDataQueryResponse(
         overview=overview,
         overview_extended=overview_extended,

@@ -39,8 +39,8 @@ export function planDashboardBatchQueryForRoute(args: {
 
   let includeExtended =
     routePath === "/dashboard" || routePath === "/diagnosis" || routePath === "/widgets-showcase";
-  let includeWidgets =
-    (routePath === "/dashboard" && !hasAdvancedScopeFilters) || routePath === "/widgets-showcase";
+  // Always load widgets on Home so overview-derived KPIs/charts stay available with filters.
+  let includeWidgets = routePath === "/dashboard" || routePath === "/widgets-showcase";
   if (!isDocumentVisible) {
     includeExtended = routePath === "/diagnosis";
     includeWidgets = false;

@@ -11,6 +11,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from lumonox_backend.dashboard.overview_derived_widgets import merge_overview_derived_widgets
 from lumonox_backend.metrics import service_metrics
 from lumonox_backend.schemas import DashboardDataQueryRequest, DashboardDataQueryResponse
 from lumonox_backend.schemas.dashboard_overview_models import DashboardRequestItem
@@ -254,6 +255,7 @@ def _apply_delta_to_response(
         response.widgets.server_now = updated_at
         response.widgets.from_timestamp = window_start
         response.widgets.to_timestamp = updated_at
+        response.widgets = merge_overview_derived_widgets(response.widgets, overview)
     if response.overview_extended is not None:
         response.overview_extended.server_now = updated_at
         response.overview_extended.from_timestamp = window_start

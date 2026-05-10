@@ -30,6 +30,7 @@ import {
 import { CardSpinner } from "../../ui/CardSpinner";
 import { ChartScopeTintOverlay } from "../charts/ChartScopeTintOverlay";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
+import { DashboardHomeOverviewWidgets } from "./DashboardHomeOverviewWidgets";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
@@ -310,8 +311,15 @@ export function DashboardHomeContent() {
             chartsScopePending={homeSlice.chartsScopePending}
           />
         </div>
+        <DashboardHomeOverviewWidgets
+          dashboardWidgets={d.dashboardWidgets}
+          chartsScopePending={homeSlice.chartsScopePending}
+        />
         <div className="space-y-6 text-slate-900 dark:text-neutral-100">
-          <details className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+          <details
+            open
+            className="rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]"
+          >
             <summary className="cursor-pointer text-sm font-semibold text-slate-800 dark:text-neutral-100">
               Advanced infrastructure insights
             </summary>
@@ -1182,6 +1190,11 @@ export function DashboardHomeContent() {
           </p>
         )}
       </section>
+
+      <DashboardHomeOverviewWidgets
+        dashboardWidgets={d.dashboardWidgets}
+        chartsScopePending={d.chartsScopePending}
+      />
 
       <section className="grid gap-4 lg:grid-cols-3">
         <ChartPanel title="Error trend" description="Minute-level error counts in current scope.">
