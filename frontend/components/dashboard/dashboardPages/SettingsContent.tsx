@@ -28,6 +28,7 @@ import { settingsMetricStatusClass, useSettingsDiagnosticsPanels } from "./useSe
 import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembers";
 import { useSettingsRetentionPolicy } from "./useSettingsRetentionPolicy";
 import { useSettingsActiveProject } from "./useSettingsActiveProject";
+import { useSettingsAggregateQueueStats } from "./useSettingsAggregateQueueStats";
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -65,17 +66,7 @@ export function SettingsContent() {
     diagnostics.setEventPlaneUseSnapshotRead,
     diagnostics.setEventPlaneCutoverMessage,
   );
-  const aggregateQueueDepth = diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.depth ?? null;
-  const aggregateQueueMax = diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.max_size ?? null;
-  const aggregateQueueEnabled = Boolean(diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.enabled);
-  const queueUsageRatio =
-    typeof aggregateQueueDepth === "number" &&
-    typeof aggregateQueueMax === "number" &&
-    aggregateQueueMax > 0
-      ? aggregateQueueDepth / aggregateQueueMax
-      : null;
-  const aggregateQueueHealthy = queueUsageRatio === null ? null : queueUsageRatio < 0.8;
-  const aggregateWorkerHealthy = aggregateQueueEnabled ? aggregateQueueHealthy : null;
+  const aggregateQueue = useSettingsAggregateQueueStats(diagnostics.internalMetricsSnapshot);
   const systemDiagnosticsSummary = useMemo(
     () => normalizeSystemDiagnostics(diagnostics.systemDiagnosticsSnapshot),
     [diagnostics.systemDiagnosticsSnapshot],
@@ -104,9 +95,9 @@ export function SettingsContent() {
         internalMetricsReason={diagnostics.internalMetricsReason}
         internalMetricsSnapshot={diagnostics.internalMetricsSnapshot}
         metricStatusClass={settingsMetricStatusClass}
-        aggregateQueueHealthy={aggregateQueueHealthy}
-        aggregateWorkerHealthy={aggregateWorkerHealthy}
-        queueUsageRatio={queueUsageRatio}
+        aggregateQueueHealthy={aggregateQueue.aggregateQueueHealthy}
+        aggregateWorkerHealthy={aggregateQueue.aggregateWorkerHealthy}
+        queueUsageRatio={aggregateQueue.queueUsageRatio}
       />
 
       <SettingsSystemDiagnosticsSection
@@ -182,13 +173,7 @@ export function SettingsContent() {
         selectedMemberIds={orgMembers.selectedMemberIds}
         allMembersSelected={orgMembers.allMembersSelected}
         onToggleMemberSelected={orgMembers.toggleMemberSelected}
-        onToggleSelectAllMembers={() => {
-          if (orgMembers.allMembersSelected) {
-            orgMembers.setSelectedMemberIds(new Set());
-          } else {
-            orgMembers.setSelectedMemberIds(new Set(orgMembers.members.map((m) => m.user_id)));
-          }
-        }}
+        onToggleSelectAllMembers={orgMembers.toggleSelectAllMembers}
         onApplyMemberBulk={() => void orgMembers.applyMemberBulk()}
         inviteEmail={orgMembers.inviteEmail}
         onInviteEmailChange={orgMembers.setInviteEmail}

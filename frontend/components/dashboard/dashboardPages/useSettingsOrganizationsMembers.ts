@@ -182,6 +182,17 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     });
   }, []);
 
+  const toggleSelectAllMembers = useCallback(() => {
+    const ids = members.map((m) => m.user_id);
+    setSelectedMemberIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      if (allSelected) {
+        return new Set();
+      }
+      return new Set(ids);
+    });
+  }, [members]);
+
   const allMemberIdsSelectable = members.map((m) => m.user_id);
   const allMembersSelected =
     allMemberIdsSelectable.length > 0 && allMemberIdsSelectable.every((id) => selectedMemberIds.has(id));
@@ -300,6 +311,7 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     currentProjectLabel,
     onSelectedOrganizationIdChange,
     toggleMemberSelected,
+    toggleSelectAllMembers,
     allMembersSelected,
     applyMemberBulk,
     sendInvite,
