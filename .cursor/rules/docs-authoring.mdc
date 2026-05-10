@@ -4,6 +4,7 @@ alwaysApply: false
 ---
 # Documentation authoring
 
+- New **non-permanent** docs (feature plans, initiative roadmaps, disposable checklists) go under **`docs/plans/`**; see **Non-permanent and working documentation** in `.cursor/rules/documentation-and-context.mdc`.
 - Keep docs aligned with current product behavior and MVP boundaries in `DEVELOPMENT.md`.
 - Prefer concise actionable guidance over long narrative; include concrete commands/examples when useful.
 - Preserve existing section structure unless there is a clear readability gain.

@@ -37,6 +37,7 @@ For each task include:
 
 ## Conversion behavior
 
+- If you create a **standalone plan document** in the repo (not just chat output), write it under **`docs/plans/`** so it stays separate from governed and long-lived docs.
 - Keep tasks outcome-focused and independently testable.
 - Keep AC measurable and tied to verification steps.
 - Include explicit rollback/backout notes for risky tasks.

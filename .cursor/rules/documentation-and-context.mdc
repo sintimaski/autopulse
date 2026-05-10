@@ -22,6 +22,14 @@ Iterative refinement of `.cursor/rules/*.mdc` is encouraged via **Rules self-rev
 - Prefer minimal doc reads needed for the task; avoid broad context gathering that does not inform implementation.
 - If request conflicts with documented scope/security constraints, call out the conflict before implementing.
 
+## Non-permanent and working documentation
+
+Put **transient or disposable** writing in **`docs/plans/`**, not at the root of `docs/` and not beside durable contracts or governed docs unless you are deliberately promoting it through `docs/DOCUMENTATION_GOVERNANCE.md`.
+
+Use `docs/plans/` for things like: per-feature implementation plans, time-boxed roadmaps, spike notes, LLM task breakdowns for a single initiative.
+
+Keep outside that folder (unless governance says otherwise): `DEVELOPMENT.md`, items listed as governed in `docs/DOCUMENTATION_GOVERNANCE.md`, `docs/contracts/**`, and maintained operational docs under `docs/ops/` or `docs/runbooks/`.
+
 ## Rule self-review
 
 When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.
