@@ -503,13 +503,13 @@ Mark each item before closing the plan:
 ### Execution evidence index
 
 - `P0-T1`: `docs/plans/backend-hardening-baseline-2026-05-11.md`
-- `P1-T1`: Pending link to merged PR / commit SHA
-- `P1-T2`: Pending link to merged PR / commit SHA
-- `P2-T1`: Pending link to merged PR / commit SHA
-- `P2-T2`: Pending link to merged PR / commit SHA
-- `P3-T1`: Pending link to merged PR / commit SHA
-- `P3-T2`: Pending link to merged PR / commit SHA
-- `P4-T1`: Pending link to merged PR / commit SHA
+- `P1-T1`: commit `8a996eb` (`fix(auth): require dashboard session for admin mutations and sanitize repair errors`)
+- `P1-T2`: commit `8a996eb` (`fix(auth): require dashboard session for admin mutations and sanitize repair errors`)
+- `P2-T1`: commit `649fd4a` (`fix(backend): harden alert parity and replay queue visibility`)
+- `P2-T2`: commit `8a996eb` (`fix(auth): require dashboard session for admin mutations and sanitize repair errors`)
+- `P3-T1`: commit `649fd4a` (`fix(backend): harden alert parity and replay queue visibility`)
+- `P3-T2`: commit `3d77212` (`fix(backend): manage realtime fanout lifecycle and add CI parity gate`)
+- `P4-T1`: commit `3d77212` (`fix(backend): manage realtime fanout lifecycle and add CI parity gate`)
 - `P4-T2`: `docs/plans/backend-hardening-go-no-go-2026-05-11.md`
 
 ### Open ambiguity and blocker log
