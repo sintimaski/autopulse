@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import ProjectContext, authenticate_project
@@ -42,6 +42,7 @@ from lumonox_backend.services.ingest_service import persist_ingest_batch
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_INGEST_FANOUT_TASKS_STATE_KEY = "_lumonox_ingest_fanout_tasks"
 
 
 def _dashboard_realtime_fanout_enabled(settings: Settings) -> bool:
@@ -63,30 +64,99 @@ async def _ingest_websocket_fanout(
 
     Slow or stalled WebSocket clients must not delay ``POST /ingest`` or the live tick loop.
     """
-    try:
-        ingest_message = IngestBroadcastMessage(
+    ingest_message = IngestBroadcastMessage(
+        project_id=project_id,
+        accepted=accepted,
+        received_at=received_at,
+    )
+    await project_websocket_hub.publish_ingest(message=ingest_message)
+    await publish_realtime_ingest(ingest_message, settings=get_settings())
+    dashboard_version = await mark_project_dashboard_dirty(project_id)
+    update_message = DashboardUpdateMessage(
+        project_id=project_id,
+        version=dashboard_version,
+        reason="ingest",
+        updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
+        updated_at=received_at,
+        delta_payload=delta_payload,
+    )
+    await project_websocket_hub.publish_dashboard_update(message=update_message)
+    await publish_realtime_dashboard_update(update_message, settings=get_settings())
+
+
+def _get_or_create_ingest_fanout_tasks(app: FastAPI) -> set[asyncio.Task[None]]:
+    existing = getattr(app.state, _INGEST_FANOUT_TASKS_STATE_KEY, None)
+    if isinstance(existing, set):
+        return existing
+    created: set[asyncio.Task[None]] = set()
+    setattr(app.state, _INGEST_FANOUT_TASKS_STATE_KEY, created)
+    service_metrics.set_value("ingest.realtime_fanout.pending_tasks", 0)
+    return created
+
+
+def _schedule_ingest_fanout_task(
+    app: FastAPI,
+    *,
+    project_id: UUID,
+    accepted: int,
+    received_at: datetime,
+    delta_payload: dict[str, object] | None,
+) -> None:
+    tasks = _get_or_create_ingest_fanout_tasks(app)
+    task = asyncio.create_task(
+        _ingest_websocket_fanout(
             project_id=project_id,
             accepted=accepted,
             received_at=received_at,
-        )
-        await project_websocket_hub.publish_ingest(message=ingest_message)
-        await publish_realtime_ingest(ingest_message, settings=get_settings())
-        dashboard_version = await mark_project_dashboard_dirty(project_id)
-        update_message = DashboardUpdateMessage(
-            project_id=project_id,
-            version=dashboard_version,
-            reason="ingest",
-            updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
-            updated_at=received_at,
             delta_payload=delta_payload,
         )
-        await project_websocket_hub.publish_dashboard_update(message=update_message)
-        await publish_realtime_dashboard_update(update_message, settings=get_settings())
-    except Exception:
-        logger.exception(
-            "ingest_websocket_fanout_failed",
-            extra={"event": "ingest_websocket_fanout_failed", "project_id": str(project_id)},
+    )
+    tasks.add(task)
+    service_metrics.increment("ingest.realtime_fanout.scheduled")
+    service_metrics.set_value("ingest.realtime_fanout.pending_tasks", len(tasks))
+
+    def _on_done(done_task: asyncio.Task[None]) -> None:
+        tasks.discard(done_task)
+        service_metrics.set_value("ingest.realtime_fanout.pending_tasks", len(tasks))
+        if done_task.cancelled():
+            service_metrics.increment("ingest.realtime_fanout.cancelled")
+            return
+        exc = done_task.exception()
+        if exc is not None:
+            service_metrics.increment("ingest.realtime_fanout.failed")
+            logger.exception(
+                "ingest_websocket_fanout_failed",
+                extra={"event": "ingest_websocket_fanout_failed", "project_id": str(project_id)},
+                exc_info=exc,
+            )
+            return
+        service_metrics.increment("ingest.realtime_fanout.succeeded")
+
+    task.add_done_callback(_on_done)
+
+
+async def drain_ingest_fanout_tasks(app: FastAPI, *, timeout_seconds: float = 5.0) -> None:
+    tasks = _get_or_create_ingest_fanout_tasks(app)
+    pending = [task for task in tasks if not task.done()]
+    if not pending:
+        tasks.clear()
+        service_metrics.set_value("ingest.realtime_fanout.pending_tasks", 0)
+        return
+    for task in pending:
+        task.cancel()
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*pending, return_exceptions=True),
+            timeout=max(0.1, float(timeout_seconds)),
         )
+    except TimeoutError:
+        logger.warning(
+            "ingest_websocket_fanout_drain_timeout",
+            extra={"event": "ingest_websocket_fanout_drain_timeout", "pending": len(pending)},
+        )
+    finally:
+        tasks.clear()
+        service_metrics.set_value("ingest.realtime_fanout.pending_tasks", 0)
 
 
 def _is_https_request(request: Request, *, trust_forwarded_proto: bool) -> bool:
@@ -385,13 +455,12 @@ async def ingest_events(
             await upsert_error_group_aggregates(session, persist_result.error_group_deltas)
             service_metrics.increment("ingest.aggregate_worker.sync_fallback")
     if realtime_fanout_enabled:
-        asyncio.create_task(
-            _ingest_websocket_fanout(
-                project_id=context.project_id,
-                accepted=accepted,
-                received_at=received_at,
-                delta_payload=delta_payload,
-            )
+        _schedule_ingest_fanout_task(
+            request.app,
+            project_id=context.project_id,
+            accepted=accepted,
+            received_at=received_at,
+            delta_payload=delta_payload,
         )
     else:
         # HTTP polling + bundle cache is the default dashboard path; bumping the

@@ -172,6 +172,11 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
     sql_tail_repair_succeeded = int(counters.get("ingest.sql_tail.repair_succeeded", 0))
     sql_tail_repair_failed = int(counters.get("ingest.sql_tail.repair_failed", 0))
     sql_tail_repair_dead_lettered = int(counters.get("ingest.sql_tail.repair_dead_lettered", 0))
+    realtime_fanout_scheduled = int(counters.get("ingest.realtime_fanout.scheduled", 0))
+    realtime_fanout_succeeded = int(counters.get("ingest.realtime_fanout.succeeded", 0))
+    realtime_fanout_failed = int(counters.get("ingest.realtime_fanout.failed", 0))
+    realtime_fanout_cancelled = int(counters.get("ingest.realtime_fanout.cancelled", 0))
+    realtime_fanout_pending = int(counters.get("ingest.realtime_fanout.pending_tasks", 0))
     replay_queue_pending = int(counters.get("ingest.replay_queue.pending_sql_tail_repairs", 0))
     replay_queue_dead_lettered = int(
         counters.get("ingest.replay_queue.dead_lettered_sql_tail_repairs", 0)
@@ -205,6 +210,11 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
         "sql_tail_repair_succeeded_total": sql_tail_repair_succeeded,
         "sql_tail_repair_failed_total": sql_tail_repair_failed,
         "sql_tail_repair_dead_lettered_total": sql_tail_repair_dead_lettered,
+        "realtime_fanout_scheduled_total": realtime_fanout_scheduled,
+        "realtime_fanout_succeeded_total": realtime_fanout_succeeded,
+        "realtime_fanout_failed_total": realtime_fanout_failed,
+        "realtime_fanout_cancelled_total": realtime_fanout_cancelled,
+        "realtime_fanout_pending_tasks": realtime_fanout_pending,
         "replay_queue_pending_sql_tail_repairs": replay_queue_pending,
         "replay_queue_dead_lettered_sql_tail_repairs": replay_queue_dead_lettered,
         "replay_queue_aggregate_dead_letter_backlog": replay_queue_aggregate_dead_letter_backlog,
@@ -287,13 +297,18 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     counters = service_metrics.snapshot()
     aggregate_queue_depth: int | None = None
     aggregate_queue_max_size: int | None = None
+    fanout_tasks_pending = 0
     try:
         if aggregate_worker is not None and hasattr(aggregate_worker, "queue"):
             aggregate_queue_depth = aggregate_worker.queue.qsize()
             max_size = aggregate_worker.queue.maxsize
             aggregate_queue_max_size = int(max_size) if max_size else None
+        fanout_tasks: object = getattr(request.app.state, "_lumonox_ingest_fanout_tasks", set())
+        if isinstance(fanout_tasks, set):
+            fanout_tasks_pending = len([task for task in fanout_tasks if not task.done()])
     except Exception:  # noqa: BLE001 - best-effort telemetry
         aggregate_queue_depth = None
+        fanout_tasks_pending = 0
     return {
         "service": "lumonox-api",
         "lumonox_env": settings.lumonox_env,
@@ -329,6 +344,9 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
             "enabled": settings.ingest_async_aggregate_enabled,
             "depth": aggregate_queue_depth,
             "max_size": aggregate_queue_max_size,
+        },
+        "ingest_realtime_fanout": {
+            "pending_tasks": fanout_tasks_pending,
         },
         "parquet_export": {
             "enabled": settings.parquet_export_enabled,

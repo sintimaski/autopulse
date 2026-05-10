@@ -336,9 +336,9 @@
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0%
-  - Last update: 2026-05-11
+  - Status: Done
+  - % complete: 100%
+  - Last update: 2026-05-11 (managed ingest fanout task registry with shutdown drain and failure/cancellation metrics)
   - Owner: Backend team
 - **Related documents:** `docs/DASHBOARD_QUERY_LATENCY_CONTRACT.md`
 - **References / examples:** `backend/src/lumonox_backend/routes/ingest.py`
@@ -382,9 +382,9 @@
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0%
-  - Last update: 2026-05-11
+  - Status: Done
+  - % complete: 100%
+  - Last update: 2026-05-11 (`make check-python-ci` now mirrors required backend CI gates with explicit Postgres env guard)
   - Owner: Developer experience owner
 - **Related documents:** `README.md`, `backend/README.md`
 - **References / examples:** `.github/workflows/ci.yml`
@@ -479,17 +479,15 @@ Mark each item before closing the plan:
 
 ### Current phase status snapshot
 
-- **Completed tasks:** `P0-T1`, `P1-T1`, `P1-T2`, `P2-T1`, `P2-T2`, `P3-T1`
+- **Completed tasks:** `P0-T1`, `P1-T1`, `P1-T2`, `P2-T1`, `P2-T2`, `P3-T1`, `P3-T2`, `P4-T1`
 - **In progress tasks:** None
-- **Todo tasks:** `P3-T2`, `P4-T1`, `P4-T2`
-- **Overall completion (task-count based):** 6/9 (67%)
+- **Todo tasks:** `P4-T2`
+- **Overall completion (task-count based):** 8/9 (89%)
 - **Last refreshed:** 2026-05-11
 
 ### Next-up execution queue (strict order)
 
-1. `P4-T1` (local-to-CI parity) - lowers pre-release integration churn.
-2. `P3-T2` (managed fanout task lifecycle) - reliability hardening with lower launch criticality.
-3. `P4-T2` (go/no-go checkpoint) - final release decision artifact.
+1. `P4-T2` (go/no-go checkpoint) - final release decision artifact.
 
 ### Task handoff template (apply per task)
 
@@ -510,8 +508,8 @@ Mark each item before closing the plan:
 - `P2-T1`: Pending link to merged PR / commit SHA
 - `P2-T2`: Pending link to merged PR / commit SHA
 - `P3-T1`: Pending link to merged PR / commit SHA
-- `P3-T2`: Pending
-- `P4-T1`: Pending
+- `P3-T2`: Pending link to merged PR / commit SHA
+- `P4-T1`: Pending link to merged PR / commit SHA
 - `P4-T2`: Pending
 
 ### Open ambiguity and blocker log

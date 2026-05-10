@@ -256,6 +256,7 @@ Core validation commands from repository root:
 
 ```bash
 make check
+make check-python-ci  # backend CI-equivalent (requires Postgres BACKEND_TEST_DATABASE_URL)
 make release-gates
 ```
 
@@ -279,6 +280,7 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 | Check | Local default | CI |
 | --- | --- | --- |
 | Ruff, mypy, bandit, pytest | `make check` / release gates | `python-sqlite` job |
+| Backend CI-equivalent gate (ruff/format/mypy/bandit/pip-audit/pytest+coverage/packaging/jobs + Postgres backend tests) | `make check-python-ci` (requires `BACKEND_TEST_DATABASE_URL=postgresql+asyncpg://...`) | `python-sqlite` + `python-postgres` jobs |
 | Backend tests on Postgres | Optional (`LUMONOX_RELEASE_GATES_POSTGRES=1`) | `python-postgres` job |
 | Frontend audit, lint, typecheck, test, build, bundle budget | `make check` / release gates | `frontend` job |
 | Browser smoke (Playwright) | Optional (`LUMONOX_RELEASE_GATES_E2E=1`) | `browser-smoke` job |

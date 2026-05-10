@@ -1013,3 +1013,81 @@ def test_dashboard_realtime_fanout_enabled_requires_realtime_flag() -> None:
     assert _dashboard_realtime_fanout_enabled(ws_enabled) is True
     assert _dashboard_realtime_fanout_enabled(bus_enabled) is True
     assert _dashboard_realtime_fanout_enabled(disabled_without_ws_or_bus) is False
+
+
+def test_ingest_realtime_fanout_tasks_are_drained_on_shutdown(
+    backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("LUMONOX_DASHBOARD_REALTIME_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_DASHBOARD_REALTIME_WS_ENABLED", "true")
+    baseline_cancelled = int(service_metrics.snapshot().get("ingest.realtime_fanout.cancelled", 0))
+
+    async def slow_fanout(**_kwargs: object) -> None:
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr("lumonox_backend.routes.ingest._ingest_websocket_fanout", slow_fanout)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/fanout-slow",
+                "status_code": 200,
+                "latency_ms": 2.0,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+        assert response.status_code == 200
+        pending = getattr(app.state, "_lumonox_ingest_fanout_tasks", set())
+        assert isinstance(pending, set)
+        assert pending
+    pending_after = getattr(app.state, "_lumonox_ingest_fanout_tasks", set())
+    assert isinstance(pending_after, set)
+    assert len(pending_after) == 0
+    after_cancelled = int(service_metrics.snapshot().get("ingest.realtime_fanout.cancelled", 0))
+    assert after_cancelled >= baseline_cancelled + 1
+
+
+def test_ingest_realtime_fanout_failure_increments_metric(
+    backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("LUMONOX_DASHBOARD_REALTIME_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_DASHBOARD_REALTIME_WS_ENABLED", "true")
+    baseline_failed = int(service_metrics.snapshot().get("ingest.realtime_fanout.failed", 0))
+
+    async def failing_fanout(**_kwargs: object) -> None:
+        raise RuntimeError("fanout failed in test")
+
+    monkeypatch.setattr("lumonox_backend.routes.ingest._ingest_websocket_fanout", failing_fanout)
+    app = create_app()
+    payload = {
+        "events": [
+            {
+                "type": "request",
+                "timestamp": datetime.now(tz=UTC).isoformat(),
+                "service_name": "api",
+                "environment": "test",
+                "method": "GET",
+                "path": "/fanout-fail",
+                "status_code": 200,
+                "latency_ms": 2.0,
+            }
+        ]
+    }
+    with TestClient(app) as client:
+        response = client.post("/ingest", json=payload, headers={"Authorization": f"Bearer {key}"})
+        assert response.status_code == 200
+    after_failed = int(service_metrics.snapshot().get("ingest.realtime_fanout.failed", 0))
+    assert after_failed >= baseline_failed + 1

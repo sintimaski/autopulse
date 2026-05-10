@@ -120,6 +120,11 @@ def test_internal_metrics_includes_ingest_pressure_view(
         "sql_tail_repair_succeeded_total",
         "sql_tail_repair_failed_total",
         "sql_tail_repair_dead_lettered_total",
+        "realtime_fanout_scheduled_total",
+        "realtime_fanout_succeeded_total",
+        "realtime_fanout_failed_total",
+        "realtime_fanout_cancelled_total",
+        "realtime_fanout_pending_tasks",
         "replay_queue_pending_sql_tail_repairs",
         "replay_queue_dead_lettered_sql_tail_repairs",
         "replay_queue_aggregate_dead_letter_backlog",
@@ -128,6 +133,8 @@ def test_internal_metrics_includes_ingest_pressure_view(
         assert field in pressure, f"missing pressure field: {field}"
     assert "ingest_aggregate_queue" in body
     assert "enabled" in body["ingest_aggregate_queue"]
+    assert "ingest_realtime_fanout" in body
+    assert "pending_tasks" in body["ingest_realtime_fanout"]
     assert "parquet_export" in body
     assert "enabled" in body["parquet_export"]
     assert "query_enabled" in body["parquet_export"]

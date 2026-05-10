@@ -29,6 +29,10 @@ from lumonox_backend.realtime.dashboard_snapshot_reconcile import (
     run_dashboard_snapshot_reconcile_loop,
 )
 from lumonox_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
+from lumonox_backend.routes.ingest import (
+    _INGEST_FANOUT_TASKS_STATE_KEY,
+    drain_ingest_fanout_tasks,
+)
 from lumonox_backend.services.duckdb_async import shutdown_duckdb_executors
 from lumonox_backend.services.event_plane_compactor_worker import (
     EventPlaneCompactorWorkerHandle,
@@ -334,9 +338,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state._lumonox_event_plane_compactor_worker = start_event_plane_compactor_worker(
         settings=settings
     )
+    setattr(app.state, _INGEST_FANOUT_TASKS_STATE_KEY, set())
 
     yield
 
+    await drain_ingest_fanout_tasks(app, timeout_seconds=5.0)
     scheduler = getattr(app.state, "_lumonox_scheduler", None)
     if isinstance(scheduler, SchedulerHandle):
         await scheduler.stop()
