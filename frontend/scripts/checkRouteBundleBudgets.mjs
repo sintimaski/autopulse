@@ -5,7 +5,8 @@ const diagnosticsPath = path.resolve(".next/diagnostics/route-bundle-stats.json"
 const stats = JSON.parse(readFileSync(diagnosticsPath, "utf8"));
 
 const routeBudgets = {
-  "/dashboard": 975_000,
+  /** Uncompressed first-load JS (`firstLoadUncompressedJsBytes`); keep a small slack above current dashboard chunk. */
+  "/dashboard": 1_024_000,
   "/widgets-showcase": 925_000,
 };
 

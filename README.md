@@ -283,4 +283,4 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 | Frontend audit, lint, typecheck, test, build, bundle budget | `make check` / release gates | `frontend` job |
 | Browser smoke (Playwright) | Optional (`LUMONOX_RELEASE_GATES_E2E=1`) | `browser-smoke` job |
 
-**Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**. Multi-lane closure plan (IA, onboarding, topology, drills): [DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md](./docs/DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md).
+**Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**. Frontend multi-lane execution record: [FRONTEND_MULTI_LANE_REVIEW_TASK_PLAN.md](./docs/FRONTEND_MULTI_LANE_REVIEW_TASK_PLAN.md).

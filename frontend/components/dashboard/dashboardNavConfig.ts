@@ -21,7 +21,7 @@ export type DashboardNavSection = {
 
 /**
  * Console IA: core diagnosis paths first, then workspace tools, then advanced analytics.
- * See docs/DEVELOPMENT_PLAN_FULL_PROJECT_MULTILANE_REVIEW.md (T02).
+ * See docs/FRONTEND_MULTI_LANE_REVIEW_TASK_PLAN.md (nav / IA context).
  */
 export const DASHBOARD_NAV_SECTIONS: readonly DashboardNavSection[] = [
   {

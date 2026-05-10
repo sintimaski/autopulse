@@ -1,6 +1,6 @@
 [project]
 name = "lumonox-sdk"
-version = "0.2.0"
+version = "0.2.1"
 description = "FastAPI observability SDK for Lumonox"
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,7 @@ dependencies = [
 
 # ``pip install "lumonox-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``lumonox-api``) alongside this SDK.
 [project.optional-dependencies]
-stack = ["lumonox-api>=0.2.0"]
+stack = ["lumonox-api>=0.2.1"]
 
 [project.urls]
 Homepage = "https://github.com/sintimaski/lumonox"
