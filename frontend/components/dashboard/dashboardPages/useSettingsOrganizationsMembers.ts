@@ -2,16 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
 import {
   parseDashboardMembershipItemsPayload,
   parseDashboardOrganizationListResponse,
 } from "../../../utils/dashboardResponseGuards";
 import {
-  buildApiUrl,
-  type DashboardMembershipItem,
-  type DashboardOrganizationSummary,
-} from "../dashboardTypes";
+  dashboardSessionFetch,
+  dashboardSessionJsonPost,
+  dashboardSessionJsonPut,
+} from "../dashboardSessionFetch";
+import type { DashboardMembershipItem, DashboardOrganizationSummary } from "../dashboardTypes";
 import { PROTECTED_OWNER_EMAIL, isProtectedOwnerEmail } from "./settingsContentUtils";
 
 export function useSettingsOrganizationsMembers(sessionProjectId: string | null) {
@@ -30,11 +30,7 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
 
   const loadMembers = useCallback(async (organizationId: string) => {
     try {
-      const response = await fetchWithTimeout(
-        buildApiUrl(`/dashboard/organizations/${organizationId}/members`),
-        { credentials: "include" },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionFetch(`/dashboard/organizations/${organizationId}/members`);
       if (!response.ok) {
         setMembers([]);
         return;
@@ -52,11 +48,7 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     void (async () => {
       setOrganizationsLoadState("loading");
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl("/dashboard/organizations"),
-          { credentials: "include" },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionFetch("/dashboard/organizations");
         if (cancelled) {
           return;
         }
@@ -97,10 +89,8 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
       });
       void (async () => {
         try {
-          const response = await fetchWithTimeout(
-            buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members`),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
+          const response = await dashboardSessionFetch(
+            `/dashboard/organizations/${selectedOrganizationId}/members`,
           );
           if (!response.ok || cancelled) {
             setMembers([]);
@@ -207,15 +197,9 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
       return;
     }
     try {
-      const response = await fetchWithTimeout(
-        buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ email, role: inviteRole }),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
+      const response = await dashboardSessionJsonPost(
+        `/dashboard/organizations/${selectedOrganizationId}/members/invite`,
+        { email, role: inviteRole },
       );
       if (response.ok) {
         setInviteEmail("");
@@ -253,15 +237,9 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
         continue;
       }
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/${userId}/role`),
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ role: memberBulkRole }),
-          },
-          DASHBOARD_FETCH_TIMEOUT_MS,
+        const response = await dashboardSessionJsonPut(
+          `/dashboard/organizations/${selectedOrganizationId}/members/${userId}/role`,
+          { role: memberBulkRole },
         );
         if (response.ok) {
           ok += 1;

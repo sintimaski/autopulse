@@ -3,8 +3,8 @@
 import { useCallback, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-import { buildApiUrl, type AlertSettings, type DashboardAlertTestResponse } from "../dashboardTypes";
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
+import type { AlertSettings, DashboardAlertTestResponse } from "../dashboardTypes";
+import { dashboardSessionFetch } from "../dashboardSessionFetch";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
 import { parseDashboardAlertTestResponse } from "../../../utils/dashboardResponseGuards";
 import {
@@ -27,11 +27,7 @@ export function useSettingsAlertDelivery(
     setTestAlertError(null);
     setTestAlertResult(null);
     try {
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/alert-test"),
-        { method: "POST", credentials: "include" },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionFetch("/dashboard/alert-test", { method: "POST" });
       if (!response.ok) {
         throw new Error(`alert-test failed (${response.status})`);
       }
