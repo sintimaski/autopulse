@@ -88,11 +88,14 @@ export function DonutChart({
     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div className="relative mx-auto h-[190px] w-[190px] shrink-0">
         <CanvasDoughnut data={chartData} options={options} />
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <p className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-neutral-400">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
+          <p
+            className="max-w-[7.5rem] text-[10px] font-medium uppercase leading-tight tracking-wide text-slate-500 line-clamp-3 dark:text-neutral-400"
+            title={centerLabel ?? title}
+          >
             {centerLabel ?? title}
           </p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
+          <p className="mt-1 max-w-[6.5rem] truncate text-2xl font-semibold tabular-nums text-slate-900 dark:text-neutral-100">
             {centerValue ?? `${Math.round(total)}`}
           </p>
         </div>
@@ -103,13 +106,13 @@ export function DonutChart({
           return (
             <li
               key={item.id}
-              className={`flex items-center justify-between gap-3 text-xs ${onSliceClick ? "cursor-pointer rounded px-1 py-0.5 hover:bg-slate-100/70 dark:hover:bg-neutral-800/60" : ""}`}
+              className={`flex min-w-0 items-center justify-between gap-3 text-xs ${onSliceClick ? "cursor-pointer rounded px-1 py-0.5 hover:bg-slate-100/70 dark:hover:bg-neutral-800/60" : ""}`}
               onClick={onSliceClick ? () => onSliceClick(item) : undefined}
               title={`${item.label}: ${item.value} (${pct.toFixed(1)}%)`}
             >
-              <span className="inline-flex items-center gap-2 text-slate-700 dark:text-neutral-300">
-                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                {item.label}
+              <span className="inline-flex min-w-0 flex-1 items-center gap-2 text-slate-700 dark:text-neutral-300">
+                <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                <span className="min-w-0 truncate">{item.label}</span>
               </span>
               <span className="tabular-nums text-slate-900 dark:text-neutral-100">
                 {item.value.toFixed(0)} ({pct.toFixed(1)}%)

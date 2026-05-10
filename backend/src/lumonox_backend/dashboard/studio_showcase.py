@@ -109,11 +109,14 @@ def build_studio_showcase_definitions() -> list[DashboardWidgetDefinition]:
             widget_id=f"{LX_STUDIO_PREFIX}scatter",
             type="scatter",
             title="Error rate vs latency",
-            description="row_span=2 with column_span=2; labels use x|name format.",
+            description=(
+                "row_span=2 with column_span=2; labels use x|name format "
+                "(x is spread for readability)."
+            ),
             order=50,
             config={
                 **base_page,
-                "x_label": "Error rate (req⁻¹)",
+                "x_label": "Error pressure (0–100, illustrative)",
                 "y_label": "p99 latency (normalized)",
                 "section": "scatter_stack",
                 "layout_order": 50,
@@ -125,7 +128,7 @@ def build_studio_showcase_definitions() -> list[DashboardWidgetDefinition]:
             widget_id=f"{LX_STUDIO_PREFIX}stacked",
             type="stacked_area",
             title="Traffic by environment",
-            description="Multi-series time stacks (row_span=2, span=1).",
+            description="Ten environment series over time (row_span=2, span=1).",
             order=60,
             config={
                 **base_page,
@@ -160,19 +163,29 @@ def build_studio_showcase_points(
             )
         )
 
-    # Line: p95-ish latency (ms) — smooth daily curve + small wobble
+    # Line: p95-ish latency (ms) — uneven baseline + deliberate spikes/dips
     line_steps = 24
     for i in range(line_steps):
         ts = _between(rf, rt, steps=line_steps, i=i)
-        phase = (i / max(line_steps - 1, 1)) * math.pi
-        wave = 42.0 + 28.0 * math.sin(phase * 1.7) + 9.0 * math.sin(phase * 4.1)
-        noise = 4.0 * math.sin(float(i) * 0.9 + 0.3)
+        t = float(i)
+        phase = (i / max(line_steps - 1, 1)) * math.pi * 2.0
+        base = 48.0 + 14.0 * math.sin(phase * 0.85)
+        micro = 9.0 * math.sin(phase * 4.6) + 6.0 * math.sin(phase * 9.1)
+        spike = 0.0
+        if i % 5 == 2:
+            spike += 34.0
+        if i % 7 == 4:
+            spike += 22.0
+        if i % 6 == 0 and i > 0:
+            spike -= 12.0
+        dip = 18.0 if i in (11, 19) else 0.0
+        noise = 5.5 * math.sin(t * 1.7 + 0.4) + 3.0 * math.sin(t * 3.3)
         points.append(
             DashboardWidgetPoint(
                 widget_id=f"{LX_STUDIO_PREFIX}full_line",
                 timestamp=ts,
                 label=None,
-                value=max(18.0, round(wave + noise, 1)),
+                value=max(16.0, round(base + micro + spike - dip + noise, 1)),
             )
         )
 
@@ -227,16 +240,16 @@ def build_studio_showcase_points(
             )
         )
 
-    # Scatter: error rate (x) vs p99 latency (y); weak positive correlation + outliers
+    # Scatter: x uses a wide 0–100 spread so points are not clumped at the left of the axis
     scatter_specs = (
-        ("0.0012|api-gateway", 6.2),
-        ("0.0028|checkout-svc", 9.4),
-        ("0.0041|search-index", 11.8),
-        ("0.0065|payments-core", 14.5),
-        ("0.0091|legacy-auth", 18.6),
-        ("0.0140|reporting-job", 22.1),
-        ("0.0035|notifications", 7.9),
-        ("0.0078|inventory", 16.2),
+        ("8|api-gateway", 6.2),
+        ("22|checkout-svc", 9.4),
+        ("36|search-index", 11.8),
+        ("48|payments-core", 14.5),
+        ("58|legacy-auth", 18.6),
+        ("68|reporting-job", 22.1),
+        ("78|notifications", 7.9),
+        ("92|inventory", 16.2),
     )
     for label, y in scatter_specs:
         points.append(
@@ -248,21 +261,31 @@ def build_studio_showcase_points(
             )
         )
 
-    # Stacked area: three envs × several timestamps; volumes differ by tier
+    # Stacked area: ten environments × several timestamps — comparable bands
+    # so the stack reads as multi-slice.
     ts_keys = [_between(rf, rt, steps=8, i=i) for i in range(8)]
     series_profiles = (
-        ("production", (48.0, 3.2, 1.1)),
-        ("staging", (22.0, 2.4, 0.9)),
-        ("development", (9.0, 1.8, 0.6)),
+        ("production", (14.0, 2.8, 1.0)),
+        ("staging", (12.0, 2.5, 0.95)),
+        ("development", (11.0, 2.2, 0.9)),
+        ("qa", (10.5, 2.0, 0.85)),
+        ("sandbox", (10.0, 1.9, 0.8)),
+        ("canary", (9.5, 2.6, 1.05)),
+        ("eu-west", (9.0, 1.7, 0.75)),
+        ("us-east", (8.8, 1.8, 0.78)),
+        ("us-west", (8.5, 1.75, 0.76)),
+        ("preview", (8.2, 1.65, 0.72)),
     )
-    for series_name, (base_amp, diurnal, jitter) in series_profiles:
+    for env_index, (series_name, (base_amp, diurnal, jitter)) in enumerate(series_profiles):
         for ti, ts in enumerate(ts_keys):
             hourish = math.sin((ti / 7.0) * math.pi * 2.0)
+            env_phase = float(env_index) * 0.55
             v = (
                 base_amp
-                + diurnal * 14.0 * hourish
-                + jitter * float(ti) * 3.0
-                + 5.0 * math.sin(float(ti) * 1.3)
+                + diurnal * 10.0 * hourish
+                + jitter * float(ti) * 2.8
+                + 4.5 * math.sin(float(ti) * 1.3 + env_phase)
+                + 3.0 * math.sin(env_phase + float(ti) * 0.7)
             )
             points.append(
                 DashboardWidgetPoint(

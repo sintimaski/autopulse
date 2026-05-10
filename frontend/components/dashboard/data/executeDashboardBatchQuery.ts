@@ -275,9 +275,9 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     } else if (routePath !== "/dashboard") {
       setOverviewExtended(null);
     }
-    if (includeWidgets && data.widgets) {
+    if (includeWidgets && data.widgets != null) {
       setDashboardWidgets(trimDashboardWidgetPayload(data.widgets));
-    } else if (routePath !== "/dashboard") {
+    } else if (!includeWidgets && routePath !== "/dashboard") {
       setDashboardWidgets(null);
     }
     if (includeErrorGroups && data.error_groups) {

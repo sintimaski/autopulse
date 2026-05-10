@@ -287,7 +287,18 @@ export function DashboardHomeOverviewWidgets({ dashboardWidgets, chartsScopePend
         entry.set(point.timestamp, point.value);
         bySeries.set(seriesName, entry);
       }
-      const palette = ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#818cf8", "#a78bfa"];
+      const palette = [
+        "#34d399",
+        "#38bdf8",
+        "#f59e0b",
+        "#f43f5e",
+        "#818cf8",
+        "#a78bfa",
+        "#2dd4bf",
+        "#fb7185",
+        "#eab308",
+        "#64748b",
+      ];
       const series: StackedAreaSeries[] = [...bySeries.entries()].map(([seriesName, valuesByTs], index) => ({
         id: `${widget.widget_id}-${seriesName}`,
         label: seriesName,

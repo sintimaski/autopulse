@@ -50,3 +50,14 @@ def test_showcase_points_cover_window() -> None:
     assert pts
     ids = {p.widget_id for p in pts}
     assert f"{LX_STUDIO_PREFIX}full_line" in ids
+
+
+def test_showcase_stacked_area_has_ten_environment_series() -> None:
+    from lumonox_backend.dashboard.studio_showcase import build_studio_showcase_points
+
+    now = datetime.now(tz=UTC)
+    start = now - timedelta(hours=2)
+    pts = build_studio_showcase_points(start, now)
+    stacked = [p for p in pts if p.widget_id == f"{LX_STUDIO_PREFIX}stacked"]
+    labels = {p.label for p in stacked if p.label}
+    assert len(labels) == 10
