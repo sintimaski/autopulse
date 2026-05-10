@@ -84,6 +84,10 @@ import {
   readPersistedDashboardSession,
   type PersistedLogsClientSlice,
 } from "./dashboardPersistentScope";
+import {
+  buildDashboardDataQueryRequest,
+  planDashboardBatchQueryForRoute,
+} from "./dashboardQueryBundle";
 import { normalizeCommaSeparated, splitCommaSeparated, type DashboardScopedQueryState } from "./dashboardQueryState";
 import {
   buildDashboardDataCacheScopeKey,
@@ -496,34 +500,28 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         normalizeCommaSeparated(serverEnvironmentQuery) !== "" ||
         normalizeCommaSeparated(serverServiceQuery) !== "" ||
         (sqlFilterEnabled && sqlFilterApplied.trim() !== "");
-      let includeExtended =
-        routePath === "/dashboard" || routePath === "/diagnosis" || routePath === "/widgets-showcase";
-      let includeWidgets =
-        (routePath === "/dashboard" && !hasAdvancedScopeFilters) || routePath === "/widgets-showcase";
-      if (!isDocumentVisible) {
-        includeExtended = routePath === "/diagnosis";
-        includeWidgets = false;
-      }
-      const includeErrorGroups = routePath === "/diagnosis" || routePath === "/dashboard";
-      const includeDiagnosis = routePath === "/diagnosis";
-      const includeRecentJobFailures = routePath === "/dashboard" || routePath === "/diagnosis";
-      const includeAlertDispatches = routePath === "/alerts" || routePath === "/diagnosis";
-      const useSnapshot = routePath === "/dashboard";
-      const requestsLimitForRoute =
-        routePath === "/dashboard"
-          ? Math.min(requestLimit, 25)
-          : routePath === "/widgets-showcase"
-            ? Math.min(requestLimit, 100)
-            : requestLimit;
-      // Widget gallery is not a paginated requests view; reuse logs/requests page index otherwise
-      // yields a large offset and an empty `requests.items` sample (flat charts, "no data").
-      const requestsOffsetForRoute =
-        routePath === "/dashboard" || routePath === "/widgets-showcase"
-          ? 0
-          : requestPage * requestLimit;
-      const errorGroupsLimitForRoute =
-        routePath === "/dashboard" ? Math.min(errorGroupLimit, 10) : errorGroupLimit;
-      const errorGroupsOffsetForRoute = routePath === "/dashboard" ? 0 : errorGroupPage * errorGroupLimit;
+      const plan = planDashboardBatchQueryForRoute({
+        routePath,
+        isDocumentVisible,
+        hasAdvancedScopeFilters,
+        requestLimit,
+        requestPage,
+        errorGroupLimit,
+        errorGroupPage,
+      });
+      const {
+        includeExtended,
+        includeWidgets,
+        includeErrorGroups,
+        includeDiagnosis,
+        includeRecentJobFailures,
+        includeAlertDispatches,
+        useSnapshot,
+        requestsLimitForRoute,
+        requestsOffsetForRoute,
+        errorGroupsLimitForRoute,
+        errorGroupsOffsetForRoute,
+      } = plan;
 
       const isInitialLoad = !hasLoadedDashboardData.current;
       if (isInitialLoad) {
@@ -532,8 +530,6 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       dashboardFetchInFlightRef.current = true;
       setErrorMessage(null);
       try {
-        const minLatency = Number(minLatencyMs);
-        const maxLatency = Number(maxLatencyMs);
         const serverPath = pathQuery.trim();
         const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
         const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
@@ -569,37 +565,20 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setRecentJobFailures(cached.recentJobFailures ?? null);
         }
 
-        const scopeRequest: DashboardDataQueryRequest = {
-          scope: {
-            from_timestamp: toIsoWindow?.from,
-            to_timestamp: toIsoWindow?.to,
-            window_minutes: windowMinutes,
-            method: method !== "ALL" ? method : undefined,
-            status_class: statusClass !== "ALL" ? Number(statusClass) : undefined,
-            path_contains: serverPath || undefined,
-            environments: envCsv || undefined,
-            services: serviceCsv || undefined,
-            min_latency_ms:
-              minLatencyMs.trim() !== "" && Number.isFinite(minLatency) && minLatency >= 0
-                ? minLatency
-                : undefined,
-            max_latency_ms:
-              maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0
-                ? maxLatency
-                : undefined,
-            event_sql_filter:
-              sqlFilterEnabled && sqlFilterApplied.trim() ? sqlFilterApplied.trim() : undefined,
-          },
-          include_extended: includeExtended,
-          include_widgets: includeWidgets,
-          include_error_groups: includeErrorGroups,
-          include_diagnosis: includeDiagnosis,
-          include_recent_job_failures: includeRecentJobFailures,
-          include_alert_dispatches: includeAlertDispatches,
-          requests: { limit: requestsLimitForRoute, offset: requestsOffsetForRoute },
-          error_groups: { limit: errorGroupsLimitForRoute, offset: errorGroupsOffsetForRoute },
-          alert_dispatches: { limit: 25, offset: 0 },
-        };
+        const scopeRequest: DashboardDataQueryRequest = buildDashboardDataQueryRequest({
+          plan,
+          toIsoWindow,
+          windowMinutes,
+          method,
+          statusClass,
+          minLatencyMs,
+          maxLatencyMs,
+          pathQuery,
+          serverEnvironmentQuery,
+          serverServiceQuery,
+          sqlFilterEnabled,
+          sqlFilterApplied,
+        });
         const queryBody = await buildOptionalGzipJsonRequest(scopeRequest);
         const batchResponse = await fetchWithTimeout(
           buildApiUrl("/dashboard/query"),

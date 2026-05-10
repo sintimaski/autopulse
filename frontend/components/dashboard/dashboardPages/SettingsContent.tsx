@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
-import { copyTextToClipboard } from "../clipboard";
 import type {
   DashboardAlertTestResponse,
   DashboardMembershipItem,
@@ -27,11 +26,7 @@ import {
   looksLikeCompleteDiscordIncomingWebhook,
   looksLikeCompleteSlackIncomingWebhook,
 } from "./settingsContentUtils";
-import {
-  formatDurationSeconds,
-  normalizeSchedulerJobs,
-  normalizeSystemDiagnostics,
-} from "../../../utils/systemDiagnostics";
+import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
 import {
   parseDashboardAlertTestResponse,
@@ -44,7 +39,9 @@ import {
 
 import type { InternalMetricsSnapshot } from "./settingsContentTypes";
 import { SettingsAppearanceSessionSection } from "./SettingsAppearanceSessionSection";
+import { SettingsEventPlaneCutoverSection } from "./SettingsEventPlaneCutoverSection";
 import { SettingsInternalMetricsSection } from "./SettingsInternalMetricsSection";
+import { SettingsSystemDiagnosticsSection } from "./SettingsSystemDiagnosticsSection";
 import { SettingsRetentionPolicySection } from "./SettingsRetentionPolicySection";
 
 type SystemDiagnosticsSnapshot = DashboardSystemDiagnosticsResponse;
@@ -693,241 +690,55 @@ export function SettingsContent() {
         queueUsageRatio={queueUsageRatio}
       />
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">System diagnostics</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Support snapshot for topology guardrails, scheduler health, replay backlog, and project freshness.
-        </p>
-        {!canViewSystemDiagnostics ? (
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            Only organization owners and admins can view diagnostics.
-          </p>
-        ) : systemDiagnosticsLoadState === "loading" ? (
-          <div className="mt-4">
-            <InlineDataSpinner label="Loading diagnostics snapshot…" />
-          </div>
-        ) : systemDiagnosticsLoadState === "error" ? (
-          <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
-            Could not load diagnostics. Verify dashboard auth and backend availability.
-          </p>
-        ) : systemDiagnosticsSnapshot ? (
-          <>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(systemDiagnosticsSummary.guardrailStatus === "healthy" ? true : systemDiagnosticsSummary.guardrailStatus === "degraded" ? false : null)}`}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Topology guardrails
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {systemDiagnosticsSummary.guardrailStatus}
-                </p>
-              </div>
-              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(systemDiagnosticsSummary.schedulerStatus === "running" ? true : systemDiagnosticsSummary.schedulerStatus === "stopped" ? false : null)}`}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Scheduler state
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {systemDiagnosticsSummary.schedulerStatus}
-                </p>
-              </div>
-              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass((systemDiagnosticsSummary.pendingSqlTailRepairs ?? 0) < 1)}`}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Pending SQL-tail repairs
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {systemDiagnosticsSummary.pendingSqlTailRepairs ?? "n/a"}
-                </p>
-              </div>
-              <div className={`rounded-lg border px-3 py-2 ${metricStatusClass(systemDiagnosticsSummary.ingestionLagSeconds !== null ? systemDiagnosticsSummary.ingestionLagSeconds < 600 : null)}`}>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Ingestion lag
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {formatDurationSeconds(systemDiagnosticsSummary.ingestionLagSeconds)}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/60">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Dead-lettered SQL-tail repairs
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {systemDiagnosticsSummary.deadLetteredSqlTailRepairs ?? "n/a"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/60">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Aggregate dead-letter backlog
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {systemDiagnosticsSummary.aggregateDeadLetterBacklog ?? "n/a"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-800/60">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-                  Generated at
-                </p>
-                <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {systemDiagnosticsSummary.generatedAt
-                    ? new Date(systemDiagnosticsSummary.generatedAt).toLocaleString()
-                    : "n/a"}
-                </p>
-              </div>
-            </div>
-            {schedulerJobs.length > 0 ? (
-              <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-neutral-700">
-                <table className="min-w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600 dark:bg-neutral-800 dark:text-neutral-300">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Job</th>
-                      <th className="px-3 py-2 font-semibold">Status</th>
-                      <th className="px-3 py-2 font-semibold">Last run</th>
-                      <th className="px-3 py-2 font-semibold">Next run</th>
-                      <th className="px-3 py-2 font-semibold">Failure</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
-                    {schedulerJobs.map((job) => (
-                      <tr key={job.jobName}>
-                        <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-200">
-                          {job.jobName}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">{job.status}</td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                          {job.lastFinishedAt ? new Date(job.lastFinishedAt).toLocaleString() : "n/a"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                          {job.nextScheduledAt ? new Date(job.nextScheduledAt).toLocaleString() : "n/a"}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700 dark:text-neutral-200">
-                          {job.failureReason ?? "none"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-            <div className="mt-4 flex items-center gap-3">
-              <button
-                type="button"
-                className="ap-btn"
-                onClick={async () => {
-                  const ok = await copyTextToClipboard(
-                    JSON.stringify(systemDiagnosticsSnapshot, null, 2),
-                  );
-                  setSystemDiagnosticsMessage(
-                    ok ? "Diagnostics JSON copied." : "Could not copy diagnostics JSON.",
-                  );
-                }}
-              >
-                Copy diagnostics JSON
-              </button>
-              {systemDiagnosticsMessage ? (
-                <p className="text-sm text-slate-600 dark:text-neutral-300">
-                  {systemDiagnosticsMessage}
-                </p>
-              ) : null}
-            </div>
-            <details className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-neutral-700">
-              <summary className="cursor-pointer bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
-                Raw diagnostics payload
-              </summary>
-              <pre className="max-h-72 overflow-auto bg-white px-3 py-2 text-xs text-slate-700 dark:bg-neutral-900 dark:text-neutral-200">
-                {JSON.stringify(systemDiagnosticsSnapshot, null, 2)}
-              </pre>
-            </details>
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            Diagnostics are enabled but no payload is currently available.
-          </p>
-        )}
-      </section>
+      <SettingsSystemDiagnosticsSection
+        canViewSystemDiagnostics={canViewSystemDiagnostics}
+        systemDiagnosticsLoadState={systemDiagnosticsLoadState}
+        systemDiagnosticsSnapshot={systemDiagnosticsSnapshot}
+        systemDiagnosticsSummary={systemDiagnosticsSummary}
+        schedulerJobs={schedulerJobs}
+        metricStatusClass={metricStatusClass}
+        systemDiagnosticsMessage={systemDiagnosticsMessage}
+        setSystemDiagnosticsMessage={setSystemDiagnosticsMessage}
+      />
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Event Plane read cutover</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Per-project rollback switch for Plan B reads. When enabled, dashboard queries use the published snapshot path
-          when available; when disabled, reads stay on the legacy DuckDB path.
-        </p>
-        {!canManageEventPlaneCutover ? (
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            Only organization owners and admins can change cutover.
-          </p>
-        ) : eventPlaneCutoverLoadState === "loading" ? (
-          <div className="mt-4">
-            <InlineDataSpinner label="Loading cutover setting…" />
-          </div>
-        ) : eventPlaneCutoverLoadState === "error" ? (
-          <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
-            {eventPlaneCutoverMessage ?? "Could not load cutover setting."}
-          </p>
-        ) : (
-          <>
-            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200/80 bg-slate-50/60 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
-              <input
-                type="checkbox"
-                className="mt-1 size-4 shrink-0 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
-                checked={eventPlaneUseSnapshotRead}
-                disabled={eventPlaneCutoverSaving}
-                onChange={(event) => setEventPlaneUseSnapshotRead(event.target.checked)}
-              />
-              <span>
-                <span className="text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  Use snapshot read path for this project
-                </span>
-                <span className="mt-1 block text-xs text-slate-600 dark:text-neutral-400">
-                  Keep this off until parity checks and lag SLOs are healthy. Turn off immediately if diagnosis parity
-                  regresses.
-                </span>
-              </span>
-            </label>
-            <div className="mt-3 flex items-center gap-3">
-              <button
-                type="button"
-                className="ap-btn-primary"
-                disabled={eventPlaneCutoverSaving}
-                onClick={async () => {
-                  setEventPlaneCutoverSaving(true);
-                  setEventPlaneCutoverMessage(null);
-                  try {
-                    const response = await fetchWithTimeout(
-                      buildApiUrl("/dashboard/event-plane-cutover"),
-                      {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        credentials: "include",
-                        body: JSON.stringify({ use_snapshot_read: eventPlaneUseSnapshotRead }),
-                      },
-                      DASHBOARD_FETCH_TIMEOUT_MS,
-                    );
-                    if (!response.ok) {
-                      throw new Error(`event-plane-cutover update failed (${response.status})`);
-                    }
-                    const raw: unknown = await response.json();
-                    const payload = parseEventPlaneCutoverSettings(raw);
-                    if (!payload) {
-                      throw new Error("event-plane-cutover save returned unexpected JSON shape");
-                    }
-                    setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
-                    setEventPlaneCutoverMessage("Event Plane cutover saved.");
-                  } catch {
-                    setEventPlaneCutoverMessage("Failed to save Event Plane cutover.");
-                  } finally {
-                    setEventPlaneCutoverSaving(false);
-                  }
-                }}
-              >
-                {eventPlaneCutoverSaving ? "Saving..." : "Save cutover setting"}
-              </button>
-              {eventPlaneCutoverMessage ? (
-                <p className="text-sm text-slate-600 dark:text-neutral-300">{eventPlaneCutoverMessage}</p>
-              ) : null}
-            </div>
-          </>
-        )}
-      </section>
+      <SettingsEventPlaneCutoverSection
+        canManageEventPlaneCutover={canManageEventPlaneCutover}
+        eventPlaneCutoverLoadState={eventPlaneCutoverLoadState}
+        eventPlaneCutoverMessage={eventPlaneCutoverMessage}
+        eventPlaneUseSnapshotRead={eventPlaneUseSnapshotRead}
+        setEventPlaneUseSnapshotRead={setEventPlaneUseSnapshotRead}
+        eventPlaneCutoverSaving={eventPlaneCutoverSaving}
+        onSaveCutover={async () => {
+          setEventPlaneCutoverSaving(true);
+          setEventPlaneCutoverMessage(null);
+          try {
+            const response = await fetchWithTimeout(
+              buildApiUrl("/dashboard/event-plane-cutover"),
+              {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ use_snapshot_read: eventPlaneUseSnapshotRead }),
+              },
+              DASHBOARD_FETCH_TIMEOUT_MS,
+            );
+            if (!response.ok) {
+              throw new Error(`event-plane-cutover update failed (${response.status})`);
+            }
+            const raw: unknown = await response.json();
+            const payload = parseEventPlaneCutoverSettings(raw);
+            if (!payload) {
+              throw new Error("event-plane-cutover save returned unexpected JSON shape");
+            }
+            setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
+            setEventPlaneCutoverMessage("Event Plane cutover saved.");
+          } catch {
+            setEventPlaneCutoverMessage("Failed to save Event Plane cutover.");
+          } finally {
+            setEventPlaneCutoverSaving(false);
+          }
+        }}
+      />
 
       <section className="rounded-2xl border-2 border-sky-400/50 bg-gradient-to-br from-sky-50 to-white p-5 shadow-md dark:border-sky-600/40 dark:from-sky-950/40 dark:to-neutral-900">
         <h2 className="text-lg font-bold tracking-tight text-slate-900 dark:text-neutral-50">
