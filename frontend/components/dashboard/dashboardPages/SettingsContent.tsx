@@ -1,11 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type {
-  DashboardAlertTestResponse,
-  DashboardSystemDiagnosticsResponse,
-  RetentionSettings,
-} from "../dashboardTypes";
+import { useCallback, useMemo, useState } from "react";
+import type { DashboardAlertTestResponse, RetentionSettings } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
 import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
@@ -23,14 +19,8 @@ import {
 } from "./settingsContentUtils";
 import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
-import {
-  parseDashboardAlertTestResponse,
-  parseDashboardInternalMetricsResponse,
-  parseDashboardSystemDiagnosticsResponse,
-  parseEventPlaneCutoverSettings,
-} from "../../../utils/dashboardResponseGuards";
+import { parseDashboardAlertTestResponse, parseEventPlaneCutoverSettings } from "../../../utils/dashboardResponseGuards";
 
-import type { InternalMetricsSnapshot } from "./settingsContentTypes";
 import { SettingsAlertDeliverySection } from "./SettingsAlertDeliverySection";
 import { SettingsActiveProjectSection } from "./SettingsActiveProjectSection";
 import { SettingsOrganizationsMembersSection } from "./SettingsOrganizationsMembersSection";
@@ -41,9 +31,8 @@ import { SettingsApiKeyLifecycleSection } from "./SettingsApiKeyLifecycleSection
 import { SettingsInternalMetricsSection } from "./SettingsInternalMetricsSection";
 import { SettingsSystemDiagnosticsSection } from "./SettingsSystemDiagnosticsSection";
 import { SettingsRetentionPolicySection } from "./SettingsRetentionPolicySection";
+import { settingsMetricStatusClass, useSettingsDiagnosticsPanels } from "./useSettingsDiagnosticsPanels";
 import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembers";
-
-type SystemDiagnosticsSnapshot = DashboardSystemDiagnosticsResponse;
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -60,24 +49,7 @@ export function SettingsContent() {
   const [testAlertError, setTestAlertError] = useState<string | null>(null);
   const [activeProjectBusy, setActiveProjectBusy] = useState(false);
   const [activeProjectMessage, setActiveProjectMessage] = useState<string | null>(null);
-  const [internalMetricsLoadState, setInternalMetricsLoadState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [internalMetricsEnabled, setInternalMetricsEnabled] = useState(false);
-  const [internalMetricsReason, setInternalMetricsReason] = useState<string | null>(null);
-  const [internalMetricsSnapshot, setInternalMetricsSnapshot] = useState<InternalMetricsSnapshot | null>(null);
-  const [systemDiagnosticsLoadState, setSystemDiagnosticsLoadState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
-  const [systemDiagnosticsSnapshot, setSystemDiagnosticsSnapshot] =
-    useState<SystemDiagnosticsSnapshot | null>(null);
-  const [systemDiagnosticsMessage, setSystemDiagnosticsMessage] = useState<string | null>(null);
-  const [eventPlaneCutoverLoadState, setEventPlaneCutoverLoadState] = useState<
-    "idle" | "loading" | "ready" | "error"
-  >("idle");
   const [eventPlaneCutoverSaving, setEventPlaneCutoverSaving] = useState(false);
-  const [eventPlaneUseSnapshotRead, setEventPlaneUseSnapshotRead] = useState(false);
-  const [eventPlaneCutoverMessage, setEventPlaneCutoverMessage] = useState<string | null>(null);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
   const canEditRetention = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canMutateApiKeys = canManageIngestApiKeys(d.sessionMembershipRole);
@@ -196,9 +168,14 @@ export function SettingsContent() {
   const canViewInternalMetrics = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canViewSystemDiagnostics = canViewInternalMetrics;
   const canManageEventPlaneCutover = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
-  const aggregateQueueDepth = internalMetricsSnapshot?.ingest_aggregate_queue?.depth ?? null;
-  const aggregateQueueMax = internalMetricsSnapshot?.ingest_aggregate_queue?.max_size ?? null;
-  const aggregateQueueEnabled = Boolean(internalMetricsSnapshot?.ingest_aggregate_queue?.enabled);
+  const diagnostics = useSettingsDiagnosticsPanels({
+    canViewInternalMetrics,
+    canViewSystemDiagnostics,
+    canManageEventPlaneCutover,
+  });
+  const aggregateQueueDepth = diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.depth ?? null;
+  const aggregateQueueMax = diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.max_size ?? null;
+  const aggregateQueueEnabled = Boolean(diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.enabled);
   const queueUsageRatio =
     typeof aggregateQueueDepth === "number" &&
     typeof aggregateQueueMax === "number" &&
@@ -208,174 +185,13 @@ export function SettingsContent() {
   const aggregateQueueHealthy = queueUsageRatio === null ? null : queueUsageRatio < 0.8;
   const aggregateWorkerHealthy = aggregateQueueEnabled ? aggregateQueueHealthy : null;
   const systemDiagnosticsSummary = useMemo(
-    () => normalizeSystemDiagnostics(systemDiagnosticsSnapshot),
-    [systemDiagnosticsSnapshot],
+    () => normalizeSystemDiagnostics(diagnostics.systemDiagnosticsSnapshot),
+    [diagnostics.systemDiagnosticsSnapshot],
   );
   const schedulerJobs = useMemo(
-    () => normalizeSchedulerJobs(systemDiagnosticsSnapshot),
-    [systemDiagnosticsSnapshot],
+    () => normalizeSchedulerJobs(diagnostics.systemDiagnosticsSnapshot),
+    [diagnostics.systemDiagnosticsSnapshot],
   );
-  const metricStatusClass = (ok: boolean | null): string => {
-    if (ok === true) {
-      return "border-emerald-300 bg-emerald-50/90 dark:border-emerald-900/70 dark:bg-emerald-950/35";
-    }
-    if (ok === false) {
-      return "border-rose-300 bg-rose-50/90 dark:border-rose-900/70 dark:bg-rose-950/35";
-    }
-    return "border-slate-200 bg-slate-50/70 dark:border-neutral-700 dark:bg-neutral-800/60";
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!canViewInternalMetrics) {
-      queueMicrotask(() => {
-        if (cancelled) {
-          return;
-        }
-        setInternalMetricsLoadState("idle");
-        setInternalMetricsEnabled(false);
-        setInternalMetricsReason(null);
-        setInternalMetricsSnapshot(null);
-      });
-      return;
-    }
-    queueMicrotask(() => {
-      if (cancelled) {
-        return;
-      }
-      setInternalMetricsLoadState("loading");
-    });
-    void (async () => {
-      try {
-        const response = await fetchWithTimeout(buildApiUrl("/dashboard/internal-metrics"), {
-          credentials: "include",
-        }, DASHBOARD_FETCH_TIMEOUT_MS);
-        if (!response.ok) {
-          throw new Error(`internal-metrics failed (${response.status})`);
-        }
-        const raw: unknown = await response.json();
-        const payload = parseDashboardInternalMetricsResponse(raw);
-        if (cancelled) {
-          return;
-        }
-        if (!payload) {
-          throw new Error("internal-metrics returned unexpected JSON shape");
-        }
-        const metrics =
-          payload.metrics && typeof payload.metrics === "object"
-            ? (payload.metrics as InternalMetricsSnapshot)
-            : null;
-        setInternalMetricsEnabled(Boolean(payload.enabled));
-        setInternalMetricsReason(payload.reason ?? null);
-        setInternalMetricsSnapshot(metrics);
-        setInternalMetricsLoadState("ready");
-      } catch {
-        if (!cancelled) {
-          setInternalMetricsLoadState("error");
-          setInternalMetricsEnabled(false);
-          setInternalMetricsReason("Could not load internal metrics from the server.");
-          setInternalMetricsSnapshot(null);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewInternalMetrics]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!canViewSystemDiagnostics) {
-      queueMicrotask(() => {
-        if (cancelled) {
-          return;
-        }
-        setSystemDiagnosticsLoadState("idle");
-        setSystemDiagnosticsSnapshot(null);
-      });
-      return;
-    }
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setSystemDiagnosticsLoadState("loading");
-      }
-    });
-    void (async () => {
-      try {
-        const response = await fetchWithTimeout(buildApiUrl("/dashboard/system-diagnostics"), {
-          credentials: "include",
-        }, DASHBOARD_FETCH_TIMEOUT_MS);
-        if (!response.ok) {
-          throw new Error(`system-diagnostics failed (${response.status})`);
-        }
-        const raw: unknown = await response.json();
-        const payload = parseDashboardSystemDiagnosticsResponse(raw);
-        if (cancelled) {
-          return;
-        }
-        if (!payload) {
-          throw new Error("system-diagnostics returned unexpected JSON shape");
-        }
-        setSystemDiagnosticsSnapshot(payload);
-        setSystemDiagnosticsLoadState("ready");
-      } catch {
-        if (!cancelled) {
-          setSystemDiagnosticsLoadState("error");
-          setSystemDiagnosticsSnapshot(null);
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canViewSystemDiagnostics]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!canManageEventPlaneCutover) {
-      queueMicrotask(() => {
-        if (cancelled) {
-          return;
-        }
-        setEventPlaneCutoverLoadState("idle");
-        setEventPlaneUseSnapshotRead(false);
-      });
-      return;
-    }
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setEventPlaneCutoverLoadState("loading");
-      }
-    });
-    void (async () => {
-      try {
-        const response = await fetchWithTimeout(buildApiUrl("/dashboard/event-plane-cutover"), {
-          credentials: "include",
-        }, DASHBOARD_FETCH_TIMEOUT_MS);
-        if (!response.ok) {
-          throw new Error(`event-plane-cutover failed (${response.status})`);
-        }
-        const raw: unknown = await response.json();
-        const payload = parseEventPlaneCutoverSettings(raw);
-        if (cancelled) {
-          return;
-        }
-        if (!payload) {
-          throw new Error("event-plane-cutover returned unexpected JSON shape");
-        }
-        setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
-        setEventPlaneCutoverLoadState("ready");
-      } catch {
-        if (!cancelled) {
-          setEventPlaneCutoverLoadState("error");
-          setEventPlaneCutoverMessage("Could not load Event Plane cutover setting.");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [canManageEventPlaneCutover]);
 
   const sendTestAlert = async () => {
     setTestAlertSending(true);
@@ -469,11 +285,11 @@ export function SettingsContent() {
 
       <SettingsInternalMetricsSection
         canViewInternalMetrics={canViewInternalMetrics}
-        internalMetricsLoadState={internalMetricsLoadState}
-        internalMetricsEnabled={internalMetricsEnabled}
-        internalMetricsReason={internalMetricsReason}
-        internalMetricsSnapshot={internalMetricsSnapshot}
-        metricStatusClass={metricStatusClass}
+        internalMetricsLoadState={diagnostics.internalMetricsLoadState}
+        internalMetricsEnabled={diagnostics.internalMetricsEnabled}
+        internalMetricsReason={diagnostics.internalMetricsReason}
+        internalMetricsSnapshot={diagnostics.internalMetricsSnapshot}
+        metricStatusClass={settingsMetricStatusClass}
         aggregateQueueHealthy={aggregateQueueHealthy}
         aggregateWorkerHealthy={aggregateWorkerHealthy}
         queueUsageRatio={queueUsageRatio}
@@ -481,25 +297,25 @@ export function SettingsContent() {
 
       <SettingsSystemDiagnosticsSection
         canViewSystemDiagnostics={canViewSystemDiagnostics}
-        systemDiagnosticsLoadState={systemDiagnosticsLoadState}
-        systemDiagnosticsSnapshot={systemDiagnosticsSnapshot}
+        systemDiagnosticsLoadState={diagnostics.systemDiagnosticsLoadState}
+        systemDiagnosticsSnapshot={diagnostics.systemDiagnosticsSnapshot}
         systemDiagnosticsSummary={systemDiagnosticsSummary}
         schedulerJobs={schedulerJobs}
-        metricStatusClass={metricStatusClass}
-        systemDiagnosticsMessage={systemDiagnosticsMessage}
-        setSystemDiagnosticsMessage={setSystemDiagnosticsMessage}
+        metricStatusClass={settingsMetricStatusClass}
+        systemDiagnosticsMessage={diagnostics.systemDiagnosticsMessage}
+        setSystemDiagnosticsMessage={diagnostics.setSystemDiagnosticsMessage}
       />
 
       <SettingsEventPlaneCutoverSection
         canManageEventPlaneCutover={canManageEventPlaneCutover}
-        eventPlaneCutoverLoadState={eventPlaneCutoverLoadState}
-        eventPlaneCutoverMessage={eventPlaneCutoverMessage}
-        eventPlaneUseSnapshotRead={eventPlaneUseSnapshotRead}
-        setEventPlaneUseSnapshotRead={setEventPlaneUseSnapshotRead}
+        eventPlaneCutoverLoadState={diagnostics.eventPlaneCutoverLoadState}
+        eventPlaneCutoverMessage={diagnostics.eventPlaneCutoverMessage}
+        eventPlaneUseSnapshotRead={diagnostics.eventPlaneUseSnapshotRead}
+        setEventPlaneUseSnapshotRead={diagnostics.setEventPlaneUseSnapshotRead}
         eventPlaneCutoverSaving={eventPlaneCutoverSaving}
         onSaveCutover={async () => {
           setEventPlaneCutoverSaving(true);
-          setEventPlaneCutoverMessage(null);
+          diagnostics.setEventPlaneCutoverMessage(null);
           try {
             const response = await fetchWithTimeout(
               buildApiUrl("/dashboard/event-plane-cutover"),
@@ -507,7 +323,7 @@ export function SettingsContent() {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 credentials: "include",
-                body: JSON.stringify({ use_snapshot_read: eventPlaneUseSnapshotRead }),
+                body: JSON.stringify({ use_snapshot_read: diagnostics.eventPlaneUseSnapshotRead }),
               },
               DASHBOARD_FETCH_TIMEOUT_MS,
             );
@@ -519,10 +335,10 @@ export function SettingsContent() {
             if (!payload) {
               throw new Error("event-plane-cutover save returned unexpected JSON shape");
             }
-            setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
-            setEventPlaneCutoverMessage("Event Plane cutover saved.");
+            diagnostics.setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
+            diagnostics.setEventPlaneCutoverMessage("Event Plane cutover saved.");
           } catch {
-            setEventPlaneCutoverMessage("Failed to save Event Plane cutover.");
+            diagnostics.setEventPlaneCutoverMessage("Failed to save Event Plane cutover.");
           } finally {
             setEventPlaneCutoverSaving(false);
           }
