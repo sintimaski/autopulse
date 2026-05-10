@@ -21,6 +21,14 @@ from lumonox_backend.services.aggregate_delta_codec import encode_aggregate_payl
 logger = logging.getLogger(__name__)
 
 
+def summarize_exception_for_persistence(exc: BaseException) -> str:
+    """Return a stable, non-sensitive error summary for DB persistence."""
+    name = exc.__class__.__name__.strip()
+    if not name:
+        return "UnknownError"
+    return name[:128]
+
+
 def hash_idempotency_key(raw: str) -> str:
     return hashlib.sha256(raw.strip().encode("utf-8")).hexdigest()
 

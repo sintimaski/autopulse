@@ -100,6 +100,27 @@ def _count_pending_sql_tail_repairs(database_url: str) -> int:
     return asyncio.run(run())
 
 
+def _latest_dead_letter_last_error(database_url: str) -> str | None:
+    async def run() -> str | None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT last_error FROM ingest_sql_tail_repair_items "
+                        "WHERE dead_lettered_at IS NOT NULL "
+                        "ORDER BY id DESC LIMIT 1"
+                    )
+                )
+                value = result.scalar_one_or_none()
+                return str(value) if isinstance(value, str) else None
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
 def test_jobs_cli_alerts_once_prints_zero_with_no_projects(
     backend_test_database_url: str,
     capsys: pytest.CaptureFixture[str],
@@ -220,6 +241,8 @@ def test_replay_sql_tail_repairs_dead_letters_after_repeated_failure(
     assert repaired == 0
     assert _count_pending_sql_tail_repairs(backend_test_database_url) == 0
     assert _count_dead_lettered_sql_tail_repairs(backend_test_database_url) == 1
+    last_error = _latest_dead_letter_last_error(backend_test_database_url)
+    assert last_error == "RuntimeError"
 
 
 def test_replay_sql_tail_repairs_skips_rows_until_next_retry_at(

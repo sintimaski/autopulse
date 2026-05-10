@@ -353,7 +353,7 @@ async def persist_ingest_batch(
                     repair_session,
                     project_id=project_id,
                     payload=payload,
-                    last_error=f"{type(exc).__name__}: {exc}",
+                    last_error=ingest_reliability_repo.summarize_exception_for_persistence(exc),
                 )
             service_metrics.increment("ingest.sql_tail.repair_queued")
             logger.warning(

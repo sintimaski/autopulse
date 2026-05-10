@@ -94,5 +94,8 @@ async def ensure_dashboard_admin_or_owner(
         session=session, settings=settings, request=request
     )
     if auth_session is None:
-        return
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Dashboard session is required for this action",
+        )
     require_min_dashboard_role(auth_session, min_role="admin")

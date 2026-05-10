@@ -110,6 +110,26 @@ def _count_sql_tail_repair_items(database_url: str) -> int:
     return asyncio.run(run())
 
 
+def _latest_sql_tail_repair_last_error(database_url: str) -> str | None:
+    async def run() -> str | None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                result = await session.execute(
+                    text(
+                        "SELECT last_error FROM ingest_sql_tail_repair_items "
+                        "ORDER BY id DESC LIMIT 1"
+                    )
+                )
+                value = result.scalar_one_or_none()
+                return str(value) if isinstance(value, str) else None
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
 def _list_indexes(database_url: str) -> list[str]:
     async def run() -> list[str]:
         engine = create_async_engine(database_url, pool_pre_ping=True)
@@ -852,6 +872,8 @@ def test_ingest_queues_sql_tail_repair_when_event_store_is_authoritative(
     assert response.status_code == 200
     assert response.json() == {"accepted": 1}
     assert _count_sql_tail_repair_items(backend_test_database_url) == 1
+    last_error = _latest_sql_tail_repair_last_error(backend_test_database_url)
+    assert last_error == "RuntimeError"
 
 
 def test_ingest_accepts_job_event(backend_test_database_url: str) -> None:

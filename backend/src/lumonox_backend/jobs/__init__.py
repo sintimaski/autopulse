@@ -172,7 +172,7 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
                     row_id=row.id,
                     attempt_count=attempt_count,
                     next_retry_at=next_retry_at,
-                    last_error=f"{type(exc).__name__}: {exc}",
+                    last_error=ingest_reliability_repo.summarize_exception_for_persistence(exc),
                     dead_lettered=dead_lettered,
                 )
             service_metrics.increment("ingest.sql_tail.repair_failed")
