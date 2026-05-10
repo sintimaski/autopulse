@@ -154,4 +154,38 @@ describe("dashboardQueryState", () => {
     expect(q.get("path_contains")).toBe("/fail");
     expect(q.get("error_group_page")).toBeNull();
   });
+
+  it("parseScopedQuery round-trips buildScopedQuery for URL scope sync", () => {
+    const state = {
+      ...baseScope,
+      windowMinutes: 30,
+      method: "PUT",
+      statusClass: "4",
+      pathQuery: "/widgets",
+      serverEnvironmentQuery: "prod,staging",
+      serverServiceQuery: "api",
+      requestLimit: 200,
+      requestPage: 1,
+      errorGroupLimit: 50,
+      errorGroupPage: 2,
+      errorGroupSort: "count" as const,
+      sqlFilterApplied: "status_code >= 400",
+      sqlFilterEnabled: true,
+    };
+    const built = buildScopedQuery(state);
+    const parsed = parseScopedQuery(new URLSearchParams(built.toString()));
+    expect(parsed.windowMinutes).toBe(30);
+    expect(parsed.method).toBe("PUT");
+    expect(parsed.statusClass).toBe("4");
+    expect(parsed.pathQuery).toBe("/widgets");
+    expect(parsed.serverEnvironmentQuery).toBe("prod,staging");
+    expect(parsed.serverServiceQuery).toBe("api");
+    expect(parsed.requestLimit).toBe(200);
+    expect(parsed.requestPage).toBe(1);
+    expect(parsed.errorGroupLimit).toBe(50);
+    expect(parsed.errorGroupPage).toBe(2);
+    expect(parsed.errorGroupSort).toBe("count");
+    expect(parsed.sqlFilterApplied).toBe("status_code >= 400");
+    expect(parsed.sqlFilterEnabled).toBe(true);
+  });
 });

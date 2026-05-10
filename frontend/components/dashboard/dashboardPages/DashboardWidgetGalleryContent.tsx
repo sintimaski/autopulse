@@ -8,6 +8,7 @@ import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { DashboardChartShowcaseGrid } from "./DashboardChartShowcaseGrid";
 import { DashboardCustomWidgetCharts } from "./DashboardCustomWidgetCharts";
 import { WidgetsMockPreviewSection } from "./WidgetsMockPreviewSection";
+import { WidgetsModalAccessibilitySample } from "./WidgetsModalAccessibilitySample";
 import { useDashboardHomeSlice } from "../data/useDashboardSlices";
 import type { ScatterPlotPoint, StackedAreaSeries } from "../charts";
 import { resolveSparklineSeries, type OverviewBucket } from "../../../utils/dashboardData";
@@ -72,6 +73,8 @@ export function DashboardWidgetGalleryContent() {
           layout checks without traffic. Uses the same time window and filters as the rest of the console.
         </p>
       </div>
+
+      <WidgetsModalAccessibilitySample />
 
       <GuidedTroubleshootingPanel />
 

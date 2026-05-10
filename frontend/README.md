@@ -72,7 +72,7 @@ npm run test
 npm run build
 ```
 
-Optional: `npm run test:e2e` (requires Playwright browser install: `npx playwright install`). Bundle size: after `npm run build`, run `npm run check:bundle-budget`.
+Optional: `npm run test:e2e` (requires Playwright browser install: `npx playwright install`). CI runs all specs under `tests/e2e/`, including `dashboard-interaction-smoke.spec.ts` (modal Escape + diagnosis URL scope sync). Bundle size: after `npm run build`, run `npm run check:bundle-budget`.
 
 **Troubleshooting**
 

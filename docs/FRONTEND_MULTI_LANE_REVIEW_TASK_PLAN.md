@@ -7,7 +7,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - **Plan name:** Frontend multi-lane quality review -> implementation backlog
 - **Owner:** Frontend + Platform (AI-assisted execution)
 - **Date:** 2026-05-10
-- **Status:** In progress (phase 1 shipped; FE-06, FE-07, FE-08, FE-10 done for current MVP scope; other lanes remain)
+- **Status:** In progress (phase 1 shipped; FE-06, FE-07, FE-08, FE-09, FE-10 done for current MVP scope; other lanes remain)
 - **Scope summary (2-4 lines):**
   This plan converts a codebase-wide frontend review into execution tasks. It prioritizes high-impact UX clarity, visual consistency, accessibility, and developer productivity improvements while preserving Lumonox MVP constraints (fast diagnosis, low-friction onboarding, no advanced non-goal platform features).
 - **Out of scope:**
@@ -27,7 +27,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-06 | **Done** | **`SettingsContent.tsx`** is composition + role flags over section components + hooks: **`useSettingsOrganizationsMembers`**, **`useSettingsDiagnosticsPanels`** / **`settingsMetricStatusClass`**, **`useSettingsAggregateQueueStats`**, **`useSettingsAlertDelivery`**, **`useSettingsApiKeyBulk`** (+ **`settingsApiKeyBulk`**), **`useSettingsEventPlaneCutoverSave`**, **`useSettingsRetentionPolicy`**, **`useSettingsActiveProject`**, **`useSettingsAppearanceTrafficFeedback`**, plus **`settingsContentTypes.ts`**. Section-level tests include retention, alerts, API keys, active project, org/members. Optional future work: further splits only if new settings domains appear. |
 | FE-07 | **Done** | **`parseDashboardDataQueryResponse`** in **`frontend/utils/dashboardQueryResponseGuards.ts`** validates **`POST /dashboard/query`** JSON (used from **`DashboardDataContext`** main batch + diagnosis prefetch). Parse failures yield **`null`**; UI surfaces **"Dashboard query returned an unexpected response. Refresh to retry."** Unit tests cover happy path, invalid nested payloads, and bad roots. Further endpoints can follow the same guard pattern as needed. |
 | FE-08 | **Done** | **`dashboardSessionFetch.ts`** is the single session-scoped entry point on top of **`fetchWithTimeout`** + **`buildApiUrl`** for **`DashboardDataContext`**, settings hooks (diagnostics, event-plane, alerts, orgs), **`QueryExplorerContent`**, **`TracesContent`**, bootstrap helper, etc. Out of scope for this closure: plain **`fetch`** call sites (bookmarks client, magic-link verify, auth session helper) and optional future **shared JSON error parsing**. Slice memo policy: documented in **`useDashboardSlices.ts`**. |
-| FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`** (incl. theme toggle when enabled), **`onboarding-smoke`**, **`widgets-showcase-smoke`**, **`alerts-smoke`**, **`logs-smoke`**, **`requests-smoke`**, **`query-explorer-smoke`**, **`traces-smoke`**, **`bookmarks-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
+| FE-09 | **Done** | Vitest **`DashboardDetailModal`** (jsdom + Testing Library: Escape → `onClose`); **`dashboardQueryState`** round-trip **`buildScopedQuery` / `parseScopedQuery`**. Playwright **`dashboard-interaction-smoke.spec.ts`**: Escape closes widgets sample dialog; diagnosis URL `window_minutes` + `path_contains` sync to sticky scope copy. **`settings-smoke`** continues to cover settings interaction (theme radio when enabled). Optional deeper Playwright (every modal surface) deferred. |
 | FE-10 | **Done** | **`frontend/README.md`**: architecture boundaries table, `dashboardSessionFetch` / guard pointers, contributor workflow + troubleshooting. **`eslint.config.mjs`**: existing **`eqeqeq`** + **`reportUnusedDisableDirectives`**, plus **`no-debugger`** (error) and **`import/no-duplicates`** (warn). Intentional **`confirm()`** flows unchanged (no `no-alert` rule). |
 
 ## 2) Context / background
@@ -439,10 +439,11 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
+  - Status: Done (interaction unit + scope round-trip + `dashboard-interaction-smoke`; settings path via existing `settings-smoke`)
+  - % complete: 100
   - Last update: 2026-05-10
   - Owner: QA + Frontend
+- **Implementation notes:** Added dev deps `jsdom`, `@testing-library/react`, `@testing-library/dom`, `@testing-library/user-event`. **`WidgetsModalAccessibilitySample`** on widgets showcase enables deterministic modal Escape in CI. Verified `npm run lint`, `npm run test` (157), `npm run build` in `frontend/`. E2E not executed in-agent (needs live stack); CI `browser-smoke` runs full Playwright set.
 - **Related documents:** `docs/testing/E2E_CORE_JOURNEY.md`
 - **References / examples:** `frontend/tests/e2e/core-journey.spec.ts`
 - **Ambiguity handling:**
@@ -505,15 +506,15 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   1. P0 reliability/safety foundations: FE-01, FE-05 (FE-07 typed batch parse: done).
   2. UX and consistency uplift: FE-02, FE-03, FE-04.
   3. Maintainability cleanup: FE-06 + FE-08 (both done for current MVP scope).
-  4. Quality hardening and DX guardrails: FE-09 (FE-10 done for MVP scope).
+  4. Quality hardening and DX guardrails: FE-09 + FE-10 done for current MVP scope.
 - Parallelization opportunities:
   - FE-02 and FE-03 can run in parallel after FE-01 starts.
   - FE-06 settings modularization and FE-08 session-fetch consolidation are complete; further work is optional polish.
-  - FE-09 starts as soon as FE-01..FE-04 components are merged.
+  - FE-09 closed for MVP scope with interaction tests + `dashboard-interaction-smoke`; further route-by-route Playwright depth remains optional.
 - Risk register (top 3-5):
   - Large refactors (FE-05/FE-06) may introduce subtle state regressions.
   - Batch query parser (`parseDashboardDataQueryResponse`) is strict; backend contract changes need coordinated guard updates (mitigated by unit tests).
-  - Test expansion (FE-09) may initially increase flakiness.
+  - New Playwright specs (`dashboard-interaction-smoke`) depend on URL→scope sync timing; mitigated with generous timeouts and `.first()` on duplicate text nodes.
   - Lint tightening (FE-10) may create contributor friction if over-applied.
 - Decision log:
   - Decision: Prioritize diagnosis-flow UX reliability and context refactor first.
@@ -540,6 +541,10 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Why: Meets AC with low contributor friction; further custom ESLint rules remain optional if noise stays acceptable.
   - Date: 2026-05-10
   - Owner: Frontend platform
+  - Decision: Close FE-09 for MVP scope — Vitest interaction coverage for modal Escape + scoped query URL round-trip; Playwright `dashboard-interaction-smoke.spec.ts` beyond `core-journey`; settings interaction retained via `settings-smoke`.
+  - Why: Satisfies stated ACs without exploding CI runtime; deeper per-surface E2E can follow product priorities.
+  - Date: 2026-05-10
+  - Owner: QA + Frontend
 
 ## 7) Validation gate before completion
 
