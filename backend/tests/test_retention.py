@@ -687,9 +687,11 @@ def test_duckdb_size_shrink_falls_back_to_widget_points(
     monkeypatch.setattr(retention_duckdb, "get_duckdb_event_store", lambda: store)
 
     async def _run_read(fn, *args, **kwargs):
+        kwargs.pop("duckdb_read_operation", None)
         return fn(*args, **kwargs)
 
     async def _run_write(fn, *args, **kwargs):
+        kwargs.pop("duckdb_write_operation", None)
         return fn(*args, **kwargs)
 
     monkeypatch.setattr(retention_duckdb, "run_duckdb_read_sync", _run_read)

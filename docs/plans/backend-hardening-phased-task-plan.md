@@ -426,9 +426,9 @@
   - Safe to re-run? Yes
   - If partial/no, guardrails required: Freeze branch during final run.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0%
-  - Last update: 2026-05-11
+  - Status: Done
+  - % complete: 100%
+  - Last update: 2026-05-11 (conditional go/no-go report published with green local release gates and explicit staging follow-ups)
   - Owner: Release owner
 - **Related documents:** `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`
 - **References / examples:** `scripts/release_gates.sh`
@@ -467,27 +467,27 @@
 
 Mark each item before closing the plan:
 
-- [ ] All tasks have explicit AC.
-- [ ] All tasks define validation (automated + manual).
-- [ ] Idempotency is documented for each task.
-- [ ] Domain rules and constraints are mapped to tasks.
-- [ ] Observability updates are included where behavior changed.
-- [ ] Related docs are updated or explicitly deferred.
-- [ ] Remaining ambiguity is logged with owner and due date.
+- [x] All tasks have explicit AC.
+- [x] All tasks define validation (automated + manual).
+- [x] Idempotency is documented for each task.
+- [x] Domain rules and constraints are mapped to tasks.
+- [x] Observability updates are included where behavior changed.
+- [x] Related docs are updated or explicitly deferred.
+- [x] Remaining ambiguity is logged with owner and due date.
 
 ## 8) Live execution tracker
 
 ### Current phase status snapshot
 
-- **Completed tasks:** `P0-T1`, `P1-T1`, `P1-T2`, `P2-T1`, `P2-T2`, `P3-T1`, `P3-T2`, `P4-T1`
+- **Completed tasks:** `P0-T1`, `P1-T1`, `P1-T2`, `P2-T1`, `P2-T2`, `P3-T1`, `P3-T2`, `P4-T1`, `P4-T2`
 - **In progress tasks:** None
-- **Todo tasks:** `P4-T2`
-- **Overall completion (task-count based):** 8/9 (89%)
+- **Todo tasks:** None
+- **Overall completion (task-count based):** 9/9 (100%)
 - **Last refreshed:** 2026-05-11
 
 ### Next-up execution queue (strict order)
 
-1. `P4-T2` (go/no-go checkpoint) - final release decision artifact.
+1. None (all planned tasks complete; track residual release evidence in `docs/plans/backend-hardening-go-no-go-2026-05-11.md`).
 
 ### Task handoff template (apply per task)
 
@@ -510,7 +510,7 @@ Mark each item before closing the plan:
 - `P3-T1`: Pending link to merged PR / commit SHA
 - `P3-T2`: Pending link to merged PR / commit SHA
 - `P4-T1`: Pending link to merged PR / commit SHA
-- `P4-T2`: Pending
+- `P4-T2`: `docs/plans/backend-hardening-go-no-go-2026-05-11.md`
 
 ### Open ambiguity and blocker log
 
