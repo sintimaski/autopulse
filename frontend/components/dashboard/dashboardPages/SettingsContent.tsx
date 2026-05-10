@@ -4,17 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
-import { LogOut } from "../../../lib/icons";
 import { copyTextToClipboard } from "../clipboard";
 import type {
-  DashboardInternalMetricsResponse,
+  DashboardAlertTestResponse,
   DashboardMembershipItem,
-  DashboardOrganizationListResponse,
   DashboardOrganizationSummary,
   DashboardSystemDiagnosticsResponse,
 } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
+import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
 import {
   canInviteOrganizationMembers,
   canManageIngestApiKeys,
@@ -32,36 +31,20 @@ import {
   normalizeSchedulerJobs,
   normalizeSystemDiagnostics,
 } from "../../../utils/systemDiagnostics";
+import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
+import {
+  parseDashboardAlertTestResponse,
+  parseDashboardInternalMetricsResponse,
+  parseDashboardMembershipItemsPayload,
+  parseDashboardOrganizationListResponse,
+  parseDashboardSystemDiagnosticsResponse,
+  parseEventPlaneCutoverSettings,
+} from "../../../utils/dashboardResponseGuards";
 
-type AlertTestResult = {
-  status: string;
-  delivered_via: string;
-  reason_code: string | null;
-  reason_message: string | null;
-  attempt_count: number;
-  delivered_at: string | null;
-  provider_message_id: string | null;
-  destination_email: string | null;
-};
-
-type InternalMetricsSnapshot = {
-  dashboard_ws_tick_running?: boolean;
-  dashboard_realtime_bus_subscriber_running?: boolean;
-  scheduler_running?: boolean;
-  retention_pressure_poll_running?: boolean;
-  ingest_pressure?: Record<string, number>;
-  ingest_aggregate_queue?: {
-    enabled?: boolean;
-    depth?: number | null;
-    max_size?: number | null;
-  };
-};
+import type { InternalMetricsSnapshot } from "./settingsContentTypes";
+import { SettingsAppearanceSessionSection } from "./SettingsAppearanceSessionSection";
 
 type SystemDiagnosticsSnapshot = DashboardSystemDiagnosticsResponse;
-
-type EventPlaneCutoverSettings = {
-  use_snapshot_read: boolean;
-};
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -96,7 +79,7 @@ export function SettingsContent() {
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
   const [channelMessage, setChannelMessage] = useState<string | null>(null);
   const [testAlertSending, setTestAlertSending] = useState(false);
-  const [testAlertResult, setTestAlertResult] = useState<AlertTestResult | null>(null);
+  const [testAlertResult, setTestAlertResult] = useState<DashboardAlertTestResponse | null>(null);
   const [testAlertError, setTestAlertError] = useState<string | null>(null);
   const [activeProjectBusy, setActiveProjectBusy] = useState(false);
   const [activeProjectMessage, setActiveProjectMessage] = useState<string | null>(null);
@@ -140,15 +123,18 @@ export function SettingsContent() {
 
   const loadMembers = async (organizationId: string) => {
     try {
-      const response = await fetch(buildApiUrl(`/dashboard/organizations/${organizationId}/members`), {
-        credentials: "include",
-      });
+      const response = await fetchWithTimeout(
+        buildApiUrl(`/dashboard/organizations/${organizationId}/members`),
+        { credentials: "include" },
+        DASHBOARD_FETCH_TIMEOUT_MS,
+      );
       if (!response.ok) {
         setMembers([]);
         return;
       }
-      const payload = (await response.json()) as { members: DashboardMembershipItem[] };
-      setMembers(payload.members);
+      const raw: unknown = await response.json();
+      const members = parseDashboardMembershipItemsPayload(raw);
+      setMembers(members ?? []);
     } catch {
       setMembers([]);
     }
@@ -159,9 +145,9 @@ export function SettingsContent() {
     void (async () => {
       setOrganizationsLoadState("loading");
       try {
-        const response = await fetch(buildApiUrl("/dashboard/organizations"), {
+        const response = await fetchWithTimeout(buildApiUrl("/dashboard/organizations"), {
           credentials: "include",
-        });
+        }, DASHBOARD_FETCH_TIMEOUT_MS);
         if (cancelled) {
           return;
         }
@@ -169,8 +155,13 @@ export function SettingsContent() {
           setOrganizationsLoadState("error");
           return;
         }
-        const payload = (await response.json()) as DashboardOrganizationListResponse;
+        const raw: unknown = await response.json();
+        const payload = parseDashboardOrganizationListResponse(raw);
         if (cancelled) {
+          return;
+        }
+        if (!payload) {
+          setOrganizationsLoadState("error");
           return;
         }
         setOrganizations(payload.organizations);
@@ -197,11 +188,10 @@ export function SettingsContent() {
       });
       void (async () => {
         try {
-          const response = await fetch(
+          const response = await fetchWithTimeout(
             buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members`),
-            {
-              credentials: "include",
-            },
+            { credentials: "include" },
+            DASHBOARD_FETCH_TIMEOUT_MS,
           );
           if (!response.ok || cancelled) {
             setMembers([]);
@@ -210,9 +200,10 @@ export function SettingsContent() {
             }
             return;
           }
-          const payload = (await response.json()) as { members: DashboardMembershipItem[] };
+          const raw: unknown = await response.json();
+          const members = parseDashboardMembershipItemsPayload(raw);
           if (!cancelled) {
-            setMembers(payload.members);
+            setMembers(members ?? []);
             setMembersLoadState("ready");
           }
         } catch {
@@ -266,6 +257,8 @@ export function SettingsContent() {
         ok ? "Switched active project. Charts and keys will refresh." : "Could not switch project. Try again.",
       );
     },
+    // Context value identity changes frequently; only stable fields should drive this callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- d.setActiveDashboardProject + sessionProjectId are sufficient
     [d.sessionProjectId, d.setActiveDashboardProject],
   );
 
@@ -309,7 +302,7 @@ export function SettingsContent() {
         continue;
       }
       try {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/${userId}/role`),
           {
             method: "PUT",
@@ -317,6 +310,7 @@ export function SettingsContent() {
             credentials: "include",
             body: JSON.stringify({ role: memberBulkRole }),
           },
+          DASHBOARD_FETCH_TIMEOUT_MS,
         );
         if (response.ok) {
           ok += 1;
@@ -475,15 +469,19 @@ export function SettingsContent() {
     });
     void (async () => {
       try {
-        const response = await fetch(buildApiUrl("/dashboard/internal-metrics"), {
+        const response = await fetchWithTimeout(buildApiUrl("/dashboard/internal-metrics"), {
           credentials: "include",
-        });
+        }, DASHBOARD_FETCH_TIMEOUT_MS);
         if (!response.ok) {
           throw new Error(`internal-metrics failed (${response.status})`);
         }
-        const payload = (await response.json()) as DashboardInternalMetricsResponse;
+        const raw: unknown = await response.json();
+        const payload = parseDashboardInternalMetricsResponse(raw);
         if (cancelled) {
           return;
+        }
+        if (!payload) {
+          throw new Error("internal-metrics returned unexpected JSON shape");
         }
         const metrics =
           payload.metrics && typeof payload.metrics === "object"
@@ -526,15 +524,19 @@ export function SettingsContent() {
     });
     void (async () => {
       try {
-        const response = await fetch(buildApiUrl("/dashboard/system-diagnostics"), {
+        const response = await fetchWithTimeout(buildApiUrl("/dashboard/system-diagnostics"), {
           credentials: "include",
-        });
+        }, DASHBOARD_FETCH_TIMEOUT_MS);
         if (!response.ok) {
           throw new Error(`system-diagnostics failed (${response.status})`);
         }
-        const payload = (await response.json()) as DashboardSystemDiagnosticsResponse;
+        const raw: unknown = await response.json();
+        const payload = parseDashboardSystemDiagnosticsResponse(raw);
         if (cancelled) {
           return;
+        }
+        if (!payload) {
+          throw new Error("system-diagnostics returned unexpected JSON shape");
         }
         setSystemDiagnosticsSnapshot(payload);
         setSystemDiagnosticsLoadState("ready");
@@ -569,15 +571,19 @@ export function SettingsContent() {
     });
     void (async () => {
       try {
-        const response = await fetch(buildApiUrl("/dashboard/event-plane-cutover"), {
+        const response = await fetchWithTimeout(buildApiUrl("/dashboard/event-plane-cutover"), {
           credentials: "include",
-        });
+        }, DASHBOARD_FETCH_TIMEOUT_MS);
         if (!response.ok) {
           throw new Error(`event-plane-cutover failed (${response.status})`);
         }
-        const payload = (await response.json()) as EventPlaneCutoverSettings;
+        const raw: unknown = await response.json();
+        const payload = parseEventPlaneCutoverSettings(raw);
         if (cancelled) {
           return;
+        }
+        if (!payload) {
+          throw new Error("event-plane-cutover returned unexpected JSON shape");
         }
         setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
         setEventPlaneCutoverLoadState("ready");
@@ -598,18 +604,23 @@ export function SettingsContent() {
     setTestAlertError(null);
     setTestAlertResult(null);
     try {
-      const response = await fetch(buildApiUrl("/dashboard/alert-test"), {
-        method: "POST",
-        credentials: "include",
-      });
+      const response = await fetchWithTimeout(
+        buildApiUrl("/dashboard/alert-test"),
+        { method: "POST", credentials: "include" },
+        DASHBOARD_FETCH_TIMEOUT_MS,
+      );
       if (!response.ok) {
         throw new Error(`alert-test failed (${response.status})`);
       }
-      const body = (await response.json()) as AlertTestResult;
+      const raw: unknown = await response.json();
+      const body = parseDashboardAlertTestResponse(raw);
+      if (!body) {
+        throw new Error("alert-test returned unexpected JSON shape");
+      }
       setTestAlertResult(body);
       d.setRefreshToken((token) => token + 1);
     } catch (error) {
-      setTestAlertError(error instanceof Error ? error.message : "Test alert failed.");
+      setTestAlertError(buildDashboardNetworkError(error));
     } finally {
       setTestAlertSending(false);
     }
@@ -1163,16 +1174,24 @@ export function SettingsContent() {
                   setEventPlaneCutoverSaving(true);
                   setEventPlaneCutoverMessage(null);
                   try {
-                    const response = await fetch(buildApiUrl("/dashboard/event-plane-cutover"), {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({ use_snapshot_read: eventPlaneUseSnapshotRead }),
-                    });
+                    const response = await fetchWithTimeout(
+                      buildApiUrl("/dashboard/event-plane-cutover"),
+                      {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({ use_snapshot_read: eventPlaneUseSnapshotRead }),
+                      },
+                      DASHBOARD_FETCH_TIMEOUT_MS,
+                    );
                     if (!response.ok) {
                       throw new Error(`event-plane-cutover update failed (${response.status})`);
                     }
-                    const payload = (await response.json()) as EventPlaneCutoverSettings;
+                    const raw: unknown = await response.json();
+                    const payload = parseEventPlaneCutoverSettings(raw);
+                    if (!payload) {
+                      throw new Error("event-plane-cutover save returned unexpected JSON shape");
+                    }
                     setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
                     setEventPlaneCutoverMessage("Event Plane cutover saved.");
                   } catch {
@@ -1779,7 +1798,7 @@ export function SettingsContent() {
                         setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
                         return;
                       }
-                      const response = await fetch(
+                      const response = await fetchWithTimeout(
                         buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
                         {
                           method: "POST",
@@ -1787,6 +1806,7 @@ export function SettingsContent() {
                           credentials: "include",
                           body: JSON.stringify({ email, role: inviteRole }),
                         },
+                        DASHBOARD_FETCH_TIMEOUT_MS,
                       );
                       if (response.ok) {
                         setInviteEmail("");
@@ -1944,60 +1964,15 @@ export function SettingsContent() {
         {apiKeyMessage ? <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{apiKeyMessage}</p> : null}
       </section>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Appearance</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Theme preference is now a project setting stored in the backend.
-        </p>
-        {viewerSession ? (
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            Viewer role: theme and traffic filters are read-only. Ask an owner or admin to change project appearance
-            settings.
-          </p>
-        ) : null}
-        <div className="mt-3 grid gap-3 sm:grid-cols-3" role="radiogroup" aria-label="Dashboard theme">
-          {(["system", "light", "dark"] as const).map((theme) => (
-            <button
-              key={theme}
-              type="button"
-              role="radio"
-              aria-checked={d.themePreference === theme}
-              onClick={async () => {
-                const ok = await d.saveThemePreference(theme);
-                setThemeMessage(ok ? "Theme saved." : "Failed to save theme.");
-              }}
-              disabled={viewerSession || d.themeSettingsSaving}
-              className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 ${
-                d.themePreference === theme
-                  ? "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100"
-                  : "border-slate-200 bg-white text-slate-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-              }`}
-            >
-              {theme === "system" ? "System" : theme === "light" ? "Light" : "Dark"}
-            </button>
-          ))}
-        </div>
-        {themeMessage ? (
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{themeMessage}</p>
-        ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
-          Session
-        </p>
-        <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Dashboard sign-out</h2>
-        <div className="mt-4">
-          <button
-            type="button"
-            className="ap-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium"
-            onClick={() => void d.signOutDashboard()}
-          >
-            <LogOut className="size-4 shrink-0" aria-hidden />
-            Sign out
-          </button>
-        </div>
-      </section>
+      <SettingsAppearanceSessionSection
+        viewerSession={viewerSession}
+        themeMessage={themeMessage}
+        setThemeMessage={setThemeMessage}
+        themePreference={d.themePreference}
+        themeSettingsSaving={d.themeSettingsSaving}
+        saveThemePreference={d.saveThemePreference}
+        signOutDashboard={d.signOutDashboard}
+      />
     </div>
   );
 }

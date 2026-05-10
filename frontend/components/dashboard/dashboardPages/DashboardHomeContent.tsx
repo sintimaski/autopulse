@@ -295,6 +295,10 @@ export function DashboardHomeContent() {
         <RecentJobFailuresStrip data={homeSlice.recentJobFailures} moreHref={diagnosisBaseHref} />
         <div className="w-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
           <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic volume</h3>
+          <p className="mb-2 text-xs text-slate-600 dark:text-neutral-400" aria-live="polite">
+            Window summary: {requestCount.toLocaleString()} requests · {errorCount.toLocaleString()} errors (
+            {(errorRate * 100).toFixed(2)}% rate) · avg latency {avgLatency.toFixed(1)} ms.
+          </p>
           <VolumeChart
             series={homeSlice.sparklineSeries}
             fromTimestamp={homeSlice.windowFromTimestamp}
@@ -1134,6 +1138,11 @@ export function DashboardHomeContent() {
             Errors &amp; Diagnosis
           </Link>
           .
+        </p>
+        <p className="mt-2 text-xs text-slate-600 dark:text-neutral-400" aria-live="polite">
+          Window summary: {overview.request_count.toLocaleString()} requests · {overview.error_count.toLocaleString()}{" "}
+          errors · {(overview.error_rate * 100).toFixed(2)}% error rate · avg latency {overview.avg_latency_ms.toFixed(1)}{" "}
+          ms.
         </p>
         <div className="mt-3">
           <VolumeChart

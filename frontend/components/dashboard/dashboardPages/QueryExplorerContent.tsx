@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 
 import { CardSpinner } from "../../ui/CardSpinner";
+import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
+import { parseQueryExplorerResponse } from "../../../utils/dashboardResponseGuards";
 import { useDashboardData } from "../DashboardDataContext";
+import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
 import { buildApiUrl, type QueryExplorerResponse } from "../dashboardTypes";
 
 const DEFAULT_QUERY = [
@@ -53,21 +56,35 @@ export function QueryExplorerContent() {
             row_limit: rowLimit,
             scope_mode: "project_wide" as const,
           };
-      const response = await fetch(buildApiUrl("/dashboard/query-explorer/execute"), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const raw = await response.json();
+      const response = await fetchWithTimeout(
+        buildApiUrl("/dashboard/query-explorer/execute"),
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        DASHBOARD_FETCH_TIMEOUT_MS,
+      );
+      const raw: unknown = await response.json();
       if (!response.ok) {
-        setError(typeof raw?.detail === "string" ? raw.detail : `Query failed (${response.status})`);
+        const detail =
+          typeof raw === "object" && raw !== null && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
+            ? (raw as { detail: string }).detail
+            : `Query failed (${response.status})`;
+        setError(detail);
         setData(null);
         return;
       }
-      setData(raw as QueryExplorerResponse);
+      const parsed = parseQueryExplorerResponse(raw);
+      if (!parsed) {
+        setError("Dashboard returned an unexpected query result shape.");
+        setData(null);
+        return;
+      }
+      setData(parsed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Query request failed");
+      setError(buildDashboardNetworkError(err));
       setData(null);
     } finally {
       setLoading(false);
@@ -87,8 +104,10 @@ export function QueryExplorerContent() {
       </p>
       <div className="mt-4 grid gap-3">
         <textarea
+          id="query-explorer-sql"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
+          aria-label="SQL query for Query Explorer"
           className="min-h-[220px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
           spellCheck={false}
         />

@@ -39,3 +39,16 @@ Core surfaces:
 - Diagnosis drill-downs and guided troubleshooting
 - Alert settings/history and retention/theme settings
 - Loading, auth/session, error, and empty-data states
+
+## Architecture (where code lives)
+
+- **`app/`** — Next.js App Router routes and layouts; keep route files thin and delegate UI to `components/dashboard/`.
+- **`components/dashboard/`** — Product UI: data provider (`DashboardDataContext`), shell, pages under `dashboardPages/`, charts, scoped query helpers.
+- **`components/dashboard/live/`** — Live-update hooks (WebSocket connect, visibility bump, WS-disconnected polling) extracted from the provider to keep `DashboardDataContext.tsx` maintainable.
+- **`components/ui/`** — Small shared primitives (spinners, etc.) usable from `app/` or dashboard.
+- **`lib/`** — Client-only helpers (e.g. RUM) without React dashboard imports.
+- **`utils/`** — Pure TS helpers (fetch errors, response shape guards, overview math); safe to unit test in Vitest (`environment: "node"`).
+
+**Data flow:** Route → `DashboardDataProvider` → page components. Prefer `fetchWithTimeout` + `buildDashboardNetworkError` + typed `parse*` guards (see `utils/dashboardResponseGuards.ts`) for standalone `fetch` calls outside the main provider (e.g. Query Explorer, Traces).
+
+**When adding features:** Extend existing types in `dashboardTypes.ts`; avoid widening `DashboardDataContext` unless the value is shared across multiple routes.

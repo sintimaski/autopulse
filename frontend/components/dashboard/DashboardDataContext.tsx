@@ -26,7 +26,6 @@ import {
 } from "../../utils/dashboardFetchErrors";
 import {
   buildApiUrl,
-  buildUpdatesWebsocketUrl,
   type AlertDispatchesResponse,
   type AlertCapabilitiesResponse,
   type AlertChannelCapability,
@@ -98,18 +97,16 @@ import {
 } from "./dashboardScopePresetUtils";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
 import {
+  useDashboardVisibilityRefreshBump,
+  useDashboardWsDisconnectedFallbackPoll,
+} from "./live/useDashboardLiveClientEffects";
+import { useDashboardLiveWebSocket } from "./live/useDashboardLiveWebSocket";
+import {
   buildOptionalGzipJsonRequest,
   DASHBOARD_FETCH_TIMEOUT_MS,
-  DASHBOARD_REFRESH_INTERVAL_MS,
-  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS,
-  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_CAP_MS,
-  DASHBOARD_WS_HANDSHAKE_FAIL_EXP_CAP,
-  DASHBOARD_WS_RECONNECT_DELAY_MS,
   fetchWithTimeout,
   LIVE_FETCH_SLOW_MS,
   LIVE_REFRESH_BACKOFF_DURATION_MS,
-  LIVE_REFRESH_BACKOFF_THROTTLE_MS,
-  LIVE_REFRESH_THROTTLE_MS,
   trimDashboardWidgetPayload,
 } from "./dashboardDataFetchUtils";
 import type {
@@ -268,6 +265,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     () => toDashboardRoutePath(rawDashboardPathname),
     [rawDashboardPathname],
   );
+
+  const bumpDashboardDataRefresh = useCallback(() => {
+    setRefreshToken((token) => token + 1);
+  }, []);
 
   useEffect(() => {
     const scopedRoute =
@@ -780,239 +781,63 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (runbookTimer.current) {
         clearTimeout(runbookTimer.current);
       }
-      if (liveReconnectTimer.current) {
-        clearTimeout(liveReconnectTimer.current);
+      const reconnectTimer = liveReconnectTimer.current;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        liveReconnectTimer.current = null;
       }
-      if (livePendingRefreshTimer.current) {
-        clearTimeout(livePendingRefreshTimer.current);
+      const pendingTimer = livePendingRefreshTimer.current;
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        livePendingRefreshTimer.current = null;
       }
       if (liveSocketRef.current) {
         liveSocketRef.current.close();
         liveSocketRef.current = null;
       }
-      if (liveFallbackRefreshTimer.current) {
-        clearInterval(liveFallbackRefreshTimer.current);
+      const fallbackTimer = liveFallbackRefreshTimer.current;
+      if (fallbackTimer) {
+        clearInterval(fallbackTimer);
+        liveFallbackRefreshTimer.current = null;
       }
     };
   }, []);
 
-  useEffect(() => {
-    if (!hasDashboardSession || !authSessionResolved) {
-      queueMicrotask(() => {
-        setLiveUpdatesConnected(false);
-      });
-      liveWsHandshakeFailuresRef.current = 0;
-      dashboardQueuedRefreshRef.current = false;
-      if (liveReconnectTimer.current) {
-        clearTimeout(liveReconnectTimer.current);
-        liveReconnectTimer.current = null;
-      }
-      if (livePendingRefreshTimer.current) {
-        clearTimeout(livePendingRefreshTimer.current);
-        livePendingRefreshTimer.current = null;
-      }
-      if (liveSocketRef.current) {
-        liveSocketRef.current.close();
-        liveSocketRef.current = null;
-      }
-      return;
-    }
-    let cancelled = false;
-    const wsThrottleMs = () =>
-      Date.now() < liveWsBackoffUntilRef.current
-        ? LIVE_REFRESH_BACKOFF_THROTTLE_MS
-        : LIVE_REFRESH_THROTTLE_MS;
-    const scheduleLiveRefreshFromWebSocket = () => {
-      if (liveRefreshPausedRef.current) {
-        return;
-      }
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-        return;
-      }
-      if (dashboardFetchInFlightRef.current) {
-        // Coalesce bursty updates while the current dashboard query is in flight.
-        dashboardQueuedRefreshRef.current = true;
-        return;
-      }
-      const now = Date.now();
-      const throttleMs = wsThrottleMs();
-      const elapsedMs = now - liveLastRefreshAtRef.current;
-      if (elapsedMs < throttleMs) {
-        // Keep at most one trailing refresh during bursty WS traffic.
-        if (livePendingRefreshTimer.current) {
-          return;
-        }
-        const delayMs = Math.max(1, throttleMs - elapsedMs);
-        livePendingRefreshTimer.current = setTimeout(() => {
-          livePendingRefreshTimer.current = null;
-          if (liveRefreshPausedRef.current) {
-            return;
-          }
-          if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-            return;
-          }
-          liveLastRefreshAtRef.current = Date.now();
-          setRefreshToken((token) => token + 1);
-        }, delayMs);
-        return;
-      }
-      if (livePendingRefreshTimer.current) {
-        clearTimeout(livePendingRefreshTimer.current);
-        livePendingRefreshTimer.current = null;
-      }
-      liveLastRefreshAtRef.current = now;
-      if (!liveRefreshPausedRef.current) {
-        setRefreshToken((token) => token + 1);
-      }
-    };
-    const connect = () => {
-      if (cancelled) {
-        return;
-      }
-      try {
-        let opened = false;
-        const socket = new WebSocket(buildUpdatesWebsocketUrl());
-        liveSocketRef.current = socket;
-        socket.onopen = () => {
-          if (cancelled) {
-            socket.close();
-            return;
-          }
-          opened = true;
-          liveWsHandshakeFailuresRef.current = 0;
-          setLiveUpdatesConnected(true);
-        };
-        socket.onmessage = (event) => {
-          if (cancelled) {
-            return;
-          }
-          let parsed: { type?: string } | null = null;
-          try {
-            parsed = JSON.parse(event.data) as { type?: string };
-          } catch {
-            parsed = null;
-          }
-          if (!parsed?.type) {
-            return;
-          }
-          if (parsed.type !== "dashboard_update" && parsed.type !== "ingest") {
-            return;
-          }
-          scheduleLiveRefreshFromWebSocket();
-        };
-        socket.onclose = (event: CloseEvent) => {
-          if (cancelled) {
-            return;
-          }
-          setLiveUpdatesConnected(false);
-          if (liveReconnectTimer.current) {
-            clearTimeout(liveReconnectTimer.current);
-          }
-          // 1008: server policy close after accept (auth failure). Failed HTTP upgrade uses !opened.
-          const authRejected = !opened || event.code === 1008;
-          if (authRejected) {
-            liveWsHandshakeFailuresRef.current += 1;
-            if (liveWsHandshakeFailuresRef.current === 2) {
-              reloadDashboardAuthSession();
-            }
-          } else {
-            liveWsHandshakeFailuresRef.current = 0;
-          }
-          const failures = liveWsHandshakeFailuresRef.current;
-          const delayMs =
-            failures > 0
-              ? Math.min(
-                  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_CAP_MS,
-                  DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS *
-                    2 ** Math.min(failures - 1, DASHBOARD_WS_HANDSHAKE_FAIL_EXP_CAP),
-                )
-              : DASHBOARD_WS_RECONNECT_DELAY_MS;
-          liveReconnectTimer.current = setTimeout(() => {
-            connect();
-          }, delayMs);
-        };
-        socket.onerror = () => {
-          // onclose handles reconnect/fallback.
-        };
-      } catch {
-        setLiveUpdatesConnected(false);
-      }
-    };
-    connect();
-    return () => {
-      cancelled = true;
-      setLiveUpdatesConnected(false);
-      dashboardQueuedRefreshRef.current = false;
-      if (liveReconnectTimer.current) {
-        clearTimeout(liveReconnectTimer.current);
-        liveReconnectTimer.current = null;
-      }
-      if (livePendingRefreshTimer.current) {
-        clearTimeout(livePendingRefreshTimer.current);
-        livePendingRefreshTimer.current = null;
-      }
-      if (liveSocketRef.current) {
-        liveSocketRef.current.close();
-        liveSocketRef.current = null;
-      }
-    };
-  }, [hasDashboardSession, authSessionResolved, reloadDashboardAuthSession, sessionProjectId]);
+  useDashboardLiveWebSocket({
+    hasSession: hasDashboardSession,
+    authSessionResolved,
+    sessionProjectId,
+    reloadDashboardAuthSession,
+    setLiveUpdatesConnected,
+    liveWsBackoffUntilRef,
+    liveRefreshPausedRef,
+    dashboardFetchInFlightRef,
+    dashboardQueuedRefreshRef,
+    liveLastRefreshAtRef,
+    livePendingRefreshTimerRef: livePendingRefreshTimer,
+    liveReconnectTimerRef: liveReconnectTimer,
+    liveSocketRef,
+    liveWsHandshakeFailuresRef,
+    bumpRefresh: bumpDashboardDataRefresh,
+  });
 
-  useEffect(() => {
-    if (!hasDashboardSession || liveUpdatesConnected) {
-      if (liveFallbackRefreshTimer.current) {
-        clearInterval(liveFallbackRefreshTimer.current);
-        liveFallbackRefreshTimer.current = null;
-      }
-      return;
-    }
-    if (liveFallbackRefreshTimer.current) {
-      clearInterval(liveFallbackRefreshTimer.current);
-    }
-    // Fallback poll only when websocket is disconnected.
-    liveFallbackRefreshTimer.current = setInterval(() => {
-      if (liveRefreshPausedRef.current) {
-        return;
-      }
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
-        return;
-      }
-      if (dashboardFetchInFlightRef.current) {
-        dashboardQueuedRefreshRef.current = true;
-        return;
-      }
-      setRefreshToken((token) => token + 1);
-    }, DASHBOARD_REFRESH_INTERVAL_MS);
-    return () => {
-      if (liveFallbackRefreshTimer.current) {
-        clearInterval(liveFallbackRefreshTimer.current);
-        liveFallbackRefreshTimer.current = null;
-      }
-    };
-  }, [hasDashboardSession, liveUpdatesConnected]);
+  useDashboardWsDisconnectedFallbackPoll({
+    hasSession: hasDashboardSession,
+    liveUpdatesConnected,
+    liveRefreshPausedRef,
+    dashboardFetchInFlightRef,
+    dashboardQueuedRefreshRef,
+    bumpRefresh: bumpDashboardDataRefresh,
+    liveFallbackRefreshTimerRef: liveFallbackRefreshTimer,
+  });
 
-  useEffect(() => {
-    if (!hasDashboardSession) {
-      return;
-    }
-    const onVisibilityChange = () => {
-      if (liveRefreshPausedRef.current) {
-        return;
-      }
-      if (typeof document === "undefined" || document.visibilityState !== "visible") {
-        return;
-      }
-      if (dashboardFetchInFlightRef.current) {
-        dashboardQueuedRefreshRef.current = true;
-        return;
-      }
-      setRefreshToken((token) => token + 1);
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [hasDashboardSession]);
+  useDashboardVisibilityRefreshBump({
+    hasSession: hasDashboardSession,
+    liveRefreshPausedRef,
+    dashboardFetchInFlightRef,
+    dashboardQueuedRefreshRef,
+    bumpRefresh: bumpDashboardDataRefresh,
+  });
 
   const rawItems = useMemo(
     () =>

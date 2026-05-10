@@ -428,6 +428,18 @@ export type DashboardMagicLinkRequestResponse = {
   dev_magic_link_url?: string | null;
 };
 
+/** Response body from `POST /dashboard/alert-test`. */
+export type DashboardAlertTestResponse = {
+  status: string;
+  delivered_via: string;
+  reason_code: string | null;
+  reason_message: string | null;
+  attempt_count: number;
+  delivered_at: string | null;
+  provider_message_id: string | null;
+  destination_email: string | null;
+};
+
 export type DashboardApiKeyItem = {
   key_id: string;
   created_at: string;

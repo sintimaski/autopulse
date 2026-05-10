@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { CardSpinner } from "../../ui/CardSpinner";
+import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
+import { parseTraceDetailResponse, parseTraceSearchResponse } from "../../../utils/dashboardResponseGuards";
 import { useDashboardData } from "../DashboardDataContext";
+import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
 import { METHOD_OPTIONS, buildApiUrl, formatTimestamp, type TraceDetailResponse, type TraceSearchResponse } from "../dashboardTypes";
 
 const TRACE_WINDOW_PRESETS: { label: string; minutes: number }[] = [
@@ -98,16 +101,28 @@ export function TracesContent() {
           params.set("window_minutes", String(scope.windowMinutes));
         }
         appendFilterParams(params);
-        const response = await fetch(buildApiUrl(`/dashboard/traces/search?${params.toString()}`), {
-          credentials: "include",
-        });
-        const raw = await response.json();
+        const response = await fetchWithTimeout(
+          buildApiUrl(`/dashboard/traces/search?${params.toString()}`),
+          { credentials: "include" },
+          DASHBOARD_FETCH_TIMEOUT_MS,
+        );
+        const raw: unknown = await response.json();
         if (!response.ok) {
-          setError(typeof raw?.detail === "string" ? raw.detail : `Trace search failed (${response.status})`);
+          const detail =
+            typeof raw === "object" && raw !== null && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
+              ? (raw as { detail: string }).detail
+              : `Trace search failed (${response.status})`;
+          setError(detail);
           setSearchData(null);
           return;
         }
-        setSearchData(raw as TraceSearchResponse);
+        const parsedSearch = parseTraceSearchResponse(raw);
+        if (!parsedSearch) {
+          setError("Dashboard returned an unexpected trace search shape.");
+          setSearchData(null);
+          return;
+        }
+        setSearchData(parsedSearch);
         if (timeOverride?.kind === "absolute") {
           setAbsoluteFrom(timeOverride.from);
           setAbsoluteTo(timeOverride.to);
@@ -117,7 +132,7 @@ export function TracesContent() {
           setWindowMinutes(timeOverride.windowMinutes);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Trace search request failed");
+        setError(buildDashboardNetworkError(err));
         setSearchData(null);
       } finally {
         setSearchLoading(false);
@@ -188,19 +203,30 @@ export function TracesContent() {
     const timeParams = buildDetailTimeParams(scope);
     const qs = timeParams.toString();
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         buildApiUrl(`/dashboard/traces/${encodeURIComponent(traceId)}${qs ? `?${qs}` : ""}`),
         { credentials: "include" },
+        DASHBOARD_FETCH_TIMEOUT_MS,
       );
-      const raw = await response.json();
+      const raw: unknown = await response.json();
       if (!response.ok) {
-        setError(typeof raw?.detail === "string" ? raw.detail : `Trace load failed (${response.status})`);
+        const detail =
+          typeof raw === "object" && raw !== null && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
+            ? (raw as { detail: string }).detail
+            : `Trace load failed (${response.status})`;
+        setError(detail);
         setDetailData(null);
         return;
       }
-      setDetailData(raw as TraceDetailResponse);
+      const parsedDetail = parseTraceDetailResponse(raw);
+      if (!parsedDetail) {
+        setError("Dashboard returned an unexpected trace detail shape.");
+        setDetailData(null);
+        return;
+      }
+      setDetailData(parsedDetail);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Trace detail request failed");
+      setError(buildDashboardNetworkError(err));
       setDetailData(null);
     } finally {
       setDetailLoading(false);
@@ -304,9 +330,11 @@ export function TracesContent() {
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <input
+          type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search by trace id, service, path, span name..."
+          aria-label="Search traces by id, service, path, or span name"
           className="min-w-[280px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
         />
         <button type="button" onClick={() => void searchTraces()} disabled={searchLoading} className="ap-btn">
