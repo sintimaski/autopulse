@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseDashboardAlertTestResponse,
+  parseDashboardBootstrapResponse,
   parseDashboardOrganizationListResponse,
   parseEventPlaneCutoverSettings,
+  parseLogQueryValidationResponse,
   parseQueryExplorerResponse,
+  parseRetentionSettings,
   parseTraceDetailResponse,
   parseTraceSearchResponse,
 } from "./dashboardResponseGuards";
@@ -148,5 +151,93 @@ describe("parseTraceDetailResponse", () => {
       items: [span],
     };
     expect(parseTraceDetailResponse(raw)).toEqual(raw);
+  });
+});
+
+describe("parseRetentionSettings", () => {
+  it("accepts a minimal valid payload", () => {
+    const raw = {
+      raw_events_days: 7,
+      logs_query_max_window_minutes: 60,
+      retention_max_db_size_mb: null,
+      retention_max_log_rows: null,
+      retention_plan: "starter",
+      archival_enabled: false,
+      archival_mode: "db_archive",
+      archival_status: "idle",
+      archival_last_success_at: null,
+      archival_last_error: null,
+    };
+    expect(parseRetentionSettings(raw)).toEqual(raw);
+  });
+
+  it("rejects bad archival_mode", () => {
+    const raw = {
+      raw_events_days: 7,
+      logs_query_max_window_minutes: 60,
+      retention_max_db_size_mb: null,
+      retention_max_log_rows: null,
+      retention_plan: "starter",
+      archival_enabled: false,
+      archival_mode: "wrong",
+      archival_status: "idle",
+      archival_last_success_at: null,
+      archival_last_error: null,
+    };
+    expect(parseRetentionSettings(raw)).toBeNull();
+  });
+});
+
+describe("parseLogQueryValidationResponse", () => {
+  it("accepts a valid payload", () => {
+    const raw = { valid: true, normalized_query: "status_code >= 500", error: null };
+    expect(parseLogQueryValidationResponse(raw)).toEqual(raw);
+  });
+
+  it("rejects missing normalized_query", () => {
+    expect(parseLogQueryValidationResponse({ valid: true, error: null })).toBeNull();
+  });
+});
+
+describe("parseDashboardBootstrapResponse", () => {
+  it("accepts a minimal coherent bootstrap payload", () => {
+    const retention = {
+      raw_events_days: 7,
+      logs_query_max_window_minutes: 60,
+      retention_max_db_size_mb: null,
+      retention_max_log_rows: null,
+      retention_plan: "starter" as const,
+      archival_enabled: false,
+      archival_mode: "db_archive" as const,
+      archival_status: "idle" as const,
+      archival_last_success_at: null,
+      archival_last_error: null,
+    };
+    const alert_settings = {
+      enabled: false,
+      destination_email: null,
+      email_enabled: false,
+      slack_enabled: false,
+      slack_webhook_url: null,
+      discord_enabled: false,
+      discord_webhook_url: null,
+      webhook_enabled: false,
+      webhook_url: null,
+      error_spike_ratio_threshold: 0.05,
+      error_spike_min_requests: 20,
+      error_spike_window_minutes: 5,
+      outage_min_requests: 50,
+      outage_window_minutes: 5,
+      cooldown_minutes: 30,
+    };
+    const raw = {
+      retention_settings: retention,
+      alert_settings,
+      theme_settings: { theme_preference: "system", exclude_lumonox_traffic: true },
+      api_keys: { items: [] },
+      alert_capabilities: { channels: [] },
+      onboarding_status: null,
+    };
+    expect(parseDashboardBootstrapResponse(raw)).toEqual(raw);
   });
 });

@@ -25,6 +25,17 @@ import {
   type DashboardFetchResult,
 } from "../../utils/dashboardFetchErrors";
 import {
+  parseAlertSettings,
+  parseDashboardApiKeyIssueResponse,
+  parseDashboardApiKeyListResponse,
+  parseDashboardApiKeyRotateResponse,
+  parseDashboardBootstrapResponse,
+  parseDashboardOnboardingStatusResponse,
+  parseLogQueryValidationResponse,
+  parseRetentionSettings,
+  parseThemeSettings,
+} from "../../utils/dashboardResponseGuards";
+import {
   buildApiUrl,
   type AlertDispatchesResponse,
   type AlertCapabilitiesResponse,
@@ -35,7 +46,6 @@ import {
   type DashboardApiKeyItem,
   type DashboardApiKeyListResponse,
   type DashboardApiKeyRotateResponse,
-  type DashboardBootstrapResponse,
   type DashboardDataQueryRequest,
   type DashboardDataQueryResponse,
   type DashboardOnboardingStatusResponse,
@@ -425,7 +435,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (fetchError) {
           throw new Error(fetchError);
         }
-        const bootstrapData = (await bootstrapResponse.json()) as DashboardBootstrapResponse;
+        const rawBootstrap: unknown = await bootstrapResponse.json();
+        const bootstrapData = parseDashboardBootstrapResponse(rawBootstrap);
+        if (!bootstrapData) {
+          throw new Error("bootstrap: invalid response shape");
+        }
 
         if (cancelled) {
           return;
@@ -1101,7 +1115,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (!response.ok) {
           throw new Error(`alert-settings update failed (${response.status})`);
         }
-        const updated = (await response.json()) as AlertSettings;
+        const raw: unknown = await response.json();
+        const updated = parseAlertSettings(raw);
+        if (!updated) {
+          throw new Error("alert-settings: invalid response shape");
+        }
         setAlertSettings(updated);
         setAlertSettingsMessage("Alert settings saved.");
         return true;
@@ -1140,7 +1158,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (!response.ok) {
           throw new Error(`theme-settings update failed (${response.status})`);
         }
-        const updated = (await response.json()) as ThemeSettings;
+        const raw: unknown = await response.json();
+        const updated = parseThemeSettings(raw);
+        if (!updated) {
+          throw new Error("theme-settings: invalid response shape");
+        }
         setThemePreference(updated.theme_preference);
         writeStoredDashboardThemePreference(updated.theme_preference);
         setExcludeLumonoxTraffic(updated.exclude_lumonox_traffic);
@@ -1175,7 +1197,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (!response.ok) {
           throw new Error(`theme-settings update failed (${response.status})`);
         }
-        const updated = (await response.json()) as ThemeSettings;
+        const raw: unknown = await response.json();
+        const updated = parseThemeSettings(raw);
+        if (!updated) {
+          throw new Error("theme-settings: invalid response shape");
+        }
         setThemePreference(updated.theme_preference);
         writeStoredDashboardThemePreference(updated.theme_preference);
         setExcludeLumonoxTraffic(updated.exclude_lumonox_traffic);
@@ -1215,7 +1241,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         if (!response.ok) {
           throw new Error(`retention-settings update failed (${response.status})`);
         }
-        const updated = (await response.json()) as RetentionSettings;
+        const raw: unknown = await response.json();
+        const updated = parseRetentionSettings(raw);
+        if (!updated) {
+          throw new Error("retention-settings: invalid response shape");
+        }
         setRetentionSettings(updated);
         return true;
       } catch {
@@ -1236,8 +1266,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!response.ok) {
       return;
     }
-    const payload = (await response.json()) as DashboardApiKeyListResponse;
-    setApiKeys(payload.items ?? []);
+    const raw: unknown = await response.json();
+    const payload = parseDashboardApiKeyListResponse(raw);
+    if (payload) {
+      setApiKeys(payload.items ?? []);
+    }
   }, [hasDashboardSession]);
 
   const setActiveDashboardProject = useCallback(
@@ -1274,7 +1307,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!response.ok) {
       return false;
     }
-    const payload = (await response.json()) as DashboardApiKeyIssueResponse;
+    const raw: unknown = await response.json();
+    const payload = parseDashboardApiKeyIssueResponse(raw);
+    if (!payload) {
+      return false;
+    }
     setLastIssuedApiKey(payload.api_key);
     await refreshApiKeys();
     return true;
@@ -1291,7 +1328,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!response.ok) {
       return false;
     }
-    const payload = (await response.json()) as DashboardOnboardingStatusResponse;
+    const raw: unknown = await response.json();
+    const payload = parseDashboardOnboardingStatusResponse(raw);
+    if (!payload) {
+      return false;
+    }
     setOnboardingStatus(payload);
     return true;
   }, [hasDashboardSession]);
@@ -1310,7 +1351,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (!response.ok) {
         return false;
       }
-      const payload = (await response.json()) as DashboardApiKeyRotateResponse;
+      const raw: unknown = await response.json();
+      const payload = parseDashboardApiKeyRotateResponse(raw);
+      if (!payload) {
+        return false;
+      }
       setLastIssuedApiKey(payload.replacement_api_key);
       await refreshApiKeys();
       return true;
@@ -1761,7 +1806,23 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         credentials: "include",
         body: JSON.stringify({ query: wrapped, page_size: 100 }),
       });
-      const payload = (await response.json()) as LogQueryValidationResponse;
+      if (!response.ok) {
+        const fallback: LogQueryValidationResponse = {
+          valid: false,
+          normalized_query: wrapped,
+          error: `Validation failed (${response.status})`,
+        };
+        setSqlFilterValidation(fallback);
+        return fallback;
+      }
+      const raw: unknown = await response.json();
+      const parsed = parseLogQueryValidationResponse(raw);
+      const payload: LogQueryValidationResponse =
+        parsed ?? {
+          valid: false,
+          normalized_query: wrapped,
+          error: "Invalid validation response",
+        };
       setSqlFilterValidation(payload);
       return payload;
     } catch {

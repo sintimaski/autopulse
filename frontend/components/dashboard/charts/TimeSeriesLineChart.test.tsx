@@ -16,5 +16,8 @@ describe("TimeSeriesLineChart", () => {
     );
     expect(html).toContain('role="img"');
     expect(html).toContain('aria-label="Error Rate Trend time series chart"');
+    expect(html).toContain("sr-only");
+    expect(html).toContain("increased from");
+    expect(html).toContain('aria-describedby="');
   });
 });

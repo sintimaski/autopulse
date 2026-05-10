@@ -1,12 +1,25 @@
 import type {
+  AlertCapabilitiesResponse,
+  AlertChannelCapability,
+  AlertSettings,
   DashboardAlertTestResponse,
+  DashboardApiKeyIssueResponse,
+  DashboardApiKeyItem,
+  DashboardApiKeyListResponse,
+  DashboardApiKeyRotateResponse,
+  DashboardBootstrapResponse,
   DashboardInternalMetricsResponse,
   DashboardMembershipItem,
+  DashboardOnboardingStatusResponse,
   DashboardOrganizationListResponse,
   DashboardOrganizationSummary,
   DashboardProjectSummary,
   DashboardSystemDiagnosticsResponse,
+  LogQueryValidationResponse,
   QueryExplorerResponse,
+  RetentionSettings,
+  ThemePreference,
+  ThemeSettings,
   TraceDetailResponse,
   TraceSearchResponse,
   TraceSpanItem,
@@ -275,6 +288,278 @@ export function parseEventPlaneCutoverSettings(raw: unknown): { use_snapshot_rea
     return null;
   }
   return { use_snapshot_read: raw.use_snapshot_read };
+}
+
+function isThemePreference(v: unknown): v is ThemePreference {
+  return v === "system" || v === "light" || v === "dark";
+}
+
+function isRetentionPlan(v: unknown): v is RetentionSettings["retention_plan"] {
+  return v === "starter" || v === "standard" || v === "extended";
+}
+
+function isArchivalStatus(v: unknown): v is RetentionSettings["archival_status"] {
+  return v === "idle" || v === "running" || v === "failed";
+}
+
+/** `GET` / `PUT` `/dashboard/theme-settings` */
+export function parseThemeSettings(raw: unknown): ThemeSettings | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (!isThemePreference(raw.theme_preference)) {
+    return null;
+  }
+  if (typeof raw.exclude_lumonox_traffic !== "boolean") {
+    return null;
+  }
+  return raw as ThemeSettings;
+}
+
+/** `GET` / `PUT` `/dashboard/retention-settings` */
+export function parseRetentionSettings(raw: unknown): RetentionSettings | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (typeof raw.raw_events_days !== "number" || typeof raw.logs_query_max_window_minutes !== "number") {
+    return null;
+  }
+  if (raw.retention_max_db_size_mb !== null && typeof raw.retention_max_db_size_mb !== "number") {
+    return null;
+  }
+  if (raw.retention_max_log_rows !== null && typeof raw.retention_max_log_rows !== "number") {
+    return null;
+  }
+  if (!isRetentionPlan(raw.retention_plan)) {
+    return null;
+  }
+  if (typeof raw.archival_enabled !== "boolean") {
+    return null;
+  }
+  if (raw.archival_mode !== "db_archive") {
+    return null;
+  }
+  if (!isArchivalStatus(raw.archival_status)) {
+    return null;
+  }
+  if (raw.archival_last_success_at !== null && typeof raw.archival_last_success_at !== "string") {
+    return null;
+  }
+  if (raw.archival_last_error !== null && typeof raw.archival_last_error !== "string") {
+    return null;
+  }
+  return raw as RetentionSettings;
+}
+
+/** `GET` / `PUT` `/dashboard/alert-settings` */
+export function parseAlertSettings(raw: unknown): AlertSettings | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (typeof raw.enabled !== "boolean") {
+    return null;
+  }
+  if (raw.destination_email !== null && typeof raw.destination_email !== "string") {
+    return null;
+  }
+  if (typeof raw.email_enabled !== "boolean" || typeof raw.slack_enabled !== "boolean") {
+    return null;
+  }
+  if (raw.slack_webhook_url !== null && typeof raw.slack_webhook_url !== "string") {
+    return null;
+  }
+  if (typeof raw.discord_enabled !== "boolean") {
+    return null;
+  }
+  if (raw.discord_webhook_url !== null && typeof raw.discord_webhook_url !== "string") {
+    return null;
+  }
+  if (typeof raw.webhook_enabled !== "boolean") {
+    return null;
+  }
+  if (raw.webhook_url !== null && typeof raw.webhook_url !== "string") {
+    return null;
+  }
+  const numericKeys = [
+    "error_spike_ratio_threshold",
+    "error_spike_min_requests",
+    "error_spike_window_minutes",
+    "outage_min_requests",
+    "outage_window_minutes",
+    "cooldown_minutes",
+  ] as const;
+  for (const k of numericKeys) {
+    if (typeof raw[k] !== "number") {
+      return null;
+    }
+  }
+  return raw as AlertSettings;
+}
+
+const ALERT_CHANNEL_IDS = ["email", "slack", "discord", "webhook"] as const;
+
+function isAlertChannelId(v: unknown): v is AlertChannelCapability["channel"] {
+  return typeof v === "string" && (ALERT_CHANNEL_IDS as readonly string[]).includes(v);
+}
+
+const ALERT_CHANNEL_STATUSES = ["active", "configured", "planned", "unavailable"] as const;
+
+function isAlertChannelStatus(v: unknown): v is AlertChannelCapability["status"] {
+  return typeof v === "string" && (ALERT_CHANNEL_STATUSES as readonly string[]).includes(v);
+}
+
+function isAlertChannelCapability(v: unknown): v is AlertChannelCapability {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (!isAlertChannelId(v.channel) || !isAlertChannelStatus(v.status)) {
+    return false;
+  }
+  if (typeof v.enabled !== "boolean" || typeof v.reason !== "string") {
+    return false;
+  }
+  return true;
+}
+
+export function parseAlertCapabilitiesResponse(raw: unknown): AlertCapabilitiesResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (!Array.isArray(raw.channels) || !raw.channels.every(isAlertChannelCapability)) {
+    return null;
+  }
+  return raw as AlertCapabilitiesResponse;
+}
+
+function isDashboardApiKeyItem(v: unknown): v is DashboardApiKeyItem {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (typeof v.key_id !== "string" || typeof v.created_at !== "string") {
+    return false;
+  }
+  if (v.revoked_at !== null && typeof v.revoked_at !== "string") {
+    return false;
+  }
+  return true;
+}
+
+/** `GET /dashboard/auth/api-keys` */
+export function parseDashboardApiKeyListResponse(raw: unknown): DashboardApiKeyListResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (!Array.isArray(raw.items) || !raw.items.every(isDashboardApiKeyItem)) {
+    return null;
+  }
+  return raw as DashboardApiKeyListResponse;
+}
+
+/** `POST /dashboard/auth/api-keys/issue` */
+export function parseDashboardApiKeyIssueResponse(raw: unknown): DashboardApiKeyIssueResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (typeof raw.key_id !== "string" || typeof raw.api_key !== "string" || typeof raw.created_at !== "string") {
+    return null;
+  }
+  return raw as DashboardApiKeyIssueResponse;
+}
+
+/** `POST /dashboard/auth/api-keys/rotate` */
+export function parseDashboardApiKeyRotateResponse(raw: unknown): DashboardApiKeyRotateResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const keys = ["revoked_key_id", "replacement_key_id", "replacement_api_key", "rotated_at"] as const;
+  for (const k of keys) {
+    if (typeof raw[k] !== "string") {
+      return null;
+    }
+  }
+  return raw as DashboardApiKeyRotateResponse;
+}
+
+const ONBOARDING_STEPS = [
+  "authenticate_session",
+  "confirm_project",
+  "provision_ingest_key",
+  "send_first_event",
+  "open_diagnosis",
+  "completed",
+] as const;
+
+function isOnboardingStep(v: unknown): v is DashboardOnboardingStatusResponse["current_step"] {
+  return typeof v === "string" && (ONBOARDING_STEPS as readonly string[]).includes(v);
+}
+
+/** `GET` bootstrap / `POST` onboarding-complete */
+export function parseDashboardOnboardingStatusResponse(raw: unknown): DashboardOnboardingStatusResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const boolKeys = [
+    "session_authenticated",
+    "project_ready",
+    "ingest_key_ready",
+    "first_event_received",
+    "first_diagnostic_signal_ready",
+    "onboarding_completed",
+  ] as const;
+  for (const k of boolKeys) {
+    if (typeof raw[k] !== "boolean") {
+      return null;
+    }
+  }
+  if (typeof raw.next_recommended_action !== "string" || !isOnboardingStep(raw.current_step)) {
+    return null;
+  }
+  return raw as DashboardOnboardingStatusResponse;
+}
+
+/** `GET /dashboard/bootstrap` */
+export function parseDashboardBootstrapResponse(raw: unknown): DashboardBootstrapResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  const retention = parseRetentionSettings(raw.retention_settings);
+  const alert_settings = parseAlertSettings(raw.alert_settings);
+  const theme_settings = parseThemeSettings(raw.theme_settings);
+  const api_keys = parseDashboardApiKeyListResponse(raw.api_keys);
+  const alert_capabilities = parseAlertCapabilitiesResponse(raw.alert_capabilities);
+  if (!retention || !alert_settings || !theme_settings || !api_keys || !alert_capabilities) {
+    return null;
+  }
+  let onboarding_status: DashboardOnboardingStatusResponse | null = null;
+  if (raw.onboarding_status !== null && raw.onboarding_status !== undefined) {
+    const parsed = parseDashboardOnboardingStatusResponse(raw.onboarding_status);
+    if (!parsed) {
+      return null;
+    }
+    onboarding_status = parsed;
+  }
+  return {
+    retention_settings: retention,
+    alert_settings,
+    theme_settings,
+    api_keys,
+    alert_capabilities,
+    onboarding_status,
+  };
+}
+
+/** `POST /dashboard/log-query/validate` */
+export function parseLogQueryValidationResponse(raw: unknown): LogQueryValidationResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (typeof raw.valid !== "boolean" || typeof raw.normalized_query !== "string") {
+    return null;
+  }
+  if (raw.error !== null && typeof raw.error !== "string") {
+    return null;
+  }
+  return raw as LogQueryValidationResponse;
 }
 
 /** `POST /dashboard/alert-test` */

@@ -22,13 +22,13 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-01 | **Done** | Root `/` and magic-link `Suspense` use `CardSpinner` (`frontend/app/page.tsx`, `frontend/app/auth/magic-link/page.tsx`). |
 | FE-02 | **Done** | Segment error and global not-found use `ap-surface` / `ap-btn*` (`frontend/app/(main)/error.tsx`, `frontend/app/not-found.tsx`). Optional extra snapshot/a11y tests from the original AC were not added (explicit defer). |
 | FE-03 | **Done (superseded scope)** | Command palette was **removed** as redundant with the sidebar (`DashboardCommandPalette.tsx` deleted; not mounted from `DashboardLayoutClient.tsx`). `NavIaMigrationBanner` copy updated to sidebar-only. Original “add palette discoverability” work was **intentionally dropped**. |
-| FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer SQL `aria-label`, Traces search `aria-label` + `type="search"`. Full chart/a11y audit still open. |
-| FE-05 | **Partial** | WebSocket lifecycle in `live/useDashboardLiveWebSocket.ts`; fallback poll + visibility in `live/useDashboardLiveClientEffects.ts`; `bumpDashboardDataRefresh` in provider. Context file still large (fetch/bootstrap/value assembly). |
-| FE-06 | **Partial** | `settingsContentTypes.ts`, `SettingsAppearanceSessionSection.tsx` (theme + sign-out); main settings page still large. |
-| FE-07 | **Partial** | Guards extended for **organizations**, **members**, **internal-metrics**, **system-diagnostics**, **event-plane-cutover**, **alert-test**; wired in `SettingsContent.tsx` alongside Query Explorer / Traces. `DashboardDataContext` casts remain. |
+| FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer / Traces labels, `TimeSeriesLineChart` `aria-describedby` + screen-reader trend line. Full chart/a11y audit still open. |
+| FE-05 | **Partial** | WebSocket lifecycle in `live/useDashboardLiveWebSocket.ts`; fallback poll + visibility in `live/useDashboardLiveClientEffects.ts`; `bumpDashboardDataRefresh` in provider. Context file still large (main `/dashboard/query` batch + value assembly). |
+| FE-06 | **Partial** | `settingsContentTypes.ts`, `SettingsAppearanceSessionSection.tsx`, **`SettingsRetentionPolicySection.tsx`** (retention policy card). Other settings sections still inline. |
+| FE-07 | **Partial** | Above plus **`DashboardDataContext`**: validated JSON for **bootstrap**, **alert/theme/retention** saves, **api-keys** list/issue/rotate, **onboarding-complete**, **`/dashboard/log-query/validate`**. `/dashboard/query` batch response still cast. |
 | FE-08 | **Partial** | Settings standalone `fetch` paths use `fetchWithTimeout`; Query/Traces unchanged from prior pass. Further dedup vs context still open. |
-| FE-09 | **Partial** | Guard unit tests expanded (10 cases in `dashboardResponseGuards.test.ts`). Interaction/E2E expansion still open. |
-| FE-10 | **Partial** | `frontend/README.md` architecture section added. ESLint preset beyond `eslint-config-next` still open. |
+| FE-09 | **Partial** | Guard unit tests (`dashboardResponseGuards.test.ts`) + Playwright **`settings-smoke.spec.ts`** (shared `authDevMagicLink.ts`). Further interaction coverage still open. |
+| FE-10 | **Partial** | `frontend/README.md` architecture section; ESLint **`reportUnusedDisableDirectives: warn`**. Heavier custom rules still open. |
 
 ## 2) Context / background
 

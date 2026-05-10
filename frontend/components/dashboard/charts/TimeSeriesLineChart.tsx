@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import type { ChartOptions } from "chart.js";
 
 import { CanvasLine } from "./chartCanvas";
@@ -45,9 +45,26 @@ export function TimeSeriesLineChart({
   chartAreaHeightClass = "h-[5.25rem]",
   live = false,
 }: TimeSeriesLineChartProps) {
+  const trendDescriptionId = useId();
   const latest = values.length ? values[values.length - 1] : 0;
   const displayValue = summaryValue ?? latest;
   const maxY = useMemo(() => Math.max(1, ...values.map((v) => Number(v) || 0)), [values]);
+
+  const trendDescription = useMemo(() => {
+    if (values.length < 2) {
+      return null;
+    }
+    const first = Number(values[0]) || 0;
+    const last = Number(values[values.length - 1]) || 0;
+    const startLabel = labels[0] ?? "start";
+    const endLabel = labels[labels.length - 1] ?? "end";
+    const allSame = values.every((v) => (Number(v) || 0) === first);
+    if (allSame || Math.abs(last - first) < 1e-9) {
+      return `${title}: flat across the window from ${startLabel} to ${endLabel}. ${summaryLabel} ${formatValue(displayValue)}.`;
+    }
+    const direction = last > first ? "increased" : "decreased";
+    return `${title}: ${direction} from ${formatValue(first)} at ${startLabel} to ${formatValue(last)} at ${endLabel}. ${summaryLabel} ${formatValue(displayValue)}.`;
+  }, [displayValue, formatValue, labels, summaryLabel, title, values]);
 
   const chartData = useMemo(
     () => ({
@@ -137,14 +154,20 @@ export function TimeSeriesLineChart({
       </div>
       {values.length ? (
         <>
+          {trendDescription ? (
+            <p id={trendDescriptionId} className="sr-only">
+              {trendDescription}
+            </p>
+          ) : null}
           <div
             className={`relative w-full ${chartAreaHeightClass}`}
             role="img"
             aria-label={`${title} time series chart`}
+            aria-describedby={trendDescription ? trendDescriptionId : undefined}
           >
             <CanvasLine data={chartData} options={options} />
           </div>
-          <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400">
+          <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400" aria-hidden="true">
             {labels[0]} {" -> "} {labels[labels.length - 1]}
           </p>
         </>
