@@ -25,9 +25,10 @@ Use this checklist **after** implementation matches the plan’s acceptance crit
 - Bump **`backend/pyproject.toml`** `version` when shipping the API wheel; workflow uploads only when the version is new on PyPI (see `.github/workflows/publish-lumonox-api-pypi.yml`).
 - Add a one-line row to **`docs/ops/PYPI_PUBLISHING.md`** “Recent `lumonox-api` wheel notes” for user-visible behavior (changelog-lite). Governed spec changes still follow **`docs/DOCUMENTATION_GOVERNANCE.md`**.
 
-## Docs touchpoints
+## Docs touchpoints (blocking before final commit)
 
-- If the plan lived under `docs/*.md`, add a short **Status** or **Implemented** note at the top when behavior diverges from the original sketch (keep the doc as history, not duplicate `DEVELOPMENT.md`).
+- **Delete** completed one-off implementation plans under `docs/` (for example `docs/*_PLAN.md`, rollout sketches, task-only writeups) once the work is merged into code and tests — do **not** keep them as stale “history” in-repo; git history already preserves the old text if needed.
+- If something from a deleted plan is still **operationally** required (env vars, multi-instance behavior), fold that into **`backend/.env.example`**, **`docs/ops/*`**, or **`DEVELOPMENT.md`** only where it is canonical — avoid duplicating MVP product spec. Governed doc edits still follow **`docs/DOCUMENTATION_GOVERNANCE.md`**.
 
 ## Commit discipline
 
