@@ -30,7 +30,6 @@ import {
   parseDashboardApiKeyIssueResponse,
   parseDashboardApiKeyListResponse,
   parseDashboardApiKeyRotateResponse,
-  parseDashboardBootstrapResponse,
   parseDashboardOnboardingStatusResponse,
   parseLogQueryValidationResponse,
   parseRetentionSettings,
@@ -126,6 +125,7 @@ import {
   dashboardSessionJsonPost,
   dashboardSessionJsonPut,
 } from "./dashboardSessionFetch";
+import { loadDashboardBootstrap } from "./dashboardWorkspaceBootstrap";
 import type {
   DashboardAlertsSliceValue,
   DashboardDataContextValue,
@@ -427,21 +427,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     const run = async () => {
       try {
-        const bootstrapResponse = await dashboardSessionFetch("/dashboard/bootstrap", {}, controller.signal);
-        if (bootstrapResponse.status === 401) {
-          reloadDashboardAuthSession();
-        }
-        const results = [{ endpoint: "bootstrap", response: bootstrapResponse }] as DashboardFetchResult[];
-
-        const fetchError = buildDashboardFetchError(results);
-        if (fetchError) {
-          throw new Error(fetchError);
-        }
-        const rawBootstrap: unknown = await bootstrapResponse.json();
-        const bootstrapData = parseDashboardBootstrapResponse(rawBootstrap);
-        if (!bootstrapData) {
-          throw new Error("bootstrap: invalid response shape");
-        }
+        const bootstrapData = await loadDashboardBootstrap(controller.signal, reloadDashboardAuthSession);
 
         if (cancelled) {
           return;
