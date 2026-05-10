@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
 
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
-import { buildApiUrl, type DashboardSystemDiagnosticsResponse } from "../dashboardTypes";
+import { dashboardSessionFetch } from "../dashboardSessionFetch";
+import type { DashboardSystemDiagnosticsResponse } from "../dashboardTypes";
 import {
   parseDashboardInternalMetricsResponse,
   parseDashboardSystemDiagnosticsResponse,
@@ -86,11 +86,7 @@ export function useSettingsDiagnosticsPanels({
     });
     void (async () => {
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl("/dashboard/internal-metrics"),
-          { credentials: "include" },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionFetch("/dashboard/internal-metrics");
         if (!response.ok) {
           throw new Error(`internal-metrics failed (${response.status})`);
         }
@@ -143,9 +139,7 @@ export function useSettingsDiagnosticsPanels({
     });
     void (async () => {
       try {
-        const response = await fetchWithTimeout(buildApiUrl("/dashboard/system-diagnostics"), {
-          credentials: "include",
-        }, DASHBOARD_FETCH_TIMEOUT_MS);
+        const response = await dashboardSessionFetch("/dashboard/system-diagnostics");
         if (!response.ok) {
           throw new Error(`system-diagnostics failed (${response.status})`);
         }
@@ -190,9 +184,7 @@ export function useSettingsDiagnosticsPanels({
     });
     void (async () => {
       try {
-        const response = await fetchWithTimeout(buildApiUrl("/dashboard/event-plane-cutover"), {
-          credentials: "include",
-        }, DASHBOARD_FETCH_TIMEOUT_MS);
+        const response = await dashboardSessionFetch("/dashboard/event-plane-cutover");
         if (!response.ok) {
           throw new Error(`event-plane-cutover failed (${response.status})`);
         }
