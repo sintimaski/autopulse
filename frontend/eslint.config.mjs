@@ -7,6 +7,9 @@ const eslintConfig = [
     linterOptions: {
       reportUnusedDisableDirectives: "warn",
     },
+    rules: {
+      eqeqeq: ["warn", "always", { null: "ignore" }],
+    },
   },
 ];
 

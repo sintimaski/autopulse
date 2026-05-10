@@ -1,6 +1,6 @@
 # Core user journey — browser E2E (Playwright)
 
-Core Playwright smoke lives in `frontend/tests/e2e/core-journey.spec.ts` and `frontend/tests/e2e/settings-smoke.spec.ts` (shared dev sign-in helper: `frontend/tests/e2e/authDevMagicLink.ts`). Tests run in CI (`browser-smoke` job). This doc is the operator checklist for local maintenance and extension.
+Core Playwright smoke lives in `frontend/tests/e2e/core-journey.spec.ts`, `frontend/tests/e2e/settings-smoke.spec.ts`, and `frontend/tests/e2e/alerts-smoke.spec.ts` (shared dev sign-in helper: `frontend/tests/e2e/authDevMagicLink.ts`). Tests run in CI (`browser-smoke` job). This doc is the operator checklist for local maintenance and extension.
 
 ## Preconditions
 
@@ -44,7 +44,8 @@ npm --prefix frontend run test:e2e
 3. Load `/lumonox/ui/dashboard` and assert shell navigation appears (primary links plus an **Advanced** group for query/traces).
 4. Navigate to `/lumonox/ui/diagnosis` and assert route + nav stability.
 5. Load `/lumonox/ui/settings` and assert primary settings sections render (retention + appearance headings).
-6. (Optional) Load `/lumonox/ui/diagnosis#grouped-errors` or a saved `#error-group:…` bookmark and confirm the page still renders (deep-link + partial-scope UX is covered in unit tests under `frontend/components/dashboard/diagnosisDeepLink.test.ts`).
+6. Load `/lumonox/ui/alerts` and assert the Operations (M5) heading is visible.
+7. (Optional) Load `/lumonox/ui/diagnosis#grouped-errors` or a saved `#error-group:…` bookmark and confirm the page still renders (deep-link + partial-scope UX is covered in unit tests under `frontend/components/dashboard/diagnosisDeepLink.test.ts`).
 
 Record HAR or video on failure (`trace: 'retain-on-failure'` in config).
 
