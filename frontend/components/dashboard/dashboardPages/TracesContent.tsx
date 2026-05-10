@@ -6,8 +6,8 @@ import { CardSpinner } from "../../ui/CardSpinner";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
 import { parseTraceDetailResponse, parseTraceSearchResponse } from "../../../utils/dashboardResponseGuards";
 import { useDashboardData } from "../DashboardDataContext";
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
-import { METHOD_OPTIONS, buildApiUrl, formatTimestamp, type TraceDetailResponse, type TraceSearchResponse } from "../dashboardTypes";
+import { dashboardSessionFetch } from "../dashboardSessionFetch";
+import { METHOD_OPTIONS, formatTimestamp, type TraceDetailResponse, type TraceSearchResponse } from "../dashboardTypes";
 
 const TRACE_WINDOW_PRESETS: { label: string; minutes: number }[] = [
   { label: "Last 1 hour", minutes: 60 },
@@ -101,11 +101,7 @@ export function TracesContent() {
           params.set("window_minutes", String(scope.windowMinutes));
         }
         appendFilterParams(params);
-        const response = await fetchWithTimeout(
-          buildApiUrl(`/dashboard/traces/search?${params.toString()}`),
-          { credentials: "include" },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionFetch(`/dashboard/traces/search?${params.toString()}`);
         const raw: unknown = await response.json();
         if (!response.ok) {
           const detail =
@@ -203,10 +199,8 @@ export function TracesContent() {
     const timeParams = buildDetailTimeParams(scope);
     const qs = timeParams.toString();
     try {
-      const response = await fetchWithTimeout(
-        buildApiUrl(`/dashboard/traces/${encodeURIComponent(traceId)}${qs ? `?${qs}` : ""}`),
-        { credentials: "include" },
-        DASHBOARD_FETCH_TIMEOUT_MS,
+      const response = await dashboardSessionFetch(
+        `/dashboard/traces/${encodeURIComponent(traceId)}${qs ? `?${qs}` : ""}`,
       );
       const raw: unknown = await response.json();
       if (!response.ok) {

@@ -6,8 +6,8 @@ import { CardSpinner } from "../../ui/CardSpinner";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
 import { parseQueryExplorerResponse } from "../../../utils/dashboardResponseGuards";
 import { useDashboardData } from "../DashboardDataContext";
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
-import { buildApiUrl, type QueryExplorerResponse } from "../dashboardTypes";
+import { dashboardSessionJsonPost } from "../dashboardSessionFetch";
+import type { QueryExplorerResponse } from "../dashboardTypes";
 
 const DEFAULT_QUERY = [
   "SELECT",
@@ -56,16 +56,7 @@ export function QueryExplorerContent() {
             row_limit: rowLimit,
             scope_mode: "project_wide" as const,
           };
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/query-explorer/execute"),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionJsonPost("/dashboard/query-explorer/execute", body);
       const raw: unknown = await response.json();
       if (!response.ok) {
         const detail =
