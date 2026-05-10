@@ -27,7 +27,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-06 | **Partial** | `settingsContentTypes.ts` + settings sections under `dashboardPages/` (retention, metrics, diagnostics, event-plane, exclude traffic, alert delivery, active project, orgs/members, API keys, appearance). `SettingsContent.tsx` is composition + fetch/effects; deeper hook extraction still open. |
 | FE-07 | **Partial** | Above plus **`parseDashboardDataQueryResponse`** in `frontend/utils/dashboardQueryResponseGuards.ts` for **`POST /dashboard/query`** (main fetch + diagnosis follow-up). |
 | FE-08 | **Partial** | **`DashboardDataContext`** dashboard mutations use **`fetchWithTimeout`** (alert/theme/retention, api-keys, active-project, validate, logout, etc.). Further dedup vs context still open. |
-| FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`**, **`alerts-smoke`**, **`logs-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
+| FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`**, **`alerts-smoke`**, **`logs-smoke`**, **`query-explorer-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
 | FE-10 | **Partial** | `frontend/README.md` architecture section; ESLint **`reportUnusedDisableDirectives: warn`** and **`eqeqeq`** (`null: ignore`). Heavier custom rules still open. |
 
 ## 2) Context / background
