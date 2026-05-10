@@ -7,7 +7,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - **Plan name:** Frontend multi-lane quality review -> implementation backlog
 - **Owner:** Frontend + Platform (AI-assisted execution)
 - **Date:** 2026-05-10
-- **Status:** In progress (phase 1 shipped; FE-06, FE-07, FE-08, FE-09, FE-10 done for current MVP scope; other lanes remain)
+- **Status:** In progress (phase 1 shipped; FE-04, FE-06, FE-07, FE-08, FE-09, FE-10 done for current MVP scope; FE-05 remains)
 - **Scope summary (2-4 lines):**
   This plan converts a codebase-wide frontend review into execution tasks. It prioritizes high-impact UX clarity, visual consistency, accessibility, and developer productivity improvements while preserving Lumonox MVP constraints (fast diagnosis, low-friction onboarding, no advanced non-goal platform features).
 - **Out of scope:**
@@ -22,7 +22,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-01 | **Done** | Root `/` and magic-link `Suspense` use `CardSpinner` (`frontend/app/page.tsx`, `frontend/app/auth/magic-link/page.tsx`). |
 | FE-02 | **Done** | Segment error and global not-found use `ap-surface` / `ap-btn*` (`frontend/app/(main)/error.tsx`, `frontend/app/not-found.tsx`). Optional extra snapshot/a11y tests from the original AC were not added (explicit defer). |
 | FE-03 | **Done (superseded scope)** | Command palette was **removed** as redundant with the sidebar (`DashboardCommandPalette.tsx` deleted; not mounted from `DashboardLayoutClient.tsx`). `NavIaMigrationBanner` copy updated to sidebar-only. Original “add palette discoverability” work was **intentionally dropped**. |
-| FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer / Traces labels, `TimeSeriesLineChart` SR trend line, **Traffic volume** trends as one **stacked area** (2xx–5xx) + `aria-label` in `VolumeChart`. Full chart/a11y audit still open. |
+| FE-04 | **Done** | **`ServerQueryToolbar`**: `role="region"` + `aria-label`, unlabeled inputs/textarea/select get **`aria-label`**, SQL advanced toggle **`aria-expanded`** / **`aria-controls`**. **`StackedAreaChart`**: `role="img"` + default or custom **`accessibilityLabel`**; **`VolumeChart`** passes rich summary into chart (avoids nested `role="img"`). **`MetricCard`**: Vitest for clickable **`aria-label`** + **`focus-visible`**. Prior `aria-live` / Query Explorer / Traces / `TimeSeriesLineChart` / volume bar work retained. Full-site WCAG audit still out of MVP scope. |
 | FE-05 | **Partial** | WebSocket + live hooks as before; **`dashboardQueryBundle.ts`** centralizes batch query planning; **`dashboardWorkspaceBootstrap.ts`** exposes **`loadDashboardBootstrap`** (fetch + parse) consumed by **`DashboardDataContext`**. Context still owns state, batch fetch effect, and apply logic. |
 | FE-06 | **Done** | **`SettingsContent.tsx`** is composition + role flags over section components + hooks: **`useSettingsOrganizationsMembers`**, **`useSettingsDiagnosticsPanels`** / **`settingsMetricStatusClass`**, **`useSettingsAggregateQueueStats`**, **`useSettingsAlertDelivery`**, **`useSettingsApiKeyBulk`** (+ **`settingsApiKeyBulk`**), **`useSettingsEventPlaneCutoverSave`**, **`useSettingsRetentionPolicy`**, **`useSettingsActiveProject`**, **`useSettingsAppearanceTrafficFeedback`**, plus **`settingsContentTypes.ts`**. Section-level tests include retention, alerts, API keys, active project, org/members. Optional future work: further splits only if new settings domains appear. |
 | FE-07 | **Done** | **`parseDashboardDataQueryResponse`** in **`frontend/utils/dashboardQueryResponseGuards.ts`** validates **`POST /dashboard/query`** JSON (used from **`DashboardDataContext`** main batch + diagnosis prefetch). Parse failures yield **`null`**; UI surfaces **"Dashboard query returned an unexpected response. Refresh to retry."** Unit tests cover happy path, invalid nested payloads, and bad roots. Further endpoints can follow the same guard pattern as needed. |
@@ -219,10 +219,11 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
+  - Status: Done (toolbar region + form labels; stacked chart assistive summary; MetricCard regression tests; no nested `role="img"` on volume trends)
+  - % complete: 100
   - Last update: 2026-05-10
   - Owner: Frontend
+- **Implementation notes:** Shipped with `StackedAreaChart.test.tsx`, `MetricCard.test.tsx`; verified `npm run lint`, `npm run test` (161), `npm run build` in `frontend/`. Broader chart library (`DonutChart`, `BreakdownBarChart`, …) audit deferred.
 - **Related documents:** `DEVELOPMENT.md`
 - **References / examples:** `frontend/components/dashboard/DashboardDetailModal.tsx`, `frontend/components/dashboard/MetricCard.tsx`
 - **Ambiguity handling:**
@@ -504,7 +505,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 
 - Delivery sequence:
   1. P0 reliability/safety foundations: FE-01, FE-05 (FE-07 typed batch parse: done).
-  2. UX and consistency uplift: FE-02, FE-03, FE-04.
+  2. UX and consistency uplift: FE-02, FE-03, FE-04 (done for current MVP scope).
   3. Maintainability cleanup: FE-06 + FE-08 (both done for current MVP scope).
   4. Quality hardening and DX guardrails: FE-09 + FE-10 done for current MVP scope.
 - Parallelization opportunities:
@@ -545,6 +546,10 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Why: Satisfies stated ACs without exploding CI runtime; deeper per-surface E2E can follow product priorities.
   - Date: 2026-05-10
   - Owner: QA + Frontend
+  - Decision: Close FE-04 for MVP scope — high-traffic scope toolbar and stacked volume trend chart expose explicit names/roles; `MetricCard` interactive contract covered by tests; remaining chart components can adopt the same `role="img"` + label pattern opportunistically.
+  - Why: Addresses AC1–AC3 for the busiest diagnosis/overview surfaces without a repo-wide WCAG certification pass.
+  - Date: 2026-05-10
+  - Owner: Frontend
 
 ## 7) Validation gate before completion
 
@@ -558,4 +563,4 @@ Mark each item before closing the plan:
 - [x] Related docs are updated or explicitly deferred (this plan records as-built vs backlog).
 - [ ] Remaining ambiguity is logged with owner and due date (open for FE-04..FE-10 sequencing).
 
-**Plan closure:** Do **not** mark the overall plan **Done** until FE-04..FE-10 are either implemented or formally **cancelled/de-scoped** with owner sign-off. Phase 1 (FE-01..FE-03) is complete as documented in section 1b.
+**Plan closure:** Do **not** mark the overall plan **Done** until remaining tasks (notably **FE-05**) are either implemented or formally **cancelled/de-scoped** with owner sign-off. Phase 1 (FE-01..FE-03) is complete as documented in section 1b; FE-04 and FE-06..FE-10 are done for the documented MVP scope.

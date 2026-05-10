@@ -283,6 +283,8 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
 
   return (
     <div
+      role="region"
+      aria-label={`${scopeTitle} and server filters`}
       className="rounded-xl border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/80"
       onKeyDown={onToolbarKeyDown}
     >
@@ -345,6 +347,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               value={scopePresetNameDraft}
               onChange={(event) => setScopePresetNameDraft(event.target.value)}
               placeholder="Saved view name (e.g. Prod 5xx spikes)"
+              aria-label="Name for saved scope view"
               className="min-w-[200px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
             />
             <button
@@ -693,17 +696,21 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               type="button"
               onClick={() => setShowAdvanced((prev) => !prev)}
               className="ap-btn px-2 py-1 text-xs"
+              aria-expanded={showAdvanced}
+              aria-controls="server-query-sql-advanced-detail"
             >
               {showAdvanced ? "Hide advanced" : "Show advanced"}
             </button>
             <span className="text-xs text-slate-500 dark:text-neutral-400">SQL WHERE filter controls</span>
           </div>
+          <div id="server-query-sql-advanced-detail">
           {showAdvanced ? (
             <>
               <textarea
                 value={d.sqlFilterDraft}
                 onChange={(event) => d.setSqlFilterDraft(event.target.value)}
                 placeholder="e.g. status_code >= 500 AND method = 'GET'"
+                aria-label="SQL WHERE fragment for scoped requests"
                 className="h-16 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
               />
               <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/60">
@@ -712,6 +719,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                     value={presetNameDraft}
                     onChange={(event) => setPresetNameDraft(event.target.value)}
                     placeholder="Preset name (e.g. Critical 5xx routes)"
+                    aria-label="Name for SQL filter preset"
                     className="min-w-[190px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
                   />
                   <button
@@ -734,6 +742,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                   <select
                     value={selectedPresetId}
                     onChange={(event) => setSelectedPresetId(event.target.value)}
+                    aria-label="Choose saved SQL filter preset"
                     className="min-w-[230px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
                   >
                     <option value="">Saved presets ({d.savedSqlFilterPresets.length})</option>
@@ -819,6 +828,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               Keep this hidden for quick triage. Expand when you need precise SQL-level scoping.
             </p>
           )}
+          </div>
           {d.sqlFilterEnabled ? (
             <p className="mt-2 text-xs font-medium text-sky-800 dark:text-sky-200">SQL filter enabled for current scope.</p>
           ) : null}

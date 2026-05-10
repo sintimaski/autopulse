@@ -326,11 +326,7 @@ export function VolumeChart({
                 <CanvasBar key={chartLayoutKey} data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
-            <div
-              className="mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20"
-              role="img"
-              aria-label={`Stacked request volume by response class. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
-            >
+            <div className="mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-400">
                 Trends — requests by class (stacked)
               </h4>
@@ -345,6 +341,7 @@ export function VolumeChart({
                   series={stackedTrendSeries}
                   height={200}
                   live
+                  accessibilityLabel={`Stacked request volume by response class. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
                   onPointClick={(idx) => {
                     const bucket = displayedRef.current[idx];
                     if (bucket) {

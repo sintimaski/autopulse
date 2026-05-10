@@ -25,6 +25,8 @@ type StackedAreaChartProps = {
   onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
   /** Skip Chart.js tween on data updates (live dashboard refresh). */
   live?: boolean;
+  /** Override default assistive summary (built from series labels and time span). */
+  accessibilityLabel?: string;
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -47,10 +49,24 @@ export function StackedAreaChart({
   variant = "stacked",
   onPointClick,
   live = false,
+  accessibilityLabel,
 }: StackedAreaChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
   const pointCount = labels.length;
+
+  const chartAccessibilityLabel = useMemo(() => {
+    if (accessibilityLabel?.trim()) {
+      return accessibilityLabel.trim();
+    }
+    if (!hasData) {
+      return "Stacked area chart, no data in range";
+    }
+    const seriesNames = series.map((s) => s.label).join(", ");
+    const from = labels[0] ?? "";
+    const to = labels[labels.length - 1] ?? "";
+    return `Stacked area chart: ${seriesNames}. ${pointCount} time buckets from ${from} to ${to}.`;
+  }, [accessibilityLabel, hasData, labels, pointCount, series]);
   const isOverlay = variant === "overlay";
 
   const maxStack = useMemo(
@@ -185,7 +201,12 @@ export function StackedAreaChart({
 
   return (
     <div className="space-y-2">
-      <div className="relative w-full" style={{ height: pxHeight }}>
+      <div
+        className="relative w-full"
+        style={{ height: pxHeight }}
+        role="img"
+        aria-label={chartAccessibilityLabel}
+      >
         <CanvasLine data={chartData} options={options} />
       </div>
       <div className="flex flex-wrap gap-3">
