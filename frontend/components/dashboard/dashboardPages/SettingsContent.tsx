@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { useDashboardData } from "../DashboardDataContext";
 import { isApiSubpathDashboard } from "../dashboardTypes";
 import {
@@ -9,8 +8,6 @@ import {
   canManageProjectAlertsAndRetention,
   isDashboardViewer,
 } from "../dashboardRoleHelpers";
-import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
-
 import { SettingsAlertDeliverySection } from "./SettingsAlertDeliverySection";
 import { SettingsActiveProjectSection } from "./SettingsActiveProjectSection";
 import { SettingsOrganizationsMembersSection } from "./SettingsOrganizationsMembersSection";
@@ -29,10 +26,12 @@ import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembe
 import { useSettingsRetentionPolicy } from "./useSettingsRetentionPolicy";
 import { useSettingsActiveProject } from "./useSettingsActiveProject";
 import { useSettingsAggregateQueueStats } from "./useSettingsAggregateQueueStats";
+import { useSettingsAppearanceTrafficFeedback } from "./useSettingsAppearanceTrafficFeedback";
+import { useSettingsSystemDiagnosticsDerived } from "./useSettingsSystemDiagnosticsDerived";
 
 export function SettingsContent() {
   const d = useDashboardData();
-  const [themeMessage, setThemeMessage] = useState<string | null>(null);
+  const appearanceTraffic = useSettingsAppearanceTrafficFeedback(d.saveExcludeLumonoxTraffic);
   const orgMembers = useSettingsOrganizationsMembers(d.sessionProjectId);
   const retentionPolicy = useSettingsRetentionPolicy(d.retentionSettings, d.saveRetentionSettings);
   const alertDelivery = useSettingsAlertDelivery(d.alertSettings, d.saveAlertSettings, d.setRefreshToken);
@@ -67,14 +66,7 @@ export function SettingsContent() {
     diagnostics.setEventPlaneCutoverMessage,
   );
   const aggregateQueue = useSettingsAggregateQueueStats(diagnostics.internalMetricsSnapshot);
-  const systemDiagnosticsSummary = useMemo(
-    () => normalizeSystemDiagnostics(diagnostics.systemDiagnosticsSnapshot),
-    [diagnostics.systemDiagnosticsSnapshot],
-  );
-  const schedulerJobs = useMemo(
-    () => normalizeSchedulerJobs(diagnostics.systemDiagnosticsSnapshot),
-    [diagnostics.systemDiagnosticsSnapshot],
-  );
+  const systemDiagnosticsDerived = useSettingsSystemDiagnosticsDerived(diagnostics.systemDiagnosticsSnapshot);
 
   return (
     <div className="space-y-6">
@@ -104,8 +96,8 @@ export function SettingsContent() {
         canViewSystemDiagnostics={canViewSystemDiagnostics}
         systemDiagnosticsLoadState={diagnostics.systemDiagnosticsLoadState}
         systemDiagnosticsSnapshot={diagnostics.systemDiagnosticsSnapshot}
-        systemDiagnosticsSummary={systemDiagnosticsSummary}
-        schedulerJobs={schedulerJobs}
+        systemDiagnosticsSummary={systemDiagnosticsDerived.systemDiagnosticsSummary}
+        schedulerJobs={systemDiagnosticsDerived.schedulerJobs}
         metricStatusClass={settingsMetricStatusClass}
         systemDiagnosticsMessage={diagnostics.systemDiagnosticsMessage}
         setSystemDiagnosticsMessage={diagnostics.setSystemDiagnosticsMessage}
@@ -125,10 +117,7 @@ export function SettingsContent() {
         canEditRetention={canEditRetention}
         excludeLumonoxTraffic={d.excludeLumonoxTraffic}
         themeSettingsSaving={d.themeSettingsSaving}
-        onToggleExclude={async (next) => {
-          const ok = await d.saveExcludeLumonoxTraffic(next);
-          setThemeMessage(ok ? "Saved." : "Could not save. Try again.");
-        }}
+        onToggleExclude={appearanceTraffic.onToggleExcludeLumonoxTraffic}
       />
 
       <SettingsAlertDeliverySection
@@ -203,8 +192,8 @@ export function SettingsContent() {
 
       <SettingsAppearanceSessionSection
         viewerSession={viewerSession}
-        themeMessage={themeMessage}
-        setThemeMessage={setThemeMessage}
+        themeMessage={appearanceTraffic.themeMessage}
+        setThemeMessage={appearanceTraffic.setThemeMessage}
         themePreference={d.themePreference}
         themeSettingsSaving={d.themeSettingsSaving}
         saveThemePreference={d.saveThemePreference}

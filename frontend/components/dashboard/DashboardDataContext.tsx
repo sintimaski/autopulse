@@ -37,7 +37,6 @@ import {
   parseThemeSettings,
 } from "../../utils/dashboardResponseGuards";
 import {
-  buildApiUrl,
   type AlertDispatchesResponse,
   type AlertCapabilitiesResponse,
   type AlertChannelCapability,
@@ -118,12 +117,15 @@ import {
 import { useDashboardLiveWebSocket } from "./live/useDashboardLiveWebSocket";
 import {
   buildOptionalGzipJsonRequest,
-  DASHBOARD_FETCH_TIMEOUT_MS,
-  fetchWithTimeout,
   LIVE_FETCH_SLOW_MS,
   LIVE_REFRESH_BACKOFF_DURATION_MS,
   trimDashboardWidgetPayload,
 } from "./dashboardDataFetchUtils";
+import {
+  dashboardSessionFetch,
+  dashboardSessionJsonPost,
+  dashboardSessionJsonPut,
+} from "./dashboardSessionFetch";
 import type {
   DashboardAlertsSliceValue,
   DashboardDataContextValue,
@@ -425,12 +427,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const controller = new AbortController();
     const run = async () => {
       try {
-        const bootstrapResponse = await fetchWithTimeout(
-          buildApiUrl("/dashboard/bootstrap"),
-          { credentials: "include" },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-          controller.signal,
-        );
+        const bootstrapResponse = await dashboardSessionFetch("/dashboard/bootstrap", {}, controller.signal);
         if (bootstrapResponse.status === 401) {
           reloadDashboardAuthSession();
         }
@@ -580,15 +577,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           sqlFilterApplied,
         });
         const queryBody = await buildOptionalGzipJsonRequest(scopeRequest);
-        const batchResponse = await fetchWithTimeout(
-          buildApiUrl("/dashboard/query"),
+        const batchResponse = await dashboardSessionFetch(
+          "/dashboard/query",
           {
             method: "POST",
             headers: queryBody.headers,
-            credentials: "include",
             body: queryBody.body,
           },
-          DASHBOARD_FETCH_TIMEOUT_MS,
           controller.signal,
         );
         if (batchResponse.status === 401) {
@@ -1092,18 +1087,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setAlertSettingsSaving(true);
       setAlertSettingsMessage(null);
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl("/dashboard/alert-settings"),
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify(next),
-          },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionJsonPut("/dashboard/alert-settings", next);
         if (!response.ok) {
           throw new Error(`alert-settings update failed (${response.status})`);
         }
@@ -1136,21 +1120,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       setThemeSettingsSaving(true);
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl("/dashboard/theme-settings"),
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              theme_preference: next,
-              exclude_lumonox_traffic: excludeLumonoxTraffic,
-            }),
-          },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionJsonPut("/dashboard/theme-settings", {
+          theme_preference: next,
+          exclude_lumonox_traffic: excludeLumonoxTraffic,
+        });
         if (!response.ok) {
           throw new Error(`theme-settings update failed (${response.status})`);
         }
@@ -1179,21 +1152,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }
       setThemeSettingsSaving(true);
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl("/dashboard/theme-settings"),
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              theme_preference: themePreference,
-              exclude_lumonox_traffic: next,
-            }),
-          },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionJsonPut("/dashboard/theme-settings", {
+          theme_preference: themePreference,
+          exclude_lumonox_traffic: next,
+        });
         if (!response.ok) {
           throw new Error(`theme-settings update failed (${response.status})`);
         }
@@ -1222,26 +1184,15 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         return false;
       }
       try {
-        const response = await fetchWithTimeout(
-          buildApiUrl("/dashboard/retention-settings"),
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              raw_events_days: next.raw_events_days,
-              logs_query_max_window_minutes: next.logs_query_max_window_minutes,
-              retention_max_db_size_mb: next.retention_max_db_size_mb,
-              retention_max_log_rows: next.retention_max_log_rows,
-              retention_plan: next.retention_plan,
-              archival_enabled: next.archival_enabled,
-              archival_mode: next.archival_mode,
-            }),
-          },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
+        const response = await dashboardSessionJsonPut("/dashboard/retention-settings", {
+          raw_events_days: next.raw_events_days,
+          logs_query_max_window_minutes: next.logs_query_max_window_minutes,
+          retention_max_db_size_mb: next.retention_max_db_size_mb,
+          retention_max_log_rows: next.retention_max_log_rows,
+          retention_plan: next.retention_plan,
+          archival_enabled: next.archival_enabled,
+          archival_mode: next.archival_mode,
+        });
         if (!response.ok) {
           throw new Error(`retention-settings update failed (${response.status})`);
         }
@@ -1264,11 +1215,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setApiKeys([]);
       return;
     }
-    const response = await fetchWithTimeout(
-      buildApiUrl("/dashboard/auth/api-keys"),
-      { credentials: "include" },
-      DASHBOARD_FETCH_TIMEOUT_MS,
-    );
+    const response = await dashboardSessionFetch("/dashboard/auth/api-keys");
     if (!response.ok) {
       return;
     }
@@ -1284,16 +1231,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (!hasDashboardSession) {
         return false;
       }
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/auth/active-project"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ project_id: projectId }),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionJsonPost("/dashboard/auth/active-project", {
+        project_id: projectId,
+      });
       if (!response.ok) {
         return false;
       }
@@ -1310,11 +1250,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!hasDashboardSession) {
       return false;
     }
-    const response = await fetchWithTimeout(
-      buildApiUrl("/dashboard/auth/api-keys/issue"),
-      { method: "POST", credentials: "include" },
-      DASHBOARD_FETCH_TIMEOUT_MS,
-    );
+    const response = await dashboardSessionFetch("/dashboard/auth/api-keys/issue", { method: "POST" });
     if (!response.ok) {
       return false;
     }
@@ -1332,11 +1268,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     if (!hasDashboardSession) {
       return false;
     }
-    const response = await fetchWithTimeout(
-      buildApiUrl("/dashboard/auth/onboarding-complete"),
-      { method: "POST", credentials: "include" },
-      DASHBOARD_FETCH_TIMEOUT_MS,
-    );
+    const response = await dashboardSessionFetch("/dashboard/auth/onboarding-complete", { method: "POST" });
     if (!response.ok) {
       return false;
     }
@@ -1354,16 +1286,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (!hasDashboardSession) {
         return false;
       }
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/auth/api-keys/rotate"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ key_id: keyId }),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionJsonPost("/dashboard/auth/api-keys/rotate", { key_id: keyId });
       if (!response.ok) {
         return false;
       }
@@ -1384,16 +1307,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (!hasDashboardSession) {
         return false;
       }
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/auth/api-keys/revoke"),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ key_id: keyId }),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionJsonPost("/dashboard/auth/api-keys/revoke", { key_id: keyId });
       if (!response.ok) {
         return false;
       }
@@ -1405,11 +1319,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const signOutDashboard = useCallback(async (): Promise<void> => {
     try {
-      await fetchWithTimeout(
-        buildApiUrl("/dashboard/auth/logout"),
-        { method: "POST", credentials: "include" },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      await dashboardSessionFetch("/dashboard/auth/logout", { method: "POST" });
     } catch {
       /* ignore */
     } finally {
@@ -1819,18 +1729,10 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
     setSqlFilterValidating(true);
     try {
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/log-query/validate"),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ query: wrapped, page_size: 100 }),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionJsonPost("/dashboard/log-query/validate", {
+        query: wrapped,
+        page_size: 100,
+      });
       if (!response.ok) {
         const fallback: LogQueryValidationResponse = {
           valid: false,
@@ -2050,15 +1952,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         diagnosis_error_group_events: { limit: 20, offset: 0 },
       } satisfies DashboardDataQueryRequest;
       const { body, headers } = await buildOptionalGzipJsonRequest(diagnosisPayload);
-      void fetchWithTimeout(
-        buildApiUrl("/dashboard/query"),
+      void dashboardSessionFetch(
+        "/dashboard/query",
         {
           method: "POST",
           headers,
-          credentials: "include",
           body,
         },
-        DASHBOARD_FETCH_TIMEOUT_MS,
         controller.signal,
       )
         .then(async (response) => {
