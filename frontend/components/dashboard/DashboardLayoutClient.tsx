@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 
 import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import { DashboardAppShell } from "./AppShell";
-import { DashboardCommandPalette } from "./DashboardCommandPalette";
 import { ApiKeyMissing, DashboardSessionRestoring } from "./DashboardPageBoundary";
 import { DashboardDataProvider, useDashboardData } from "./DashboardDataContext";
 import { buildLiveDashboardSearchString, parseLogsClientSearchParams } from "./dashboardLogsViewUrl";
@@ -565,7 +564,6 @@ function ShellWithData({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <DashboardCommandPalette />
       <DashboardAppShell
       pathname={pathname}
       title={meta.title}

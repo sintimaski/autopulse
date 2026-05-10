@@ -30,10 +30,7 @@ export function NavIaMigrationBanner() {
       <div className="flex items-start justify-between gap-2">
         <p>
           <span className="font-semibold text-white">Navigation tip:</span> Query Explorer and Traces live under{" "}
-          <span className="font-medium">Advanced</span>. Press{" "}
-          <kbd className="rounded bg-white/15 px-1 font-mono text-[10px] text-white">⌘K</kbd> /{" "}
-          <kbd className="rounded bg-white/15 px-1 font-mono text-[10px] text-white">Ctrl+K</kbd> to open the command
-          palette.
+          <span className="font-medium">Advanced</span> in the sidebar.
         </p>
         <button
           type="button"
