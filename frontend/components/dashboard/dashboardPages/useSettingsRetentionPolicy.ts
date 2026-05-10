@@ -29,7 +29,6 @@ export function useSettingsRetentionPolicy(
     effectiveRetentionDraft,
     retentionMessage,
     setRetentionDraft,
-    setRetentionMessage,
     saveRetention,
   };
 }
