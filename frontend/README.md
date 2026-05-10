@@ -45,6 +45,7 @@ Core surfaces:
 - **`app/`** — Next.js App Router routes and layouts; keep route files thin and delegate UI to `components/dashboard/`.
 - **`components/dashboard/`** — Product UI: data provider (`DashboardDataContext`), shell, pages under `dashboardPages/`, charts, scoped query helpers.
 - **`components/dashboard/live/`** — Live-update hooks (WebSocket connect, visibility bump, WS-disconnected polling) extracted from the provider to keep `DashboardDataContext.tsx` maintainable.
+- **`components/dashboard/data/`** — Slice memo hooks (`useDashboardSlices.ts`) and the **`executeDashboardBatchQuery`** runner for the main `POST /dashboard/query` refresh cycle (invoked from `DashboardDataContext`).
 - **`components/ui/`** — Small shared primitives (spinners, etc.) usable from `app/` or dashboard.
 - **`lib/`** — Client-only helpers (e.g. RUM) without React dashboard imports.
 - **`utils/`** — Pure TS helpers (fetch errors, response shape guards, overview math); safe to unit test in Vitest (`environment: "node"`).
@@ -53,7 +54,7 @@ Core surfaces:
 
 | Layer | Owns | Avoid |
 | --- | --- | --- |
-| **`DashboardDataContext`** | Cross-route dashboard data, scope, batch query results, live connection bump | Large UI markup; settings-only fetches belong in settings hooks |
+| **`DashboardDataContext`** | Cross-route dashboard data, scope, orchestrating batch refresh + live bump | Large UI markup; heavy batch logic lives in **`data/executeDashboardBatchQuery.ts`**; settings-only fetches belong in settings hooks |
 | **Route / section components** | View-local UI state (open panels, form drafts, table sort) | Duplicating fetch + parse already covered by context or `dashboardSessionFetch` |
 | **`utils/`** | Pure parsing, errors, math | React hooks or browser-only globals without guarding SSR |
 

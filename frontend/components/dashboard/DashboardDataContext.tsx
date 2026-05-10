@@ -19,11 +19,7 @@ import {
   resolveSparklineSeries,
   type OverviewBucket,
 } from "../../utils/dashboardData";
-import {
-  buildDashboardFetchError,
-  buildDashboardNetworkError,
-  type DashboardFetchResult,
-} from "../../utils/dashboardFetchErrors";
+import { buildDashboardNetworkError } from "../../utils/dashboardFetchErrors";
 import { parseDashboardDataQueryResponse } from "../../utils/dashboardQueryResponseGuards";
 import {
   parseAlertSettings,
@@ -46,7 +42,6 @@ import {
   type DashboardApiKeyListResponse,
   type DashboardApiKeyRotateResponse,
   type DashboardDataQueryRequest,
-  type DashboardDataQueryResponse,
   type DashboardOnboardingStatusResponse,
   type DashboardWidgetsResponse,
   ERROR_GROUP_LIMIT_OPTIONS,
@@ -82,16 +77,7 @@ import {
   readPersistedDashboardSession,
   type PersistedLogsClientSlice,
 } from "./dashboardPersistentScope";
-import {
-  buildDashboardDataQueryRequest,
-  planDashboardBatchQueryForRoute,
-} from "./dashboardQueryBundle";
 import { normalizeCommaSeparated, splitCommaSeparated, type DashboardScopedQueryState } from "./dashboardQueryState";
-import {
-  buildDashboardDataCacheScopeKey,
-  readDashboardSnapshot,
-  writeDashboardSnapshot,
-} from "./dashboardSnapshotCache";
 import {
   readStoredDashboardThemePreference,
   writeStoredDashboardThemePreference,
@@ -114,18 +100,14 @@ import {
   useDashboardWsDisconnectedFallbackPoll,
 } from "./live/useDashboardLiveClientEffects";
 import { useDashboardLiveWebSocket } from "./live/useDashboardLiveWebSocket";
-import {
-  buildOptionalGzipJsonRequest,
-  LIVE_FETCH_SLOW_MS,
-  LIVE_REFRESH_BACKOFF_DURATION_MS,
-  trimDashboardWidgetPayload,
-} from "./dashboardDataFetchUtils";
+import { buildOptionalGzipJsonRequest } from "./dashboardDataFetchUtils";
 import {
   dashboardSessionFetch,
   dashboardSessionJsonPost,
   dashboardSessionJsonPut,
 } from "./dashboardSessionFetch";
 import { loadDashboardBootstrap } from "./dashboardWorkspaceBootstrap";
+import { executeDashboardBatchQuery } from "./data/executeDashboardBatchQuery";
 import type {
   DashboardAlertsSliceValue,
   DashboardDataContextValue,
@@ -466,268 +448,49 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     const isCancelled = () => controller.signal.aborted || runId !== dashboardFetchRunId.current;
 
     const run = async () => {
-      const fetchStartedAt = Date.now();
-      const routePath = dashboardRoutePath;
-      if (routePath === "/settings") {
-        return;
-      }
-
-      const isDocumentVisible =
-        typeof document === "undefined" || document.visibilityState === "visible";
-      const hasAdvancedScopeFilters =
-        method !== "ALL" ||
-        statusClass !== "ALL" ||
-        minLatencyMs.trim() !== "" ||
-        maxLatencyMs.trim() !== "" ||
-        pathQuery.trim() !== "" ||
-        normalizeCommaSeparated(serverEnvironmentQuery) !== "" ||
-        normalizeCommaSeparated(serverServiceQuery) !== "" ||
-        (sqlFilterEnabled && sqlFilterApplied.trim() !== "");
-      const plan = planDashboardBatchQueryForRoute({
-        routePath,
-        isDocumentVisible,
-        hasAdvancedScopeFilters,
+      await executeDashboardBatchQuery({
+        fetchSignal: controller.signal,
+        isCancelled,
+        dashboardRoutePath,
+        toIsoWindow,
+        windowMinutes,
+        method,
+        statusClass,
+        minLatencyMs,
+        maxLatencyMs,
+        pathQuery,
+        serverEnvironmentQuery,
+        serverServiceQuery,
         requestLimit,
         requestPage,
         errorGroupLimit,
         errorGroupPage,
+        errorGroupSort,
+        sqlFilterEnabled,
+        sqlFilterApplied,
+        absoluteWindow,
+        reloadDashboardAuthSession,
+        liveWsBackoffUntilRef,
+        dashboardFetchInFlightRef,
+        dashboardQueuedRefreshRef,
+        liveRefreshPausedRef,
+        hasLoadedDashboardData,
+        stretchAbsoluteEndAfterResumeRef,
+        setLoading,
+        setErrorMessage,
+        setOverview,
+        setOverviewExtended,
+        setDashboardWidgets,
+        setRequests,
+        setErrorGroups,
+        setDiagnosisTimeline,
+        setDiagnosisFailures,
+        setDiagnosisErrorGroupEvents,
+        setAlertDispatches,
+        setRecentJobFailures,
+        setAbsoluteWindowState,
+        setRefreshToken,
       });
-      const {
-        includeExtended,
-        includeWidgets,
-        includeErrorGroups,
-        includeDiagnosis,
-        includeRecentJobFailures,
-        includeAlertDispatches,
-        useSnapshot,
-        requestsLimitForRoute,
-        requestsOffsetForRoute,
-        errorGroupsLimitForRoute,
-        errorGroupsOffsetForRoute,
-      } = plan;
-
-      const isInitialLoad = !hasLoadedDashboardData.current;
-      if (isInitialLoad) {
-        setLoading(true);
-      }
-      dashboardFetchInFlightRef.current = true;
-      setErrorMessage(null);
-      try {
-        const serverPath = pathQuery.trim();
-        const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
-        const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
-        const scopeKey = buildDashboardDataCacheScopeKey({
-          windowFrom: toIsoWindow?.from ?? "",
-          windowTo: toIsoWindow?.to ?? "",
-          windowMinutes,
-          isAbsoluteWindow: Boolean(toIsoWindow),
-          method,
-          statusClass,
-          minLatencyMs,
-          maxLatencyMs,
-          pathQuery: serverPath,
-          serverEnvironmentQuery: envCsv,
-          serverServiceQuery: serviceCsv,
-          requestLimit: requestsLimitForRoute,
-          requestPage: requestsOffsetForRoute === 0 ? 0 : requestPage,
-          errorGroupLimit: errorGroupsLimitForRoute,
-          errorGroupPage: errorGroupsOffsetForRoute === 0 ? 0 : errorGroupPage,
-          errorGroupSort,
-          sqlFilterEnabled,
-          sqlFilterApplied,
-        });
-        const cached = useSnapshot ? readDashboardSnapshot(scopeKey) : null;
-        if (cached) {
-          setOverview(cached.overview);
-          setOverviewExtended(cached.overviewExtended ?? null);
-          setRequests(cached.requests);
-          setErrorGroups(cached.errorGroups ?? null);
-          setDiagnosisTimeline(cached.diagnosisTimeline ?? null);
-          setDiagnosisFailures(cached.diagnosisFailures ?? null);
-          setAlertDispatches(cached.alertDispatches ?? null);
-          setRecentJobFailures(cached.recentJobFailures ?? null);
-        }
-
-        const scopeRequest: DashboardDataQueryRequest = buildDashboardDataQueryRequest({
-          plan,
-          toIsoWindow,
-          windowMinutes,
-          method,
-          statusClass,
-          minLatencyMs,
-          maxLatencyMs,
-          pathQuery,
-          serverEnvironmentQuery,
-          serverServiceQuery,
-          sqlFilterEnabled,
-          sqlFilterApplied,
-        });
-        const queryBody = await buildOptionalGzipJsonRequest(scopeRequest);
-        const batchResponse = await dashboardSessionFetch(
-          "/dashboard/query",
-          {
-            method: "POST",
-            headers: queryBody.headers,
-            body: queryBody.body,
-          },
-          controller.signal,
-        );
-        if (batchResponse.status === 401) {
-          reloadDashboardAuthSession();
-        }
-        const elapsedMs = Date.now() - fetchStartedAt;
-        if (!isCancelled()) {
-          const status = batchResponse.status;
-          if (
-            elapsedMs >= LIVE_FETCH_SLOW_MS ||
-            status === 429 ||
-            status === 503 ||
-            status >= 500
-          ) {
-            liveWsBackoffUntilRef.current = Date.now() + LIVE_REFRESH_BACKOFF_DURATION_MS;
-          }
-        }
-        const results: DashboardFetchResult[] = [{ endpoint: "overview", response: batchResponse }];
-        if (isCancelled()) {
-          return;
-        }
-
-        const fetchError = buildDashboardFetchError(results);
-        if (fetchError) {
-          setErrorMessage(fetchError);
-        }
-
-        let data: DashboardDataQueryResponse | null = null;
-        if (batchResponse.ok) {
-          const rawQuery: unknown = await batchResponse.json();
-          data = parseDashboardDataQueryResponse(rawQuery);
-          if (!data) {
-            if (!isCancelled()) {
-              setErrorMessage("Dashboard query returned an unexpected response. Refresh to retry.");
-            }
-            return;
-          }
-        }
-        if (isCancelled() || !data) {
-          return;
-        }
-        const overviewData = data.overview;
-        const requestsData = data.requests;
-        if (overviewData) {
-          setOverview(overviewData);
-        }
-        if (requestsData) {
-          setRequests(requestsData);
-        }
-
-        if (includeExtended && data.overview_extended) {
-          setOverviewExtended(data.overview_extended);
-        } else if (routePath !== "/dashboard") {
-          setOverviewExtended(null);
-        }
-        if (includeWidgets && data.widgets) {
-          setDashboardWidgets(trimDashboardWidgetPayload(data.widgets));
-        } else if (routePath !== "/dashboard") {
-          setDashboardWidgets(null);
-        }
-        if (includeErrorGroups && data.error_groups) {
-          setErrorGroups(data.error_groups);
-        } else {
-          setErrorGroups(null);
-        }
-        if (includeDiagnosis && data.diagnosis_timeline && data.diagnosis_failures) {
-          setDiagnosisTimeline(data.diagnosis_timeline);
-          setDiagnosisFailures(data.diagnosis_failures);
-        } else {
-          setDiagnosisTimeline(null);
-          setDiagnosisFailures(null);
-        }
-        if (includeAlertDispatches && data.alert_dispatches) {
-          setAlertDispatches(data.alert_dispatches);
-        } else {
-          setAlertDispatches(null);
-        }
-        setDiagnosisErrorGroupEvents(data.diagnosis_error_group_events ?? null);
-        if (includeRecentJobFailures && data.recent_job_failures) {
-          setRecentJobFailures(data.recent_job_failures);
-        } else {
-          setRecentJobFailures(null);
-        }
-
-        if (
-          useSnapshot &&
-          includeExtended &&
-          overviewData &&
-          requestsData &&
-          data.overview_extended
-        ) {
-          writeDashboardSnapshot(scopeKey, {
-            overview: overviewData,
-            overviewExtended: data.overview_extended,
-            requests: requestsData,
-            errorGroups: data.error_groups ?? undefined,
-            recentJobFailures: includeRecentJobFailures ? data.recent_job_failures ?? undefined : undefined,
-          });
-        }
-        if (overviewData || requestsData) {
-          hasLoadedDashboardData.current = true;
-        }
-
-        if (stretchAbsoluteEndAfterResumeRef.current) {
-          const aw = absoluteWindow;
-          if (!aw) {
-            stretchAbsoluteEndAfterResumeRef.current = false;
-          } else {
-            const serverNowForStretch =
-              overviewData?.server_now ??
-              requestsData?.server_now ??
-              data.error_groups?.server_now ??
-              null;
-            if (serverNowForStretch) {
-              const fromMs = new Date(aw.from).getTime();
-              const prevToMs = new Date(aw.to).getTime();
-              const nowMs = new Date(serverNowForStretch).getTime();
-              if (
-                Number.isFinite(fromMs) &&
-                Number.isFinite(prevToMs) &&
-                Number.isFinite(nowMs) &&
-                fromMs < prevToMs &&
-                nowMs > prevToMs
-              ) {
-                // Extend window end only (do not reset request/error pages like setAbsoluteWindow does).
-                setAbsoluteWindowState({ from: aw.from, to: new Date(nowMs).toISOString() });
-              }
-              stretchAbsoluteEndAfterResumeRef.current = false;
-            } else if (overviewData || requestsData || data.error_groups) {
-              stretchAbsoluteEndAfterResumeRef.current = false;
-            }
-          }
-        }
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          if (
-            !isCancelled() &&
-            error.message === "Dashboard request timed out"
-          ) {
-            liveWsBackoffUntilRef.current = Date.now() + LIVE_REFRESH_BACKOFF_DURATION_MS;
-          }
-          return;
-        }
-        if (!hasLoadedDashboardData.current) {
-          setErrorMessage(buildDashboardNetworkError(error));
-        }
-      } finally {
-        dashboardFetchInFlightRef.current = false;
-        if (!isCancelled() && dashboardQueuedRefreshRef.current) {
-          dashboardQueuedRefreshRef.current = false;
-          if (!liveRefreshPausedRef.current) {
-            setRefreshToken((token) => token + 1);
-          }
-        }
-        if (isInitialLoad && !isCancelled()) {
-          setLoading(false);
-        }
-      }
     };
 
     void run();

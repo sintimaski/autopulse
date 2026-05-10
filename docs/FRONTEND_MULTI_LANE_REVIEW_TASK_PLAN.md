@@ -7,7 +7,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - **Plan name:** Frontend multi-lane quality review -> implementation backlog
 - **Owner:** Frontend + Platform (AI-assisted execution)
 - **Date:** 2026-05-10
-- **Status:** In progress (phase 1 shipped; FE-04, FE-06, FE-07, FE-08, FE-09, FE-10 done for current MVP scope; FE-05 remains)
+- **Status:** MVP execution record complete (phase 1 + FE-04..FE-10 closed for documented scope; optional follow-ups called out per task)
 - **Scope summary (2-4 lines):**
   This plan converts a codebase-wide frontend review into execution tasks. It prioritizes high-impact UX clarity, visual consistency, accessibility, and developer productivity improvements while preserving Lumonox MVP constraints (fast diagnosis, low-friction onboarding, no advanced non-goal platform features).
 - **Out of scope:**
@@ -23,7 +23,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-02 | **Done** | Segment error and global not-found use `ap-surface` / `ap-btn*` (`frontend/app/(main)/error.tsx`, `frontend/app/not-found.tsx`). Optional extra snapshot/a11y tests from the original AC were not added (explicit defer). |
 | FE-03 | **Done (superseded scope)** | Command palette was **removed** as redundant with the sidebar (`DashboardCommandPalette.tsx` deleted; not mounted from `DashboardLayoutClient.tsx`). `NavIaMigrationBanner` copy updated to sidebar-only. Original “add palette discoverability” work was **intentionally dropped**. |
 | FE-04 | **Done** | **`ServerQueryToolbar`**: `role="region"` + `aria-label`, unlabeled inputs/textarea/select get **`aria-label`**, SQL advanced toggle **`aria-expanded`** / **`aria-controls`**. **`StackedAreaChart`**: `role="img"` + default or custom **`accessibilityLabel`**; **`VolumeChart`** passes rich summary into chart (avoids nested `role="img"`). **`MetricCard`**: Vitest for clickable **`aria-label`** + **`focus-visible`**. Prior `aria-live` / Query Explorer / Traces / `TimeSeriesLineChart` / volume bar work retained. Full-site WCAG audit still out of MVP scope. |
-| FE-05 | **Partial** | WebSocket + live hooks as before; **`dashboardQueryBundle.ts`** centralizes batch query planning; **`dashboardWorkspaceBootstrap.ts`** exposes **`loadDashboardBootstrap`** (fetch + parse) consumed by **`DashboardDataContext`**. Context still owns state, batch fetch effect, and apply logic. |
+| FE-05 | **Done** | **`data/executeDashboardBatchQuery.ts`** owns the main **`POST /dashboard/query`** cycle (plan, snapshot read/write, fetch, parse, slice apply, backoff + stretch-window edge). **`DashboardDataContext.tsx`** ~237 lines slimmer; public **`useDashboardData`** / slice hooks unchanged. Prior extractions retained: **`dashboardQueryBundle.ts`**, **`dashboardWorkspaceBootstrap.ts`**, **`live/*`**, session fetch. Further splits (scope setters-only module, diagnosis prefetch) optional. |
 | FE-06 | **Done** | **`SettingsContent.tsx`** is composition + role flags over section components + hooks: **`useSettingsOrganizationsMembers`**, **`useSettingsDiagnosticsPanels`** / **`settingsMetricStatusClass`**, **`useSettingsAggregateQueueStats`**, **`useSettingsAlertDelivery`**, **`useSettingsApiKeyBulk`** (+ **`settingsApiKeyBulk`**), **`useSettingsEventPlaneCutoverSave`**, **`useSettingsRetentionPolicy`**, **`useSettingsActiveProject`**, **`useSettingsAppearanceTrafficFeedback`**, plus **`settingsContentTypes.ts`**. Section-level tests include retention, alerts, API keys, active project, org/members. Optional future work: further splits only if new settings domains appear. |
 | FE-07 | **Done** | **`parseDashboardDataQueryResponse`** in **`frontend/utils/dashboardQueryResponseGuards.ts`** validates **`POST /dashboard/query`** JSON (used from **`DashboardDataContext`** main batch + diagnosis prefetch). Parse failures yield **`null`**; UI surfaces **"Dashboard query returned an unexpected response. Refresh to retry."** Unit tests cover happy path, invalid nested payloads, and bad roots. Further endpoints can follow the same guard pattern as needed. |
 | FE-08 | **Done** | **`dashboardSessionFetch.ts`** is the single session-scoped entry point on top of **`fetchWithTimeout`** + **`buildApiUrl`** for **`DashboardDataContext`**, settings hooks (diagnostics, event-plane, alerts, orgs), **`QueryExplorerContent`**, **`TracesContent`**, bootstrap helper, etc. Out of scope for this closure: plain **`fetch`** call sites (bookmarks client, magic-link verify, auth session helper) and optional future **shared JSON error parsing**. Slice memo policy: documented in **`useDashboardSlices.ts`**. |
@@ -264,12 +264,13 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Safe to re-run? Partial
   - If partial/no, guardrails required: Keep each extraction branch small and mergeable.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
+  - Status: Done (`executeDashboardBatchQuery` extraction; provider orchestration + same exports)
+  - % complete: 100
   - Last update: 2026-05-10
   - Owner: Frontend platform
+- **Implementation notes:** `DashboardDataContext.tsx` ~2177 lines vs ~2414 before; verified `npm run lint`, `npm run test` (161), `npm run build`. Live WebSocket + visibility hooks unchanged in provider.
 - **Related documents:** `frontend/README.md`
-- **References / examples:** `frontend/components/dashboard/data/useDashboardSlices.ts`
+- **References / examples:** `frontend/components/dashboard/data/useDashboardSlices.ts`, `frontend/components/dashboard/data/executeDashboardBatchQuery.ts`
 - **Ambiguity handling:**
   - If requirement is unclear: Preserve current context API shape, refactor internals only.
   - If data conflicts: Trust runtime behavior and tests over inferred abstractions.
@@ -504,7 +505,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 ## 6) Plan-level execution strategy
 
 - Delivery sequence:
-  1. P0 reliability/safety foundations: FE-01, FE-05 (FE-07 typed batch parse: done).
+  1. P0 reliability/safety foundations: FE-01, FE-05, FE-07 (all done for documented MVP scope).
   2. UX and consistency uplift: FE-02, FE-03, FE-04 (done for current MVP scope).
   3. Maintainability cleanup: FE-06 + FE-08 (both done for current MVP scope).
   4. Quality hardening and DX guardrails: FE-09 + FE-10 done for current MVP scope.
@@ -513,7 +514,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - FE-06 settings modularization and FE-08 session-fetch consolidation are complete; further work is optional polish.
   - FE-09 closed for MVP scope with interaction tests + `dashboard-interaction-smoke`; further route-by-route Playwright depth remains optional.
 - Risk register (top 3-5):
-  - Large refactors (FE-05/FE-06) may introduce subtle state regressions.
+  - Further `DashboardDataContext` splits (beyond batch runner) may still introduce subtle state regressions if rushed.
   - Batch query parser (`parseDashboardDataQueryResponse`) is strict; backend contract changes need coordinated guard updates (mitigated by unit tests).
   - New Playwright specs (`dashboard-interaction-smoke`) depend on URL→scope sync timing; mitigated with generous timeouts and `.first()` on duplicate text nodes.
   - Lint tightening (FE-10) may create contributor friction if over-applied.
@@ -550,6 +551,10 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Why: Addresses AC1–AC3 for the busiest diagnosis/overview surfaces without a repo-wide WCAG certification pass.
   - Date: 2026-05-10
   - Owner: Frontend
+  - Decision: Close FE-05 for MVP scope — batch refresh body moved to **`data/executeDashboardBatchQuery.ts`**; provider keeps state, URL persistence, bootstrap, live clients, and context value assembly.
+  - Why: Satisfies AC1 fetch-module split + AC2 stable exports without rewriting slice surfaces; AC3 behavior preserved (same call graph, refs, and effect deps).
+  - Date: 2026-05-10
+  - Owner: Frontend platform
 
 ## 7) Validation gate before completion
 
@@ -561,6 +566,6 @@ Mark each item before closing the plan:
 - [x] Domain rules and constraints are mapped to tasks.
 - [ ] Observability updates are included where behavior changed (deferred: no new client metrics in phase 1).
 - [x] Related docs are updated or explicitly deferred (this plan records as-built vs backlog).
-- [ ] Remaining ambiguity is logged with owner and due date (open for FE-04..FE-10 sequencing).
+- [x] Remaining ambiguity for FE-01..FE-10 sequencing is resolved via per-task “optional follow-up” notes (no open owner blockers for the documented MVP slice).
 
-**Plan closure:** Do **not** mark the overall plan **Done** until remaining tasks (notably **FE-05**) are either implemented or formally **cancelled/de-scoped** with owner sign-off. Phase 1 (FE-01..FE-03) is complete as documented in section 1b; FE-04 and FE-06..FE-10 are done for the documented MVP scope.
+**Plan closure:** The **documented FE-01..FE-10 MVP slice** in section 1b is **complete** (including **FE-05**). Optional polish (deeper context splits, broader chart a11y, extra Playwright) remains product-driven, not blocking this execution record.
