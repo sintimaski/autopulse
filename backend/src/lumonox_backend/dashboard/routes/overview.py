@@ -24,8 +24,10 @@ from lumonox_backend.dashboard.params import (
 )
 from lumonox_backend.dashboard.time_window import (
     as_utc_datetime,
+    hour_bucket,
     iter_minute_buckets,
     minute_bucket,
+    overview_use_hourly_buckets,
     resolve_time_window,
 )
 from lumonox_backend.database import get_db_session
@@ -34,6 +36,10 @@ from lumonox_backend.ingestion.exclude_lumonox import (
     resolve_exclude_lumonox_traffic,
 )
 from lumonox_backend.models import AlertDispatch, Event, MetricBucket
+from lumonox_backend.repositories.metric_bucket_overview import (
+    MetricBucketDisplayRollup,
+    fetch_metric_bucket_rollups_for_overview,
+)
 from lumonox_backend.schemas import (
     DashboardAlertTimelineItem,
     DashboardBreakdownItem,
@@ -101,6 +107,57 @@ def _empty_overview_bucket(minute: datetime) -> DashboardOverviewBucket:
     )
 
 
+def _merge_duckdb_overview_series_with_sql_metric_buckets(
+    *,
+    series: list[DashboardOverviewBucket],
+    rollups: dict[datetime, MetricBucketDisplayRollup],
+    use_hourly: bool,
+) -> list[DashboardOverviewBucket]:
+    """When raw DuckDB rows were trimmed but SQLite minute aggregates remain, fill empty buckets.
+
+    If a display bucket already has DuckDB traffic (``request_count > 0``), DuckDB wins to avoid
+    double-counting when both stores cover the same ingest window.
+    """
+    bucket_fn = hour_bucket if use_hourly else minute_bucket
+    merged: list[DashboardOverviewBucket] = []
+    for b in series:
+        key = bucket_fn(as_utc_datetime(b.minute))
+        if b.request_count > 0:
+            merged.append(b)
+            continue
+        raw = rollups.get(key)
+        if not isinstance(raw, MetricBucketDisplayRollup) or raw.request_count <= 0:
+            merged.append(b)
+            continue
+        avg = float(raw.latency_total_ms) / float(raw.request_count) if raw.request_count else 0.0
+        merged.append(
+            DashboardOverviewBucket(
+                minute=b.minute,
+                request_count=raw.request_count,
+                error_count=raw.error_count,
+                avg_latency_ms=avg,
+                count_2xx=raw.count_2xx,
+                count_3xx=raw.count_3xx,
+                count_4xx=raw.count_4xx,
+                count_5xx=raw.count_5xx,
+            )
+        )
+    return merged
+
+
+def _overview_totals_from_series(series: list[DashboardOverviewBucket]) -> tuple[int, int, float]:
+    request_total = 0
+    error_total = 0
+    latency_weighted = 0.0
+    for b in series:
+        rc = int(b.request_count)
+        request_total += rc
+        error_total += int(b.error_count)
+        latency_weighted += float(b.avg_latency_ms) * rc
+    avg_latency_ms = latency_weighted / request_total if request_total else 0.0
+    return request_total, error_total, avg_latency_ms
+
+
 def _fill_overview_series_gaps(
     *,
     sparse_series: list[DashboardOverviewBucket],
@@ -158,6 +215,21 @@ async def get_dashboard_overview(
             store=read_store,
             duckdb_read_operation="overview",
         )
+        if not event_sql_filter:
+            use_hourly = overview_use_hourly_buckets(resolved_from, resolved_to)
+            rollups = await fetch_metric_bucket_rollups_for_overview(
+                session,
+                project_id=context.project_id,
+                from_timestamp=resolved_from,
+                to_timestamp=resolved_to,
+                use_hourly=use_hourly,
+            )
+            series = _merge_duckdb_overview_series_with_sql_metric_buckets(
+                series=series,
+                rollups=rollups,
+                use_hourly=use_hourly,
+            )
+            request_total, error_total, avg_latency_ms = _overview_totals_from_series(series)
         window_minutes_val = max((resolved_to - resolved_from).total_seconds() / 60.0, 1.0)
         return DashboardOverviewResponse(
             server_now=server_now,
