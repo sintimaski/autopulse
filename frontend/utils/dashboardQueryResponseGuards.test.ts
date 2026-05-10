@@ -83,4 +83,16 @@ describe("parseDashboardDataQueryResponse", () => {
       }),
     ).toBeNull();
   });
+
+  it("rejects non-object or non-record roots", () => {
+    expect(parseDashboardDataQueryResponse(null)).toBeNull();
+    expect(parseDashboardDataQueryResponse(undefined)).toBeNull();
+    expect(parseDashboardDataQueryResponse([])).toBeNull();
+    expect(parseDashboardDataQueryResponse("not-json")).toBeNull();
+  });
+
+  it("rejects when overview or requests key missing", () => {
+    expect(parseDashboardDataQueryResponse({ overview: minimalOverview })).toBeNull();
+    expect(parseDashboardDataQueryResponse({ requests: minimalRequests })).toBeNull();
+  });
 });

@@ -7,7 +7,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - **Plan name:** Frontend multi-lane quality review -> implementation backlog
 - **Owner:** Frontend + Platform (AI-assisted execution)
 - **Date:** 2026-05-10
-- **Status:** In progress (phase 1 shipped; FE-06 settings modularization + FE-08 session-fetch done; other lanes remain)
+- **Status:** In progress (phase 1 shipped; FE-06, FE-07, FE-08 done for current MVP scope; other lanes remain)
 - **Scope summary (2-4 lines):**
   This plan converts a codebase-wide frontend review into execution tasks. It prioritizes high-impact UX clarity, visual consistency, accessibility, and developer productivity improvements while preserving Lumonox MVP constraints (fast diagnosis, low-friction onboarding, no advanced non-goal platform features).
 - **Out of scope:**
@@ -25,7 +25,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer / Traces labels, `TimeSeriesLineChart` SR trend line, **Traffic volume** trends as one **stacked area** (2xx–5xx) + `aria-label` in `VolumeChart`. Full chart/a11y audit still open. |
 | FE-05 | **Partial** | WebSocket + live hooks as before; **`dashboardQueryBundle.ts`** centralizes batch query planning; **`dashboardWorkspaceBootstrap.ts`** exposes **`loadDashboardBootstrap`** (fetch + parse) consumed by **`DashboardDataContext`**. Context still owns state, batch fetch effect, and apply logic. |
 | FE-06 | **Done** | **`SettingsContent.tsx`** is composition + role flags over section components + hooks: **`useSettingsOrganizationsMembers`**, **`useSettingsDiagnosticsPanels`** / **`settingsMetricStatusClass`**, **`useSettingsAggregateQueueStats`**, **`useSettingsAlertDelivery`**, **`useSettingsApiKeyBulk`** (+ **`settingsApiKeyBulk`**), **`useSettingsEventPlaneCutoverSave`**, **`useSettingsRetentionPolicy`**, **`useSettingsActiveProject`**, **`useSettingsAppearanceTrafficFeedback`**, plus **`settingsContentTypes.ts`**. Section-level tests include retention, alerts, API keys, active project, org/members. Optional future work: further splits only if new settings domains appear. |
-| FE-07 | **Partial** | Above plus **`parseDashboardDataQueryResponse`** in `frontend/utils/dashboardQueryResponseGuards.ts` for **`POST /dashboard/query`** (main fetch + diagnosis follow-up). |
+| FE-07 | **Done** | **`parseDashboardDataQueryResponse`** in **`frontend/utils/dashboardQueryResponseGuards.ts`** validates **`POST /dashboard/query`** JSON (used from **`DashboardDataContext`** main batch + diagnosis prefetch). Parse failures yield **`null`**; UI surfaces **"Dashboard query returned an unexpected response. Refresh to retry."** Unit tests cover happy path, invalid nested payloads, and bad roots. Further endpoints can follow the same guard pattern as needed. |
 | FE-08 | **Done** | **`dashboardSessionFetch.ts`** is the single session-scoped entry point on top of **`fetchWithTimeout`** + **`buildApiUrl`** for **`DashboardDataContext`**, settings hooks (diagnostics, event-plane, alerts, orgs), **`QueryExplorerContent`**, **`TracesContent`**, bootstrap helper, etc. Out of scope for this closure: plain **`fetch`** call sites (bookmarks client, magic-link verify, auth session helper) and optional future **shared JSON error parsing**. Slice memo policy: documented in **`useDashboardSlices.ts`**. |
 | FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`** (incl. theme toggle when enabled), **`onboarding-smoke`**, **`widgets-showcase-smoke`**, **`alerts-smoke`**, **`logs-smoke`**, **`requests-smoke`**, **`query-explorer-smoke`**, **`traces-smoke`**, **`bookmarks-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
 | FE-10 | **Partial** | `frontend/README.md` architecture section; ESLint **`reportUnusedDisableDirectives: warn`** and **`eqeqeq`** (`null: ignore`). Heavier custom rules still open. |
@@ -351,8 +351,8 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
+  - Status: Done (`parseDashboardDataQueryResponse` + Vitest coverage; context error string on parse failure)
+  - % complete: 100
   - Last update: 2026-05-10
   - Owner: Frontend platform
 - **Related documents:** `docs/contracts/ingest-api.md`
@@ -501,7 +501,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 ## 6) Plan-level execution strategy
 
 - Delivery sequence:
-  1. P0 reliability/safety foundations: FE-01, FE-05, FE-07.
+  1. P0 reliability/safety foundations: FE-01, FE-05 (FE-07 typed batch parse: done).
   2. UX and consistency uplift: FE-02, FE-03, FE-04.
   3. Maintainability cleanup: FE-06 + FE-08 (both done for current MVP scope).
   4. Quality hardening and DX guardrails: FE-09, FE-10.
@@ -511,7 +511,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - FE-09 starts as soon as FE-01..FE-04 components are merged.
 - Risk register (top 3-5):
   - Large refactors (FE-05/FE-06) may introduce subtle state regressions.
-  - Runtime validation (FE-07) may reject backend payload variants unexpectedly.
+  - Batch query parser (`parseDashboardDataQueryResponse`) is strict; backend contract changes need coordinated guard updates (mitigated by unit tests).
   - Test expansion (FE-09) may initially increase flakiness.
   - Lint tightening (FE-10) may create contributor friction if over-applied.
 - Decision log:
@@ -519,6 +519,10 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Why: Highest user and developer impact with broad downstream benefits.
   - Date: 2026-05-10
   - Owner: Frontend tech lead
+  - Decision: Close FE-07 for MVP scope — `POST /dashboard/query` responses validated via `parseDashboardDataQueryResponse` with tests and user-visible error on `null`; extend guards to other endpoints opportunistically.
+  - Why: Highest-risk payload shape is the batch query; other routes already use targeted parsers in `dashboardResponseGuards`.
+  - Date: 2026-05-10
+  - Owner: Frontend platform
   - Decision: Close FE-06 for MVP scope — `SettingsContent` decomposed into sections + dedicated hooks with Vitest coverage on critical sections; defer only hypothetical new settings domains.
   - Why: Meets AC (modular layout, stable save paths, section tests); shrinking the file further yields diminishing returns.
   - Date: 2026-05-10
