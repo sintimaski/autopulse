@@ -117,7 +117,12 @@ async def get_dashboard_error_groups(
             http_events_only=True,
         )
         total, items = await run_duckdb_read_sync(
-            error_groups, duckdb_filters, limit=limit, offset=offset, store=read_store
+            error_groups,
+            duckdb_filters,
+            limit=limit,
+            offset=offset,
+            store=read_store,
+            duckdb_read_operation="error_groups",
         )
         return DashboardErrorGroupsResponse(
             server_now=server_now,

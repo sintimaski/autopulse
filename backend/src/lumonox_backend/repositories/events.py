@@ -47,6 +47,7 @@ async def request_window_counts(
                 store.fetch_events,
                 filters,
                 columns="id, status_code, type",
+                duckdb_read_operation="events_window_counts",
             )
             request_count = len(rows)
             error_count = sum(

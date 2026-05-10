@@ -5,6 +5,7 @@ import json
 import os
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from time import monotonic
 from typing import Annotated, Any, Literal
@@ -49,6 +50,7 @@ from lumonox_backend.dashboard.routes.ui_settings import (
 from lumonox_backend.dashboard.routes.widgets import get_dashboard_widgets
 from lumonox_backend.database import get_db_session
 from lumonox_backend.database.session import get_session_maker
+from lumonox_backend.metrics import service_metrics
 from lumonox_backend.schemas import (
     DashboardBootstrapResponse,
     DashboardDataQueryRequest,
@@ -104,6 +106,16 @@ _bundle_light_concurrency = asyncio.Semaphore(
 )
 
 
+def _default_heavy_query_concurrency() -> int:
+    cpu = os.cpu_count() or 4
+    return max(2, min(8, int(cpu)))
+
+
+def _dedupe_use_shield() -> bool:
+    raw = os.getenv("LUMONOX_DASHBOARD_QUERY_DEDUPE_USE_SHIELD", "1")
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+
 def _resolve_dashboard_heavy_query_concurrency() -> int:
     """Cap concurrent heavy `/dashboard/query` bundles (extended/widgets/diagnosis slices).
 
@@ -114,7 +126,12 @@ def _resolve_dashboard_heavy_query_concurrency() -> int:
     """
     heavy = os.getenv("LUMONOX_DASHBOARD_QUERY_HEAVY_CONCURRENCY")
     if heavy is not None and str(heavy).strip():
-        return _env_int("LUMONOX_DASHBOARD_QUERY_HEAVY_CONCURRENCY", 8, minimum=1, maximum=32)
+        return _env_int(
+            "LUMONOX_DASHBOARD_QUERY_HEAVY_CONCURRENCY",
+            _default_heavy_query_concurrency(),
+            minimum=1,
+            maximum=32,
+        )
     legacy = os.getenv("LUMONOX_DASHBOARD_QUERY_PRESSURE_INFLIGHT_THRESHOLD")
     if legacy is not None and str(legacy).strip():
         return _env_int(
@@ -123,7 +140,7 @@ def _resolve_dashboard_heavy_query_concurrency() -> int:
             minimum=1,
             maximum=32,
         )
-    return 8
+    return _default_heavy_query_concurrency()
 
 
 _bundle_heavy_concurrency = asyncio.Semaphore(_resolve_dashboard_heavy_query_concurrency())
@@ -236,11 +253,11 @@ async def _compute_bundle_with_inflight_dedupe(
     async with _bundle_inflight_lock:
         existing = _bundle_inflight.get(cache_key)
         if existing is not None:
-            return await asyncio.shield(existing)
+            return await asyncio.shield(existing) if _dedupe_use_shield() else await existing
         task = asyncio.create_task(_run_bundle_query(payload=payload, context=context))
         _bundle_inflight[cache_key] = task
     try:
-        response = await asyncio.shield(task)
+        response = await asyncio.shield(task) if _dedupe_use_shield() else await task
         await _cache_bundle_response(cache_key=cache_key, payload=payload, response=response)
         return response
     finally:
@@ -281,29 +298,61 @@ async def post_dashboard_query(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> DashboardDataQueryResponse:
     _ = session
-    enforce_dashboard_read_rate_limit(
-        settings=get_settings(),
-        project_id=context.project_id,
-        endpoint="query_bundle",
-    )
-    version = await get_project_dashboard_version(context.project_id)
-    payload_cache_json = json.dumps(
-        payload.model_dump(mode="json", exclude_none=True), sort_keys=True, separators=(",", ":")
-    )
-    cache_key = f"{context.project_id}:{version}:{payload_cache_json}"
-    cached = await _read_cached_bundle_response(cache_key)
-    if cached is not None:
-        return cached
-    semaphore = _bundle_semaphore(payload)
-    async with semaphore:
+    tier = _select_bundle_tier(payload)
+    bundle_started = monotonic()
+    try:
+        enforce_dashboard_read_rate_limit(
+            settings=get_settings(),
+            project_id=context.project_id,
+            endpoint="query_bundle",
+        )
+        version = await get_project_dashboard_version(context.project_id)
+        payload_cache_json = json.dumps(
+            payload.model_dump(mode="json", exclude_none=True),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        cache_key = f"{context.project_id}:{version}:{payload_cache_json}"
         cached = await _read_cached_bundle_response(cache_key)
         if cached is not None:
             return cached
-        return await _compute_bundle_with_inflight_dedupe(
-            cache_key=cache_key,
-            payload=payload,
-            context=context,
-        )
+        semaphore = _bundle_semaphore(payload)
+        async with semaphore:
+            cached = await _read_cached_bundle_response(cache_key)
+            if cached is not None:
+                return cached
+            return await _compute_bundle_with_inflight_dedupe(
+                cache_key=cache_key,
+                payload=payload,
+                context=context,
+            )
+    except asyncio.CancelledError:
+        with suppress(Exception):
+            service_metrics.increment("dashboard.query.cancelled_total")
+            service_metrics.increment(f"dashboard.query.{tier}.cancelled_total")
+        raise
+    finally:
+        elapsed_ms = int((monotonic() - bundle_started) * 1000)
+        with suppress(Exception):
+            service_metrics.increment(
+                f"dashboard.query.{tier}.duration_ms", amount=max(0, elapsed_ms)
+            )
+            service_metrics.increment(f"dashboard.query.{tier}.total")
+            slow_cutoff = 3000 if tier == "heavy" else 1000
+            if elapsed_ms >= slow_cutoff:
+                service_metrics.increment(f"dashboard.query.{tier}.slow_total")
+
+
+async def _timed_dashboard_slice(slice_name: str, awaitable: Awaitable[Any]) -> Any:
+    started = monotonic()
+    try:
+        return await awaitable
+    finally:
+        with suppress(Exception):
+            service_metrics.increment(
+                f"dashboard.query.slice.{slice_name}.duration_ms",
+                amount=int((monotonic() - started) * 1000),
+            )
 
 
 async def _run_bundle_query(
@@ -318,65 +367,23 @@ async def _run_bundle_query(
         async with session_maker() as isolated_session:
             return await handler(isolated_session)
 
-    overview_task = run_with_session(
-        lambda isolated_session: get_dashboard_overview(
-            context=context,
-            session=isolated_session,
-            from_timestamp=scope.from_timestamp,
-            to_timestamp=scope.to_timestamp,
-            window_minutes=scope.window_minutes,
-            event_sql_filter=scope.event_sql_filter,
-        )
-    )
-    requests_task = run_with_session(
-        lambda isolated_session: get_dashboard_requests(
-            context=context,
-            session=isolated_session,
-            from_timestamp=scope.from_timestamp,
-            to_timestamp=scope.to_timestamp,
-            window_minutes=scope.window_minutes,
-            method=scope.method,
-            status_class=scope.status_class,
-            path_contains=scope.path_contains,
-            environments=scope.environments,
-            services=scope.services,
-            min_latency_ms=scope.min_latency_ms,
-            max_latency_ms=scope.max_latency_ms,
-            limit=payload.requests.limit,
-            offset=payload.requests.offset,
-            event_sql_filter=scope.event_sql_filter,
-        )
-    )
-    overview_extended_task = (
+    overview_task = _timed_dashboard_slice(
+        "overview",
         run_with_session(
-            lambda isolated_session: get_dashboard_overview_extended(
+            lambda isolated_session: get_dashboard_overview(
                 context=context,
                 session=isolated_session,
                 from_timestamp=scope.from_timestamp,
                 to_timestamp=scope.to_timestamp,
                 window_minutes=scope.window_minutes,
                 event_sql_filter=scope.event_sql_filter,
-            )
-        )
-        if payload.include_extended
-        else None
+            ),
+        ),
     )
-    widgets_task = (
+    requests_task = _timed_dashboard_slice(
+        "requests",
         run_with_session(
-            lambda isolated_session: get_dashboard_widgets(
-                context=context,
-                session=isolated_session,
-                from_timestamp=scope.from_timestamp,
-                to_timestamp=scope.to_timestamp,
-                window_minutes=scope.window_minutes,
-            )
-        )
-        if payload.include_widgets
-        else None
-    )
-    error_groups_task = (
-        run_with_session(
-            lambda isolated_session: get_dashboard_error_groups(
+            lambda isolated_session: get_dashboard_requests(
                 context=context,
                 session=isolated_session,
                 from_timestamp=scope.from_timestamp,
@@ -389,74 +396,143 @@ async def _run_bundle_query(
                 services=scope.services,
                 min_latency_ms=scope.min_latency_ms,
                 max_latency_ms=scope.max_latency_ms,
-                limit=payload.error_groups.limit,
-                offset=payload.error_groups.offset,
+                limit=payload.requests.limit,
+                offset=payload.requests.offset,
                 event_sql_filter=scope.event_sql_filter,
-            )
+            ),
+        ),
+    )
+    overview_extended_task = (
+        _timed_dashboard_slice(
+            "overview_extended",
+            run_with_session(
+                lambda isolated_session: get_dashboard_overview_extended(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                    event_sql_filter=scope.event_sql_filter,
+                ),
+            ),
+        )
+        if payload.include_extended
+        else None
+    )
+    widgets_task = (
+        _timed_dashboard_slice(
+            "widgets",
+            run_with_session(
+                lambda isolated_session: get_dashboard_widgets(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                ),
+            ),
+        )
+        if payload.include_widgets
+        else None
+    )
+    error_groups_task = (
+        _timed_dashboard_slice(
+            "error_groups",
+            run_with_session(
+                lambda isolated_session: get_dashboard_error_groups(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                    method=scope.method,
+                    status_class=scope.status_class,
+                    path_contains=scope.path_contains,
+                    environments=scope.environments,
+                    services=scope.services,
+                    min_latency_ms=scope.min_latency_ms,
+                    max_latency_ms=scope.max_latency_ms,
+                    limit=payload.error_groups.limit,
+                    offset=payload.error_groups.offset,
+                    event_sql_filter=scope.event_sql_filter,
+                ),
+            ),
         )
         if payload.include_error_groups
         else None
     )
     diagnosis_timeline_task = (
-        run_with_session(
-            lambda isolated_session: get_dashboard_diagnosis_timeline(
-                context=context,
-                session=isolated_session,
-                from_timestamp=scope.from_timestamp,
-                to_timestamp=scope.to_timestamp,
-                window_minutes=scope.window_minutes,
-                event_sql_filter=scope.event_sql_filter,
-            )
+        _timed_dashboard_slice(
+            "diagnosis_timeline",
+            run_with_session(
+                lambda isolated_session: get_dashboard_diagnosis_timeline(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                    event_sql_filter=scope.event_sql_filter,
+                ),
+            ),
         )
         if payload.include_diagnosis
         else None
     )
     diagnosis_failures_task = (
-        run_with_session(
-            lambda isolated_session: get_dashboard_diagnosis_failures_by_route(
-                context=context,
-                session=isolated_session,
-                from_timestamp=scope.from_timestamp,
-                to_timestamp=scope.to_timestamp,
-                window_minutes=scope.window_minutes,
-                event_sql_filter=scope.event_sql_filter,
-            )
+        _timed_dashboard_slice(
+            "diagnosis_failures",
+            run_with_session(
+                lambda isolated_session: get_dashboard_diagnosis_failures_by_route(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                    event_sql_filter=scope.event_sql_filter,
+                ),
+            ),
         )
         if payload.include_diagnosis
         else None
     )
     recent_job_failures_task = (
-        run_with_session(
-            lambda isolated_session: get_dashboard_recent_job_failures(
-                context=context,
-                session=isolated_session,
-                from_timestamp=scope.from_timestamp,
-                to_timestamp=scope.to_timestamp,
-                window_minutes=scope.window_minutes,
-                path_contains=scope.path_contains,
-                environments=scope.environments,
-                services=scope.services,
-                min_latency_ms=scope.min_latency_ms,
-                max_latency_ms=scope.max_latency_ms,
-                event_sql_filter=scope.event_sql_filter,
-            )
+        _timed_dashboard_slice(
+            "recent_job_failures",
+            run_with_session(
+                lambda isolated_session: get_dashboard_recent_job_failures(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                    path_contains=scope.path_contains,
+                    environments=scope.environments,
+                    services=scope.services,
+                    min_latency_ms=scope.min_latency_ms,
+                    max_latency_ms=scope.max_latency_ms,
+                    event_sql_filter=scope.event_sql_filter,
+                ),
+            ),
         )
         if payload.include_recent_job_failures
         else None
     )
     diagnosis_error_group_events_task = (
-        run_with_session(
-            lambda isolated_session: get_dashboard_diagnosis_error_group_events(
-                group_key=payload.diagnosis_error_group_key or "",
-                context=context,
-                session=isolated_session,
-                from_timestamp=scope.from_timestamp,
-                to_timestamp=scope.to_timestamp,
-                window_minutes=scope.window_minutes,
-                limit=payload.diagnosis_error_group_events.limit,
-                offset=payload.diagnosis_error_group_events.offset,
-                event_sql_filter=scope.event_sql_filter,
-            )
+        _timed_dashboard_slice(
+            "diagnosis_error_group_events",
+            run_with_session(
+                lambda isolated_session: get_dashboard_diagnosis_error_group_events(
+                    group_key=payload.diagnosis_error_group_key or "",
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=scope.from_timestamp,
+                    to_timestamp=scope.to_timestamp,
+                    window_minutes=scope.window_minutes,
+                    limit=payload.diagnosis_error_group_events.limit,
+                    offset=payload.diagnosis_error_group_events.offset,
+                    event_sql_filter=scope.event_sql_filter,
+                ),
+            ),
         )
         if payload.diagnosis_error_group_key
         else None
@@ -466,16 +542,19 @@ async def _run_bundle_query(
     if payload.include_alert_dispatches:
         to_ts = scope.to_timestamp or datetime.now(tz=UTC)
         from_ts = scope.from_timestamp or (to_ts - timedelta(days=7))
-        alert_dispatches_task = run_with_session(
-            lambda isolated_session: get_dashboard_alert_dispatches(
-                context=context,
-                session=isolated_session,
-                from_timestamp=from_ts,
-                to_timestamp=to_ts,
-                window_minutes=scope.window_minutes,
-                limit=payload.alert_dispatches.limit,
-                offset=payload.alert_dispatches.offset,
-            )
+        alert_dispatches_task = _timed_dashboard_slice(
+            "alert_dispatches",
+            run_with_session(
+                lambda isolated_session: get_dashboard_alert_dispatches(
+                    context=context,
+                    session=isolated_session,
+                    from_timestamp=from_ts,
+                    to_timestamp=to_ts,
+                    window_minutes=scope.window_minutes,
+                    limit=payload.alert_dispatches.limit,
+                    offset=payload.alert_dispatches.offset,
+                ),
+            ),
         )
 
     optional_tasks = [

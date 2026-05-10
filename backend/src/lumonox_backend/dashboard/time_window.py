@@ -39,3 +39,21 @@ def iter_minute_buckets(start: datetime, end: datetime) -> Iterator[datetime]:
     while current <= final:
         yield current
         current = current + timedelta(minutes=1)
+
+
+def hour_bucket(dt: datetime) -> datetime:
+    return as_utc_datetime(dt).replace(minute=0, second=0, microsecond=0)
+
+
+def iter_hour_buckets(start: datetime, end: datetime) -> Iterator[datetime]:
+    """Yield UTC hour buckets from start to end, inclusive."""
+    current = hour_bucket(start)
+    final = hour_bucket(end)
+    while current <= final:
+        yield current
+        current = current + timedelta(hours=1)
+
+
+def overview_use_hourly_buckets(from_timestamp: datetime, to_timestamp: datetime) -> bool:
+    """Use hour-sized buckets for long windows to cut DuckDB GROUP BY cardinality."""
+    return (as_utc_datetime(to_timestamp) - as_utc_datetime(from_timestamp)) > timedelta(hours=48)

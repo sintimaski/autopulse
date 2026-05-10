@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -21,8 +22,11 @@ from lumonox_backend.dashboard.payload_limits import (
 )
 from lumonox_backend.dashboard.time_window import (
     as_utc_datetime,
+    hour_bucket,
+    iter_hour_buckets,
     iter_minute_buckets,
     minute_bucket,
+    overview_use_hourly_buckets,
 )
 from lumonox_backend.schemas import (
     DashboardDiagnosisErrorGroupEventItem,
@@ -141,10 +145,14 @@ def overview_series(
     store: DuckDbEventStore | None = None,
 ) -> tuple[int, int, float, list[DashboardOverviewBucket]]:
     resolved_store = store if store is not None else get_duckdb_event_store()
+    use_hourly = overview_use_hourly_buckets(from_timestamp, to_timestamp)
+    trunc = "hour" if use_hourly else "minute"
+    bucket_dt = hour_bucket if use_hourly else minute_bucket
+    bucket_iter = iter_hour_buckets if use_hourly else iter_minute_buckets
     rows = resolved_store.query_events_sql(
         filters,
-        select_sql="""
-            date_trunc('minute', timestamp) AS minute,
+        select_sql=f"""
+            date_trunc('{trunc}', timestamp) AS minute,
             COUNT(*) AS request_count,
             SUM(CASE WHEN type = 'error' OR status_code >= 500 THEN 1 ELSE 0 END) AS error_count,
             AVG(latency_ms) AS avg_latency_ms,
@@ -175,7 +183,7 @@ def overview_series(
         error_count += minute_errors
         latency_total += float(minute_avg_latency_ms or 0.0) * minute_requests
         bucket = buckets.setdefault(
-            minute_bucket(minute),
+            bucket_dt(minute),
             {
                 "request_count": 0,
                 "error_count": 0,
@@ -222,7 +230,7 @@ def overview_series(
                 count_5xx=0,
             ),
         )
-        for minute in iter_minute_buckets(from_timestamp, to_timestamp)
+        for minute in bucket_iter(from_timestamp, to_timestamp)
     ]
     avg_latency = latency_total / request_count if request_count else 0.0
     return request_count, error_count, avg_latency, series
@@ -236,10 +244,14 @@ def diagnosis_timeline(
     store: DuckDbEventStore | None = None,
 ) -> list[DashboardDiagnosisTimelineBucket]:
     resolved_store = store if store is not None else get_duckdb_event_store()
+    use_hourly = overview_use_hourly_buckets(from_timestamp, to_timestamp)
+    trunc = "hour" if use_hourly else "minute"
+    bucket_dt = hour_bucket if use_hourly else minute_bucket
+    bucket_iter = iter_hour_buckets if use_hourly else iter_minute_buckets
     rows = resolved_store.query_events_sql(
         filters,
         select_sql=(
-            "date_trunc('minute', timestamp) AS minute, "
+            f"date_trunc('{trunc}', timestamp) AS minute, "
             "COUNT(*) AS request_count, "
             "SUM(CASE WHEN type = 'error' OR status_code >= 500 THEN 1 ELSE 0 END) AS error_count"
         ),
@@ -247,7 +259,7 @@ def diagnosis_timeline(
     )
     by_minute: dict[datetime, dict[str, int]] = {}
     for minute, request_count, error_count in rows:
-        by_minute[minute_bucket(minute)] = {
+        by_minute[bucket_dt(minute)] = {
             "request_count": int(request_count or 0),
             "error_count": int(error_count or 0),
         }
@@ -263,7 +275,7 @@ def diagnosis_timeline(
         mapped.get(
             minute, DashboardDiagnosisTimelineBucket(minute=minute, request_count=0, error_count=0)
         )
-        for minute in iter_minute_buckets(from_timestamp, to_timestamp)
+        for minute in bucket_iter(from_timestamp, to_timestamp)
     ]
 
 
@@ -361,77 +373,46 @@ def error_groups(
 ) -> tuple[int, list[DashboardErrorGroupItem]]:
     scan_limit = min(MAX_ERROR_GROUP_SCAN_ROWS, max(offset + limit, max(limit * 4, 200)))
     resolved_store = store if store is not None else get_duckdb_event_store()
-    rows = resolved_store.fetch_events(
-        filters,
-        columns=EVENT_SELECT_COLUMNS,
-        limit=scan_limit,
+    effective = replace(filters, dashboard_error_like_only=True)
+    total, rows = resolved_store.fetch_dashboard_error_groups(
+        effective,
+        scan_limit=scan_limit,
+        limit=limit,
+        offset=offset,
     )
-    grouped: dict[str, dict[str, Any]] = {}
+    items: list[DashboardErrorGroupItem] = []
     for (
-        event_id,
-        timestamp,
-        _method,
+        group_key,
+        count,
+        first_seen,
+        last_seen,
         path,
         status_code,
-        _lat,
-        _svc,
-        _env,
-        _rid,
-        _type,
-        payload,
+        exception_type,
+        exception_message,
+        sample_stack_trace,
     ) in rows:
-        payload_dict = payload if isinstance(payload, dict) else {}
-        key = derived_error_group_key(payload_dict, path if isinstance(path, str) else "")
-        event_time = as_utc_datetime(timestamp)
-        current = grouped.get(key)
-        if current is None:
-            grouped[key] = {
-                "count": 1,
-                "first_seen": event_time,
-                "last_seen": event_time,
-                "path": path,
-                "exception_type": payload_dict.get("exception_type"),
-                "message": payload_dict.get("exception_message"),
-                "sample_stack_trace": payload_dict.get("stack_trace"),
-                "sample_id": int(event_id),
-                "sample_status_code": int(status_code),
-            }
-            continue
-        current["count"] += 1
-        current["first_seen"] = min(current["first_seen"], event_time)
-        if event_time > current["last_seen"] or (
-            event_time == current["last_seen"] and int(event_id) > current["sample_id"]
-        ):
-            current["last_seen"] = event_time
-            current["path"] = path
-            current["exception_type"] = payload_dict.get("exception_type")
-            current["message"] = payload_dict.get("exception_message")
-            current["sample_stack_trace"] = payload_dict.get("stack_trace")
-            current["sample_id"] = int(event_id)
-            current["sample_status_code"] = int(status_code)
-    items: list[DashboardErrorGroupItem] = []
-    for key, data in grouped.items():
+        route_path = path if isinstance(path, str) else ""
         exc, msg, stack = error_group_labels(
-            data["path"],
-            int(data["sample_status_code"]),
-            data["exception_type"] if isinstance(data["exception_type"], str) else None,
-            data["message"] if isinstance(data["message"], str) else None,
-            data["sample_stack_trace"] if isinstance(data["sample_stack_trace"], str) else None,
+            route_path,
+            int(status_code or 0),
+            exception_type if isinstance(exception_type, str) else None,
+            exception_message if isinstance(exception_message, str) else None,
+            sample_stack_trace if isinstance(sample_stack_trace, str) else None,
         )
         items.append(
             DashboardErrorGroupItem(
-                group_key=key,
+                group_key=group_key,
                 exception_type=exc,
                 message=msg,
-                path=data["path"],
-                count=int(data["count"]),
-                first_seen=data["first_seen"],
-                last_seen=data["last_seen"],
+                path=path,
+                count=int(count),
+                first_seen=as_utc_datetime(first_seen),
+                last_seen=as_utc_datetime(last_seen),
                 sample_stack_trace=stack,
             )
         )
-    items.sort(key=lambda item: (item.last_seen, item.count), reverse=True)
-    return len(items), items[offset : offset + limit]
+    return total, items
 
 
 def overview_extended(

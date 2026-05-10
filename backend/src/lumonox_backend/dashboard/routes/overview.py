@@ -156,6 +156,7 @@ async def get_dashboard_overview(
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
             store=read_store,
+            duckdb_read_operation="overview",
         )
         window_minutes_val = max((resolved_to - resolved_from).total_seconds() / 60.0, 1.0)
         return DashboardOverviewResponse(
@@ -409,6 +410,7 @@ async def get_dashboard_overview_extended(
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
             store=read_store,
+            duckdb_read_operation="overview_extended",
         )
         return DashboardOverviewExtendedResponse(
             server_now=server_now,

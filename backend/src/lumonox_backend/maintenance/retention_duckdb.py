@@ -30,7 +30,10 @@ async def _duckdb_shrink_under_size_cap(
     for _ in range(_DUCKDB_SHRINK_MAX_ITERATIONS):
         with suppress(Exception):
             await run_duckdb_write_sync(store.checkpoint)
-        current_size = await run_duckdb_read_sync(store.file_size_bytes)
+        current_size = await run_duckdb_read_sync(
+            store.file_size_bytes,
+            duckdb_read_operation="retention_file_size",
+        )
         if current_size <= max_bytes:
             break
         over_ratio = max(0.0, float(current_size - max_bytes) / float(max(current_size, 1)))
@@ -86,7 +89,10 @@ async def _apply_duckdb_retention(
         ).all()
         if days is not None
     }
-    project_ids_raw = await run_duckdb_read_sync(store.list_project_ids)
+    project_ids_raw = await run_duckdb_read_sync(
+        store.list_project_ids,
+        duckdb_read_operation="retention_list_project_ids",
+    )
     for raw_project_id in project_ids_raw:
         with suppress(ValueError):
             project_id = UUID(str(raw_project_id))
@@ -123,7 +129,11 @@ async def _apply_duckdb_retention(
     ).all()
     for project_id, max_db_size_mb, max_log_rows in rotation_settings:
         if max_log_rows is not None:
-            project_count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
+            project_count = await run_duckdb_read_sync(
+                store.count_events_for_project,
+                project_id,
+                duckdb_read_operation="retention_count_events",
+            )
             overflow = max(0, int(project_count) - int(max_log_rows))
             if overflow > 0:
                 deleted_for_project = await run_duckdb_write_sync(
@@ -158,7 +168,10 @@ async def _apply_duckdb_retention(
         )
         deleted_total += deleted_global
         if deleted_global > 0:
-            for raw_project_id in await run_duckdb_read_sync(store.list_project_ids):
+            for raw_project_id in await run_duckdb_read_sync(
+                store.list_project_ids,
+                duckdb_read_operation="retention_list_project_ids",
+            ):
                 with suppress(ValueError):
                     touched_project_ids.add(UUID(str(raw_project_id)))
     for project_id in touched_project_ids:

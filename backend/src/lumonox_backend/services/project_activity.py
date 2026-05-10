@@ -32,6 +32,10 @@ async def project_has_received_any_event(
     if store is None:
         return False
     with suppress(Exception):
-        duckdb_count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
+        duckdb_count = await run_duckdb_read_sync(
+            store.count_events_for_project,
+            project_id,
+            duckdb_read_operation="project_activity_count",
+        )
         return bool(duckdb_count > 0)
     return False

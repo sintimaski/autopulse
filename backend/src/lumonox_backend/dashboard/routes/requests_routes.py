@@ -127,7 +127,12 @@ async def get_dashboard_requests(
             http_events_only=True,
         )
         total, items = await run_duckdb_read_sync(
-            request_items, duckdb_filters, limit=limit, offset=offset, store=read_store
+            request_items,
+            duckdb_filters,
+            limit=limit,
+            offset=offset,
+            store=read_store,
+            duckdb_read_operation="requests",
         )
         return DashboardRequestsResponse(
             server_now=server_now,

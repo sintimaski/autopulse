@@ -112,6 +112,7 @@ async def get_dashboard_diagnosis_timeline(
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
             store=read_store,
+            duckdb_read_operation="diagnosis_timeline",
         )
         return DashboardDiagnosisTimelineResponse(
             server_now=server_now,
@@ -183,7 +184,12 @@ async def get_dashboard_diagnosis_failures_by_route(
             event_sql_filter=event_sql_filter,
             http_events_only=True,
         )
-        items = await run_duckdb_read_sync(failures_by_route, duckdb_filters, store=read_store)
+        items = await run_duckdb_read_sync(
+            failures_by_route,
+            duckdb_filters,
+            store=read_store,
+            duckdb_read_operation="diagnosis_failures_by_route",
+        )
         return DashboardDiagnosisFailureRoutesResponse(
             server_now=server_now,
             from_timestamp=resolved_from,
@@ -270,6 +276,7 @@ async def get_dashboard_diagnosis_error_group_events(
             limit=limit,
             offset=offset,
             store=read_store,
+            duckdb_read_operation="diagnosis_error_group_events",
         )
         return DashboardDiagnosisErrorGroupEventsResponse(total=total, items=items)
     rows = await session.execute(

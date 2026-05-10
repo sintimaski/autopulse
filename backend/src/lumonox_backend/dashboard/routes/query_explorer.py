@@ -132,6 +132,7 @@ async def execute_dashboard_query_explorer(
         filters,
         query,
         payload.row_limit + 1,
+        duckdb_read_operation="query_explorer",
     )
     truncated = len(rows) > payload.row_limit
     selected_rows = rows[: payload.row_limit]

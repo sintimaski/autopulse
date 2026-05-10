@@ -145,6 +145,7 @@ async def list_widget_points(
                 from_timestamp=from_timestamp,
                 to_timestamp=to_timestamp,
                 max_rows=cap,
+                duckdb_read_operation="widgets_list_points",
             )
             return [
                 DashboardWidgetPoint(

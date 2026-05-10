@@ -50,6 +50,13 @@ class EventStoreFilters:
     #: dashboard Query Explorer "whole project" mode against the live DuckDB ``events``
     #: table; parquet cold paths are skipped so exports are not scanned day-by-day.
     skip_timestamp_filter: bool = False
+    #: When True, add the dashboard ``error_like`` predicate (matches ORM error-groups scope).
+    dashboard_error_like_only: bool = False
+    #: Keyset continuation for log-style pagination (applied in SQL, avoids rescanning head rows).
+    log_keyset_timestamp: datetime | None = None
+    log_keyset_id: int | None = None
+    log_keyset_order: str = "timestamp"
+    log_keyset_desc: bool = True
 
 
 class DuckDbEventStore:
@@ -372,6 +379,49 @@ class DuckDbEventStore:
             parsed = parse_log_query(wrapped)
             for clause in parsed.where_clauses:
                 clauses.append(self._translate_supported_where(clause, params))
+        if filters.log_keyset_timestamp is not None and filters.log_keyset_id is not None:
+            ks_ts = as_duckdb_timestamp(filters.log_keyset_timestamp)
+            kid = int(filters.log_keyset_id)
+            order = (filters.log_keyset_order or "timestamp").strip().lower()
+            desc = bool(filters.log_keyset_desc)
+            if order == "id":
+                if desc:
+                    clauses.append("id < ?")
+                else:
+                    clauses.append("id > ?")
+                params.append(kid)
+            else:
+                if desc:
+                    clauses.append(
+                        "(timestamp < CAST(? AS TIMESTAMP) OR "
+                        "(timestamp = CAST(? AS TIMESTAMP) AND id < ?))"
+                    )
+                    params.extend([ks_ts, ks_ts, kid])
+                else:
+                    clauses.append(
+                        "(timestamp > CAST(? AS TIMESTAMP) OR "
+                        "(timestamp = CAST(? AS TIMESTAMP) AND id > ?))"
+                    )
+                    params.extend([ks_ts, ks_ts, kid])
+        if filters.dashboard_error_like_only:
+            from_ts = as_duckdb_timestamp(filters.from_timestamp)
+            to_ts = as_duckdb_timestamp(filters.to_timestamp)
+            clauses.append(
+                "("
+                "type = 'error' OR (type = 'request' AND status_code >= 500 AND ("
+                "request_id IS NULL OR NOT EXISTS ("
+                "SELECT 1 FROM events paired WHERE "
+                "paired.project_id = scoped_events.project_id "
+                "AND paired.type = 'error' "
+                "AND paired.request_id = scoped_events.request_id "
+                "AND paired.request_id IS NOT NULL "
+                "AND scoped_events.request_id IS NOT NULL "
+                "AND paired.timestamp >= CAST(? AS TIMESTAMP) "
+                "AND paired.timestamp <= CAST(? AS TIMESTAMP)"
+                ")))"
+                ")"
+            )
+            params.extend([from_ts, to_ts])
         return " AND ".join(f"({clause})" for clause in clauses), params
 
     def _translate_supported_where(self, clause: str, params: list[Any]) -> str:
@@ -498,6 +548,89 @@ class DuckDbEventStore:
             sql += " OFFSET ?"
             bound_params.append(offset)
         return self._fetchall_read(sql, bound_params)
+
+    def fetch_dashboard_error_groups(
+        self,
+        filters: EventStoreFilters,
+        *,
+        scan_limit: int,
+        limit: int,
+        offset: int,
+    ) -> tuple[int, list[tuple[Any, ...]]]:
+        """Aggregate error groups in DuckDB (bounded scan + SQL grouping).
+
+        Mirrors ``duckdb_queries.error_groups`` semantics: consider up to ``scan_limit``
+        newest matching rows, then group and page. Uses ``dashboard_error_like_only`` on
+        ``filters`` (caller should ``dataclasses.replace``).
+        """
+        source_sql, source_params = self._resolve_events_source_sql(filters)
+        where_sql, params = self._compile_filters(filters)
+        scan = max(1, min(int(scan_limit), 20_000))
+        lim = max(0, int(limit))
+        off = max(0, int(offset))
+        gk_sql = (
+            "CASE WHEN trim(coalesce(json_extract_string(payload, '$.error_hash'), '')) <> '' "
+            "THEN concat(trim(json_extract_string(payload, '$.error_hash')), "
+            "chr(30), coalesce(path, '')) "
+            "ELSE sha256(concat("
+            "coalesce(json_extract_string(payload, '$.exception_type'), ''), '|', "
+            "coalesce(json_extract_string(payload, '$.exception_message'), ''), '|', "
+            "coalesce(path, ''))) END"
+        )
+        sql = (
+            "WITH cand AS MATERIALIZED ("
+            f"SELECT id, timestamp, path, status_code, payload, {gk_sql} AS gk "  # nosec B608
+            f"FROM {source_sql} AS scoped_events "  # nosec B608
+            f"WHERE {where_sql} "  # nosec B608
+            "ORDER BY timestamp DESC, id DESC "
+            "LIMIT ?"
+            "), "
+            "grouped AS ("
+            "SELECT gk, COUNT(*)::BIGINT AS cnt, "
+            "MIN(timestamp) AS first_seen, MAX(timestamp) AS last_seen "
+            "FROM cand GROUP BY gk"
+            "), "
+            "ranked AS ("
+            "SELECT c.gk, c.id, c.timestamp, c.path, c.status_code, c.payload, "
+            "ROW_NUMBER() OVER (PARTITION BY c.gk ORDER BY c.timestamp DESC, c.id DESC) AS rn "
+            "FROM cand AS c"
+            "), "
+            "page AS ("
+            "SELECT g.gk, g.cnt, g.first_seen, g.last_seen, r.path, r.status_code, "
+            "json_extract_string(r.payload, '$.exception_type') AS exception_type, "
+            "json_extract_string(r.payload, '$.exception_message') AS exception_message, "
+            "json_extract_string(r.payload, '$.stack_trace') AS stack_trace "
+            "FROM grouped AS g "
+            "INNER JOIN ranked AS r ON r.gk = g.gk AND r.rn = 1 "
+            "ORDER BY g.last_seen DESC, g.cnt DESC "
+            "LIMIT ? OFFSET ?"
+            ") "
+            "SELECT t.__total, p.gk, p.cnt, p.first_seen, p.last_seen, p.path, p.status_code, "
+            "p.exception_type, p.exception_message, p.stack_trace "
+            "FROM page AS p "
+            "CROSS JOIN (SELECT COUNT(*)::BIGINT AS __total FROM grouped) AS t"
+        )
+        bound = [*source_params, *params, scan, lim, off]
+        rows = self._fetchall_read(sql, bound)
+        if not rows:
+            return 0, []
+        total = int(rows[0][0])
+        out: list[tuple[Any, ...]] = []
+        for row in rows:
+            out.append(
+                (
+                    str(row[1]),
+                    int(row[2]),
+                    row[3],
+                    row[4],
+                    row[5],
+                    int(row[6]),
+                    row[7],
+                    row[8],
+                    row[9],
+                )
+            )
+        return total, out
 
     def query_events_sql(
         self,

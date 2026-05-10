@@ -88,7 +88,10 @@ async def _maybe_align_singleton_duckdb_project(
     if len(sql_project_ids) != 1 or sql_project_ids[0] != project_id:
         return
     with suppress(Exception):
-        duckdb_project_ids = await run_duckdb_read_sync(store.list_project_ids)
+        duckdb_project_ids = await run_duckdb_read_sync(
+            store.list_project_ids,
+            duckdb_read_operation="auth_list_project_ids",
+        )
         if not duckdb_project_ids:
             return
         target = str(project_id)

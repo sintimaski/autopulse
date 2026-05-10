@@ -135,6 +135,7 @@ async def search_dashboard_traces(
         query,
         limit,
         params,
+        duckdb_read_operation="traces_search",
     )
     _ = columns
     items = [
@@ -238,6 +239,7 @@ async def get_dashboard_trace_detail(
         query,
         1000,
         [normalized_trace_id],
+        duckdb_read_operation="trace_detail",
     )
     items = [
         DashboardTraceSpanItem(

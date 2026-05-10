@@ -336,7 +336,7 @@ async def ready(request: Request) -> JSONResponse | dict[str, object]:
                 detail="DuckDB event store not ready",
             )
         try:
-            await run_duckdb_read_sync(store.ping_sync)
+            await run_duckdb_read_sync(store.ping_sync, duckdb_read_operation="health_ping")
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

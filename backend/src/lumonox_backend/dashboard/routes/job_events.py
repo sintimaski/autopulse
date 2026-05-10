@@ -86,7 +86,11 @@ async def get_dashboard_recent_job_failures(
             event_sql_filter=event_sql_filter,
         )
         raw = await run_duckdb_read_sync(
-            recent_job_failures, duckdb_filters, limit=limit, store=read_store
+            recent_job_failures,
+            duckdb_filters,
+            limit=limit,
+            store=read_store,
+            duckdb_read_operation="recent_job_failures",
         )
         duckdb_items = [
             DashboardRecentJobFailureItem(

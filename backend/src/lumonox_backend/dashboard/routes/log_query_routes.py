@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -111,34 +112,29 @@ async def execute_dashboard_log_query(
             project_id=context.project_id,
             settings=settings,
         )
+        cursor = decode_log_cursor(payload.cursor)
+        duckdb_filters_effective = duckdb_filters
+        if cursor is not None:
+            cursor_ts, cursor_id = cursor
+            duckdb_filters_effective = replace(
+                duckdb_filters,
+                log_keyset_timestamp=cursor_ts,
+                log_keyset_id=int(cursor_id),
+                log_keyset_order="id" if parsed.order_by == "id" else "timestamp",
+                log_keyset_desc=parsed.order_desc,
+            )
         rows = await run_duckdb_read_sync(
             store.fetch_events,
-            duckdb_filters,
+            duckdb_filters_effective,
+            duckdb_read_operation="log_query",
             columns=(
                 "id, timestamp, method, path, status_code, latency_ms, "
                 "service_name, environment, request_id"
             ),
             order_by=order_by or "timestamp DESC, id DESC",
-            limit=requested_limit + 100,
+            limit=requested_limit + 1,
             offset=0,
         )
-        cursor = decode_log_cursor(payload.cursor)
-        if cursor is not None:
-            cursor_ts, cursor_id = cursor
-            filtered_rows = []
-            for row in rows:
-                row_id, row_ts = int(row[0]), as_utc_datetime(row[1])
-                if parsed.order_by == "id":
-                    if (parsed.order_desc and row_id < cursor_id) or (
-                        not parsed.order_desc and row_id > cursor_id
-                    ):
-                        filtered_rows.append(row)
-                else:
-                    if (parsed.order_desc and (row_ts, row_id) < (cursor_ts, cursor_id)) or (
-                        not parsed.order_desc and (row_ts, row_id) > (cursor_ts, cursor_id)
-                    ):
-                        filtered_rows.append(row)
-            rows = filtered_rows
         selected_rows = rows[:requested_limit]
         has_more = len(rows) > requested_limit
         next_cursor = None

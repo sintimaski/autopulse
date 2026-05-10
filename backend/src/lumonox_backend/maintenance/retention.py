@@ -210,7 +210,10 @@ async def retention_pressure_pending(
             file_cap_mb_candidates.extend(int(row[0]) for row in all_ui_mb.all())
             if file_cap_mb_candidates:
                 min_cap_mb = min(file_cap_mb_candidates)
-                size_bytes = await run_duckdb_read_sync(store.file_size_bytes)
+                size_bytes = await run_duckdb_read_sync(
+                    store.file_size_bytes,
+                    duckdb_read_operation="retention_file_size",
+                )
                 if size_bytes > min_cap_mb * 1024 * 1024:
                     return True
             all_ui_rows = await session.execute(
@@ -222,7 +225,11 @@ async def retention_pressure_pending(
             for project_id, max_rows in all_ui_rows.all():
                 if max_rows is None:
                     continue
-                count = await run_duckdb_read_sync(store.count_events_for_project, project_id)
+                count = await run_duckdb_read_sync(
+                    store.count_events_for_project,
+                    project_id,
+                    duckdb_read_operation="retention_count_events",
+                )
                 if int(count) > int(max_rows):
                     return True
         return False

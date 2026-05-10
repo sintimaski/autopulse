@@ -3,7 +3,16 @@ import type { DashboardWidgetsResponse } from "./dashboardTypes";
 /** Below this UTF-8 size, send uncompressed JSON (gzip framing often grows tiny payloads). */
 export const DASHBOARD_GZIP_JSON_MIN_BYTES = 2048;
 
-export const DASHBOARD_FETCH_TIMEOUT_MS = 12_000;
+const _parsedDashboardFetchTimeout = Number(
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LUMONOX_DASHBOARD_FETCH_TIMEOUT_MS : NaN,
+);
+/** Client abort budget for dashboard POSTs; keep aligned with `docs/DASHBOARD_QUERY_LATENCY_CONTRACT.md`. */
+export const DASHBOARD_FETCH_TIMEOUT_MS =
+  Number.isFinite(_parsedDashboardFetchTimeout) &&
+  _parsedDashboardFetchTimeout >= 5_000 &&
+  _parsedDashboardFetchTimeout <= 120_000
+    ? Math.floor(_parsedDashboardFetchTimeout)
+    : 18_000;
 export const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 export const MAX_WIDGET_POINTS_TOTAL = 2400;
 export const LIVE_REFRESH_THROTTLE_MS = 400;
@@ -11,7 +20,8 @@ export const LIVE_REFRESH_THROTTLE_MS = 400;
 export const LIVE_REFRESH_BACKOFF_THROTTLE_MS = 2500;
 export const LIVE_REFRESH_BACKOFF_DURATION_MS = 20_000;
 /** Elapsed time above this after a successful response triggers WS refresh backoff. */
-export const LIVE_FETCH_SLOW_MS = 7000;
+/** Elapsed time above this after a successful response triggers WS refresh backoff (below fetch timeout). */
+export const LIVE_FETCH_SLOW_MS = 12_000;
 export const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
 /** When the WS never reaches ``open`` (e.g. HTTP 403 on upgrade), avoid hammering the server every 2s. */
 export const DASHBOARD_WS_HANDSHAKE_FAIL_BACKOFF_BASE_MS = 2_000;
