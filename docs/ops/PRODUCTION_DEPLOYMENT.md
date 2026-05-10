@@ -204,6 +204,12 @@ Staging evidence before go-live:
   - Keep `INGEST_SQL_TAIL_REPAIR_ENABLED=true` in production.
   - Tune cadence with `INGEST_SQL_TAIL_REPAIR_INTERVAL_SECONDS` and `INGEST_SQL_TAIL_REPAIR_BATCH_SIZE`.
   - Bound retry depth with `INGEST_SQL_TAIL_REPAIR_MAX_RETRIES`; dead letters expose via `ingest_pressure.sql_tail_repair_dead_lettered_total`.
+  - `/ready` now surfaces `replay_queue_readiness` and returns `503` degraded when replay backlogs are unsafe (dead-letter rows present or oldest pending queue age breaches threshold).
+  - `/internal/metrics` `ingest_pressure` includes replay queue depth gauges:
+    - `replay_queue_pending_sql_tail_repairs`
+    - `replay_queue_dead_lettered_sql_tail_repairs`
+    - `replay_queue_aggregate_dead_letter_backlog`
+    - `replay_queue_oldest_pending_age_seconds`
   - Manual replay CLI: `uv run python -m lumonox_backend.jobs replay-sql-tail-repairs-once`.
 - Parquet phase-1 export (optional cold layer):
   - Enable with `LUMONOX_PARQUET_EXPORT_ENABLED=true`.
@@ -284,6 +290,9 @@ In typical deployments, **raw events** land in DuckDB (when enabled) while **rol
 **Queue-health alerting baseline**
 
 - Track `system_diagnostics.replay_queue.oldest_pending_age_seconds` and page when it exceeds **600s for 15m** (initial target, tune with observed baselines).
+- Page immediately when either replay dead-letter gauge is non-zero:
+  - `ingest_pressure.replay_queue_dead_lettered_sql_tail_repairs > 0`
+  - `ingest_pressure.replay_queue_aggregate_dead_letter_backlog > 0`
 - Use the deterministic replay runbook: [RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md](./RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md).
 
 ## 6. Observability (golden signals)

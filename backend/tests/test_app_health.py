@@ -2,13 +2,47 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
+from db_reset import truncate_full_schema
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from lumonox_backend.api.routes.health import _topology_guardrail_status
 from lumonox_backend.app import create_app
 from lumonox_backend.jobs import SchedulerHandle
+from lumonox_backend.models import IngestAggregateDeadLetter, IngestSqlTailRepairItem, Project
+
+
+def _seed_replay_queue_degraded_state(database_url: str) -> None:
+    async def run() -> None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="health-replay-queue")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    IngestSqlTailRepairItem(
+                        project_id=project.id,
+                        payload={"widget_definitions": []},
+                        dead_lettered_at=datetime.now(tz=UTC) - timedelta(minutes=1),
+                    )
+                )
+                session.add(
+                    IngestAggregateDeadLetter(
+                        payload={"metric_bucket_deltas": []},
+                        last_error="RuntimeError",
+                    )
+                )
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
 
 
 def test_health_endpoint_returns_ok(backend_test_database_url: str) -> None:
@@ -22,6 +56,7 @@ def test_health_endpoint_returns_ok(backend_test_database_url: str) -> None:
 def test_ready_endpoint_returns_ready_when_database_is_available(
     backend_test_database_url: str,
 ) -> None:
+    truncate_full_schema(backend_test_database_url)
     app = create_app()
     with TestClient(app) as client:
         response = client.get("/ready")
@@ -85,6 +120,10 @@ def test_internal_metrics_includes_ingest_pressure_view(
         "sql_tail_repair_succeeded_total",
         "sql_tail_repair_failed_total",
         "sql_tail_repair_dead_lettered_total",
+        "replay_queue_pending_sql_tail_repairs",
+        "replay_queue_dead_lettered_sql_tail_repairs",
+        "replay_queue_aggregate_dead_letter_backlog",
+        "replay_queue_oldest_pending_age_seconds",
     ):
         assert field in pressure, f"missing pressure field: {field}"
     assert "ingest_aggregate_queue" in body
@@ -248,9 +287,11 @@ def test_startup_hard_fails_when_required_scheduler_does_not_start(
 def test_ready_stays_ready_with_non_ideal_scheduler_ownership_mix(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    truncate_full_schema(backend_test_database_url)
     monkeypatch.setenv("LUMONOX_ENV", "staging")
     monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "true")
     monkeypatch.setenv("JOBS_EXTERNAL_CRON_OWNERSHIP", "true")
+    monkeypatch.setenv("DASHBOARD_REALTIME_BUS_BACKEND", "postgres_notify")
     app = create_app()
     with TestClient(app) as client:
         response = client.get("/ready")
@@ -264,3 +305,20 @@ def test_ready_stays_ready_with_non_ideal_scheduler_ownership_mix(
         "non-ideal:external-cron-ownership-with-in-process-scheduler-enabled"
         in guardrails["reasons"]
     )
+
+
+def test_ready_reports_degraded_when_replay_queue_has_dead_letters(
+    backend_test_database_url: str,
+) -> None:
+    truncate_full_schema(backend_test_database_url)
+    _seed_replay_queue_degraded_state(backend_test_database_url)
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    replay = body["replay_queue_readiness"]
+    assert replay["status"] == "degraded"
+    assert "dead_lettered_sql_tail_repairs_present" in replay["reasons"]
+    assert "aggregate_dead_letter_backlog_present" in replay["reasons"]

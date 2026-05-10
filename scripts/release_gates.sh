@@ -24,6 +24,11 @@ uv run pytest
 # - Local release gate keeps SQLite/full path as default and allows explicit Postgres run.
 if [[ "${LUMONOX_RELEASE_GATES_POSTGRES:-0}" == "1" ]]; then
   echo "[release-gates] postgres optional-path tests"
+  if [[ "${BACKEND_TEST_DATABASE_URL:-}" != postgresql* ]]; then
+    echo "[release-gates] BACKEND_TEST_DATABASE_URL must be a postgresql URL when LUMONOX_RELEASE_GATES_POSTGRES=1" >&2
+    exit 1
+  fi
+  uv run pytest backend/tests/test_ingest.py::test_ingest_idempotency_key_replays_accepted_without_duplicate_events -q
   uv run pytest backend/tests -q
 else
   echo "[release-gates] postgres optional-path tests skipped (set LUMONOX_RELEASE_GATES_POSTGRES=1 to run)"

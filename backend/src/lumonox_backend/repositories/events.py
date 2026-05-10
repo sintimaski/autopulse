@@ -21,6 +21,19 @@ from lumonox_backend.services.event_store import (
 )
 
 
+def _is_error_like_event(*, event_type: object, status_code: object) -> bool:
+    if isinstance(event_type, str) and event_type == "error":
+        return True
+    if isinstance(status_code, int):
+        return status_code >= 500
+    if isinstance(status_code, str):
+        try:
+            return int(status_code) >= 500
+        except ValueError:
+            return False
+    return False
+
+
 async def insert_ingest_events(session: AsyncSession, rows: list[Event]) -> int:
     session.add_all(rows)
     await session.commit()
@@ -53,7 +66,7 @@ async def request_window_counts(
             error_count = sum(
                 1
                 for _event_id, status_code, event_type in rows
-                if event_type == "error" or int(status_code) >= 500
+                if _is_error_like_event(event_type=event_type, status_code=status_code)
             )
             success_count = max(0, request_count - error_count)
             return request_count, error_count, success_count
@@ -74,9 +87,14 @@ async def request_window_counts(
     result = await session.execute(
         select(
             func.count(Event.id),
-            func.sum(case((Event.status_code >= 500, 1), else_=0)),
-            func.sum(case((Event.status_code < 500, 1), else_=0)),
+            func.sum(case((Event.type == "error", 1), (Event.status_code >= 500, 1), else_=0)),
         ).where(*sql_filters)
     )
-    request_count, error_count, success_count = result.one()
-    return int(request_count or 0), int(error_count or 0), int(success_count or 0)
+    request_count, error_count = result.one()
+    resolved_request_count = int(request_count or 0)
+    resolved_error_count = int(error_count or 0)
+    return (
+        resolved_request_count,
+        resolved_error_count,
+        max(0, resolved_request_count - resolved_error_count),
+    )

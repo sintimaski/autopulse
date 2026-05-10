@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import ColumnElement
 
 from lumonox_backend.models import (
     IngestAggregateDeadLetter,
@@ -19,6 +21,14 @@ from lumonox_backend.repositories.aggregates import ErrorGroupAggregateDelta, Me
 from lumonox_backend.services.aggregate_delta_codec import encode_aggregate_payload
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayQueueHealth:
+    pending_sql_tail_repairs: int
+    dead_lettered_sql_tail_repairs: int
+    aggregate_dead_letter_backlog: int
+    oldest_pending_age_seconds: int
 
 
 def summarize_exception_for_persistence(exc: BaseException) -> str:
@@ -259,3 +269,71 @@ async def release_idempotency_reservation(
         )
     )
     await session.commit()
+
+
+async def fetch_replay_queue_health(
+    session: AsyncSession,
+    *,
+    now: datetime | None = None,
+    project_id: UUID | None = None,
+) -> ReplayQueueHealth:
+    resolved_now = now or datetime.now(tz=UTC)
+    pending_filters: list[ColumnElement[bool]] = [
+        IngestSqlTailRepairItem.resolved_at.is_(None),
+        IngestSqlTailRepairItem.dead_lettered_at.is_(None),
+    ]
+    dead_letter_filters: list[ColumnElement[bool]] = [
+        IngestSqlTailRepairItem.dead_lettered_at.is_not(None)
+    ]
+    if project_id is not None:
+        pending_filters.append(IngestSqlTailRepairItem.project_id == project_id)
+        dead_letter_filters.append(IngestSqlTailRepairItem.project_id == project_id)
+
+    pending_count = int(
+        (
+            await session.scalar(
+                select(func.count()).select_from(IngestSqlTailRepairItem).where(*pending_filters)
+            )
+        )
+        or 0
+    )
+    dead_letter_count = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestSqlTailRepairItem)
+                .where(*dead_letter_filters)
+            )
+        )
+        or 0
+    )
+    aggregate_dead_letter_backlog = int(
+        (
+            await session.scalar(
+                select(func.count())
+                .select_from(IngestAggregateDeadLetter)
+                .where(IngestAggregateDeadLetter.replayed_at.is_(None))
+            )
+        )
+        or 0
+    )
+    oldest_pending = await session.scalar(
+        select(func.min(IngestSqlTailRepairItem.created_at)).where(*pending_filters)
+    )
+    oldest_pending_age_seconds = 0
+    if oldest_pending is not None:
+        oldest_pending_utc = (
+            oldest_pending.replace(tzinfo=UTC)
+            if oldest_pending.tzinfo is None
+            else oldest_pending.astimezone(UTC)
+        )
+        oldest_pending_age_seconds = max(
+            0,
+            int((resolved_now - oldest_pending_utc).total_seconds()),
+        )
+    return ReplayQueueHealth(
+        pending_sql_tail_repairs=pending_count,
+        dead_lettered_sql_tail_repairs=dead_letter_count,
+        aggregate_dead_letter_backlog=aggregate_dead_letter_backlog,
+        oldest_pending_age_seconds=oldest_pending_age_seconds,
+    )

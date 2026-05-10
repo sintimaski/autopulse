@@ -8,8 +8,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from lumonox_backend.core.config import get_settings, scheduler_required_for_env
-from lumonox_backend.database import get_engine
+from lumonox_backend.database import get_engine, get_session_maker
 from lumonox_backend.metrics import service_metrics
+from lumonox_backend.repositories import ingest_reliability as ingest_reliability_repo
 from lumonox_backend.services.duckdb_async import run_duckdb_read_sync
 from lumonox_backend.services.event_store import (
     event_store_enabled,
@@ -17,6 +18,7 @@ from lumonox_backend.services.event_store import (
 )
 
 router = APIRouter(tags=["system"])
+_REPLAY_QUEUE_STALE_PENDING_SECONDS = 600
 
 
 def _scheduler_running(scheduler: object) -> bool:
@@ -170,6 +172,16 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
     sql_tail_repair_succeeded = int(counters.get("ingest.sql_tail.repair_succeeded", 0))
     sql_tail_repair_failed = int(counters.get("ingest.sql_tail.repair_failed", 0))
     sql_tail_repair_dead_lettered = int(counters.get("ingest.sql_tail.repair_dead_lettered", 0))
+    replay_queue_pending = int(counters.get("ingest.replay_queue.pending_sql_tail_repairs", 0))
+    replay_queue_dead_lettered = int(
+        counters.get("ingest.replay_queue.dead_lettered_sql_tail_repairs", 0)
+    )
+    replay_queue_aggregate_dead_letter_backlog = int(
+        counters.get("ingest.replay_queue.aggregate_dead_letter_backlog", 0)
+    )
+    replay_queue_oldest_pending_age_seconds = int(
+        counters.get("ingest.replay_queue.oldest_pending_age_seconds", 0)
+    )
     event_plane_append_rejected = int(counters.get("event_plane.shards.append_rejected_total", 0))
     event_plane_append_failed = int(counters.get("event_plane.shards.append_failed_total", 0))
     return {
@@ -193,8 +205,38 @@ def _build_ingest_pressure_view(counters: dict[str, int]) -> dict[str, object]:
         "sql_tail_repair_succeeded_total": sql_tail_repair_succeeded,
         "sql_tail_repair_failed_total": sql_tail_repair_failed,
         "sql_tail_repair_dead_lettered_total": sql_tail_repair_dead_lettered,
+        "replay_queue_pending_sql_tail_repairs": replay_queue_pending,
+        "replay_queue_dead_lettered_sql_tail_repairs": replay_queue_dead_lettered,
+        "replay_queue_aggregate_dead_letter_backlog": replay_queue_aggregate_dead_letter_backlog,
+        "replay_queue_oldest_pending_age_seconds": replay_queue_oldest_pending_age_seconds,
         "event_plane_append_rejected_total": event_plane_append_rejected,
         "event_plane_append_failed_total": event_plane_append_failed,
+    }
+
+
+async def _build_replay_queue_readiness(database_url: str) -> dict[str, object]:
+    session_maker = get_session_maker(database_url)
+    async with session_maker() as session:
+        queue_health = await ingest_reliability_repo.fetch_replay_queue_health(session)
+    reasons: list[str] = []
+    if queue_health.dead_lettered_sql_tail_repairs > 0:
+        reasons.append("dead_lettered_sql_tail_repairs_present")
+    if queue_health.aggregate_dead_letter_backlog > 0:
+        reasons.append("aggregate_dead_letter_backlog_present")
+    if (
+        queue_health.pending_sql_tail_repairs > 0
+        and queue_health.oldest_pending_age_seconds >= _REPLAY_QUEUE_STALE_PENDING_SECONDS
+    ):
+        reasons.append("sql_tail_repair_pending_stale")
+    status_label = "degraded" if reasons else "healthy"
+    return {
+        "status": status_label,
+        "reasons": reasons,
+        "pending_sql_tail_repairs": queue_health.pending_sql_tail_repairs,
+        "dead_lettered_sql_tail_repairs": queue_health.dead_lettered_sql_tail_repairs,
+        "aggregate_dead_letter_backlog": queue_health.aggregate_dead_letter_backlog,
+        "oldest_pending_age_seconds": queue_health.oldest_pending_age_seconds,
+        "stale_pending_threshold_seconds": _REPLAY_QUEUE_STALE_PENDING_SECONDS,
     }
 
 
@@ -352,6 +394,7 @@ async def ready(request: Request) -> JSONResponse | dict[str, object]:
         jobs_external_cron_ownership=settings.jobs_external_cron_ownership,
         dashboard_realtime_bus_backend=settings.dashboard_realtime_bus_backend,
     )
+    replay_queue_readiness = await _build_replay_queue_readiness(settings.database_url)
     payload = {
         "lumonox_env": settings.lumonox_env,
         "event_plane_mode": settings.event_plane_mode,
@@ -362,8 +405,9 @@ async def ready(request: Request) -> JSONResponse | dict[str, object]:
         "database_run_migrations_on_startup": settings.database_run_migrations_on_startup,
         "dashboard_realtime_bus_backend": settings.dashboard_realtime_bus_backend,
         "topology_guardrails": topology_guardrails,
+        "replay_queue_readiness": replay_queue_readiness,
     }
-    if topology_guardrails["status"] != "healthy":
+    if topology_guardrails["status"] != "healthy" or replay_queue_readiness["status"] != "healthy":
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"status": "degraded", **payload},

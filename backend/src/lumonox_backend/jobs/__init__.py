@@ -131,6 +131,7 @@ async def run_replay_aggregate_dead_letters_once(
                     "replay_aggregate_dead_letter_failed",
                     extra={"dead_letter_id": row.id},
                 )
+    await _refresh_replay_queue_metrics(resolved_settings)
     return replayed
 
 
@@ -186,7 +187,30 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
                     "dead_lettered": dead_lettered,
                 },
             )
+    await _refresh_replay_queue_metrics(resolved_settings)
     return repaired
+
+
+async def _refresh_replay_queue_metrics(settings: Settings) -> None:
+    session_maker = get_session_maker(settings.database_url)
+    async with session_maker() as session:
+        queue_health = await ingest_reliability_repo.fetch_replay_queue_health(session)
+    service_metrics.set_value(
+        "ingest.replay_queue.pending_sql_tail_repairs",
+        queue_health.pending_sql_tail_repairs,
+    )
+    service_metrics.set_value(
+        "ingest.replay_queue.dead_lettered_sql_tail_repairs",
+        queue_health.dead_lettered_sql_tail_repairs,
+    )
+    service_metrics.set_value(
+        "ingest.replay_queue.aggregate_dead_letter_backlog",
+        queue_health.aggregate_dead_letter_backlog,
+    )
+    service_metrics.set_value(
+        "ingest.replay_queue.oldest_pending_age_seconds",
+        queue_health.oldest_pending_age_seconds,
+    )
 
 
 async def run_parquet_export_tick_once(*, settings: Settings | None = None) -> int:

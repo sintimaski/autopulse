@@ -202,9 +202,9 @@
   - Safe to re-run? Yes
   - If partial/no, guardrails required: Fixed test fixtures and deterministic timestamps.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0%
-  - Last update: 2026-05-11
+  - Status: Done
+  - % complete: 100%
+  - Last update: 2026-05-11 (unified SQL/DuckDB alert-window counting contract with parity tests)
   - Owner: Backend team
 - **Related documents:** `DEVELOPMENT.md`
 - **References / examples:** `backend/src/lumonox_backend/repositories/events.py`
@@ -246,9 +246,9 @@
   - Safe to re-run? Yes
   - If partial/no, guardrails required: Isolated test DB per run.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0%
-  - Last update: 2026-05-11
+  - Status: Done
+  - % complete: 100%
+  - Last update: 2026-05-11 (Postgres CI/release-gate idempotency replay path is now explicit and documented)
   - Owner: Backend team
 - **Related documents:** `.github/workflows/ci.yml`, `backend/README.md`
 - **References / examples:** `backend/tests/test_ingest.py`
@@ -292,9 +292,9 @@
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0%
-  - Last update: 2026-05-11
+  - Status: Done
+  - % complete: 100%
+  - Last update: 2026-05-11 (replay/dead-letter queue depth gauges + readiness degradation + ops runbook thresholds)
   - Owner: Backend team
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`
 - **References / examples:** `backend/src/lumonox_backend/api/routes/health.py`
@@ -474,3 +474,51 @@ Mark each item before closing the plan:
 - [ ] Observability updates are included where behavior changed.
 - [ ] Related docs are updated or explicitly deferred.
 - [ ] Remaining ambiguity is logged with owner and due date.
+
+## 8) Live execution tracker
+
+### Current phase status snapshot
+
+- **Completed tasks:** `P0-T1`, `P1-T1`, `P1-T2`, `P2-T1`, `P2-T2`, `P3-T1`
+- **In progress tasks:** None
+- **Todo tasks:** `P3-T2`, `P4-T1`, `P4-T2`
+- **Overall completion (task-count based):** 6/9 (67%)
+- **Last refreshed:** 2026-05-11
+
+### Next-up execution queue (strict order)
+
+1. `P4-T1` (local-to-CI parity) - lowers pre-release integration churn.
+2. `P3-T2` (managed fanout task lifecycle) - reliability hardening with lower launch criticality.
+3. `P4-T2` (go/no-go checkpoint) - final release decision artifact.
+
+### Task handoff template (apply per task)
+
+- **Kickoff checklist:**
+  1. Re-state AC in PR description as a checklist.
+  2. Link touched files and targeted tests.
+  3. Capture before/after behavior in one short evidence note.
+- **Completion checklist:**
+  1. Mark task status and `% complete` in this plan.
+  2. Add evidence link under "Execution evidence index".
+  3. Note residual risk or "None" explicitly.
+
+### Execution evidence index
+
+- `P0-T1`: `docs/plans/backend-hardening-baseline-2026-05-11.md`
+- `P1-T1`: Pending link to merged PR / commit SHA
+- `P1-T2`: Pending link to merged PR / commit SHA
+- `P2-T1`: Pending link to merged PR / commit SHA
+- `P2-T2`: Pending link to merged PR / commit SHA
+- `P3-T1`: Pending link to merged PR / commit SHA
+- `P3-T2`: Pending
+- `P4-T1`: Pending
+- `P4-T2`: Pending
+
+### Open ambiguity and blocker log
+
+- **A1 (resolved 2026-05-11 by backend team):**
+  Canonical alert counting contract locked to `error_like := (type == "error") OR (status_code >= 500)` for both SQL and DuckDB paths in `P2-T1`.
+- **A2 (resolved 2026-05-11 by backend team):**
+  Mandatory idempotency replay path is pinned to Postgres in CI (`python-postgres` job) and mirrored in local release-gate/docs commands.
+- **A3 (resolved 2026-05-11 by backend team):**
+  Replay/dead-letter instrumentation label set locked to low-cardinality queue gauges and replay outcome counters (`ingest.replay_queue.*`, `ingest.sql_tail.repair_*`).

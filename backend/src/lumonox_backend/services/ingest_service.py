@@ -355,7 +355,26 @@ async def persist_ingest_batch(
                     payload=payload,
                     last_error=ingest_reliability_repo.summarize_exception_for_persistence(exc),
                 )
+                queue_health = await ingest_reliability_repo.fetch_replay_queue_health(
+                    repair_session
+                )
             service_metrics.increment("ingest.sql_tail.repair_queued")
+            service_metrics.set_value(
+                "ingest.replay_queue.pending_sql_tail_repairs",
+                queue_health.pending_sql_tail_repairs,
+            )
+            service_metrics.set_value(
+                "ingest.replay_queue.dead_lettered_sql_tail_repairs",
+                queue_health.dead_lettered_sql_tail_repairs,
+            )
+            service_metrics.set_value(
+                "ingest.replay_queue.aggregate_dead_letter_backlog",
+                queue_health.aggregate_dead_letter_backlog,
+            )
+            service_metrics.set_value(
+                "ingest.replay_queue.oldest_pending_age_seconds",
+                queue_health.oldest_pending_age_seconds,
+            )
             logger.warning(
                 "ingest_sql_tail_repair_queued",
                 extra={

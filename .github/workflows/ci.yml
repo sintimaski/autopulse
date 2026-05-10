@@ -86,6 +86,12 @@ jobs:
       - name: Sync environment
         run: uv sync --group dev
 
+      - name: Pytest (Postgres ingest idempotency gate)
+        run: >
+          uv run pytest
+          backend/tests/test_ingest.py::test_ingest_idempotency_key_replays_accepted_without_duplicate_events
+          -q
+
       - name: Pytest (Postgres backend)
         run: uv run pytest backend/tests -q
 
