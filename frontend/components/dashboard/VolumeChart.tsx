@@ -413,12 +413,12 @@ export function VolumeChart({
             </div>
             <div className="relative mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-400">
-                Trends — requests by class (stacked)
+                Trends — requests by class
               </h4>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-500">
-                Same scale as the bars: each layer is request count for 2xx / 3xx / 4xx / 5xx. When class splits are
-                unavailable, volume is shown as 2xx vs 5xx using the bucket totals. Hover the bar chart above for
-                latency per bucket.
+                Each line is the request count for 2xx / 3xx / 4xx / 5xx at that time bucket (not stacked). When
+                class splits are unavailable, volume is shown as 2xx vs 5xx using the bucket totals. Hover the bar
+                chart above for latency per bucket.
               </p>
               <div className="relative mt-2 min-h-[12rem]">
                 {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
@@ -427,9 +427,10 @@ export function VolumeChart({
                     labels={trendLabels}
                     series={stackedTrendSeries}
                     height={200}
+                    variant="overlay"
                     live
                     chartsScopePending={false}
-                    accessibilityLabel={`Stacked request volume by response class. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
+                    accessibilityLabel={`Request volume by response class, plotted per bucket. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
                     onPointClick={(idx) => {
                       const bucket = displayedRef.current[idx];
                       if (bucket) {

@@ -95,17 +95,22 @@ export function StackedAreaChart({
     if (!hasData) {
       return { labels: [], datasets: [] as ChartDataset<"line">[] };
     }
-    const fillAlpha = isOverlay ? 0.22 : 0.32;
+    // Stacked bands need higher fill alpha so each layer reads as a solid slice instead of
+    // a translucent overlay; overlay mode keeps lower alpha so overlapping lines stay legible.
+    const fillAlpha = isOverlay ? 0.22 : 0.55;
     return {
       labels,
-      datasets: series.map((entry) => ({
+      datasets: series.map((entry, idx) => ({
         label: entry.label,
         data: entry.values.map((v) => Math.max(0, Number(v ?? 0))),
         borderColor: entry.color,
         backgroundColor: hexToRgba(entry.color, fillAlpha),
         borderWidth: 1.5,
         tension: 0.25,
-        fill: true,
+        // In stacked mode, fill each layer down to the previous dataset (not origin) so the
+        // colored band reflects only that dataset's contribution. Otherwise every fill extends
+        // to zero and overlaps, making bigger lower layers look smaller than higher layers.
+        fill: isOverlay ? true : idx === 0 ? "origin" : "-1",
         ...(isOverlay ? {} : { stack: "stack0" }),
         pointRadius: 0,
         pointHoverRadius: 3,
