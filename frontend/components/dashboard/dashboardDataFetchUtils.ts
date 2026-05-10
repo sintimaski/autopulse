@@ -15,6 +15,8 @@ export const DASHBOARD_FETCH_TIMEOUT_MS =
     : 18_000;
 export const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 export const MAX_WIDGET_POINTS_TOTAL = 2400;
+/** Synthetic studio showcase points (`backend/.../studio_showcase.py`); must not lose global trim. */
+export const LX_STUDIO_WIDGET_POINT_PREFIX = "lx_studio_";
 export const LIVE_REFRESH_THROTTLE_MS = 400;
 const _parsedLiveDeltaThrottleMs = Number(
   typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LUMONOX_LIVE_DELTA_REFRESH_THROTTLE_MS : NaN,
@@ -133,20 +135,32 @@ export function trimDashboardWidgetPayload(payload: DashboardWidgetsResponse): D
   }
 
   if (merged.length > MAX_WIDGET_POINTS_TOTAL) {
+    const maxTotal = MAX_WIDGET_POINTS_TOTAL;
     const infra = merged.filter((p) => p.widget_id.startsWith("infra_"));
-    const rest = merged.filter((p) => !p.widget_id.startsWith("infra_"));
+    const studio = merged.filter((p) => p.widget_id.startsWith(LX_STUDIO_WIDGET_POINT_PREFIX));
+    const rest = merged.filter(
+      (p) => !p.widget_id.startsWith("infra_") && !p.widget_id.startsWith(LX_STUDIO_WIDGET_POINT_PREFIX),
+    );
     let infraTrimmed = infra;
-    if (infraTrimmed.length > MAX_WIDGET_POINTS_TOTAL) {
+    if (infraTrimmed.length > maxTotal) {
       infraTrimmed = [...infraTrimmed]
         .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-        .slice(0, MAX_WIDGET_POINTS_TOTAL);
+        .slice(0, maxTotal);
     }
-    const budget = Math.max(0, MAX_WIDGET_POINTS_TOTAL - infraTrimmed.length);
+    // Keep layout-lab synthetic series out of the "newest timestamp wins" pool so busy projects
+    // do not evict spread-across-window showcase points.
+    if (infraTrimmed.length + studio.length > maxTotal) {
+      const infraBudget = Math.max(0, maxTotal - studio.length);
+      infraTrimmed = [...infraTrimmed]
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+        .slice(0, infraBudget);
+    }
+    const budgetForRest = Math.max(0, maxTotal - infraTrimmed.length - studio.length);
     const restKept =
-      budget > 0
-        ? [...rest].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, budget)
+      budgetForRest > 0
+        ? [...rest].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, budgetForRest)
         : [];
-    merged = [...infraTrimmed, ...restKept].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    merged = [...infraTrimmed, ...studio, ...restKept].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 
   return {

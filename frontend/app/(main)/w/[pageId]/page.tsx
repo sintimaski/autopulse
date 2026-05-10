@@ -19,7 +19,7 @@ export default async function StudioWidgetPage({ params }: { params: Promise<{ p
     notFound();
   }
   return (
-    <DashboardPageBoundary dataReady="traffic-requests">
+    <DashboardPageBoundary dataReady="studio-widgets">
       <DashboardBackendWidgetGalleryContent lockedPageId={pageId} />
     </DashboardPageBoundary>
   );

@@ -181,6 +181,12 @@ export type DashboardPageDataReady =
   | "traffic-requests"
   /** Alerts: sparkline + dispatches (no error-group list). */
   | "traffic-alerts"
+  /**
+   * Studio `/w/...` widget pages: synthetic showcase data ships in the widgets slice.
+   * Allow render once that payload exists, not only when overview+requests are hydrated
+   * (avoids “No data for this view yet” while the layout lab is loading or traffic is empty).
+   */
+  | "studio-widgets"
   /** Settings: project JSON only (no traffic bundle). */
   | "settings-only"
   /** Onboarding: always allow children to render; no traffic required. */
@@ -200,14 +206,18 @@ export function DashboardPageBoundary({
   const likelyMissingFirstEvent = Boolean(
     onboarding && onboarding.ingest_key_ready && !onboarding.first_event_received,
   );
+  const widgetPayloadReady =
+    (d.dashboardWidgets?.definitions?.length ?? 0) > 0 || (d.dashboardWidgets?.points?.length ?? 0) > 0;
   const hasRenderableData =
     dataReady === "traffic-full"
       ? Boolean(d.overview && d.requests && d.errorGroups)
       : dataReady === "traffic-requests" || dataReady === "traffic-alerts"
         ? Boolean(d.overview && d.requests)
-        : dataReady === "onboarding"
-          ? true
-          : Boolean(d.alertSettings && d.retentionSettings);
+        : dataReady === "studio-widgets"
+          ? Boolean((d.overview && d.requests) || widgetPayloadReady)
+          : dataReady === "onboarding"
+            ? true
+            : Boolean(d.alertSettings && d.retentionSettings);
 
   if (d.loading && !hasRenderableData) {
     return (
@@ -221,7 +231,19 @@ export function DashboardPageBoundary({
             <CardSpinner size="compact" label="Session & projects" />
           </div>
         ) : (
-          <DashboardInitialLoadGrid dataReady={dataReady} />
+          <DashboardInitialLoadGrid
+            dataReady={
+              dataReady === "studio-widgets"
+                ? "studio-widgets"
+                : dataReady === "settings-only"
+                  ? "settings-only"
+                  : dataReady === "traffic-alerts"
+                    ? "traffic-alerts"
+                    : dataReady === "traffic-full"
+                      ? "traffic-full"
+                      : "traffic-requests"
+            }
+          />
         )}
       </div>
     );

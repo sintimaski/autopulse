@@ -2,7 +2,12 @@
 
 import { CardSpinner } from "./CardSpinner";
 
-type TrafficReady = "traffic-full" | "traffic-requests" | "traffic-alerts" | "settings-only";
+type TrafficReady =
+  | "traffic-full"
+  | "traffic-requests"
+  | "traffic-alerts"
+  | "settings-only"
+  | "studio-widgets";
 
 /**
  * Multi-card loading layout for dashboard routes (avoids a single full-width pulse block).
@@ -45,6 +50,18 @@ export function DashboardInitialLoadGrid({ dataReady }: { dataReady: TrafficRead
           <CardSpinner size="compact" label="Recent requests" />
         </div>
         <CardSpinner size="section" label="Loading tables & metadata…" />
+      </div>
+    );
+  }
+
+  if (dataReady === "studio-widgets") {
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CardSpinner size="compact" label="Widget definitions" />
+          <CardSpinner size="compact" label="Synthetic chart points" />
+        </div>
+        <CardSpinner size="section" label="Loading widget layout lab…" />
       </div>
     );
   }
