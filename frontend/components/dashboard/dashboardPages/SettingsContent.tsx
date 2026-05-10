@@ -13,7 +13,6 @@ import {
 } from "../dashboardRoleHelpers";
 import { PROTECTED_OWNER_EMAIL, isProtectedOwnerEmail } from "./settingsContentUtils";
 import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
-import { parseEventPlaneCutoverSettings } from "../../../utils/dashboardResponseGuards";
 
 import { SettingsAlertDeliverySection } from "./SettingsAlertDeliverySection";
 import { SettingsActiveProjectSection } from "./SettingsActiveProjectSection";
@@ -26,6 +25,8 @@ import { SettingsInternalMetricsSection } from "./SettingsInternalMetricsSection
 import { SettingsSystemDiagnosticsSection } from "./SettingsSystemDiagnosticsSection";
 import { SettingsRetentionPolicySection } from "./SettingsRetentionPolicySection";
 import { useSettingsAlertDelivery } from "./useSettingsAlertDelivery";
+import { useSettingsApiKeyBulk } from "./useSettingsApiKeyBulk";
+import { useSettingsEventPlaneCutoverSave } from "./useSettingsEventPlaneCutoverSave";
 import { settingsMetricStatusClass, useSettingsDiagnosticsPanels } from "./useSettingsDiagnosticsPanels";
 import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembers";
 
@@ -36,12 +37,15 @@ export function SettingsContent() {
   const [retentionDraft, setRetentionDraft] = useState<RetentionSettings | null>(null);
   const orgMembers = useSettingsOrganizationsMembers(d.sessionProjectId);
   const alertDelivery = useSettingsAlertDelivery(d.alertSettings, d.saveAlertSettings, d.setRefreshToken);
-  const [selectedKeyIds, setSelectedKeyIds] = useState<Set<string>>(new Set());
-  const [keyBulkAction, setKeyBulkAction] = useState<"" | "rotate" | "revoke">("");
-  const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
+  const apiKeyBulk = useSettingsApiKeyBulk(
+    d.apiKeys,
+    d.rotateApiKey,
+    d.revokeApiKey,
+    d.refreshApiKeys,
+    d.issueApiKey,
+  );
   const [activeProjectBusy, setActiveProjectBusy] = useState(false);
   const [activeProjectMessage, setActiveProjectMessage] = useState<string | null>(null);
-  const [eventPlaneCutoverSaving, setEventPlaneCutoverSaving] = useState(false);
   const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
   const canEditRetention = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canMutateApiKeys = canManageIngestApiKeys(d.sessionMembershipRole);
@@ -49,17 +53,6 @@ export function SettingsContent() {
 
   /** Invites are tied to the signed-in dashboard session role, not the org picker alone. */
   const canInviteMembers = canInviteOrganizationMembers(d.sessionMembershipRole);
-
-  const primaryActiveKeyId = useMemo(() => {
-    const active = d.apiKeys.filter((k) => !k.revoked_at);
-    if (active.length === 0) {
-      return null;
-    }
-    const sorted = [...active].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    return sorted[0]?.key_id ?? null;
-  }, [d.apiKeys]);
 
   const onActiveProjectChange = useCallback(
     async (nextId: string) => {
@@ -79,81 +72,6 @@ export function SettingsContent() {
     [d.sessionProjectId, d.setActiveDashboardProject],
   );
 
-  const toggleKeySelected = (keyId: string) => {
-    setSelectedKeyIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(keyId)) {
-        next.delete(keyId);
-      } else {
-        next.add(keyId);
-      }
-      return next;
-    });
-  };
-
-  const activeKeyIds = d.apiKeys.filter((k) => !k.revoked_at).map((k) => k.key_id);
-  const allKeysSelected = activeKeyIds.length > 0 && activeKeyIds.every((id) => selectedKeyIds.has(id));
-
-  const applyKeyBulk = async () => {
-    if (!keyBulkAction || selectedKeyIds.size === 0) {
-      return;
-    }
-    const activeKeys = d.apiKeys.filter((k) => !k.revoked_at);
-    const activeIdSet = new Set(activeKeys.map((k) => k.key_id));
-    let targetIds = [...selectedKeyIds].filter((id) => activeIdSet.has(id));
-
-    if (keyBulkAction === "revoke") {
-      if (activeKeys.length === 1) {
-        setApiKeyMessage("Cannot revoke your only active ingest key.");
-        return;
-      }
-      if (activeKeys.length > 1 && primaryActiveKeyId) {
-        targetIds = targetIds.filter((id) => id !== primaryActiveKeyId);
-      }
-      if (targetIds.length === 0) {
-        setApiKeyMessage(
-          "Primary (oldest) active key cannot be bulk-revoked. Deselect it or revoke other keys first.",
-        );
-        return;
-      }
-      if (activeKeys.length - targetIds.length < 1) {
-        setApiKeyMessage("Leave at least one active key. Deselect some keys.");
-        return;
-      }
-    }
-
-    const label = keyBulkAction === "rotate" ? "Rotate" : "Revoke";
-    if (!window.confirm(`${label} ${targetIds.length} key(s)?`)) {
-      return;
-    }
-
-    let ok = 0;
-    let failed = 0;
-    for (const keyId of targetIds) {
-      if (keyBulkAction === "rotate") {
-        const success = await d.rotateApiKey(keyId);
-        if (success) {
-          ok += 1;
-        } else {
-          failed += 1;
-        }
-      } else {
-        const success = await d.revokeApiKey(keyId);
-        if (success) {
-          ok += 1;
-        } else {
-          failed += 1;
-        }
-      }
-    }
-    await d.refreshApiKeys();
-    setSelectedKeyIds(new Set());
-    setKeyBulkAction("");
-    setApiKeyMessage(
-      ok || failed ? `${ok} succeeded${failed ? `, ${failed} failed` : ""}.` : "No changes applied.",
-    );
-  };
-
   const orgOwnerAccess = orgMembers.selectedOrganization?.role === "owner";
   const canEditAlertDelivery = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canViewInternalMetrics = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
@@ -164,6 +82,11 @@ export function SettingsContent() {
     canViewSystemDiagnostics,
     canManageEventPlaneCutover,
   });
+  const eventPlaneCutoverSave = useSettingsEventPlaneCutoverSave(
+    diagnostics.eventPlaneUseSnapshotRead,
+    diagnostics.setEventPlaneUseSnapshotRead,
+    diagnostics.setEventPlaneCutoverMessage,
+  );
   const aggregateQueueDepth = diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.depth ?? null;
   const aggregateQueueMax = diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.max_size ?? null;
   const aggregateQueueEnabled = Boolean(diagnostics.internalMetricsSnapshot?.ingest_aggregate_queue?.enabled);
@@ -232,37 +155,8 @@ export function SettingsContent() {
         eventPlaneCutoverMessage={diagnostics.eventPlaneCutoverMessage}
         eventPlaneUseSnapshotRead={diagnostics.eventPlaneUseSnapshotRead}
         setEventPlaneUseSnapshotRead={diagnostics.setEventPlaneUseSnapshotRead}
-        eventPlaneCutoverSaving={eventPlaneCutoverSaving}
-        onSaveCutover={async () => {
-          setEventPlaneCutoverSaving(true);
-          diagnostics.setEventPlaneCutoverMessage(null);
-          try {
-            const response = await fetchWithTimeout(
-              buildApiUrl("/dashboard/event-plane-cutover"),
-              {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                credentials: "include",
-                body: JSON.stringify({ use_snapshot_read: diagnostics.eventPlaneUseSnapshotRead }),
-              },
-              DASHBOARD_FETCH_TIMEOUT_MS,
-            );
-            if (!response.ok) {
-              throw new Error(`event-plane-cutover update failed (${response.status})`);
-            }
-            const raw: unknown = await response.json();
-            const payload = parseEventPlaneCutoverSettings(raw);
-            if (!payload) {
-              throw new Error("event-plane-cutover save returned unexpected JSON shape");
-            }
-            diagnostics.setEventPlaneUseSnapshotRead(Boolean(payload.use_snapshot_read));
-            diagnostics.setEventPlaneCutoverMessage("Event Plane cutover saved.");
-          } catch {
-            diagnostics.setEventPlaneCutoverMessage("Failed to save Event Plane cutover.");
-          } finally {
-            setEventPlaneCutoverSaving(false);
-          }
-        }}
+        eventPlaneCutoverSaving={eventPlaneCutoverSave.eventPlaneCutoverSaving}
+        onSaveCutover={() => eventPlaneCutoverSave.saveEventPlaneCutover()}
       />
 
       <SettingsExcludeLumonoxTrafficSection
@@ -362,31 +256,19 @@ export function SettingsContent() {
       <SettingsApiKeyLifecycleSection
         canMutateApiKeys={canMutateApiKeys}
         isApiSubpathDashboard={isApiSubpathDashboard()}
-        activeKeyIds={activeKeyIds}
-        keyBulkAction={keyBulkAction}
-        selectedKeyIds={selectedKeyIds}
-        allKeysSelected={allKeysSelected}
+        activeKeyIds={apiKeyBulk.activeKeyIds}
+        keyBulkAction={apiKeyBulk.keyBulkAction}
+        selectedKeyIds={apiKeyBulk.selectedKeyIds}
+        allKeysSelected={apiKeyBulk.allKeysSelected}
         apiKeys={d.apiKeys}
         lastIssuedApiKey={d.lastIssuedApiKey}
-        apiKeyMessage={apiKeyMessage}
-        onIssueKey={async () => {
-          const ok = await d.issueApiKey();
-          setApiKeyMessage(ok ? "New API key issued." : "Failed to issue API key.");
-        }}
-        onRefreshKeys={async () => {
-          await d.refreshApiKeys();
-          setApiKeyMessage("API keys refreshed.");
-        }}
-        onKeyBulkActionChange={setKeyBulkAction}
-        onApplyBulk={() => void applyKeyBulk()}
-        onToggleSelectAll={() => {
-          if (allKeysSelected) {
-            setSelectedKeyIds(new Set());
-          } else {
-            setSelectedKeyIds(new Set(activeKeyIds));
-          }
-        }}
-        onToggleKeySelected={toggleKeySelected}
+        apiKeyMessage={apiKeyBulk.apiKeyMessage}
+        onIssueKey={() => void apiKeyBulk.issueKey()}
+        onRefreshKeys={() => void apiKeyBulk.refreshKeys()}
+        onKeyBulkActionChange={apiKeyBulk.setKeyBulkAction}
+        onApplyBulk={() => void apiKeyBulk.applyKeyBulk()}
+        onToggleSelectAll={apiKeyBulk.onToggleSelectAll}
+        onToggleKeySelected={apiKeyBulk.toggleKeySelected}
       />
 
       <SettingsAppearanceSessionSection
