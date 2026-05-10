@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
 
 import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
 import { buildApiUrl, type DashboardSystemDiagnosticsResponse } from "../dashboardTypes";
@@ -52,6 +54,15 @@ export function useSettingsDiagnosticsPanels({
   >("idle");
   const [eventPlaneUseSnapshotRead, setEventPlaneUseSnapshotRead] = useState(false);
   const [eventPlaneCutoverMessage, setEventPlaneCutoverMessage] = useState<string | null>(null);
+
+  const systemDiagnosticsSummary = useMemo(
+    () => normalizeSystemDiagnostics(systemDiagnosticsSnapshot),
+    [systemDiagnosticsSnapshot],
+  );
+  const schedulerJobs = useMemo(
+    () => normalizeSchedulerJobs(systemDiagnosticsSnapshot),
+    [systemDiagnosticsSnapshot],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +225,8 @@ export function useSettingsDiagnosticsPanels({
     internalMetricsSnapshot,
     systemDiagnosticsLoadState,
     systemDiagnosticsSnapshot,
+    systemDiagnosticsSummary,
+    schedulerJobs,
     systemDiagnosticsMessage,
     setSystemDiagnosticsMessage,
     eventPlaneCutoverLoadState,

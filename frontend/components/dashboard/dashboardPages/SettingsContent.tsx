@@ -27,7 +27,6 @@ import { useSettingsRetentionPolicy } from "./useSettingsRetentionPolicy";
 import { useSettingsActiveProject } from "./useSettingsActiveProject";
 import { useSettingsAggregateQueueStats } from "./useSettingsAggregateQueueStats";
 import { useSettingsAppearanceTrafficFeedback } from "./useSettingsAppearanceTrafficFeedback";
-import { useSettingsSystemDiagnosticsDerived } from "./useSettingsSystemDiagnosticsDerived";
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -66,7 +65,6 @@ export function SettingsContent() {
     diagnostics.setEventPlaneCutoverMessage,
   );
   const aggregateQueue = useSettingsAggregateQueueStats(diagnostics.internalMetricsSnapshot);
-  const systemDiagnosticsDerived = useSettingsSystemDiagnosticsDerived(diagnostics.systemDiagnosticsSnapshot);
 
   return (
     <div className="space-y-6">
@@ -96,8 +94,8 @@ export function SettingsContent() {
         canViewSystemDiagnostics={canViewSystemDiagnostics}
         systemDiagnosticsLoadState={diagnostics.systemDiagnosticsLoadState}
         systemDiagnosticsSnapshot={diagnostics.systemDiagnosticsSnapshot}
-        systemDiagnosticsSummary={systemDiagnosticsDerived.systemDiagnosticsSummary}
-        schedulerJobs={systemDiagnosticsDerived.schedulerJobs}
+        systemDiagnosticsSummary={diagnostics.systemDiagnosticsSummary}
+        schedulerJobs={diagnostics.schedulerJobs}
         metricStatusClass={settingsMetricStatusClass}
         systemDiagnosticsMessage={diagnostics.systemDiagnosticsMessage}
         setSystemDiagnosticsMessage={diagnostics.setSystemDiagnosticsMessage}
