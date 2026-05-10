@@ -7,7 +7,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from lumonox_backend.auth import ProjectContext, get_dashboard_auth_session
 from lumonox_backend.core.config import get_settings
 from lumonox_backend.database import get_session_maker
-from lumonox_backend.realtime import project_websocket_hub
+from lumonox_backend.realtime import build_dashboard_snapshot_payload, project_websocket_hub
+from lumonox_backend.realtime.dashboard_snapshot_store import dashboard_snapshot_store
 
 router = APIRouter()
 
@@ -39,11 +40,45 @@ async def dashboard_updates(websocket: WebSocket) -> None:
     await websocket.send_text(
         json.dumps({"type": "subscribed", "project_id": str(context.project_id)}),
     )
+    if settings.dashboard_realtime_enabled and settings.dashboard_realtime_ws_enabled:
+        snapshot = dashboard_snapshot_store.get(context.project_id)
+        if snapshot is None:
+            snapshot = dashboard_snapshot_store.upsert(
+                project_id=context.project_id,
+                snapshot_version=0,
+                updated_slices=(),
+            )
+        await websocket.send_text(build_dashboard_snapshot_payload(snapshot))
     try:
         while True:
             raw = await websocket.receive_text()
             if raw.strip().lower() == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
+                continue
+            if not (settings.dashboard_realtime_enabled and settings.dashboard_realtime_ws_enabled):
+                continue
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            message_type = str(payload.get("type") or "").strip().lower()
+            if message_type == "dashboard.subscribe":
+                snapshot = dashboard_snapshot_store.get(context.project_id)
+                if snapshot is not None:
+                    await websocket.send_text(build_dashboard_snapshot_payload(snapshot))
+                continue
+            if message_type == "dashboard.resume":
+                try:
+                    client_version = int(payload.get("snapshot_version") or 0)
+                except (TypeError, ValueError):
+                    client_version = 0
+                snapshot = dashboard_snapshot_store.get(context.project_id)
+                if snapshot is None:
+                    continue
+                if int(snapshot.snapshot_version) > client_version:
+                    await websocket.send_text(build_dashboard_snapshot_payload(snapshot))
     except WebSocketDisconnect:
         pass
     finally:

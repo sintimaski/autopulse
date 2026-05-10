@@ -1,0 +1,39 @@
+---
+description: Use when a planned feature is done — release prep, cleanup, verification, and a single coherent commit (or split PRs).
+alwaysApply: false
+---
+
+# Plan completion — commit and release handoff
+
+Use this checklist **after** implementation matches the plan’s acceptance criteria and you are ready to land work (not mid-flight refactors).
+
+## Cleanup (minimal, high signal)
+
+- Remove **dead code** and duplicate paths introduced only for experiments; prefer one source of truth (e.g. server snapshot vs parallel client delta parsing).
+- Do **not** commit secrets: `backend/.env`, `frontend/.env.local`, and similar are gitignored — sync **`backend/.env.example`** (and documented frontend env vars) only when adding new knobs.
+- Do **not** commit `frontend/out/` (build artifact for the wheel); ensure `npm run build` ran locally before packaging if you touch `frontend/`.
+- Drop **scratch** scripts, temporary logging, and one-off probes before commit.
+
+## Verification (scoped)
+
+- **Backend:** `uv run pytest` on tests covering touched modules (or full suite if change is broad).
+- **Frontend:** `npm run build` in `frontend/` when any dashboard/UI or env contract changed.
+- **Lint:** fix new diagnostics in edited files.
+
+## Release (`lumonox-api` on PyPI)
+
+- Bump **`backend/pyproject.toml`** `version` when shipping the API wheel; workflow uploads only when the version is new on PyPI (see `.github/workflows/publish-lumonox-api-pypi.yml`).
+- Add a one-line row to **`docs/ops/PYPI_PUBLISHING.md`** “Recent `lumonox-api` wheel notes” for user-visible behavior (changelog-lite). Governed spec changes still follow **`docs/DOCUMENTATION_GOVERNANCE.md`**.
+
+## Docs touchpoints
+
+- If the plan lived under `docs/*.md`, add a short **Status** or **Implemented** note at the top when behavior diverges from the original sketch (keep the doc as history, not duplicate `DEVELOPMENT.md`).
+
+## Commit discipline
+
+- One **logical** commit message (or follow `agents/review.md` / user request to split PRs).
+- Stage only intended paths; review `git diff --staged` for accidental binaries or local exports.
+
+## Rule self-review
+
+When this rule materially guided the task, follow **Rules self-review** in `lumonox-execution.mdc` and apply it to this file.

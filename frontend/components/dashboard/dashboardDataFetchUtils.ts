@@ -16,6 +16,16 @@ export const DASHBOARD_FETCH_TIMEOUT_MS =
 export const MAX_WIDGET_POINTS_PER_WIDGET = 240;
 export const MAX_WIDGET_POINTS_TOTAL = 2400;
 export const LIVE_REFRESH_THROTTLE_MS = 400;
+const _parsedLiveDeltaThrottleMs = Number(
+  typeof process !== "undefined" ? process.env.NEXT_PUBLIC_LUMONOX_LIVE_DELTA_REFRESH_THROTTLE_MS : NaN,
+);
+/** Delta-protocol WS events are high-frequency; coalesce into this cadence. */
+export const LIVE_DELTA_REFRESH_THROTTLE_MS =
+  Number.isFinite(_parsedLiveDeltaThrottleMs) &&
+  _parsedLiveDeltaThrottleMs >= 250 &&
+  _parsedLiveDeltaThrottleMs <= 10_000
+    ? Math.floor(_parsedLiveDeltaThrottleMs)
+    : 800;
 /** When recent fetches were slow or errored, widen WS-driven refresh spacing. */
 export const LIVE_REFRESH_BACKOFF_THROTTLE_MS = 2500;
 export const LIVE_REFRESH_BACKOFF_DURATION_MS = 20_000;

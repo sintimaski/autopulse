@@ -317,6 +317,8 @@ def test_dashboard_magic_link_verify_accepts_quoted_printable_corrupted_token(
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
     monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    monkeypatch.setenv("LUMONOX_DASHBOARD_REALTIME_ENABLED", "true")
+    monkeypatch.setenv("LUMONOX_DASHBOARD_REALTIME_WS_ENABLED", "true")
     app = create_app()
 
     with TestClient(app) as client:
@@ -1127,6 +1129,10 @@ def test_dashboard_updates_websocket_subscribes_after_magic_link(
             first = ws.receive_json()
             assert first["type"] == "subscribed"
             assert first["project_id"] == expected_project_id
+            second = ws.receive_json()
+            assert second["type"] == "dashboard.snapshot"
+            assert second["project_id"] == expected_project_id
+            assert isinstance(second["snapshot_version"], int)
 
 
 def test_dashboard_active_project_rebinds_session_to_sibling_project(

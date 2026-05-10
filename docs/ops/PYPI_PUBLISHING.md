@@ -55,6 +55,12 @@ uv build backend -o dist/manual-pypi-test
 ls dist/manual-pypi-test/lumonox_api-*-py3-none-any.whl
 ```
 
+## Recent `lumonox-api` wheel notes (changelog-lite)
+
+| Version | Highlights |
+|---------|------------|
+| **0.2.2** | Dashboard default scope: in-memory query snapshot refreshed from ingest deltas (fewer heavy DuckDB reads on poll); optional realtime WebSocket path behind flags; rolling-window chart alignment fixes for overview. |
+
 ## Governed docs
 
 If you change supported install surfaces or security expectations, follow **`docs/DOCUMENTATION_GOVERNANCE.md`** for material spec updates.

@@ -47,7 +47,6 @@ export function useDashboardWsDisconnectedFallbackPoll(options: {
           return;
         }
         if (dashboardFetchInFlightRef.current) {
-          dashboardQueuedRefreshRef.current = true;
           return;
         }
         bumpRefresh();

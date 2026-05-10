@@ -21,6 +21,7 @@ from lumonox_backend.auth import (
     require_dashboard_auth_session,
 )
 from lumonox_backend.core.config import get_settings
+from lumonox_backend.dashboard.query_snapshot_cache import dashboard_query_snapshot_cache
 from lumonox_backend.dashboard.read_rate_limit import enforce_dashboard_read_rate_limit
 from lumonox_backend.dashboard.routes.alert_routes import (
     get_dashboard_alert_capabilities,
@@ -259,6 +260,14 @@ async def _compute_bundle_with_inflight_dedupe(
     try:
         response = await asyncio.shield(task) if _dedupe_use_shield() else await task
         await _cache_bundle_response(cache_key=cache_key, payload=payload, response=response)
+        with suppress(Exception):
+            project_id_raw, version_raw, _ = cache_key.split(":", 2)
+            dashboard_query_snapshot_cache.seed(
+                project_id=UUID(project_id_raw),
+                payload=payload,
+                version=int(version_raw),
+                response=response,
+            )
         return response
     finally:
         async with _bundle_inflight_lock:
@@ -307,6 +316,13 @@ async def post_dashboard_query(
             endpoint="query_bundle",
         )
         version = await get_project_dashboard_version(context.project_id)
+        snapshot_hit = dashboard_query_snapshot_cache.read_if_fresh(
+            project_id=context.project_id,
+            payload=payload,
+            current_version=version,
+        )
+        if snapshot_hit is not None:
+            return snapshot_hit
         payload_cache_json = json.dumps(
             payload.model_dump(mode="json", exclude_none=True),
             sort_keys=True,

@@ -149,12 +149,15 @@ async def dispatch_realtime_payload(payload: str) -> None:
         return
     if message_type == "dashboard_update":
         slices = tuple(str(item) for item in parsed.get("updated_slices", []))
+        raw_delta_payload = parsed.get("delta_payload")
+        delta_payload = raw_delta_payload if isinstance(raw_delta_payload, dict) else None
         dashboard_msg = DashboardUpdateMessage(
             project_id=UUID(str(parsed["project_id"])),
             version=int(parsed["version"]),
             reason=str(parsed.get("reason") or "remote"),
             updated_slices=slices,
             updated_at=_parse_iso_timestamp(str(parsed["updated_at"])),
+            delta_payload=delta_payload,
         )
         await project_websocket_hub.publish_dashboard_update(message=dashboard_msg)
         service_metrics.increment("dashboard.realtime_bus.receive.dashboard_update")

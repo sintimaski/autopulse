@@ -11,9 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import ProjectContext, authenticate_project
 from lumonox_backend.commercial.plan_limits import effective_ingest_rate_limit_max
-from lumonox_backend.core.config import get_settings
+from lumonox_backend.core.config import Settings, get_settings
+from lumonox_backend.dashboard.query_snapshot_cache import (
+    dashboard_query_snapshot_cache,
+    live_ingest_delta_from_payload,
+)
 from lumonox_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
 from lumonox_backend.database import get_db_session, get_session_maker
+from lumonox_backend.ingestion.exclude_lumonox import is_lumonox_internal_path
 from lumonox_backend.ingestion.limits import ingest_rate_limiter
 from lumonox_backend.ingestion.otlp_traces import convert_otlp_json_to_ingest_batch
 from lumonox_backend.metrics import service_metrics
@@ -48,6 +53,7 @@ async def _ingest_websocket_fanout(
     project_id: UUID,
     accepted: int,
     received_at: datetime,
+    delta_payload: dict[str, object] | None,
 ) -> None:
     """Broadcast ingest + dashboard_update without blocking the ingest HTTP handler.
 
@@ -62,12 +68,20 @@ async def _ingest_websocket_fanout(
         await project_websocket_hub.publish_ingest(message=ingest_message)
         await publish_realtime_ingest(ingest_message, settings=get_settings())
         dashboard_version = await mark_project_dashboard_dirty(project_id)
+        ingest_delta = live_ingest_delta_from_payload(delta_payload)
+        if ingest_delta is not None:
+            dashboard_query_snapshot_cache.apply_live_ingest_delta(
+                project_id=project_id,
+                version=dashboard_version,
+                delta=ingest_delta,
+            )
         update_message = DashboardUpdateMessage(
             project_id=project_id,
             version=dashboard_version,
             reason="ingest",
             updated_slices=("overview", "requests", "errors", "widgets", "diagnosis"),
             updated_at=received_at,
+            delta_payload=delta_payload,
         )
         await project_websocket_hub.publish_dashboard_update(message=update_message)
         await publish_realtime_dashboard_update(update_message, settings=get_settings())
@@ -87,6 +101,84 @@ def _is_https_request(request: Request, *, trust_forwarded_proto: bool) -> bool:
     if not forwarded_proto:
         return False
     return any(part.strip().lower() == "https" for part in forwarded_proto.split(","))
+
+
+def _build_ingest_delta_payload(
+    *,
+    batch: IngestBatchRequest,
+    accepted: int,
+    received_at: datetime,
+    settings: Settings,
+) -> dict[str, object] | None:
+    sdk_version = batch.sdk_version or settings.default_sdk_version
+    source_events = (
+        [event for event in batch.events if not is_lumonox_internal_path(event.path)]
+        if settings.ingest_drop_lumonox_traffic_from_db
+        else list(batch.events)
+    )
+    if not source_events:
+        return None
+    requests_payload: list[dict[str, object | None]] = []
+    error_count = 0
+    latency_total_ms = 0.0
+    count_2xx = 0
+    count_3xx = 0
+    count_4xx = 0
+    count_5xx = 0
+    for event in source_events:
+        status = int(event.status_code)
+        status_class = status // 100
+        if status_class == 2:
+            count_2xx += 1
+        elif status_class == 3:
+            count_3xx += 1
+        elif status_class == 4:
+            count_4xx += 1
+        elif status_class == 5:
+            count_5xx += 1
+        if event.type == "error" or status >= 500:
+            error_count += 1
+        latency_total_ms += float(event.latency_ms)
+        extra = event.model_extra or {}
+        requests_payload.append(
+            {
+                "timestamp": event.timestamp.astimezone(UTC).isoformat(),
+                "method": event.method,
+                "path": event.path,
+                "status_code": status,
+                "latency_ms": float(event.latency_ms),
+                "service_name": event.service_name,
+                "environment": event.environment,
+                "request_id": event.request_id,
+                "log_message": (
+                    extra.get("exception_message")
+                    if isinstance(extra.get("exception_message"), str)
+                    else None
+                ),
+                "event_id": None,
+                "received_at": received_at.astimezone(UTC).isoformat(),
+                "sdk_version": sdk_version,
+                "event_kind": event.type,
+                "trace_id": (
+                    extra.get("trace_id") if isinstance(extra.get("trace_id"), str) else None
+                ),
+                "span_id": (
+                    extra.get("span_id") if isinstance(extra.get("span_id"), str) else None
+                ),
+            }
+        )
+    return {
+        "live_ingest": {
+            "accepted": max(0, int(accepted)),
+            "error_count": max(0, int(error_count)),
+            "latency_total_ms": max(0.0, float(latency_total_ms)),
+            "count_2xx": count_2xx,
+            "count_3xx": count_3xx,
+            "count_4xx": count_4xx,
+            "count_5xx": count_5xx,
+            "requests": requests_payload[: min(len(requests_payload), 20)],
+        }
+    }
 
 
 @router.post("/ingest", response_model=IngestBatchResponse, status_code=status.HTTP_200_OK)
@@ -271,6 +363,12 @@ async def ingest_events(
                 )
         raise
     accepted = persist_result.accepted
+    delta_payload = _build_ingest_delta_payload(
+        batch=batch,
+        accepted=accepted,
+        received_at=received_at,
+        settings=settings,
+    )
     if settings.ingest_async_aggregate_enabled:
         enqueued = enqueue_ingest_aggregate_payload(
             IngestAggregatePayload(
@@ -289,6 +387,7 @@ async def ingest_events(
             project_id=context.project_id,
             accepted=accepted,
             received_at=received_at,
+            delta_payload=delta_payload,
         )
     )
     service_metrics.increment("ingest.accepted.batches")

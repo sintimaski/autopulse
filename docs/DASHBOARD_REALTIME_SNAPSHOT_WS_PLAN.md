@@ -1,5 +1,9 @@
 # Dashboard Realtime Snapshot + WebSocket Plan
 
+## Status (repo)
+
+Delivered in phases: **per-project in-memory query snapshot** (`dashboard_query_snapshot_cache`) keeps the default rolling-window `POST /dashboard/query` path cheap by applying ingest deltas between polls; **WebSocket snapshot/delta** remains optional behind `LUMONOX_DASHBOARD_REALTIME_*` / `NEXT_PUBLIC_LUMONOX_DASHBOARD_REALTIME_WS_ENABLED`. Polling-first deployments can disable WS and rely on snapshot + HTTP refresh.
+
 ## Goal
 
 Make dashboard updates feel realtime and stable by replacing frequent heavy polling with:

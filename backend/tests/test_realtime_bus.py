@@ -70,9 +70,13 @@ def test_dispatch_realtime_payload_fans_out_dashboard_update_message() -> None:
         )
         _run(realtime_bus.dispatch_realtime_payload(envelope))
         assert ws.messages, "expected websocket fan-out"
-        parsed = json.loads(ws.messages[-1])
-        assert parsed["type"] == "dashboard_update"
-        assert parsed["version"] == 4
+        parsed_legacy = json.loads(ws.messages[-2])
+        parsed_delta = json.loads(ws.messages[-1])
+        assert parsed_legacy["type"] == "dashboard_update"
+        assert parsed_legacy["version"] == 4
+        assert parsed_delta["type"] == "dashboard.delta"
+        assert parsed_delta["from_version"] == 3
+        assert parsed_delta["to_version"] == 4
     finally:
         project_websocket_hub.remove_connection(project_id=project_id, websocket=ws)  # type: ignore[arg-type]
 

@@ -40,6 +40,8 @@ These files use `alwaysApply: true` in Cursor:
 
 Other `.mdc` files are **path-scoped** (`globs`) for `sdk/`, `backend/`, `frontend/`, `scripts/`, tests, docs, synthetic stack, etc. See the `.cursor/rules/` directory for the authoritative list.
 
+**On-demand:** `.cursor/rules/plan-completion-commit-handoff.mdc` — closing a planned feature (tests, `npm run build` when frontend touched, version bump + wheel notes, clean commit).
+
 ## Automatic context
 
 Always-on rules summarize **non-negotiables** (SDK must not break host apps, conservative capture, etc.) and point to `DEVELOPMENT.md` for detail.

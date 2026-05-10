@@ -153,6 +153,11 @@ class Settings:
     database_run_migrations_on_startup: bool = True
     dashboard_read_rate_limit_requests_per_window: int = 120
     dashboard_read_rate_limit_window_seconds: int = 60
+    dashboard_realtime_enabled: bool = False
+    dashboard_realtime_ws_enabled: bool = False
+    dashboard_realtime_max_delta_queue_per_project: int = 32
+    dashboard_realtime_snapshot_reconcile_interval_seconds: float = 15.0
+    dashboard_realtime_snapshot_max_drift_versions: int = 25
     dashboard_realtime_bus_backend: str = "none"
     dashboard_realtime_bus_channel: str = "lumonox_dashboard_realtime"
     dashboard_rum_max_request_bytes: int = 8192
@@ -971,6 +976,29 @@ def get_settings() -> Settings:
             "DASHBOARD_READ_RATE_LIMIT_WINDOW_SECONDS",
             60,
             minimum=1,
+        ),
+        dashboard_realtime_enabled=_env_bool("LUMONOX_DASHBOARD_REALTIME_ENABLED", False),
+        dashboard_realtime_ws_enabled=_env_bool("LUMONOX_DASHBOARD_REALTIME_WS_ENABLED", False),
+        dashboard_realtime_max_delta_queue_per_project=min(
+            4096,
+            _env_int(
+                "LUMONOX_DASHBOARD_REALTIME_MAX_DELTA_QUEUE_PER_PROJECT",
+                32,
+                minimum=1,
+            ),
+        ),
+        dashboard_realtime_snapshot_reconcile_interval_seconds=_env_float(
+            "LUMONOX_DASHBOARD_REALTIME_SNAPSHOT_RECONCILE_INTERVAL_SECONDS",
+            15.0,
+            minimum=1.0,
+        ),
+        dashboard_realtime_snapshot_max_drift_versions=min(
+            4096,
+            _env_int(
+                "LUMONOX_DASHBOARD_REALTIME_SNAPSHOT_MAX_DRIFT_VERSIONS",
+                25,
+                minimum=1,
+            ),
         ),
         dashboard_realtime_bus_backend=dashboard_realtime_bus_backend,
         dashboard_realtime_bus_channel=dashboard_realtime_bus_channel,

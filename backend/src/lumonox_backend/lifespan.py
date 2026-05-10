@@ -25,6 +25,9 @@ from lumonox_backend.jobs import (
 )
 from lumonox_backend.models import Base
 from lumonox_backend.realtime.bus import run_postgres_realtime_subscriber
+from lumonox_backend.realtime.dashboard_snapshot_reconcile import (
+    run_dashboard_snapshot_reconcile_loop,
+)
 from lumonox_backend.realtime.dashboard_ws_tick import run_dashboard_ws_live_tick_loop
 from lumonox_backend.services.duckdb_async import shutdown_duckdb_executors
 from lumonox_backend.services.event_plane_compactor_worker import (
@@ -177,9 +180,17 @@ def _log_grouped_startup_settings() -> None:
     )
     log.info(
         (
-            "Startup settings [realtime]: dashboard_ws_live_tick_seconds=%.2f "
+            "Startup settings [realtime]: realtime_enabled=%s realtime_ws_enabled=%s "
+            "max_delta_queue_per_project=%d "
+            "snapshot_reconcile_interval_seconds=%.2f snapshot_max_drift_versions=%d "
+            "dashboard_ws_live_tick_seconds=%.2f "
             "realtime_bus_backend=%s realtime_bus_channel=%s"
         ),
+        settings.dashboard_realtime_enabled,
+        settings.dashboard_realtime_ws_enabled,
+        settings.dashboard_realtime_max_delta_queue_per_project,
+        settings.dashboard_realtime_snapshot_reconcile_interval_seconds,
+        settings.dashboard_realtime_snapshot_max_drift_versions,
         settings.dashboard_ws_live_tick_seconds,
         settings.dashboard_realtime_bus_backend,
         settings.dashboard_realtime_bus_channel,
@@ -301,6 +312,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     else:
         app.state._lumonox_realtime_bus_subscriber_task = None
+    if settings.dashboard_realtime_enabled and settings.dashboard_realtime_ws_enabled:
+        app.state._lumonox_dashboard_snapshot_reconcile_task = asyncio.create_task(
+            run_dashboard_snapshot_reconcile_loop(
+                interval_seconds=settings.dashboard_realtime_snapshot_reconcile_interval_seconds,
+                max_drift_versions=settings.dashboard_realtime_snapshot_max_drift_versions,
+            ),
+            name="lumonox-dashboard-snapshot-reconcile",
+        )
+    else:
+        app.state._lumonox_dashboard_snapshot_reconcile_task = None
     app.state._lumonox_event_plane_compactor_worker = start_event_plane_compactor_worker(
         settings=settings
     )
@@ -331,6 +352,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         with suppress(asyncio.CancelledError):
             await bus_task
     app.state._lumonox_realtime_bus_subscriber_task = None
+    reconcile_task = getattr(app.state, "_lumonox_dashboard_snapshot_reconcile_task", None)
+    if isinstance(reconcile_task, asyncio.Task) and not reconcile_task.done():
+        reconcile_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reconcile_task
+    app.state._lumonox_dashboard_snapshot_reconcile_task = None
     compactor_worker = getattr(app.state, "_lumonox_event_plane_compactor_worker", None)
     if isinstance(compactor_worker, EventPlaneCompactorWorkerHandle):
         await compactor_worker.stop()

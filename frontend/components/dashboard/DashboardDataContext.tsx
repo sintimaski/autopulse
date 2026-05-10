@@ -254,6 +254,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const liveLastRefreshAtRef = useRef(0);
   const liveWsBackoffUntilRef = useRef(0);
   const liveWsHandshakeFailuresRef = useRef(0);
+  const liveSnapshotVersionRef = useRef(0);
+  const liveGapRecoveryQueuedRef = useRef(false);
+  const liveDeltaProtocolActiveRef = useRef(false);
   const hasLoadedDashboardData = useRef(false);
   const dashboardFetchRunId = useRef(0);
   const dashboardFetchInFlightRef = useRef(false);
@@ -564,6 +567,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     liveReconnectTimerRef: liveReconnectTimer,
     liveSocketRef,
     liveWsHandshakeFailuresRef,
+    liveSnapshotVersionRef,
+    liveGapRecoveryQueuedRef,
+    liveDeltaProtocolActiveRef,
     bumpRefresh: bumpDashboardDataRefresh,
   });
 
