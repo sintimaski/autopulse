@@ -12,7 +12,7 @@ import {
   type DashboardMembershipItem,
   type DashboardOrganizationSummary,
 } from "../dashboardTypes";
-import { isProtectedOwnerEmail } from "./settingsContentUtils";
+import { PROTECTED_OWNER_EMAIL, isProtectedOwnerEmail } from "./settingsContentUtils";
 
 export function useSettingsOrganizationsMembers(sessionProjectId: string | null) {
   const [organizations, setOrganizations] = useState<DashboardOrganizationSummary[]>([]);
@@ -186,6 +186,38 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
   const allMembersSelected =
     allMemberIdsSelectable.length > 0 && allMemberIdsSelectable.every((id) => selectedMemberIds.has(id));
 
+  const sendInvite = useCallback(async () => {
+    if (!selectedOrganizationId) {
+      return;
+    }
+    const email = inviteEmail.trim();
+    if (inviteRole === "member" && isProtectedOwnerEmail(email)) {
+      setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
+      return;
+    }
+    try {
+      const response = await fetchWithTimeout(
+        buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ email, role: inviteRole }),
+        },
+        DASHBOARD_FETCH_TIMEOUT_MS,
+      );
+      if (response.ok) {
+        setInviteEmail("");
+        setOrgMessage("Invitation sent.");
+        void loadMembers(selectedOrganizationId);
+      } else {
+        setOrgMessage("Failed to invite member.");
+      }
+    } catch {
+      setOrgMessage("Failed to invite member.");
+    }
+  }, [inviteEmail, inviteRole, loadMembers, selectedOrganizationId]);
+
   const applyMemberBulk = useCallback(async () => {
     if (!selectedOrganizationId || !memberBulkRole || selectedMemberIds.size === 0) {
       return;
@@ -270,5 +302,6 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     toggleMemberSelected,
     allMembersSelected,
     applyMemberBulk,
+    sendInvite,
   };
 }

@@ -1,17 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import type { RetentionSettings } from "../dashboardTypes";
+import { useMemo, useState } from "react";
 import { useDashboardData } from "../DashboardDataContext";
-import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
+import { isApiSubpathDashboard } from "../dashboardTypes";
 import {
   canInviteOrganizationMembers,
   canManageIngestApiKeys,
   canManageProjectAlertsAndRetention,
   isDashboardViewer,
 } from "../dashboardRoleHelpers";
-import { PROTECTED_OWNER_EMAIL, isProtectedOwnerEmail } from "./settingsContentUtils";
 import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
 
 import { SettingsAlertDeliverySection } from "./SettingsAlertDeliverySection";
@@ -29,13 +26,14 @@ import { useSettingsApiKeyBulk } from "./useSettingsApiKeyBulk";
 import { useSettingsEventPlaneCutoverSave } from "./useSettingsEventPlaneCutoverSave";
 import { settingsMetricStatusClass, useSettingsDiagnosticsPanels } from "./useSettingsDiagnosticsPanels";
 import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembers";
+import { useSettingsRetentionPolicy } from "./useSettingsRetentionPolicy";
+import { useSettingsActiveProject } from "./useSettingsActiveProject";
 
 export function SettingsContent() {
   const d = useDashboardData();
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
-  const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
-  const [retentionDraft, setRetentionDraft] = useState<RetentionSettings | null>(null);
   const orgMembers = useSettingsOrganizationsMembers(d.sessionProjectId);
+  const retentionPolicy = useSettingsRetentionPolicy(d.retentionSettings, d.saveRetentionSettings);
   const alertDelivery = useSettingsAlertDelivery(d.alertSettings, d.saveAlertSettings, d.setRefreshToken);
   const apiKeyBulk = useSettingsApiKeyBulk(
     d.apiKeys,
@@ -44,33 +42,13 @@ export function SettingsContent() {
     d.refreshApiKeys,
     d.issueApiKey,
   );
-  const [activeProjectBusy, setActiveProjectBusy] = useState(false);
-  const [activeProjectMessage, setActiveProjectMessage] = useState<string | null>(null);
-  const effectiveRetentionDraft = retentionDraft ?? d.retentionSettings;
+  const activeProject = useSettingsActiveProject(d.sessionProjectId, d.setActiveDashboardProject);
   const canEditRetention = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canMutateApiKeys = canManageIngestApiKeys(d.sessionMembershipRole);
   const viewerSession = isDashboardViewer(d.sessionMembershipRole);
 
   /** Invites are tied to the signed-in dashboard session role, not the org picker alone. */
   const canInviteMembers = canInviteOrganizationMembers(d.sessionMembershipRole);
-
-  const onActiveProjectChange = useCallback(
-    async (nextId: string) => {
-      if (!nextId || nextId === d.sessionProjectId) {
-        return;
-      }
-      setActiveProjectBusy(true);
-      setActiveProjectMessage(null);
-      const ok = await d.setActiveDashboardProject(nextId);
-      setActiveProjectBusy(false);
-      setActiveProjectMessage(
-        ok ? "Switched active project. Charts and keys will refresh." : "Could not switch project. Try again.",
-      );
-    },
-    // Context value identity changes frequently; only stable fields should drive this callback.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- d.setActiveDashboardProject + sessionProjectId are sufficient
-    [d.sessionProjectId, d.setActiveDashboardProject],
-  );
 
   const orgOwnerAccess = orgMembers.selectedOrganization?.role === "owner";
   const canEditAlertDelivery = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
@@ -110,20 +88,13 @@ export function SettingsContent() {
   return (
     <div className="space-y-6">
       <SettingsRetentionPolicySection
-        effectiveDraft={effectiveRetentionDraft}
+        effectiveDraft={retentionPolicy.effectiveRetentionDraft}
         canEditRetention={canEditRetention}
         dashboardLoading={d.loading}
         dashboardErrorMessage={d.errorMessage}
-        retentionMessage={retentionMessage}
-        onDraftChange={(next) => setRetentionDraft(next)}
-        onSave={async () => {
-          const draft = retentionDraft ?? d.retentionSettings;
-          if (!draft) {
-            return;
-          }
-          const ok = await d.saveRetentionSettings(draft);
-          setRetentionMessage(ok ? "Retention settings saved." : "Failed to save retention settings.");
-        }}
+        retentionMessage={retentionPolicy.retentionMessage}
+        onDraftChange={(next) => retentionPolicy.setRetentionDraft(next)}
+        onSave={() => retentionPolicy.saveRetention()}
       />
 
       <SettingsInternalMetricsSection
@@ -191,9 +162,9 @@ export function SettingsContent() {
         accessibleProjects={orgMembers.accessibleProjects}
         currentProjectLabel={orgMembers.currentProjectLabel}
         sessionProjectId={d.sessionProjectId}
-        activeProjectBusy={activeProjectBusy}
-        activeProjectMessage={activeProjectMessage}
-        onActiveProjectChange={onActiveProjectChange}
+        activeProjectBusy={activeProject.activeProjectBusy}
+        activeProjectMessage={activeProject.activeProjectMessage}
+        onActiveProjectChange={activeProject.onActiveProjectChange}
       />
 
       <SettingsOrganizationsMembersSection
@@ -223,33 +194,7 @@ export function SettingsContent() {
         onInviteEmailChange={orgMembers.setInviteEmail}
         inviteRole={orgMembers.inviteRole}
         onInviteRoleChange={orgMembers.setInviteRole}
-        onSendInvite={async () => {
-          if (!orgMembers.selectedOrganizationId) {
-            return;
-          }
-          const email = orgMembers.inviteEmail.trim();
-          if (orgMembers.inviteRole === "member" && isProtectedOwnerEmail(email)) {
-            orgMembers.setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
-            return;
-          }
-          const response = await fetchWithTimeout(
-            buildApiUrl(`/dashboard/organizations/${orgMembers.selectedOrganizationId}/members/invite`),
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ email, role: orgMembers.inviteRole }),
-            },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-          );
-          if (response.ok) {
-            orgMembers.setInviteEmail("");
-            orgMembers.setOrgMessage("Invitation sent.");
-            void orgMembers.loadMembers(orgMembers.selectedOrganizationId);
-          } else {
-            orgMembers.setOrgMessage("Failed to invite member.");
-          }
-        }}
+        onSendInvite={() => void orgMembers.sendInvite()}
         orgMessage={orgMembers.orgMessage}
       />
 
