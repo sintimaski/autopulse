@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { SlidersHorizontal } from "../../lib/icons";
+import { OVERVIEW_FE_DATA_STALE_AFTER_MS } from "./dashboardDataFetchUtils";
 import { useDashboardData } from "./DashboardDataContext";
 import { METHOD_OPTIONS, STATUS_CLASS_OPTIONS, WINDOW_OPTIONS } from "./dashboardTypes";
 
@@ -23,6 +24,51 @@ function windowOptionLabel(minutes: number): string {
   return `${minutes}m`;
 }
 
+function OverviewScopeDataAgeTimer() {
+  const { overviewDataReceivedAtMs, loading, overview } = useDashboardData();
+  const [ageSec, setAgeSec] = useState(0);
+  const [stale, setStale] = useState(false);
+
+  useEffect(() => {
+    if (overviewDataReceivedAtMs == null) {
+      return;
+    }
+    const compute = () => {
+      const ageMs = Date.now() - overviewDataReceivedAtMs;
+      setAgeSec(Math.max(0, Math.floor(ageMs / 1000)));
+      setStale(ageMs >= OVERVIEW_FE_DATA_STALE_AFTER_MS);
+    };
+    compute();
+    const id = window.setInterval(compute, 1000);
+    return () => window.clearInterval(id);
+  }, [overviewDataReceivedAtMs]);
+
+  const staleAfterSec = Math.ceil(OVERVIEW_FE_DATA_STALE_AFTER_MS / 1000);
+  if (overviewDataReceivedAtMs == null) {
+    const placeholder = loading && !overview ? "…" : "—";
+    return (
+      <div
+        className="ml-auto shrink-0 font-medium text-xs tabular-nums text-slate-400 dark:text-neutral-500"
+        title="Seconds since the last full Overview dashboard query (heavy bundle: extended metrics, widgets, error groups). Light polls refresh headline numbers only."
+      >
+        {placeholder}
+      </div>
+    );
+  }
+  return (
+    <div
+      className={
+        stale
+          ? "ml-auto shrink-0 font-semibold text-xs tabular-nums text-rose-600 dark:text-rose-400"
+          : "ml-auto shrink-0 font-medium text-xs tabular-nums text-slate-500 dark:text-neutral-400"
+      }
+      title={`Seconds since the last heavy /dashboard/query on Overview (${staleAfterSec}s+ without a full bundle turns red).`}
+    >
+      {ageSec}s
+    </div>
+  );
+}
+
 export function OverviewScopeFacetBoard() {
   const d = useDashboardData();
 
@@ -39,7 +85,7 @@ export function OverviewScopeFacetBoard() {
   const serviceValue = d.serverServiceTags.length === 1 ? d.serverServiceTags[0] : "";
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-6 gap-y-4">
+    <div className="flex w-full min-w-0 flex-wrap items-center gap-x-6 gap-y-4">
       <div
         className="flex min-w-0 shrink-0 items-center gap-2 border-r border-slate-200 pr-4 dark:border-neutral-600"
         title="Window, method, status, env, and service use the same URL query keys as Diagnosis and Requests. Open those pages for path, latency, or SQL-scoped filters."
@@ -150,6 +196,7 @@ export function OverviewScopeFacetBoard() {
           ))}
         </select>
       </label>
+      <OverviewScopeDataAgeTimer />
     </div>
   );
 }

@@ -16,6 +16,7 @@ This document defines how the dashboard balances **low latency**, **stability**,
 - **Timeout:** `DASHBOARD_FETCH_TIMEOUT_MS` (default **18s**, overridable via `NEXT_PUBLIC_LUMONOX_DASHBOARD_FETCH_TIMEOUT_MS` in `frontend/components/dashboard/dashboardDataFetchUtils.ts`). Aborts with `AbortError` if exceeded.
 - **Slow fetch backoff:** After a slow or erroring batch (`LIVE_FETCH_SLOW_MS`, aligned with timeout budget), WebSocket-driven refresh widens spacing to reduce cancel storms (`LIVE_REFRESH_BACKOFF_*` in the same module).
 - **Cancellation:** User navigation or overlapping refresh passes an `AbortSignal`; aborted fetches must not surface as hard errors on the next successful load.
+- **Overview home:** The client alternates **light** and **heavy** `POST /dashboard/query` bodies on `/dashboard` (heavy on interval `DASHBOARD_HEAVY_SLICES_REFRESH_INTERVAL_MS` in `dashboardDataFetchUtils.ts`). The Overview scope freshness timer resets only on **heavy** responses; `OVERVIEW_FE_DATA_STALE_AFTER_MS` marks red if a heavy bundle is overdue.
 
 ## Backend behavior
 

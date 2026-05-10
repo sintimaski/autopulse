@@ -76,6 +76,8 @@ export type DashboardBatchQueryExecutionArgs = {
   setAbsoluteWindowState: Dispatch<SetStateAction<{ from: string; to: string } | null>>;
   setRefreshToken: Dispatch<SetStateAction<number>>;
   setChartsScopePending: Dispatch<SetStateAction<boolean>>;
+  /** Wall-clock ms when an `overview` slice was last applied on the client (successful batch). */
+  setOverviewDataReceivedAtMs: Dispatch<SetStateAction<number | null>>;
 };
 
 /**
@@ -126,6 +128,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     setAbsoluteWindowState,
     setRefreshToken,
     setChartsScopePending,
+    setOverviewDataReceivedAtMs,
   } = args;
 
   if (routePath === "/settings") {
@@ -155,6 +158,8 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     errorGroupPage,
   });
   let effectivePlan = plan;
+  /** Home overview alternates light vs heavy `POST /dashboard/query`; freshness clock resets only on heavy (full bundle). */
+  let bumpOverviewDataReceivedClock = false;
 
   const isInitialLoad = !hasLoadedDashboardData.current;
   if (routePath === "/dashboard") {
@@ -178,6 +183,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     const scopeChanged = dashboardHeavyScopeKeyRef.current !== heavyScopeKey;
     const shouldRefreshHeavySlices =
       isInitialLoad || scopeChanged || now >= dashboardHeavyRefreshAtRef.current;
+    bumpOverviewDataReceivedClock = shouldRefreshHeavySlices;
     if (!shouldRefreshHeavySlices) {
       effectivePlan = {
         ...plan,
@@ -265,6 +271,9 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     const requestsData = data.requests;
     if (overviewData) {
       setOverview(overviewData);
+      if (bumpOverviewDataReceivedClock) {
+        setOverviewDataReceivedAtMs(Date.now());
+      }
     }
     if (requestsData) {
       setRequests(requestsData);

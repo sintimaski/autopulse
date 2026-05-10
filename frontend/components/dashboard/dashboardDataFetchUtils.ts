@@ -31,7 +31,6 @@ export const LIVE_DELTA_REFRESH_THROTTLE_MS =
 /** When recent fetches were slow or errored, widen WS-driven refresh spacing. */
 export const LIVE_REFRESH_BACKOFF_THROTTLE_MS = 2500;
 export const LIVE_REFRESH_BACKOFF_DURATION_MS = 20_000;
-/** Elapsed time above this after a successful response triggers WS refresh backoff. */
 /** Elapsed time above this after a successful response triggers WS refresh backoff (below fetch timeout). */
 export const LIVE_FETCH_SLOW_MS = 12_000;
 export const DASHBOARD_WS_RECONNECT_DELAY_MS = 2_000;
@@ -56,6 +55,16 @@ export const DASHBOARD_HEAVY_SLICES_REFRESH_INTERVAL_MS = (() => {
   }
   return 8_000;
 })();
+
+/**
+ * Overview “stale” red state: no **heavy** home `/dashboard/query` in this long (see `executeDashboardBatchQuery`
+ * light/heavy split). Kept above one heavy cadence so normal light-only gaps do not flash red.
+ */
+export const OVERVIEW_FE_DATA_STALE_AFTER_MS = Math.max(
+  Math.ceil(DASHBOARD_HEAVY_SLICES_REFRESH_INTERVAL_MS * 1.25),
+  DASHBOARD_REFRESH_INTERVAL_MS * 4,
+  8_000,
+);
 
 /**
  * Build a `fetch` body + headers for dashboard JSON POSTs. Uses gzip when

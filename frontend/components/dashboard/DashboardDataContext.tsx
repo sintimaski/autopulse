@@ -196,6 +196,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [envTags, setEnvTags] = useState<Set<string>>(new Set());
   const [serviceTags, setServiceTags] = useState<Set<string>>(new Set());
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [overviewDataReceivedAtMs, setOverviewDataReceivedAtMs] = useState<number | null>(null);
   const [overviewExtended, setOverviewExtended] = useState<OverviewExtendedResponse | null>(null);
   const [dashboardWidgets, setDashboardWidgets] = useState<DashboardWidgetsResponse | null>(null);
   const [requests, setRequests] = useState<RequestsResponse | null>(null);
@@ -337,8 +338,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       }),
     [
       windowMinutes,
-      toIsoWindow?.from,
-      toIsoWindow?.to,
+      toIsoWindow,
       method,
       statusClass,
       minLatencyMs,
@@ -537,6 +537,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setAbsoluteWindowState,
         setRefreshToken,
         setChartsScopePending,
+        setOverviewDataReceivedAtMs,
       });
     };
 
@@ -1950,6 +1951,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       envTags,
       serviceTags,
       overview,
+      overviewDataReceivedAtMs,
       overviewExtended,
       dashboardWidgets,
       requests,
@@ -2073,6 +2075,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       toIsoWindow,
       absoluteWindow,
       overview,
+      overviewDataReceivedAtMs,
       overviewExtended,
       dashboardWidgets,
       requests,

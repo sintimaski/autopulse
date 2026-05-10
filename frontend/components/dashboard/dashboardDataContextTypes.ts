@@ -126,6 +126,8 @@ export type DashboardDataContextValue = {
   envTags: Set<string>;
   serviceTags: Set<string>;
   overview: OverviewResponse | null;
+  /** Epoch ms when the last **heavy** home `/dashboard/query` (full bundle) applied `overview` (null until first such load on Overview). */
+  overviewDataReceivedAtMs: number | null;
   overviewExtended: OverviewExtendedResponse | null;
   dashboardWidgets: DashboardWidgetsResponse | null;
   requests: RequestsResponse | null;
