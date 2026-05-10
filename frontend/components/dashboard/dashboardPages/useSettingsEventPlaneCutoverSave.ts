@@ -2,9 +2,8 @@
 
 import { useCallback, useState } from "react";
 
-import { buildApiUrl } from "../dashboardTypes";
-import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
 import { parseEventPlaneCutoverSettings } from "../../../utils/dashboardResponseGuards";
+import { dashboardSessionJsonPut } from "../dashboardSessionFetch";
 
 type SetBool = (value: boolean) => void;
 type SetMessage = (value: string | null) => void;
@@ -20,16 +19,9 @@ export function useSettingsEventPlaneCutoverSave(
     setEventPlaneCutoverSaving(true);
     setEventPlaneCutoverMessage(null);
     try {
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/event-plane-cutover"),
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ use_snapshot_read: useSnapshotRead }),
-        },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
+      const response = await dashboardSessionJsonPut("/dashboard/event-plane-cutover", {
+        use_snapshot_read: useSnapshotRead,
+      });
       if (!response.ok) {
         throw new Error(`event-plane-cutover update failed (${response.status})`);
       }
