@@ -118,6 +118,7 @@ def _log_grouped_startup_settings() -> None:
         "alert_interval_seconds=%.2f retention_interval_seconds=%.2f "
         "retention_pressure_poll_seconds=%.2f "
         "retention_pressure_min_interval_seconds=%.2f retention_raw_events_days=%d "
+        "retention_aggregates_days=%d "
         "sqlite_max_db_file_mb=%s",
         settings.jobs_enable_scheduler,
         settings.jobs_scheduler_lease_enabled,
@@ -127,6 +128,7 @@ def _log_grouped_startup_settings() -> None:
         settings.retention_pressure_poll_seconds,
         settings.retention_pressure_min_interval_seconds,
         settings.retention_raw_events_days,
+        settings.retention_aggregates_days,
         settings.sqlite_max_db_file_mb,
     )
     log.info(
@@ -286,7 +288,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state._lumonox_retention_pressure_poll = None
 
-    if settings.dashboard_ws_live_tick_seconds > 0:
+    if (
+        settings.dashboard_realtime_enabled
+        and settings.dashboard_realtime_ws_enabled
+        and settings.dashboard_ws_live_tick_seconds > 0
+    ):
         app.state._lumonox_dashboard_ws_tick_task = asyncio.create_task(
             run_dashboard_ws_live_tick_loop(
                 interval_seconds=settings.dashboard_ws_live_tick_seconds,
@@ -300,7 +306,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         app.state._lumonox_dashboard_ws_tick_task = None
 
-    if settings.dashboard_realtime_bus_backend == "postgres_notify":
+    if (
+        settings.dashboard_realtime_enabled
+        and settings.dashboard_realtime_bus_backend == "postgres_notify"
+    ):
         app.state._lumonox_realtime_bus_subscriber_task = asyncio.create_task(
             run_postgres_realtime_subscriber(settings=settings),
             name="lumonox-realtime-bus-subscriber",

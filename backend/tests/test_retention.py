@@ -15,7 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from lumonox_backend.core.config import get_settings, normalize_database_url
 from lumonox_backend.maintenance import retention as retention_mod
 from lumonox_backend.maintenance import run_retention_cleanup_once
-from lumonox_backend.models import Base, Event, Project, ProjectUiSettings
+from lumonox_backend.models import (
+    Base,
+    ErrorGroupAggregate,
+    Event,
+    MetricBucket,
+    Project,
+    ProjectUiSettings,
+)
 
 
 def _seed_old_and_fresh_events(database_url: str, now: datetime) -> None:
@@ -271,6 +278,198 @@ def test_retention_cleanup_enforces_project_log_row_cap_for_sqlite(
     deleted, remaining = asyncio.run(run())
     assert deleted == 2
     assert remaining == 2
+
+
+def test_retention_cleanup_applies_aggregate_cutoff_longer_than_raw(
+    backend_test_database_url: str,
+) -> None:
+    now = datetime.now(tz=UTC)
+
+    async def run() -> tuple[int, int, int]:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="Aggregate Cutoff Project")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    Event(
+                        project_id=project.id,
+                        timestamp=now - timedelta(days=20),
+                        received_at=now - timedelta(days=20),
+                        sdk_version="0.1.0",
+                        type="request",
+                        service_name="api",
+                        environment="test",
+                        method="GET",
+                        path="/raw-old",
+                        status_code=200,
+                        latency_ms=10.0,
+                        payload={"path": "/raw-old"},
+                        request_id="raw-old-1",
+                    )
+                )
+                session.add_all(
+                    [
+                        MetricBucket(
+                            project_id=project.id,
+                            minute_start=now - timedelta(days=40),
+                            service_name="api",
+                            environment="test",
+                            request_count=1,
+                            error_count=0,
+                            latency_total_ms=12.0,
+                            count_2xx=1,
+                            count_3xx=0,
+                            count_4xx=0,
+                            count_5xx=0,
+                        ),
+                        MetricBucket(
+                            project_id=project.id,
+                            minute_start=now - timedelta(days=20),
+                            service_name="api",
+                            environment="test",
+                            request_count=2,
+                            error_count=0,
+                            latency_total_ms=30.0,
+                            count_2xx=2,
+                            count_3xx=0,
+                            count_4xx=0,
+                            count_5xx=0,
+                        ),
+                        ErrorGroupAggregate(
+                            project_id=project.id,
+                            group_key="group-old",
+                            path="/boom",
+                            exception_type="ValueError",
+                            message="boom",
+                            sample_stack_trace="trace",
+                            count=1,
+                            first_seen=now - timedelta(days=40),
+                            last_seen=now - timedelta(days=40),
+                        ),
+                        ErrorGroupAggregate(
+                            project_id=project.id,
+                            group_key="group-recent",
+                            path="/boom2",
+                            exception_type="RuntimeError",
+                            message="boom2",
+                            sample_stack_trace="trace2",
+                            count=3,
+                            first_seen=now - timedelta(days=20),
+                            last_seen=now - timedelta(days=20),
+                        ),
+                    ]
+                )
+                await session.commit()
+                settings = replace(
+                    get_settings(),
+                    retention_raw_events_days=7,
+                    retention_aggregates_days=30,
+                    sqlite_size_retention_only=False,
+                )
+                await run_retention_cleanup_once(session, settings, now=now)
+                remaining_events = int(
+                    (await session.execute(text("SELECT COUNT(*) FROM events"))).scalar_one()
+                )
+                remaining_metric_buckets = int(
+                    (
+                        await session.execute(text("SELECT COUNT(*) FROM metric_buckets"))
+                    ).scalar_one()
+                )
+                remaining_error_groups = int(
+                    (
+                        await session.execute(text("SELECT COUNT(*) FROM error_group_aggregates"))
+                    ).scalar_one()
+                )
+                return remaining_events, remaining_metric_buckets, remaining_error_groups
+        finally:
+            await engine.dispose()
+
+    truncate_full_schema(backend_test_database_url)
+    remaining_events, remaining_metric_buckets, remaining_error_groups = asyncio.run(run())
+    assert remaining_events == 0
+    assert remaining_metric_buckets == 1
+    assert remaining_error_groups == 1
+
+
+def test_retention_cleanup_project_override_keeps_aggregates_longer_than_project_raw(
+    backend_test_database_url: str,
+) -> None:
+    now = datetime.now(tz=UTC)
+
+    async def run() -> tuple[int, int]:
+        engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(id=uuid4(), name="Aggregate Override Project")
+                session.add(project)
+                await session.flush()
+                session.add(
+                    ProjectUiSettings(
+                        project_id=project.id,
+                        theme_preference="system",
+                        exclude_lumonox_traffic=True,
+                        retention_raw_events_days=2,
+                        logs_query_max_window_minutes=60,
+                    )
+                )
+                session.add(
+                    MetricBucket(
+                        project_id=project.id,
+                        minute_start=now - timedelta(days=10),
+                        service_name="api",
+                        environment="test",
+                        request_count=1,
+                        error_count=0,
+                        latency_total_ms=10.0,
+                        count_2xx=1,
+                        count_3xx=0,
+                        count_4xx=0,
+                        count_5xx=0,
+                    )
+                )
+                session.add(
+                    ErrorGroupAggregate(
+                        project_id=project.id,
+                        group_key="group-override",
+                        path="/override",
+                        exception_type="Exception",
+                        message="override",
+                        sample_stack_trace="trace",
+                        count=1,
+                        first_seen=now - timedelta(days=10),
+                        last_seen=now - timedelta(days=10),
+                    )
+                )
+                await session.commit()
+                settings = replace(
+                    get_settings(),
+                    retention_raw_events_days=7,
+                    retention_aggregates_days=30,
+                    sqlite_size_retention_only=False,
+                )
+                await run_retention_cleanup_once(session, settings, now=now)
+                remaining_metric_buckets = int(
+                    (
+                        await session.execute(text("SELECT COUNT(*) FROM metric_buckets"))
+                    ).scalar_one()
+                )
+                remaining_error_groups = int(
+                    (
+                        await session.execute(text("SELECT COUNT(*) FROM error_group_aggregates"))
+                    ).scalar_one()
+                )
+                return remaining_metric_buckets, remaining_error_groups
+        finally:
+            await engine.dispose()
+
+    truncate_full_schema(backend_test_database_url)
+    remaining_metric_buckets, remaining_error_groups = asyncio.run(run())
+    assert remaining_metric_buckets == 1
+    assert remaining_error_groups == 1
 
 
 def test_sqlite_global_file_cap_deletes_oldest_when_file_over_limit(

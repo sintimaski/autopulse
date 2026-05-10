@@ -94,6 +94,9 @@ class Settings:
     alert_outage_window_minutes: int = 5
     alert_cooldown_minutes: int = 15
     retention_raw_events_days: int = 14
+    # Aggregate tables use a separate window so overview queries stay fast without
+    # keeping raw request payloads indefinitely.
+    retention_aggregates_days: int = 30
     # Global SQLite on-disk ceiling in MB (``LUMONOX_SQLITE_MAX_DB_FILE_MB``;
     # deprecated alias ``LUMONOX_EMBEDDED_MAX_DB_SIZE_MB``); counts main + WAL + SHM.
     sqlite_max_db_file_mb: int | None = None
@@ -875,6 +878,7 @@ def get_settings() -> Settings:
         ),
         alert_cooldown_minutes=_env_int("ALERT_COOLDOWN_MINUTES", 15, minimum=1),
         retention_raw_events_days=_env_int("RETENTION_RAW_EVENTS_DAYS", 14, minimum=1),
+        retention_aggregates_days=_env_int("RETENTION_AGGREGATES_DAYS", 30, minimum=1),
         sqlite_max_db_file_mb=sqlite_max_db_file_mb,
         sqlite_size_retention_only=_env_bool(
             "LUMONOX_SQLITE_SIZE_RETENTION_ONLY",

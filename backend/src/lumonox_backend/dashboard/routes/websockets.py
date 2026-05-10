@@ -22,6 +22,12 @@ async def dashboard_updates(websocket: WebSocket) -> None:
     Uvicorn/Starlette when ``close`` is sent before ``accept``).
     """
     settings = get_settings()
+    if not (settings.dashboard_realtime_enabled and settings.dashboard_realtime_ws_enabled):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Dashboard realtime websocket is disabled",
+        )
+        return
     await websocket.accept()
     session_maker = get_session_maker()
     async with session_maker() as session:
@@ -88,6 +94,12 @@ async def dashboard_updates(websocket: WebSocket) -> None:
 @router.websocket("/log-query/stream")
 async def dashboard_log_query_stream(websocket: WebSocket) -> None:
     settings = get_settings()
+    if not (settings.dashboard_realtime_enabled and settings.dashboard_realtime_ws_enabled):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="Dashboard realtime websocket is disabled",
+        )
+        return
     await websocket.accept()
     session_maker = get_session_maker()
     async with session_maker() as session:

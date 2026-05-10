@@ -19,7 +19,7 @@ from lumonox_backend.maintenance.retention_sqlite import (
     _sqlite_db_disk_footprint_bytes,
     _vacuum_sqlite_db_file,
 )
-from lumonox_backend.models import Event, ProjectUiSettings
+from lumonox_backend.models import ErrorGroupAggregate, Event, MetricBucket, ProjectUiSettings
 from lumonox_backend.services.duckdb_async import run_duckdb_read_sync, run_duckdb_write_sync
 from lumonox_backend.services.event_store import event_store_enabled, get_duckdb_event_store
 
@@ -38,6 +38,11 @@ async def run_retention_cleanup_once(
 ) -> RetentionCleanupResult:
     resolved_now = now.astimezone(UTC) if now is not None else datetime.now(tz=UTC)
     default_cutoff = resolved_now - timedelta(days=settings.retention_raw_events_days)
+    default_aggregate_days = max(
+        int(settings.retention_raw_events_days),
+        int(settings.retention_aggregates_days),
+    )
+    default_aggregate_cutoff = resolved_now - timedelta(days=default_aggregate_days)
     stale_count = 0
     size_only = bool(
         settings.sqlite_size_retention_only and settings.database_url.startswith("sqlite")
@@ -46,6 +51,9 @@ async def run_retention_cleanup_once(
     # Embedded/local mode can prefer "latest logs preserved by size": delete oldest rows only
     # when the SQLite file exceeds configured caps, and skip age-based sweeping.
     if not size_only:
+        retention_override_subquery = select(ProjectUiSettings.project_id).where(
+            ProjectUiSettings.retention_raw_events_days.is_not(None)
+        )
         retention_overrides = await session.execute(
             select(
                 ProjectUiSettings.project_id,
@@ -55,10 +63,13 @@ async def run_retention_cleanup_once(
         for project_id, retention_days in retention_overrides:
             if retention_days is None:
                 continue
+            project_raw_days = max(1, int(retention_days))
+            project_aggregate_days = max(project_raw_days, int(settings.retention_aggregates_days))
             project_settings = await session.scalar(
                 select(ProjectUiSettings).where(ProjectUiSettings.project_id == project_id)
             )
-            project_cutoff = resolved_now - timedelta(days=max(1, int(retention_days)))
+            project_cutoff = resolved_now - timedelta(days=project_raw_days)
+            project_aggregate_cutoff = resolved_now - timedelta(days=project_aggregate_days)
             if project_settings is not None:
                 project_settings.archival_status = "running"
                 project_settings.archival_last_error = None
@@ -88,6 +99,36 @@ async def run_retention_cleanup_once(
                         Event.project_id == project_id, Event.received_at < project_cutoff
                     )
                 )
+            metric_bucket_stale_count_result = await session.execute(
+                select(func.count(MetricBucket.id)).where(
+                    MetricBucket.project_id == project_id,
+                    MetricBucket.minute_start < project_aggregate_cutoff,
+                )
+            )
+            metric_bucket_stale = int(metric_bucket_stale_count_result.scalar_one())
+            if metric_bucket_stale > 0:
+                stale_count += metric_bucket_stale
+                await session.execute(
+                    delete(MetricBucket).where(
+                        MetricBucket.project_id == project_id,
+                        MetricBucket.minute_start < project_aggregate_cutoff,
+                    )
+                )
+            error_group_stale_count_result = await session.execute(
+                select(func.count(ErrorGroupAggregate.id)).where(
+                    ErrorGroupAggregate.project_id == project_id,
+                    ErrorGroupAggregate.last_seen < project_aggregate_cutoff,
+                )
+            )
+            error_group_stale = int(error_group_stale_count_result.scalar_one())
+            if error_group_stale > 0:
+                stale_count += error_group_stale
+                await session.execute(
+                    delete(ErrorGroupAggregate).where(
+                        ErrorGroupAggregate.project_id == project_id,
+                        ErrorGroupAggregate.last_seen < project_aggregate_cutoff,
+                    )
+                )
             if project_settings is not None:
                 project_settings.archival_status = "idle"
                 project_settings.archival_last_success_at = resolved_now
@@ -96,11 +137,7 @@ async def run_retention_cleanup_once(
         stale_count_result = await session.execute(
             select(func.count(Event.id)).where(
                 Event.received_at < default_cutoff,
-                Event.project_id.not_in(
-                    select(ProjectUiSettings.project_id).where(
-                        ProjectUiSettings.retention_raw_events_days.is_not(None)
-                    )
-                ),
+                Event.project_id.not_in(retention_override_subquery),
             )
         )
         default_stale = int(stale_count_result.scalar_one())
@@ -109,11 +146,37 @@ async def run_retention_cleanup_once(
             await session.execute(
                 delete(Event).where(
                     Event.received_at < default_cutoff,
-                    Event.project_id.not_in(
-                        select(ProjectUiSettings.project_id).where(
-                            ProjectUiSettings.retention_raw_events_days.is_not(None)
-                        )
-                    ),
+                    Event.project_id.not_in(retention_override_subquery),
+                )
+            )
+        metric_bucket_stale_count_result = await session.execute(
+            select(func.count(MetricBucket.id)).where(
+                MetricBucket.minute_start < default_aggregate_cutoff,
+                MetricBucket.project_id.not_in(retention_override_subquery),
+            )
+        )
+        default_metric_bucket_stale = int(metric_bucket_stale_count_result.scalar_one())
+        if default_metric_bucket_stale > 0:
+            stale_count += default_metric_bucket_stale
+            await session.execute(
+                delete(MetricBucket).where(
+                    MetricBucket.minute_start < default_aggregate_cutoff,
+                    MetricBucket.project_id.not_in(retention_override_subquery),
+                )
+            )
+        error_group_stale_count_result = await session.execute(
+            select(func.count(ErrorGroupAggregate.id)).where(
+                ErrorGroupAggregate.last_seen < default_aggregate_cutoff,
+                ErrorGroupAggregate.project_id.not_in(retention_override_subquery),
+            )
+        )
+        default_error_group_stale = int(error_group_stale_count_result.scalar_one())
+        if default_error_group_stale > 0:
+            stale_count += default_error_group_stale
+            await session.execute(
+                delete(ErrorGroupAggregate).where(
+                    ErrorGroupAggregate.last_seen < default_aggregate_cutoff,
+                    ErrorGroupAggregate.project_id.not_in(retention_override_subquery),
                 )
             )
     if event_store_enabled(settings):

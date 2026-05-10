@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 from uuid import uuid4
@@ -13,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from lumonox_backend.app import create_app
 from lumonox_backend.auth import generate_api_key
+from lumonox_backend.core.config import get_settings
 from lumonox_backend.metrics import service_metrics
 from lumonox_backend.models import ApiKey, Project
+from lumonox_backend.routes.ingest import _dashboard_realtime_fanout_enabled
 
 
 def _seed_project_and_key(database_url: str) -> tuple[str, str]:
@@ -957,3 +960,34 @@ def test_ingest_otlp_traces_maps_span_context_to_events(backend_test_database_ur
     assert latest.get("trace_id") == "0123456789abcdef0123456789abcdef"
     assert latest.get("span_id") == "1111111111111111"
     assert latest.get("span_name") == "GET /checkout"
+
+
+def test_dashboard_realtime_fanout_enabled_requires_realtime_flag() -> None:
+    disabled = replace(
+        get_settings(),
+        dashboard_realtime_enabled=False,
+        dashboard_realtime_ws_enabled=True,
+        dashboard_realtime_bus_backend="postgres_notify",
+    )
+    ws_enabled = replace(
+        get_settings(),
+        dashboard_realtime_enabled=True,
+        dashboard_realtime_ws_enabled=True,
+        dashboard_realtime_bus_backend="none",
+    )
+    bus_enabled = replace(
+        get_settings(),
+        dashboard_realtime_enabled=True,
+        dashboard_realtime_ws_enabled=False,
+        dashboard_realtime_bus_backend="postgres_notify",
+    )
+    disabled_without_ws_or_bus = replace(
+        get_settings(),
+        dashboard_realtime_enabled=True,
+        dashboard_realtime_ws_enabled=False,
+        dashboard_realtime_bus_backend="none",
+    )
+    assert _dashboard_realtime_fanout_enabled(disabled) is False
+    assert _dashboard_realtime_fanout_enabled(ws_enabled) is True
+    assert _dashboard_realtime_fanout_enabled(bus_enabled) is True
+    assert _dashboard_realtime_fanout_enabled(disabled_without_ws_or_bus) is False

@@ -44,6 +44,14 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _dashboard_realtime_fanout_enabled(settings: Settings) -> bool:
+    if not settings.dashboard_realtime_enabled:
+        return False
+    return settings.dashboard_realtime_ws_enabled or (
+        settings.dashboard_realtime_bus_backend == "postgres_notify"
+    )
+
+
 async def _ingest_websocket_fanout(
     *,
     project_id: UUID,
@@ -352,11 +360,16 @@ async def ingest_events(
                 )
         raise
     accepted = persist_result.accepted
-    delta_payload = _build_ingest_delta_payload(
-        batch=batch,
-        accepted=accepted,
-        received_at=received_at,
-        settings=settings,
+    realtime_fanout_enabled = _dashboard_realtime_fanout_enabled(settings)
+    delta_payload = (
+        _build_ingest_delta_payload(
+            batch=batch,
+            accepted=accepted,
+            received_at=received_at,
+            settings=settings,
+        )
+        if realtime_fanout_enabled
+        else None
     )
     if settings.ingest_async_aggregate_enabled:
         enqueued = enqueue_ingest_aggregate_payload(
@@ -371,14 +384,19 @@ async def ingest_events(
             await upsert_metric_buckets(session, persist_result.metric_bucket_deltas)
             await upsert_error_group_aggregates(session, persist_result.error_group_deltas)
             service_metrics.increment("ingest.aggregate_worker.sync_fallback")
-    asyncio.create_task(
-        _ingest_websocket_fanout(
-            project_id=context.project_id,
-            accepted=accepted,
-            received_at=received_at,
-            delta_payload=delta_payload,
+    if realtime_fanout_enabled:
+        asyncio.create_task(
+            _ingest_websocket_fanout(
+                project_id=context.project_id,
+                accepted=accepted,
+                received_at=received_at,
+                delta_payload=delta_payload,
+            )
         )
-    )
+    else:
+        # HTTP polling + bundle cache is the default dashboard path; bumping the
+        # in-memory version keeps read-after-write freshness without WS fanout costs.
+        await mark_project_dashboard_dirty(context.project_id)
     service_metrics.increment("ingest.accepted.batches")
     service_metrics.increment("ingest.accepted.events", amount=accepted)
     logger.info(
