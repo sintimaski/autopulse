@@ -7,6 +7,7 @@ import type { ChartData, ChartOptions } from "chart.js";
 import type { OverviewBucket } from "../../utils/dashboardData";
 import {
   aggregateSeriesByStep,
+  buildResponseClassStackValues,
   maxBucketRequestCount,
   trimSeriesToLastMinutes,
 } from "../../utils/dashboardData";
@@ -16,7 +17,8 @@ import {
   defaultVolumeStepMinutes,
 } from "../../utils/dashboardChartWindows";
 import { CanvasBar } from "./charts/chartCanvas";
-import { TimeSeriesLineChart } from "./charts/TimeSeriesLineChart";
+import { StackedAreaChart } from "./charts/StackedAreaChart";
+import type { StackedAreaSeries } from "./charts/StackedAreaChart";
 
 function formatMinuteLabel(iso: string): string {
   try {
@@ -251,7 +253,19 @@ export function VolumeChart({
   );
 
   const barChartHeight = Math.round(120 * 1.25);
-  const volumeLineChartHeightClass = "h-[6.5625rem]";
+
+  const trendLabels = useMemo(() => displayed.map((bucket) => formatMinuteLabel(bucket.minute)), [displayed]);
+
+  const responseClassStack = useMemo(() => buildResponseClassStackValues(displayed), [displayed]);
+
+  const stackedTrendSeries = useMemo((): StackedAreaSeries[] => {
+    return [
+      { id: "2xx", label: "2xx", color: "#22c55e", values: responseClassStack.counts2xx },
+      { id: "3xx", label: "3xx", color: "#38bdf8", values: responseClassStack.counts3xx },
+      { id: "4xx", label: "4xx", color: "#f59e0b", values: responseClassStack.counts4xx },
+      { id: "5xx", label: "5xx", color: "#f43f5e", values: responseClassStack.counts5xx },
+    ];
+  }, [responseClassStack]);
 
   return (
     <div>
@@ -312,54 +326,33 @@ export function VolumeChart({
                 <CanvasBar key={chartLayoutKey} data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <TimeSeriesLineChart
-                title="Request Volume Trend"
-                values={displayed.map((bucket) => Number(bucket.request_count || 0))}
-                labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
-                color="#64748b"
-                formatValue={(value) => `${Math.round(value)}`}
-                summaryLabel="Total"
-                summaryValue={totalRequests}
-                chartAreaHeightClass={volumeLineChartHeightClass}
-                live
-              />
-              <TimeSeriesLineChart
-                title="Error Rate Trend"
-                values={displayed.map((bucket) => {
-                  const req = Number(bucket.request_count || 0);
-                  const err = Number(bucket.error_count || 0);
-                  return req > 0 ? (err / req) * 100 : 0;
-                })}
-                labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
-                color="#f43f5e"
-                formatValue={(value) => `${value.toFixed(1)}%`}
-                summaryLabel="Window avg"
-                summaryValue={overallErrorRatePct}
-                chartAreaHeightClass={volumeLineChartHeightClass}
-                live
-              />
-              <TimeSeriesLineChart
-                title="Error Count Trend"
-                values={displayed.map((bucket) => Number(bucket.error_count || 0))}
-                labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
-                color="#d97706"
-                formatValue={(value) => `${Math.round(value)}`}
-                summaryLabel="Total"
-                summaryValue={totalErrors}
-                chartAreaHeightClass={volumeLineChartHeightClass}
-                live
-              />
-              <TimeSeriesLineChart
-                title="Latency Trend"
-                values={displayed.map((bucket) => Number(bucket.avg_latency_ms || 0))}
-                labels={displayed.map((bucket) => formatMinuteLabel(bucket.minute))}
-                color="#a3a3a3"
-                formatValue={(value) => `${value.toFixed(1)} ms`}
-                summaryLabel="Latest"
-                chartAreaHeightClass={volumeLineChartHeightClass}
-                live
-              />
+            <div
+              className="mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20"
+              role="img"
+              aria-label={`Stacked request volume by response class. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
+            >
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-400">
+                Trends — requests by class (stacked)
+              </h4>
+              <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-500">
+                Same scale as the bars: each layer is request count for 2xx / 3xx / 4xx / 5xx. When class splits are
+                unavailable, volume is shown as 2xx vs 5xx using the bucket totals. Hover the bar chart above for
+                latency per bucket.
+              </p>
+              <div className="mt-2">
+                <StackedAreaChart
+                  labels={trendLabels}
+                  series={stackedTrendSeries}
+                  height={200}
+                  live
+                  onPointClick={(idx) => {
+                    const bucket = displayedRef.current[idx];
+                    if (bucket) {
+                      onBucketClick(bucket);
+                    }
+                  }}
+                />
+              </div>
             </div>
           </>
         )}

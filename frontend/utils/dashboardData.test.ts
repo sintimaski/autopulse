@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   aggregateSeriesByStep,
+  buildResponseClassStackValues,
   computeOperationalSignals,
   M5_ALERT_DEFAULTS,
   maxBucketRequestCount,
@@ -313,5 +314,90 @@ describe("computeOperationalSignals", () => {
     const signals = computeOperationalSignals(overview, d);
     expect(signals.outageCandidate).toBe(true);
     expect(signals.successfulRequests).toBe(0);
+  });
+});
+
+describe("buildResponseClassStackValues", () => {
+  it("uses class counts when present", () => {
+    const buckets: OverviewBucket[] = [
+      {
+        minute: "2026-01-01T00:00:00Z",
+        request_count: 10,
+        error_count: 2,
+        avg_latency_ms: 5,
+        count_2xx: 6,
+        count_3xx: 1,
+        count_4xx: 1,
+        count_5xx: 2,
+      },
+    ];
+    const out = buildResponseClassStackValues(buckets);
+    expect(out.counts2xx).toEqual([6]);
+    expect(out.counts3xx).toEqual([1]);
+    expect(out.counts4xx).toEqual([1]);
+    expect(out.counts5xx).toEqual([2]);
+  });
+
+  it("pads remainder into 2xx when class sum is below request_count", () => {
+    const buckets: OverviewBucket[] = [
+      {
+        minute: "2026-01-01T00:00:00Z",
+        request_count: 10,
+        error_count: 0,
+        avg_latency_ms: 2,
+        count_2xx: 3,
+        count_3xx: 2,
+        count_4xx: 1,
+        count_5xx: 0,
+      },
+    ];
+    const out = buildResponseClassStackValues(buckets);
+    expect(out.counts2xx[0]).toBe(7);
+    expect(out.counts3xx[0]).toBe(2);
+    expect(out.counts4xx[0]).toBe(1);
+    expect(out.counts5xx[0]).toBe(0);
+  });
+
+  it("falls back to 2xx vs 5xx when no class breakdown", () => {
+    const buckets: OverviewBucket[] = [
+      { minute: "2026-01-01T00:00:00Z", request_count: 8, error_count: 2, avg_latency_ms: 10 },
+    ];
+    const out = buildResponseClassStackValues(buckets);
+    expect(out.counts2xx).toEqual([6]);
+    expect(out.counts3xx).toEqual([0]);
+    expect(out.counts4xx).toEqual([0]);
+    expect(out.counts5xx).toEqual([2]);
+  });
+
+  it("scales class counts when sum exceeds request_count", () => {
+    const buckets: OverviewBucket[] = [
+      {
+        minute: "2026-01-01T00:00:00Z",
+        request_count: 10,
+        error_count: 0,
+        avg_latency_ms: 1,
+        count_2xx: 8,
+        count_3xx: 4,
+        count_4xx: 2,
+        count_5xx: 2,
+      },
+    ];
+    const out = buildResponseClassStackValues(buckets);
+    const sum =
+      out.counts2xx[0] + out.counts3xx[0] + out.counts4xx[0] + out.counts5xx[0];
+    expect(sum).toBeCloseTo(10, 5);
+    expect(out.counts2xx[0]).toBeCloseTo(10 * (8 / 16), 5);
+    expect(out.counts3xx[0]).toBeCloseTo(10 * (4 / 16), 5);
+  });
+
+  it("emits zeros when request_count is zero", () => {
+    const buckets: OverviewBucket[] = [
+      { minute: "2026-01-01T00:00:00Z", request_count: 0, error_count: 0, avg_latency_ms: 0 },
+    ];
+    const out = buildResponseClassStackValues(buckets);
+    expect(out.counts2xx).toEqual([0]);
+    expect(out.counts3xx).toEqual([0]);
+    expect(out.counts4xx).toEqual([0]);
+    expect(out.counts5xx).toEqual([0]);
   });
 });

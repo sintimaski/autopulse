@@ -315,6 +315,53 @@ export function aggregateSeriesByStep(
   return out;
 }
 
+/**
+ * Per-bucket series for a stacked **requests-by-HTTP-class** area chart (2xx–5xx), same units as the bar chart.
+ * When class counts are absent but `request_count` is set, attributes `request_count - error_count` to 2xx and
+ * `error_count` to 5xx so stacks still reflect total volume (matches sparkline derivation where errors are 5xx).
+ */
+export function buildResponseClassStackValues(buckets: OverviewBucket[]): {
+  counts2xx: number[];
+  counts3xx: number[];
+  counts4xx: number[];
+  counts5xx: number[];
+} {
+  const counts2xx: number[] = [];
+  const counts3xx: number[] = [];
+  const counts4xx: number[] = [];
+  const counts5xx: number[] = [];
+
+  for (const b of buckets) {
+    const rc = Number(b.request_count || 0);
+    const ec = Number(b.error_count || 0);
+    let n2 = Number(b.count_2xx || 0);
+    let n3 = Number(b.count_3xx || 0);
+    let n4 = Number(b.count_4xx || 0);
+    let n5 = Number(b.count_5xx || 0);
+    const sumKnown = n2 + n3 + n4 + n5;
+
+    if (sumKnown === 0 && rc > 0) {
+      n2 = Math.max(0, rc - ec);
+      n5 = ec;
+    } else if (sumKnown < rc) {
+      n2 += rc - sumKnown;
+    } else if (sumKnown > rc && sumKnown > 0) {
+      const f = rc / sumKnown;
+      n2 *= f;
+      n3 *= f;
+      n4 *= f;
+      n5 *= f;
+    }
+
+    counts2xx.push(Math.max(0, n2));
+    counts3xx.push(Math.max(0, n3));
+    counts4xx.push(Math.max(0, n4));
+    counts5xx.push(Math.max(0, n5));
+  }
+
+  return { counts2xx, counts3xx, counts4xx, counts5xx };
+}
+
 export function computeOperationalSignals(
   overview: OverviewForSignals,
   defaults: {

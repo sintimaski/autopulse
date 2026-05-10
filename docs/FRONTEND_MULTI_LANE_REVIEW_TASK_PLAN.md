@@ -22,12 +22,12 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-01 | **Done** | Root `/` and magic-link `Suspense` use `CardSpinner` (`frontend/app/page.tsx`, `frontend/app/auth/magic-link/page.tsx`). |
 | FE-02 | **Done** | Segment error and global not-found use `ap-surface` / `ap-btn*` (`frontend/app/(main)/error.tsx`, `frontend/app/not-found.tsx`). Optional extra snapshot/a11y tests from the original AC were not added (explicit defer). |
 | FE-03 | **Done (superseded scope)** | Command palette was **removed** as redundant with the sidebar (`DashboardCommandPalette.tsx` deleted; not mounted from `DashboardLayoutClient.tsx`). `NavIaMigrationBanner` copy updated to sidebar-only. Original “add palette discoverability” work was **intentionally dropped**. |
-| FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer / Traces labels, `TimeSeriesLineChart` `aria-describedby` + screen-reader trend line. Full chart/a11y audit still open. |
+| FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer / Traces labels, `TimeSeriesLineChart` SR trend line, **Traffic volume** trends as one **stacked area** (2xx–5xx) + `aria-label` in `VolumeChart`. Full chart/a11y audit still open. |
 | FE-05 | **Partial** | WebSocket + live hooks as before; **`dashboardQueryBundle.ts`** centralizes **`planDashboardBatchQueryForRoute`** + **`buildDashboardDataQueryRequest`** (used from `DashboardDataContext`). Context still owns state + apply logic. |
 | FE-06 | **Partial** | `settingsContentTypes.ts`, appearance/retention/internal-metrics/system-diagnostics/event-plane/exclude-traffic section components under `dashboardPages/`. Larger sections (orgs, keys, alert delivery, …) still inline. |
 | FE-07 | **Partial** | Above plus **`parseDashboardDataQueryResponse`** in `frontend/utils/dashboardQueryResponseGuards.ts` for **`POST /dashboard/query`** (main fetch + diagnosis follow-up). |
 | FE-08 | **Partial** | **`DashboardDataContext`** dashboard mutations use **`fetchWithTimeout`** (alert/theme/retention, api-keys, active-project, validate, logout, etc.). Further dedup vs context still open. |
-| FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke.spec.ts`** and **`alerts-smoke.spec.ts`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
+| FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`**, **`alerts-smoke`**, **`logs-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
 | FE-10 | **Partial** | `frontend/README.md` architecture section; ESLint **`reportUnusedDisableDirectives: warn`** and **`eqeqeq`** (`null: ignore`). Heavier custom rules still open. |
 
 ## 2) Context / background
