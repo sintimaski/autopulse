@@ -3,18 +3,15 @@ import { expect, test } from "@playwright/test";
 import { signInViaDevMagicLink } from "./authDevMagicLink";
 
 test.describe("dashboard interaction smoke", () => {
-  test("Escape closes sample dialog on widgets showcase", async ({ page }) => {
+  test("studio widget page renders layout lab widgets", async ({ page }) => {
     await page.goto("/lumonox/ui/dashboard");
     await signInViaDevMagicLink(page);
 
-    await page.goto("/lumonox/ui/widgets-showcase");
-    await expect(page.getByRole("heading", { name: "Widgets", exact: true })).toBeVisible();
-
-    await page.getByRole("button", { name: "Open sample dialog" }).click();
-    await expect(page.getByRole("heading", { name: "Sample dialog" })).toBeVisible();
-
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("heading", { name: "Sample dialog" })).toHaveCount(0);
+    await page.goto("/lumonox/ui/w/lx_showcase");
+    await expect(page.getByRole("heading", { name: "Widget layout lab", exact: true })).toBeVisible();
+    await expect(page.getByText("Ingest throughput (window)", { exact: true })).toBeVisible({
+      timeout: 25_000,
+    });
   });
 
   test("diagnosis URL query syncs into sticky scope summary", async ({ page }) => {

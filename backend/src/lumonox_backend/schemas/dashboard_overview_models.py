@@ -81,12 +81,35 @@ class DashboardWidgetPoint(BaseModel):
     value: float
 
 
+class DashboardWidgetPlacement(BaseModel):
+    widget_id: str
+    order: int
+    section: str
+    column_span: int = 1
+    row_span: int = 1
+
+
+class DashboardWidgetPageLayout(BaseModel):
+    page_id: str
+    title: str
+    description: str | None = None
+    order: int
+    widgets: list[DashboardWidgetPlacement]
+
+
+class DashboardWidgetLayout(BaseModel):
+    default_page_id: str
+    pages: list[DashboardWidgetPageLayout]
+    unplaced_widget_ids: list[str] = []
+
+
 class DashboardWidgetsResponse(BaseModel):
     server_now: datetime
     from_timestamp: datetime
     to_timestamp: datetime
     definitions: list[DashboardWidgetDefinition]
     points: list[DashboardWidgetPoint]
+    layout: DashboardWidgetLayout | None = None
 
 
 class DashboardRequestItem(BaseModel):

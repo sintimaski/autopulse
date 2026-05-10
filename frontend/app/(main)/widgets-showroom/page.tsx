@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: "Widgets (redirect)",
 };
 
-/** Legacy URL — merged into `/widgets-showcase`. */
+/** Legacy URL — merged into `/w/lx_showcase`. */
 export default function WidgetsShowroomRedirectPage({
   searchParams,
 }: {
@@ -22,5 +22,5 @@ export default function WidgetsShowroomRedirectPage({
     }
   }
   const qs = params.toString();
-  redirect(qs ? `/widgets-showcase?${qs}` : "/widgets-showcase");
+  redirect(qs ? `/w/lx_showcase?${qs}` : "/w/lx_showcase");
 }

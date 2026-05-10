@@ -11,6 +11,7 @@ import type {
   DashboardApiKeyItem,
   DashboardOnboardingStatusResponse,
   DashboardSessionResponse,
+  DashboardStudioNavPage,
   DashboardWidgetsResponse,
   DiagnosisErrorGroupEventsResponse,
   DiagnosisFailureRoutesResponse,
@@ -139,6 +140,8 @@ export type DashboardDataContextValue = {
   alertDispatches: AlertDispatchesResponse | null;
   alertCapabilities: AlertChannelCapability[];
   onboardingStatus: DashboardOnboardingStatusResponse | null;
+  /** Server-driven `/w/...` sidebar entries from bootstrap. */
+  studioNavPages: DashboardStudioNavPage[];
   /**
    * Set when `/dashboard/bootstrap` fails while signed in. UI should show a non-blocking banner with
    * {@link retryWorkspaceBootstrap}; does not replace per-request `errorMessage` from traffic fetches.

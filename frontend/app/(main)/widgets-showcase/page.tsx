@@ -1,16 +1,10 @@
 import type { Metadata } from "next";
-
-import { DashboardPageBoundary } from "../../../components/dashboard/DashboardPageBoundary";
-import { DashboardWidgetGalleryContent } from "../../../components/dashboard/dashboardPages/DashboardWidgetGalleryContent";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Widgets",
+  title: "Widgets (redirect)",
 };
 
 export default function WidgetsShowcasePage() {
-  return (
-    <DashboardPageBoundary dataReady="traffic-requests">
-      <DashboardWidgetGalleryContent />
-    </DashboardPageBoundary>
-  );
+  redirect("/w/lx_showcase");
 }

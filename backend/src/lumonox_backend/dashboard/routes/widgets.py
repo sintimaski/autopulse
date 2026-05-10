@@ -12,7 +12,9 @@ from lumonox_backend.dashboard.params import (
     TO_TIMESTAMP_QUERY,
     WINDOW_MINUTES_QUERY,
 )
+from lumonox_backend.dashboard.studio_showcase import merge_studio_showcase_widgets
 from lumonox_backend.dashboard.time_window import as_utc_datetime, resolve_time_window
+from lumonox_backend.dashboard.widget_layout import build_widget_layout
 from lumonox_backend.database import get_db_session
 from lumonox_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from lumonox_backend.schemas import (
@@ -53,33 +55,39 @@ async def get_dashboard_widgets(
     )
     narrow = [p for p in points_raw if resolved_from <= as_utc_datetime(p.timestamp) <= resolved_to]
     points = narrow if narrow else points_raw
+    mapped_definitions = [
+        DashboardWidgetDefinition(
+            widget_id=item.widget_id,
+            type=cast(
+                Literal["card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"],
+                item.widget_type,
+            ),
+            title=item.title,
+            description=item.description,
+            order=item.display_order,
+            config=item.config or {},
+        )
+        for item in definitions
+        if item.widget_type
+        in {"card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"}
+    ]
+    mapped_points = [
+        DashboardWidgetPoint(
+            widget_id=item.widget_id,
+            timestamp=item.timestamp,
+            label=item.label,
+            value=item.value,
+        )
+        for item in points
+    ]
+    merged_definitions, merged_points = merge_studio_showcase_widgets(
+        mapped_definitions, mapped_points, resolved_from, resolved_to
+    )
     return DashboardWidgetsResponse(
         server_now=server_now,
         from_timestamp=resolved_from,
         to_timestamp=resolved_to,
-        definitions=[
-            DashboardWidgetDefinition(
-                widget_id=item.widget_id,
-                type=cast(
-                    Literal["card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"],
-                    item.widget_type,
-                ),
-                title=item.title,
-                description=item.description,
-                order=item.display_order,
-                config=item.config or {},
-            )
-            for item in definitions
-            if item.widget_type
-            in {"card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"}
-        ],
-        points=[
-            DashboardWidgetPoint(
-                widget_id=item.widget_id,
-                timestamp=item.timestamp,
-                label=item.label,
-                value=item.value,
-            )
-            for item in points
-        ],
+        definitions=merged_definitions,
+        points=merged_points,
+        layout=build_widget_layout(merged_definitions),
     )

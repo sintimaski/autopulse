@@ -70,6 +70,7 @@ import {
   type SortKey,
   type ThemePreference,
   type ThemeSettings,
+  type DashboardStudioNavPage,
 } from "./dashboardTypes";
 import { applyDashboardScopedQueryState } from "./applyDashboardScopedQuery";
 import {
@@ -209,6 +210,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [alertDispatches, setAlertDispatches] = useState<AlertDispatchesResponse | null>(null);
   const [alertCapabilities, setAlertCapabilities] = useState<AlertChannelCapability[]>([]);
   const [onboardingStatus, setOnboardingStatus] = useState<DashboardOnboardingStatusResponse | null>(null);
+  const [studioNavPages, setStudioNavPages] = useState<DashboardStudioNavPage[]>([]);
   const [workspaceBootstrapError, setWorkspaceBootstrapError] = useState<string | null>(null);
   const [bootstrapRetryToken, setBootstrapRetryToken] = useState(0);
   const [retentionSettings, setRetentionSettings] = useState<RetentionSettings | null>(null);
@@ -438,6 +440,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const retryWorkspaceBootstrap = useCallback(() => {
     setWorkspaceBootstrapError(null);
     setOnboardingStatus(null);
+    setStudioNavPages([]);
     setBootstrapRetryToken((t) => t + 1);
   }, []);
 
@@ -464,10 +467,12 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setApiKeys(bootstrapData.api_keys.items ?? []);
         setAlertCapabilities(bootstrapData.alert_capabilities.channels ?? []);
         setOnboardingStatus(bootstrapData.onboarding_status);
+        setStudioNavPages(bootstrapData.studio_nav_pages ?? []);
       } catch (error) {
         if (cancelled || (error instanceof DOMException && error.name === "AbortError")) {
           return;
         }
+        setStudioNavPages([]);
         setOnboardingStatus(createBootstrapFailureOnboardingFallback());
         setWorkspaceBootstrapError(buildDashboardNetworkError(error));
       }
@@ -1959,6 +1964,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertDispatches,
       alertCapabilities,
       onboardingStatus,
+      studioNavPages,
       workspaceBootstrapError,
       retryWorkspaceBootstrap,
       retentionSettings,
@@ -2100,6 +2106,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       alertDispatches,
       alertCapabilities,
       onboardingStatus,
+      studioNavPages,
       workspaceBootstrapError,
       retryWorkspaceBootstrap,
       retentionSettings,

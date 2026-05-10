@@ -441,7 +441,10 @@ function ShellWithData({ children }: { children: ReactNode }) {
 
   const isDark =
     d.themePreference === "dark" || (d.themePreference === "system" && systemPrefersDark);
-  const meta = PAGE_META[pathname] ?? PAGE_META["/dashboard"];
+  const studioPageMeta = d.studioNavPages.find((p) => p.pathname === pathname);
+  const meta = studioPageMeta
+    ? { title: studioPageMeta.page_title, subtitle: studioPageMeta.page_subtitle ?? "" }
+    : (PAGE_META[pathname] ?? PAGE_META["/dashboard"]);
   const showServerScope =
     pathname === "/diagnosis" ||
     pathname === "/logs" ||
@@ -566,6 +569,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     <>
       <DashboardAppShell
       pathname={pathname}
+      studioNavPages={d.studioNavPages}
       title={meta.title}
       subtitle={meta.subtitle}
       statusStrip={statusStrip ?? undefined}

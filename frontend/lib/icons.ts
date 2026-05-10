@@ -31,6 +31,7 @@ export {
   ScrollText,
   Settings,
   SlidersHorizontal,
+  Sparkles,
   Stethoscope,
   Trash2,
   Undo2,

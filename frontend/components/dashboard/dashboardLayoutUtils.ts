@@ -4,13 +4,21 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     subtitle:
       "Health snapshot — Overview scope uses the same URL keys as Diagnosis and Requests; open those pages for path, latency, or advanced filters.",
   },
-  "/widgets-showcase": {
+  "/widgets": {
     title: "Widgets",
-    subtitle: "Live SDK charts from your scope plus a timer-driven mock preview.",
+    subtitle: "This URL forwards to the studio layout lab.",
+  },
+  "/w/lx_showcase": {
+    title: "Widget layout lab",
+    subtitle: "Every widget type with varied sections, column spans, and row spans.",
   },
   "/widgets-showroom": {
     title: "Widgets",
-    subtitle: "This URL forwards to the unified widgets page.",
+    subtitle: "This URL forwards to /w/lx_showcase.",
+  },
+  "/widgets-showcase": {
+    title: "Widgets",
+    subtitle: "This URL forwards to /w/lx_showcase.",
   },
   "/requests": {
     title: "Requests",

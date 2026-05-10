@@ -16,6 +16,8 @@ def test_card_widget_serialization() -> None:
     payload = widget.serialize_definition()
     assert payload["type"] == "card"
     assert payload["config"]["unit"] == "jobs"
+    assert payload["config"]["page_id"] == "custom"
+    assert payload["config"]["section"] == "default"
     points = widget.collect_points()
     assert len(points) == 1
     assert points[0]["value"] == 7.0

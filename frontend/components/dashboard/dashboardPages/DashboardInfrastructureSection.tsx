@@ -1124,7 +1124,7 @@ export function DashboardInfrastructureSection({
         }. Gauges average samples in each bucket; cumulative counters use the reading at the bucket end; empty buckets repeat the last value (0 before the first sample).`;
 
   return (
-    <>
+    <div className="flex flex-col gap-8">
       <section className="grid w-full gap-4 xl:grid-cols-2 xl:items-stretch">
         <div className="min-w-0">
           <div className="flex h-full flex-col rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-md dark:shadow-black/30 dark:ring-white/[0.06]">
@@ -1294,6 +1294,6 @@ export function DashboardInfrastructureSection({
           ) : null}
         </ChartPanel>
       </section>
-    </>
+    </div>
   );
 }

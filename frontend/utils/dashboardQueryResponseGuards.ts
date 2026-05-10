@@ -251,6 +251,50 @@ function isDashboardWidgetPoint(v: unknown): v is DashboardWidgetPoint {
   return true;
 }
 
+function isDashboardWidgetPlacement(v: unknown): boolean {
+  if (!isRecord(v)) {
+    return false;
+  }
+  return (
+    typeof v.widget_id === "string" &&
+    typeof v.order === "number" &&
+    typeof v.section === "string" &&
+    typeof v.column_span === "number" &&
+    typeof v.row_span === "number"
+  );
+}
+
+function isDashboardWidgetPageLayout(v: unknown): boolean {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (
+    typeof v.page_id !== "string" ||
+    typeof v.title !== "string" ||
+    (v.description !== null && v.description !== undefined && typeof v.description !== "string") ||
+    typeof v.order !== "number"
+  ) {
+    return false;
+  }
+  return Array.isArray(v.widgets) && v.widgets.every(isDashboardWidgetPlacement);
+}
+
+function isDashboardWidgetLayout(v: unknown): boolean {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (typeof v.default_page_id !== "string") {
+    return false;
+  }
+  if (!Array.isArray(v.pages) || !v.pages.every(isDashboardWidgetPageLayout)) {
+    return false;
+  }
+  if (!Array.isArray(v.unplaced_widget_ids) || !v.unplaced_widget_ids.every((id) => typeof id === "string")) {
+    return false;
+  }
+  return true;
+}
+
 export function parseDashboardWidgetsResponse(raw: unknown): DashboardWidgetsResponse | null {
   if (!isRecord(raw)) {
     return null;
@@ -265,6 +309,13 @@ export function parseDashboardWidgetsResponse(raw: unknown): DashboardWidgetsRes
     return null;
   }
   if (!Array.isArray(raw.points) || !raw.points.every(isDashboardWidgetPoint)) {
+    return null;
+  }
+  if (
+    raw.layout !== undefined &&
+    raw.layout !== null &&
+    !isDashboardWidgetLayout(raw.layout)
+  ) {
     return null;
   }
   return raw as DashboardWidgetsResponse;

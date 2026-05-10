@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from lumonox_backend.schemas.dashboard_overview_models import (
     DashboardDiagnosisErrorGroupEventsResponse,
@@ -101,6 +101,19 @@ class DashboardDataQueryResponse(BaseModel):
     alert_dispatches: DashboardAlertDispatchesResponse | None = None
 
 
+class DashboardStudioNavPage(BaseModel):
+    """Server-defined sidebar entry; the static export must list each ``page_id``."""
+
+    page_id: str
+    pathname: str
+    sidebar_label: str
+    page_title: str
+    page_subtitle: str | None = None
+    icon: str = "layout-grid"
+    nav_section_heading: str | None = "Studio"
+    nav_order: int = 0
+
+
 class DashboardBootstrapResponse(BaseModel):
     retention_settings: DashboardRetentionSettings
     alert_settings: DashboardAlertSettings
@@ -108,6 +121,7 @@ class DashboardBootstrapResponse(BaseModel):
     api_keys: DashboardApiKeyListResponse
     alert_capabilities: DashboardAlertCapabilitiesResponse
     onboarding_status: DashboardOnboardingStatusResponse | None = None
+    studio_nav_pages: list[DashboardStudioNavPage] = Field(default_factory=list)
 
 
 class DashboardInternalMetricsResponse(BaseModel):

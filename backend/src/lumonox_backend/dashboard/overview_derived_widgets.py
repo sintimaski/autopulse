@@ -6,6 +6,7 @@ pie/bar + KPI cards aligned with the same overview window as traffic cards.
 
 from __future__ import annotations
 
+from lumonox_backend.dashboard.widget_layout import build_widget_layout
 from lumonox_backend.schemas.dashboard_overview_models import (
     DashboardOverviewBucket,
     DashboardOverviewResponse,
@@ -39,7 +40,12 @@ def build_overview_derived_widgets(
             title="Responses by status class",
             description="Share of HTTP status families in the overview window",
             order=901,
-            config={},
+            config={
+                "page_id": "overview",
+                "page_title": "Overview widgets",
+                "section": "charts",
+                "column_span": 1,
+            },
         ),
         DashboardWidgetDefinition(
             widget_id="lx_home_peak_minutes_bar",
@@ -47,7 +53,13 @@ def build_overview_derived_widgets(
             title="Busiest time buckets",
             description="Top buckets by request volume in the overview series",
             order=902,
-            config={"unit": "req"},
+            config={
+                "unit": "req",
+                "page_id": "overview",
+                "page_title": "Overview widgets",
+                "section": "charts",
+                "column_span": 1,
+            },
         ),
         DashboardWidgetDefinition(
             widget_id="lx_home_window_requests",
@@ -55,7 +67,13 @@ def build_overview_derived_widgets(
             title="Requests in window",
             description="Total successful ingest requests counted in overview",
             order=903,
-            config={"unit": "requests"},
+            config={
+                "unit": "requests",
+                "page_id": "overview",
+                "page_title": "Overview widgets",
+                "section": "kpis",
+                "column_span": 1,
+            },
         ),
         DashboardWidgetDefinition(
             widget_id="lx_home_window_avg_latency",
@@ -63,7 +81,13 @@ def build_overview_derived_widgets(
             title="Avg latency (window)",
             description="Request-weighted mean latency for the overview window",
             order=904,
-            config={"unit": "ms"},
+            config={
+                "unit": "ms",
+                "page_id": "overview",
+                "page_title": "Overview widgets",
+                "section": "kpis",
+                "column_span": 1,
+            },
         ),
     ]
 
@@ -135,5 +159,6 @@ def merge_overview_derived_widgets(
         update={
             "definitions": defs + extra_defs,
             "points": pts + extra_pts,
+            "layout": build_widget_layout(defs + extra_defs),
         }
     )

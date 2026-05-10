@@ -3,18 +3,30 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { Activity, LayoutGrid, PanelLeft, PanelLeftClose, RotateCw } from "../../lib/icons";
-import type { LucideIcon } from "../../lib/icons";
+import { Activity, PanelLeft, PanelLeftClose, RotateCw } from "../../lib/icons";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
 import { DASHBOARD_NAV_SECTIONS } from "./dashboardNavConfig";
+import type { DashboardStudioNavPage } from "./dashboardTypes";
 import { isApiSubpathDashboard } from "./dashboardTypes";
 import { NavIaMigrationBanner } from "./NavIaMigrationBanner";
+import { resolveStudioNavIcon } from "./studioNavSidebarIcons";
 
 const SIDEBAR_COLLAPSED_KEY = "lumonox.sidebarCollapsed";
 
-const DEV_NAV: readonly { href: string; label: string; Icon: LucideIcon }[] = [
-  { href: "/widgets-showcase", label: "Widgets", Icon: LayoutGrid },
-] as const;
+function groupStudioNavBySection(pages: readonly DashboardStudioNavPage[]) {
+  const sorted = [...pages].sort((a, b) => a.nav_order - b.nav_order || a.page_id.localeCompare(b.page_id));
+  const sections: { heading: string; items: DashboardStudioNavPage[] }[] = [];
+  for (const page of sorted) {
+    const heading = page.nav_section_heading?.trim() || "Studio";
+    const last = sections[sections.length - 1];
+    if (last && last.heading === heading) {
+      last.items.push(page);
+    } else {
+      sections.push({ heading, items: [page] });
+    }
+  }
+  return sections;
+}
 
 export function DashboardAppShell({
   children,
@@ -32,6 +44,7 @@ export function DashboardAppShell({
   isDark,
   diagnosisNavQuery = "",
   logsNavQuery = "",
+  studioNavPages,
 }: {
   children: ReactNode;
   /** Omitted to hide the header control (live data is driven by WebSocket + scope changes). */
@@ -50,7 +63,10 @@ export function DashboardAppShell({
   diagnosisNavQuery?: string;
   /** Last persisted or live `/logs` server-scope query string (without `?`). */
   logsNavQuery?: string;
+  /** Backend-driven `/w/...` entries from `GET /dashboard/bootstrap`. */
+  studioNavPages?: readonly DashboardStudioNavPage[];
 }) {
+  const studioNav = studioNavPages ?? [];
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
@@ -195,40 +211,49 @@ export function DashboardAppShell({
                 </div>
               </div>
             ))}
-          </nav>
-          <div className="mt-auto border-t border-white/10 px-2 py-3">
-            {!sidebarCollapsed ? (
-              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-                Developers
-              </p>
-            ) : null}
-            <div className="flex flex-col gap-0.5">
-              {DEV_NAV.map((item) => {
-                const active = pathname === item.href;
-                const Icon = item.Icon;
-                return (
-                  <Link
-                    key={item.href}
-                    prefetch={false}
-                    href={item.href}
-                    title={sidebarCollapsed ? item.label : undefined}
-                    aria-current={active ? "page" : undefined}
-                    aria-label={sidebarCollapsed ? item.label : undefined}
-                    className={`flex items-center gap-2 rounded-lg text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
-                      sidebarCollapsed ? "justify-center px-2 py-2" : "px-3 py-1.5"
-                    } ${
-                      active
-                        ? "bg-white/10 font-medium text-white"
-                        : "text-neutral-400 hover:bg-white/10 hover:text-neutral-100"
-                    }`}
+            {studioNav.length
+              ? groupStudioNavBySection(studioNav).map((studioSection) => (
+                  <div
+                    key={studioSection.heading}
+                    className="mt-1 border-t border-white/10 pt-2"
+                    role="group"
+                    aria-label={studioSection.heading}
                   >
-                    <Icon className="size-3.5 shrink-0 opacity-90" aria-hidden />
-                    {!sidebarCollapsed ? <span>{item.label}</span> : null}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
+                    {!sidebarCollapsed ? (
+                      <p className="mb-1 px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                        {studioSection.heading}
+                      </p>
+                    ) : null}
+                    <div className="flex flex-col gap-0.5">
+                      {studioSection.items.map((item) => {
+                        const active = pathname === item.pathname;
+                        const Icon = resolveStudioNavIcon(item.icon);
+                        return (
+                          <Link
+                            key={item.pathname}
+                            prefetch={false}
+                            href={item.pathname}
+                            title={sidebarCollapsed ? item.sidebar_label : undefined}
+                            aria-current={active ? "page" : undefined}
+                            aria-label={sidebarCollapsed ? item.sidebar_label : undefined}
+                            className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                              sidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
+                            } ${
+                              active
+                                ? "bg-white/15 font-medium text-white"
+                                : "text-neutral-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                          >
+                            <Icon className="size-[1.125rem] shrink-0" aria-hidden />
+                            {!sidebarCollapsed ? <span>{item.sidebar_label}</span> : null}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              : null}
+          </nav>
           {!sidebarCollapsed ? (
             <div className="border-t border-white/10 px-4 py-3 text-xs leading-snug text-neutral-500">
               FastAPI-native visibility. Tune scope, then inspect evidence.

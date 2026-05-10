@@ -237,6 +237,7 @@ describe("parseDashboardBootstrapResponse", () => {
       api_keys: { items: [] },
       alert_capabilities: { channels: [] },
       onboarding_status: null,
+      studio_nav_pages: [],
     };
     expect(parseDashboardBootstrapResponse(raw)).toEqual(raw);
   });

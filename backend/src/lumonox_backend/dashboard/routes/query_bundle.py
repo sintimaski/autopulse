@@ -49,6 +49,7 @@ from lumonox_backend.dashboard.routes.ui_settings import (
     get_dashboard_theme_settings,
 )
 from lumonox_backend.dashboard.routes.widgets import get_dashboard_widgets
+from lumonox_backend.dashboard.studio_nav_pages import list_studio_nav_pages
 from lumonox_backend.database import get_db_session
 from lumonox_backend.database.session import get_session_maker
 from lumonox_backend.metrics import service_metrics
@@ -289,6 +290,7 @@ async def get_dashboard_bootstrap(
         api_keys=api_keys,
         alert_capabilities=alert_capabilities,
         onboarding_status=onboarding_status,
+        studio_nav_pages=list_studio_nav_pages(),
     )
 
 

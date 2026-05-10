@@ -9,6 +9,7 @@ import type {
   DashboardApiKeyRotateResponse,
   DashboardBootstrapResponse,
   DashboardInternalMetricsResponse,
+  DashboardStudioNavPage,
   DashboardMembershipItem,
   DashboardOnboardingStatusResponse,
   DashboardOrganizationListResponse,
@@ -517,6 +518,37 @@ export function parseDashboardOnboardingStatusResponse(raw: unknown): DashboardO
   return raw as DashboardOnboardingStatusResponse;
 }
 
+function isDashboardStudioNavPage(v: unknown): v is DashboardStudioNavPage {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (typeof v.page_id !== "string" || !v.page_id.trim()) {
+    return false;
+  }
+  if (typeof v.pathname !== "string" || !v.pathname.startsWith("/")) {
+    return false;
+  }
+  if (typeof v.sidebar_label !== "string" || !v.sidebar_label.trim()) {
+    return false;
+  }
+  if (typeof v.page_title !== "string" || !v.page_title.trim()) {
+    return false;
+  }
+  if (v.page_subtitle !== null && typeof v.page_subtitle !== "string") {
+    return false;
+  }
+  if (typeof v.icon !== "string" || !v.icon.trim()) {
+    return false;
+  }
+  if (v.nav_section_heading !== null && typeof v.nav_section_heading !== "string") {
+    return false;
+  }
+  if (typeof v.nav_order !== "number" || !Number.isFinite(v.nav_order)) {
+    return false;
+  }
+  return true;
+}
+
 /** `GET /dashboard/bootstrap` */
 export function parseDashboardBootstrapResponse(raw: unknown): DashboardBootstrapResponse | null {
   if (!isRecord(raw)) {
@@ -538,6 +570,13 @@ export function parseDashboardBootstrapResponse(raw: unknown): DashboardBootstra
     }
     onboarding_status = parsed;
   }
+  let studio_nav_pages: DashboardStudioNavPage[] = [];
+  if (raw.studio_nav_pages !== undefined && raw.studio_nav_pages !== null) {
+    if (!Array.isArray(raw.studio_nav_pages) || !raw.studio_nav_pages.every(isDashboardStudioNavPage)) {
+      return null;
+    }
+    studio_nav_pages = raw.studio_nav_pages as DashboardStudioNavPage[];
+  }
   return {
     retention_settings: retention,
     alert_settings,
@@ -545,6 +584,7 @@ export function parseDashboardBootstrapResponse(raw: unknown): DashboardBootstra
     api_keys,
     alert_capabilities,
     onboarding_status,
+    studio_nav_pages,
   };
 }
 

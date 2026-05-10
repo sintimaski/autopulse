@@ -16,7 +16,15 @@ describe("planDashboardBatchQueryForRoute", () => {
     const plan = planDashboardBatchQueryForRoute({ routePath: "/dashboard", ...base });
     expect(plan.requestsLimitForRoute).toBe(25);
     expect(plan.requestsOffsetForRoute).toBe(0);
-    expect(plan.includeWidgets).toBe(true);
+    expect(plan.includeWidgets).toBe(false);
+  });
+
+  it("loads widgets on /widgets and /w/... studio routes", () => {
+    expect(planDashboardBatchQueryForRoute({ routePath: "/widgets", ...base }).includeWidgets).toBe(true);
+    const studio = planDashboardBatchQueryForRoute({ routePath: "/w/lx_showcase", ...base });
+    expect(studio.includeWidgets).toBe(true);
+    expect(studio.includeExtended).toBe(true);
+    expect(studio.requestsOffsetForRoute).toBe(0);
   });
 
   it("drops widgets when document hidden except diagnosis extended", () => {

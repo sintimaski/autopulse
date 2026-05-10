@@ -17,6 +17,13 @@ class BaseDashboardWidget:
     title: str
     description: str | None = None
     order: int = 100
+    page_id: str = "custom"
+    page_title: str | None = None
+    page_description: str | None = None
+    page_order: int = 100
+    section: str = "default"
+    column_span: int = 1
+    row_span: int = 1
 
     @property
     def widget_type(self) -> WidgetType:
@@ -29,10 +36,22 @@ class BaseDashboardWidget:
             "title": self.title,
             "description": self.description,
             "order": self.order,
+            "config": self._layout_config(),
         }
 
     def collect_points(self) -> list[dict[str, Any]]:
         return []
+
+    def _layout_config(self) -> dict[str, Any]:
+        return {
+            "page_id": self.page_id,
+            "page_title": self.page_title,
+            "page_description": self.page_description,
+            "page_order": self.page_order,
+            "section": self.section,
+            "column_span": self.column_span,
+            "row_span": self.row_span,
+        }
 
 
 @dataclass(slots=True)
@@ -56,7 +75,11 @@ class CardWidget(BaseDashboardWidget):
 
     def serialize_definition(self) -> dict[str, Any]:
         payload = BaseDashboardWidget.serialize_definition(self)
-        payload["config"] = {"unit": self.unit, "tone": self.tone}
+        payload["config"] = {
+            **self._layout_config(),
+            "unit": self.unit,
+            "tone": self.tone,
+        }
         return payload
 
 
@@ -83,7 +106,11 @@ class LineChartWidget(BaseDashboardWidget):
 
     def serialize_definition(self) -> dict[str, Any]:
         payload = BaseDashboardWidget.serialize_definition(self)
-        payload["config"] = {"color": self.color, "unit": self.unit}
+        payload["config"] = {
+            **self._layout_config(),
+            "color": self.color,
+            "unit": self.unit,
+        }
         return payload
 
 
@@ -109,7 +136,10 @@ class BarChartWidget(BaseDashboardWidget):
 
     def serialize_definition(self) -> dict[str, Any]:
         payload = BaseDashboardWidget.serialize_definition(self)
-        payload["config"] = {"unit": self.unit}
+        payload["config"] = {
+            **self._layout_config(),
+            "unit": self.unit,
+        }
         return payload
 
 
@@ -155,7 +185,10 @@ class HistogramWidget(BaseDashboardWidget):
 
     def serialize_definition(self) -> dict[str, Any]:
         payload = BaseDashboardWidget.serialize_definition(self)
-        payload["config"] = {"unit": self.unit}
+        payload["config"] = {
+            **self._layout_config(),
+            "unit": self.unit,
+        }
         return payload
 
 
@@ -186,7 +219,11 @@ class ScatterPlotWidget(BaseDashboardWidget):
 
     def serialize_definition(self) -> dict[str, Any]:
         payload = BaseDashboardWidget.serialize_definition(self)
-        payload["config"] = {"x_label": self.x_label, "y_label": self.y_label}
+        payload["config"] = {
+            **self._layout_config(),
+            "x_label": self.x_label,
+            "y_label": self.y_label,
+        }
         return payload
 
 

@@ -84,6 +84,51 @@ describe("parseDashboardDataQueryResponse", () => {
     ).toBeNull();
   });
 
+  it("accepts widgets payload with backend layout pages", () => {
+    const parsed = parseDashboardDataQueryResponse({
+      overview: minimalOverview,
+      requests: minimalRequests,
+      widgets: {
+        server_now: "2026-01-01T00:00:00Z",
+        from_timestamp: "2026-01-01T00:00:00Z",
+        to_timestamp: "2026-01-01T01:00:00Z",
+        definitions: [
+          {
+            widget_id: "custom_latency",
+            type: "line",
+            title: "Latency",
+            description: null,
+            order: 10,
+            config: { page_id: "ops", section: "charts" },
+          },
+        ],
+        points: [{ widget_id: "custom_latency", timestamp: "2026-01-01T00:30:00Z", label: null, value: 42 }],
+        layout: {
+          default_page_id: "ops",
+          pages: [
+            {
+              page_id: "ops",
+              title: "Operations",
+              description: "Backend-provisioned page",
+              order: 1,
+              widgets: [
+                {
+                  widget_id: "custom_latency",
+                  order: 10,
+                  section: "charts",
+                  column_span: 1,
+                  row_span: 1,
+                },
+              ],
+            },
+          ],
+          unplaced_widget_ids: [],
+        },
+      },
+    });
+    expect(parsed?.widgets?.layout?.pages[0]?.page_id).toBe("ops");
+  });
+
   it("rejects non-object or non-record roots", () => {
     expect(parseDashboardDataQueryResponse(null)).toBeNull();
     expect(parseDashboardDataQueryResponse(undefined)).toBeNull();

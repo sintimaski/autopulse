@@ -21,7 +21,7 @@ Build modes:
 Bundle budget guardrails:
 
 - Run `npm run build && npm run check:bundle-budget` to validate route budgets from `.next/diagnostics/route-bundle-stats.json`.
-- Current first-load JS budgets: `/dashboard` <= 1000 KiB, `/widgets-showcase` <= 925 KiB (uncompressed; see `scripts/checkRouteBundleBudgets.mjs`).
+- Current first-load JS budgets: `/dashboard` <= 1000 KiB, `/w/[pageId]` (studio) <= 925 KiB (uncompressed; see `scripts/checkRouteBundleBudgets.mjs`).
 
 Optional frontend RUM (disabled by default):
 

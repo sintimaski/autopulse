@@ -78,12 +78,35 @@ export type DashboardWidgetPoint = {
   value: number;
 };
 
+export type DashboardWidgetPlacement = {
+  widget_id: string;
+  order: number;
+  section: string;
+  column_span: number;
+  row_span: number;
+};
+
+export type DashboardWidgetPageLayout = {
+  page_id: string;
+  title: string;
+  description: string | null;
+  order: number;
+  widgets: DashboardWidgetPlacement[];
+};
+
+export type DashboardWidgetLayout = {
+  default_page_id: string;
+  pages: DashboardWidgetPageLayout[];
+  unplaced_widget_ids: string[];
+};
+
 export type DashboardWidgetsResponse = {
   server_now: string;
   from_timestamp: string;
   to_timestamp: string;
   definitions: DashboardWidgetDefinition[];
   points: DashboardWidgetPoint[];
+  layout: DashboardWidgetLayout | null;
 };
 
 export type RequestItem = {
@@ -463,6 +486,18 @@ export type DashboardApiKeyRotateResponse = {
   rotated_at: string;
 };
 
+/** `GET /dashboard/bootstrap` — server-driven sidebar entries under `/w/...`. */
+export type DashboardStudioNavPage = {
+  page_id: string;
+  pathname: string;
+  sidebar_label: string;
+  page_title: string;
+  page_subtitle: string | null;
+  icon: string;
+  nav_section_heading: string | null;
+  nav_order: number;
+};
+
 export type DashboardBootstrapResponse = {
   retention_settings: RetentionSettings;
   alert_settings: AlertSettings;
@@ -470,6 +505,7 @@ export type DashboardBootstrapResponse = {
   api_keys: DashboardApiKeyListResponse;
   alert_capabilities: AlertCapabilitiesResponse;
   onboarding_status: DashboardOnboardingStatusResponse | null;
+  studio_nav_pages: DashboardStudioNavPage[];
 };
 
 export type DashboardInternalMetricsResponse = {

@@ -37,10 +37,11 @@ export function planDashboardBatchQueryForRoute(args: {
     errorGroupPage,
   } = args;
 
+  const isStudioWidgetRoute = routePath.startsWith("/w/");
   let includeExtended =
-    routePath === "/dashboard" || routePath === "/diagnosis" || routePath === "/widgets-showcase";
-  // Always load widgets on Home so overview-derived KPIs/charts stay available with filters.
-  let includeWidgets = routePath === "/dashboard" || routePath === "/widgets-showcase";
+    routePath === "/dashboard" || routePath === "/diagnosis" || routePath === "/widgets" || isStudioWidgetRoute;
+  // Widgets are rendered on `/w/...` studio routes (and legacy `/widgets` redirects client-side).
+  let includeWidgets = routePath === "/widgets" || isStudioWidgetRoute;
   if (!isDocumentVisible) {
     includeExtended = routePath === "/diagnosis";
     includeWidgets = false;
@@ -52,11 +53,11 @@ export function planDashboardBatchQueryForRoute(args: {
   const requestsLimitForRoute =
     routePath === "/dashboard"
       ? Math.min(requestLimit, 25)
-      : routePath === "/widgets-showcase"
+      : routePath === "/widgets" || isStudioWidgetRoute
         ? Math.min(requestLimit, 100)
         : requestLimit;
   const requestsOffsetForRoute =
-    routePath === "/dashboard" || routePath === "/widgets-showcase" ? 0 : requestPage * requestLimit;
+    routePath === "/dashboard" || routePath === "/widgets" || isStudioWidgetRoute ? 0 : requestPage * requestLimit;
   const errorGroupsLimitForRoute = routePath === "/dashboard" ? Math.min(errorGroupLimit, 10) : errorGroupLimit;
   const errorGroupsOffsetForRoute = routePath === "/dashboard" ? 0 : errorGroupPage * errorGroupLimit;
 
