@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { ChartData, ChartDataset, ChartOptions } from "chart.js";
 
 import { CanvasLine } from "./chartCanvas";
+import { ChartScopeTintOverlay } from "./ChartScopeTintOverlay";
 
 export type MultiSeriesLineChartSeries = {
   id: string;
@@ -27,6 +28,7 @@ type MultiSeriesLineChartProps = {
   onPointClick?: (index: number, label: string, values: Record<string, number>) => void;
   /** Skip Chart.js tween on data updates (live dashboard refresh). */
   live?: boolean;
+  chartsScopePending?: boolean;
 };
 
 export function MultiSeriesLineChart({
@@ -38,6 +40,7 @@ export function MultiSeriesLineChart({
   emptyMessage = "No series data in this range.",
   onPointClick,
   live = false,
+  chartsScopePending = false,
 }: MultiSeriesLineChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
@@ -175,15 +178,23 @@ export function MultiSeriesLineChart({
   );
 
   if (!hasData) {
-    return <p className="text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>;
+    return (
+      <div className="relative min-h-[5rem]">
+        {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+        <p className="relative z-0 text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>
+      </div>
+    );
   }
 
   const pxHeight = Math.max(80, height);
 
   return (
     <div className="space-y-2">
-      <div className="relative w-full" style={{ height: pxHeight }}>
-        <CanvasLine data={chartData} options={options} />
+      <div className="relative w-full overflow-hidden rounded-lg" style={{ height: pxHeight }}>
+        {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+        <div className="relative z-0 h-full w-full">
+          <CanvasLine data={chartData} options={options} />
+        </div>
       </div>
       <div className="flex flex-wrap gap-3">
         {series.map((entry) => {

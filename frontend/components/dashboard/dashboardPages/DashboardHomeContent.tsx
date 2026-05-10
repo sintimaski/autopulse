@@ -28,6 +28,7 @@ import {
   type StackedAreaSeries,
 } from "../charts/lazyCharts";
 import { CardSpinner } from "../../ui/CardSpinner";
+import { ChartScopeTintOverlay } from "../charts/ChartScopeTintOverlay";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
@@ -259,6 +260,7 @@ export function DashboardHomeContent() {
         tone: "neutral" as const,
       },
     ];
+    const chartAppliedWindowKey = `${overview.from_timestamp}|${overview.to_timestamp}`;
     return (
       <>
         <section className="space-y-6">
@@ -304,6 +306,8 @@ export function DashboardHomeContent() {
             fromTimestamp={homeSlice.windowFromTimestamp}
             toTimestamp={homeSlice.windowToTimestamp}
             globalWindowMinutes={homeSlice.windowMinutes}
+            scopeAnchorKey={homeSlice.chartsScopeAnchorKey}
+            chartsScopePending={homeSlice.chartsScopePending}
           />
         </div>
         <div className="space-y-6 text-slate-900 dark:text-neutral-100">
@@ -317,30 +321,37 @@ export function DashboardHomeContent() {
                 overviewExtended={overviewExtended}
                 dashboardWidgets={d.dashboardWidgets}
                 globalWindowMinutes={homeSlice.windowMinutes}
+                chartsScopePending={homeSlice.chartsScopePending}
+                chartsScopeAnchorKey={homeSlice.chartsScopeAnchorKey}
               />
             </div>
           </details>
         </div>
-        <div className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
+        <div className="relative w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
           <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-neutral-400">
             Errors and latency trend
           </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="min-w-0">
-              <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Errors</div>
-              <SparklineMini
-                interactive={false}
-                values={sparklineErrors}
-                svgClassName="h-6 w-full text-rose-500 dark:text-rose-400"
-              />
-            </div>
-            <div className="min-w-0">
-              <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Latency</div>
-              <SparklineMini
-                interactive={false}
-                values={sparklineLatency}
-                svgClassName="h-6 w-full text-sky-600 dark:text-sky-400"
-              />
+          <div className="relative mt-0.5 min-h-[2.5rem]">
+            {homeSlice.chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+            <div className="relative z-0 grid grid-cols-2 gap-4">
+              <div className="min-w-0">
+                <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Errors</div>
+                <SparklineMini
+                  key={`errs-${chartAppliedWindowKey}`}
+                  interactive={false}
+                  values={sparklineErrors}
+                  svgClassName="h-6 w-full text-rose-500 dark:text-rose-400"
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="mb-0.5 text-[10px] text-slate-500 dark:text-neutral-500">Latency</div>
+                <SparklineMini
+                  key={`lat-${chartAppliedWindowKey}`}
+                  interactive={false}
+                  values={sparklineLatency}
+                  svgClassName="h-6 w-full text-sky-600 dark:text-sky-400"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -465,6 +476,7 @@ export function DashboardHomeContent() {
     ? derivedLatencyWeighted / displayRequestCount
     : overview.avg_latency_ms;
   const displayRequestsPerMinute = displayRequestCount / Math.max(d.windowMinutes, 1);
+  const chartAppliedWindowKey = `${overview.from_timestamp}|${overview.to_timestamp}`;
   const usingFilteredSeries = d.method !== "ALL" || d.statusClass !== "ALL";
   const errorTrendValues = d.sparklineSeries.map((bucket) => bucket.error_count);
   const latencyTrendValues = d.sparklineSeries.map((bucket) => bucket.avg_latency_ms);
@@ -977,6 +989,7 @@ export function DashboardHomeContent() {
                       color={typeof widget.config?.color === "string" ? widget.config.color : "#38bdf8"}
                       formatValue={(value) => value.toFixed(2)}
                       live
+                      chartsScopePending={d.chartsScopePending}
                     />
                   </ChartPanel>
                 );
@@ -995,7 +1008,7 @@ export function DashboardHomeContent() {
                   .sort((a, b) => b.value - a.value);
                 return (
                   <ChartPanel key={widget.widget_id} title={widget.title} description={widget.description ?? undefined}>
-                    <BreakdownBarChart items={collapsedBars} live />
+                    <BreakdownBarChart items={collapsedBars} live chartsScopePending={d.chartsScopePending} />
                   </ChartPanel>
                 );
               }
@@ -1071,7 +1084,12 @@ export function DashboardHomeContent() {
                 }));
                 return (
                   <ChartPanel key={widget.widget_id} title={widget.title} description={widget.description ?? undefined}>
-                    <StackedAreaChart labels={timestampLabels} series={stackedSeries} live />
+                    <StackedAreaChart
+                      labels={timestampLabels}
+                      series={stackedSeries}
+                      live
+                      chartsScopePending={d.chartsScopePending}
+                    />
                   </ChartPanel>
                 );
               }
@@ -1107,6 +1125,8 @@ export function DashboardHomeContent() {
           overviewExtended={overviewExtended}
           dashboardWidgets={d.dashboardWidgets}
           globalWindowMinutes={d.windowMinutes}
+          chartsScopePending={d.chartsScopePending}
+          chartsScopeAnchorKey={d.chartsScopeAnchorKey}
         />
       </div>
 
@@ -1151,6 +1171,8 @@ export function DashboardHomeContent() {
             toTimestamp={overview.to_timestamp}
             globalWindowMinutes={d.windowMinutes}
             diagnosisBaseQuery={Object.fromEntries(diagnosisParams.entries())}
+            scopeAnchorKey={d.chartsScopeAnchorKey}
+            chartsScopePending={d.chartsScopePending}
           />
         </div>
         {overview.series.length === 0 && d.sparklineSeries.length > 0 && (
@@ -1163,10 +1185,28 @@ export function DashboardHomeContent() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <ChartPanel title="Error trend" description="Minute-level error counts in current scope.">
-          <SparklineMini values={errorTrendValues} colorClass="text-rose-600 dark:text-rose-300" />
+          <div className="relative min-h-[3rem] overflow-hidden rounded-lg">
+            {d.chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+            <div className="relative z-0">
+              <SparklineMini
+                key={`err-trend-${chartAppliedWindowKey}`}
+                values={errorTrendValues}
+                colorClass="text-rose-600 dark:text-rose-300"
+              />
+            </div>
+          </div>
         </ChartPanel>
         <ChartPanel title="Latency trend" description="Average minute latency in milliseconds.">
-          <SparklineMini values={latencyTrendValues} colorClass="text-amber-600 dark:text-amber-300" />
+          <div className="relative min-h-[3rem] overflow-hidden rounded-lg">
+            {d.chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+            <div className="relative z-0">
+              <SparklineMini
+                key={`lat-trend-${chartAppliedWindowKey}`}
+                values={latencyTrendValues}
+                colorClass="text-amber-600 dark:text-amber-300"
+              />
+            </div>
+          </div>
         </ChartPanel>
         <ChartPanel
           title="Latency shape"
@@ -1193,12 +1233,14 @@ export function DashboardHomeContent() {
         >
           {apdexTrendValues.length ? (
             <TimeSeriesLineChart
+              key={`apdex-${chartAppliedWindowKey}`}
               title="Apdex %"
               labels={apdexTrendLabels}
               values={apdexTrendValues}
               color="#14b8a6"
               formatValue={(value) => `${value.toFixed(2)}%`}
               live
+              chartsScopePending={d.chartsScopePending}
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">No request sample available for Apdex trend.</p>
@@ -1213,6 +1255,7 @@ export function DashboardHomeContent() {
             valueLabel="errors"
             emptyMessage="No error events in this window."
             live
+            chartsScopePending={d.chartsScopePending}
           />
         </ChartPanel>
         <ChartPanel
@@ -1221,12 +1264,14 @@ export function DashboardHomeContent() {
         >
           {alertTimelineValues.length ? (
             <TimeSeriesLineChart
+              key={`alerts-${chartAppliedWindowKey}`}
               title="Alert events"
               labels={alertTimelineLabels}
               values={alertTimelineValues}
               color="#a78bfa"
               formatValue={(value) => value.toFixed(0)}
               live
+              chartsScopePending={d.chartsScopePending}
             />
           ) : (
             <p className="text-sm text-slate-600 dark:text-neutral-300">
@@ -1297,9 +1342,11 @@ export function DashboardHomeContent() {
           description="How success, 4xx, and 5xx compose traffic minute-by-minute."
         >
           <StackedAreaChart
+            key={`outcome-${chartAppliedWindowKey}`}
             labels={statusClassLabels}
             series={outcomeStackedSeries}
             live
+            chartsScopePending={d.chartsScopePending}
             onPointClick={(index, _label, values) => {
               const bucket = d.sparklineSeries[index];
               const dominant =
@@ -1530,6 +1577,7 @@ export function DashboardHomeContent() {
               valueLabel="req"
               emptyMessage="No service-level data yet."
               live
+              chartsScopePending={d.chartsScopePending}
               onItemClick={(item) => {
                 pushRequestsWithScope({ services: item.key });
               }}
@@ -1546,9 +1594,11 @@ export function DashboardHomeContent() {
           actionLabel="Open diagnosis"
         >
           <MultiSeriesLineChart
+            key={`status-class-${chartAppliedWindowKey}`}
             labels={statusClassLabels}
             series={statusClassSeries}
             live
+            chartsScopePending={d.chartsScopePending}
             onPointClick={(index, _label, values) => {
               const bucket = d.sparklineSeries[index];
               const statusPairs: Array<[string, number]> = [
@@ -1586,6 +1636,7 @@ export function DashboardHomeContent() {
             valueLabel="req"
             emptyMessage="No route breakdown available."
             live
+            chartsScopePending={d.chartsScopePending}
             onItemClick={(item) => {
               pushRequestsWithScope({ path_contains: item.key });
             }}

@@ -150,6 +150,10 @@ export type DashboardDataContextValue = {
   excludeLumonoxTraffic: boolean;
   errorGroupSort: "last_seen" | "count";
   loading: boolean;
+  /** True after dashboard chart scope changes until the in-flight `POST /dashboard/query` applies (not used for background polls). */
+  chartsScopePending: boolean;
+  /** Stable key for chart-local controls that should reset when the overview query scope changes. */
+  chartsScopeAnchorKey: string;
   errorMessage: string | null;
   refreshToken: number;
   /** When true, WebSocket/poll/visibility-driven refresh is paused (Diagnosis/Requests sticky bar). Scope changes still fetch. */
@@ -281,6 +285,8 @@ export type DashboardHomeSliceValue = {
   sqlFilterEnabled: boolean;
   errorMessage: string | null;
   recentJobFailures: RecentJobFailuresResponse | null;
+  chartsScopePending: boolean;
+  chartsScopeAnchorKey: string;
 };
 
 export type DashboardDiagnosisSliceValue = {

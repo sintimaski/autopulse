@@ -4,6 +4,7 @@ import { useId, useMemo } from "react";
 import type { ChartOptions } from "chart.js";
 
 import { CanvasLine } from "./chartCanvas";
+import { ChartScopeTintOverlay } from "./ChartScopeTintOverlay";
 
 type TimeSeriesLineChartProps = {
   title: string;
@@ -18,6 +19,7 @@ type TimeSeriesLineChartProps = {
   chartAreaHeightClass?: string;
   /** When true, Chart.js skips tween on data changes (live polling / in-place updates). */
   live?: boolean;
+  chartsScopePending?: boolean;
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -44,6 +46,7 @@ export function TimeSeriesLineChart({
   emptyMessage = "No data for this graph range.",
   chartAreaHeightClass = "h-[5.25rem]",
   live = false,
+  chartsScopePending = false,
 }: TimeSeriesLineChartProps) {
   const trendDescriptionId = useId();
   const latest = values.length ? values[values.length - 1] : 0;
@@ -160,19 +163,25 @@ export function TimeSeriesLineChart({
             </p>
           ) : null}
           <div
-            className={`relative w-full ${chartAreaHeightClass}`}
+            className={`relative w-full overflow-hidden rounded-lg ${chartAreaHeightClass}`}
             role="img"
             aria-label={`${title} time series chart`}
             aria-describedby={trendDescription ? trendDescriptionId : undefined}
           >
-            <CanvasLine data={chartData} options={options} />
+            {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+            <div className="relative z-0 h-full w-full">
+              <CanvasLine data={chartData} options={options} />
+            </div>
           </div>
           <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400" aria-hidden="true">
             {labels[0]} {" -> "} {labels[labels.length - 1]}
           </p>
         </>
       ) : (
-        <p className="text-xs text-slate-500 dark:text-neutral-400">{emptyMessage}</p>
+        <div className="relative min-h-[4.5rem] overflow-hidden rounded-lg border border-slate-200/40 bg-slate-50/40 p-2 dark:border-neutral-700/50 dark:bg-neutral-900/30">
+          {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+          <p className="relative z-0 text-xs text-slate-500 dark:text-neutral-400">{emptyMessage}</p>
+        </div>
       )}
     </div>
   );

@@ -12,10 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lumonox_backend.auth import ProjectContext, authenticate_project
 from lumonox_backend.commercial.plan_limits import effective_ingest_rate_limit_max
 from lumonox_backend.core.config import Settings, get_settings
-from lumonox_backend.dashboard.query_snapshot_cache import (
-    dashboard_query_snapshot_cache,
-    live_ingest_delta_from_payload,
-)
 from lumonox_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
 from lumonox_backend.database import get_db_session, get_session_maker
 from lumonox_backend.ingestion.exclude_lumonox import is_lumonox_internal_path
@@ -68,13 +64,6 @@ async def _ingest_websocket_fanout(
         await project_websocket_hub.publish_ingest(message=ingest_message)
         await publish_realtime_ingest(ingest_message, settings=get_settings())
         dashboard_version = await mark_project_dashboard_dirty(project_id)
-        ingest_delta = live_ingest_delta_from_payload(delta_payload)
-        if ingest_delta is not None:
-            dashboard_query_snapshot_cache.apply_live_ingest_delta(
-                project_id=project_id,
-                version=dashboard_version,
-                delta=ingest_delta,
-            )
         update_message = DashboardUpdateMessage(
             project_id=project_id,
             version=dashboard_version,

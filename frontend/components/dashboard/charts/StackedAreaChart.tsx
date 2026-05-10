@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { ChartData, ChartDataset, ChartOptions } from "chart.js";
 
 import { CanvasLine } from "./chartCanvas";
+import { ChartScopeTintOverlay } from "./ChartScopeTintOverlay";
 
 export type StackedAreaSeries = {
   id: string;
@@ -27,6 +28,8 @@ type StackedAreaChartProps = {
   live?: boolean;
   /** Override default assistive summary (built from series labels and time span). */
   accessibilityLabel?: string;
+  /** Semi-transparent overlay while a new dashboard scope query is in flight. */
+  chartsScopePending?: boolean;
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -50,6 +53,7 @@ export function StackedAreaChart({
   onPointClick,
   live = false,
   accessibilityLabel,
+  chartsScopePending = false,
 }: StackedAreaChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
@@ -194,7 +198,14 @@ export function StackedAreaChart({
   );
 
   if (!hasData) {
-    return <p className="text-sm text-slate-600 dark:text-neutral-300">No stacked trend data in this range.</p>;
+    return (
+      <div className="relative min-h-[5rem]">
+        {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+        <p className="relative z-0 text-sm text-slate-600 dark:text-neutral-300">
+          No stacked trend data in this range.
+        </p>
+      </div>
+    );
   }
 
   const pxHeight = Math.max(96, height);
@@ -202,12 +213,15 @@ export function StackedAreaChart({
   return (
     <div className="space-y-2">
       <div
-        className="relative w-full"
+        className="relative w-full overflow-hidden rounded-lg"
         style={{ height: pxHeight }}
         role="img"
         aria-label={chartAccessibilityLabel}
       >
-        <CanvasLine data={chartData} options={options} />
+        {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+        <div className="relative z-0 h-full w-full">
+          <CanvasLine data={chartData} options={options} />
+        </div>
       </div>
       <div className="flex flex-wrap gap-3">
         {series.map((entry) => {

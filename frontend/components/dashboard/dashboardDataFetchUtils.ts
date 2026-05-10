@@ -41,9 +41,18 @@ export const DASHBOARD_REFRESH_INTERVAL_MS = (() => {
   const raw = process.env.NEXT_PUBLIC_LUMONOX_DASHBOARD_REFRESH_INTERVAL_SECONDS;
   const parsedSeconds = Number(raw);
   if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
-    return Math.max(250, Math.floor(parsedSeconds * 1000));
+    return Math.max(1000, Math.floor(parsedSeconds * 1000));
   }
-  return 5_000;
+  return 2_000;
+})();
+
+export const DASHBOARD_HEAVY_SLICES_REFRESH_INTERVAL_MS = (() => {
+  const raw = process.env.NEXT_PUBLIC_LUMONOX_DASHBOARD_HEAVY_REFRESH_INTERVAL_SECONDS;
+  const parsedSeconds = Number(raw);
+  if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
+    return Math.max(2_000, Math.floor(parsedSeconds * 1000));
+  }
+  return 8_000;
 })();
 
 /**

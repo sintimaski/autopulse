@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { ChartData, ChartDataset, ChartOptions } from "chart.js";
 
 import { CanvasBar } from "./chartCanvas";
+import { ChartScopeTintOverlay } from "./ChartScopeTintOverlay";
 
 export type BreakdownBarDatum = {
   key: string;
@@ -21,6 +22,7 @@ type BreakdownBarChartProps = {
   onItemClick?: (item: BreakdownBarDatum) => void;
   /** Skip Chart.js tween on data updates (live dashboard refresh). */
   live?: boolean;
+  chartsScopePending?: boolean;
 };
 
 export function BreakdownBarChart({
@@ -31,6 +33,7 @@ export function BreakdownBarChart({
   className,
   onItemClick,
   live = false,
+  chartsScopePending = false,
 }: BreakdownBarChartProps) {
   const hasData = items.length > 0;
   const maxValue = useMemo(
@@ -121,14 +124,22 @@ export function BreakdownBarChart({
   );
 
   if (!hasData) {
-    return <p className="text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>;
+    return (
+      <div className={`relative min-h-[5rem] w-full ${className ?? ""}`}>
+        {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+        <p className="relative z-0 text-sm text-slate-600 dark:text-neutral-300">{emptyMessage}</p>
+      </div>
+    );
   }
 
   const chartHeight = Math.max(120, items.length * 36);
 
   return (
-    <div className={`relative w-full ${className ?? ""}`} style={{ height: chartHeight }}>
-      <CanvasBar data={chartData} options={options} />
+    <div className={`relative w-full overflow-hidden rounded-lg ${className ?? ""}`} style={{ height: chartHeight }}>
+      {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+      <div className="relative z-0 h-full w-full">
+        <CanvasBar data={chartData} options={options} />
+      </div>
     </div>
   );
 }

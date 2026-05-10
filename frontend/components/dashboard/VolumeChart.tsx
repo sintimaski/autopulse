@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+/* eslint-disable react-hooks/refs --
+   While `chartsScopePending`, chart inputs are read from `committedVolumeRef`, which is
+   synced in `useLayoutEffect` when not pending. This avoids an intermediate paint and
+   `react-hooks/set-state-in-effect` violations from mirroring the same data in state. */
+
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ChartData, ChartOptions } from "chart.js";
 
@@ -17,6 +22,7 @@ import {
   defaultVolumeStepMinutes,
 } from "../../utils/dashboardChartWindows";
 import { CanvasBar } from "./charts/chartCanvas";
+import { ChartScopeTintOverlay } from "./charts/ChartScopeTintOverlay";
 import { StackedAreaChart } from "./charts/StackedAreaChart";
 import type { StackedAreaSeries } from "./charts/StackedAreaChart";
 
@@ -62,36 +68,110 @@ function barColorForBucket(bucket: OverviewBucket): string {
   return "#737373";
 }
 
+type VolumeCommittedInputs = {
+  series: OverviewBucket[];
+  fromTimestamp: string;
+  toTimestamp: string;
+  globalWindowMinutes: number;
+  chartSpanMinutes: number;
+  stepMinutesUser: number | null;
+  scopeAnchorKey: string;
+};
+
 export function VolumeChart({
   series,
   fromTimestamp,
   toTimestamp,
   globalWindowMinutes,
   diagnosisBaseQuery,
+  scopeAnchorKey,
+  chartsScopePending = false,
 }: {
   series: OverviewBucket[];
   fromTimestamp: string;
   toTimestamp: string;
   globalWindowMinutes: number;
   diagnosisBaseQuery?: Record<string, string>;
+  /** When set, chart remount key tracks dashboard query scope (not live poll clock drift). */
+  scopeAnchorKey?: string;
+  chartsScopePending?: boolean;
 }) {
   const router = useRouter();
   const [chartSpanMinutes, setChartSpanMinutes] = useState(0);
   /** `null` = use span-derived default step (coarser than 1m when the window allows). */
   const [stepMinutesUser, setStepMinutesUser] = useState<number | null>(null);
 
+  const committedVolumeRef = useRef<VolumeCommittedInputs>({
+    series,
+    fromTimestamp,
+    toTimestamp,
+    globalWindowMinutes,
+    chartSpanMinutes: 0,
+    stepMinutesUser: null,
+    scopeAnchorKey: scopeAnchorKey ?? "static",
+  });
+  const prevChartsScopePendingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const wasPending = prevChartsScopePendingRef.current;
+    prevChartsScopePendingRef.current = chartsScopePending;
+    if (wasPending && !chartsScopePending) {
+      setChartSpanMinutes(0);
+      setStepMinutesUser(null);
+      committedVolumeRef.current = {
+        series,
+        fromTimestamp,
+        toTimestamp,
+        globalWindowMinutes,
+        chartSpanMinutes: 0,
+        stepMinutesUser: null,
+        scopeAnchorKey: scopeAnchorKey ?? "static",
+      };
+      return;
+    }
+    if (!chartsScopePending) {
+      committedVolumeRef.current = {
+        series,
+        fromTimestamp,
+        toTimestamp,
+        globalWindowMinutes,
+        chartSpanMinutes,
+        stepMinutesUser,
+        scopeAnchorKey: scopeAnchorKey ?? "static",
+      };
+    }
+  }, [
+    chartsScopePending,
+    series,
+    fromTimestamp,
+    toTimestamp,
+    globalWindowMinutes,
+    chartSpanMinutes,
+    stepMinutesUser,
+    scopeAnchorKey,
+  ]);
+
+  const c = chartsScopePending ? committedVolumeRef.current : null;
+  const sSeries = c?.series ?? series;
+  const sFrom = c?.fromTimestamp ?? fromTimestamp;
+  const sTo = c?.toTimestamp ?? toTimestamp;
+  const sWindow = c?.globalWindowMinutes ?? globalWindowMinutes;
+  const sSpanPick = c?.chartSpanMinutes ?? chartSpanMinutes;
+  const sStepPick = c?.stepMinutesUser ?? stepMinutesUser;
+  const sAnchor = c?.scopeAnchorKey ?? (scopeAnchorKey ?? "static");
+
   const chartSpanOptions = useMemo(
-    () => buildAlignedChartSpanOptions(globalWindowMinutes),
-    [globalWindowMinutes],
+    () => buildAlignedChartSpanOptions(sWindow),
+    [sWindow],
   );
 
   const effectiveChartSpanMinutes = useMemo(() => {
     const allowed = new Set(chartSpanOptions.map((o) => o.value));
-    return allowed.has(chartSpanMinutes) ? chartSpanMinutes : 0;
-  }, [chartSpanMinutes, chartSpanOptions]);
+    return allowed.has(sSpanPick) ? sSpanPick : 0;
+  }, [sSpanPick, chartSpanOptions]);
 
   const effectiveSpanMinutes =
-    effectiveChartSpanMinutes > 0 ? effectiveChartSpanMinutes : Math.max(1, globalWindowMinutes);
+    effectiveChartSpanMinutes > 0 ? effectiveChartSpanMinutes : Math.max(1, sWindow);
 
   const allowedStepMinutes = useMemo(
     () => buildVolumeStepOptions(effectiveSpanMinutes),
@@ -104,21 +184,21 @@ export function VolumeChart({
   );
 
   const effectiveStepMinutes = useMemo(() => {
-    const pick = stepMinutesUser === null ? autoStepMinutes : stepMinutesUser;
+    const pick = sStepPick === null ? autoStepMinutes : sStepPick;
     return clampStepToAllowed(pick, allowedStepMinutes);
-  }, [allowedStepMinutes, autoStepMinutes, stepMinutesUser]);
+  }, [allowedStepMinutes, autoStepMinutes, sStepPick]);
 
   const displayed = useMemo(() => {
     const trimmed =
       effectiveChartSpanMinutes <= 0
-        ? [...series].sort((a, b) => a.minute.localeCompare(b.minute))
-        : trimSeriesToLastMinutes(series, effectiveChartSpanMinutes, toTimestamp);
+        ? [...sSeries].sort((a, b) => a.minute.localeCompare(b.minute))
+        : trimSeriesToLastMinutes(sSeries, effectiveChartSpanMinutes, sTo);
     return aggregateSeriesByStep(trimmed, effectiveStepMinutes);
-  }, [series, effectiveChartSpanMinutes, effectiveStepMinutes, toTimestamp]);
+  }, [sSeries, effectiveChartSpanMinutes, effectiveStepMinutes, sTo]);
 
   const max = maxBucketRequestCount(displayed);
   const displayedRef = useRef(displayed);
-  useEffect(() => {
+  useLayoutEffect(() => {
     displayedRef.current = displayed;
   }, [displayed]);
 
@@ -126,12 +206,9 @@ export function VolumeChart({
   const totalErrors = displayed.reduce((sum, bucket) => sum + Number(bucket.error_count || 0), 0);
   const overallErrorRatePct = totalRequests > 0 ? (totalErrors / totalRequests) * 100 : 0;
 
-  /**
-   * Remount Chart.js only when chart controls change — not on rolling `from`/`to` drift from live
-   * polls (those would remount the bar chart every refresh and kill the tooltip).
-   */
   const chartLayoutKey = [
-    String(globalWindowMinutes),
+    sAnchor,
+    String(sWindow),
     String(effectiveChartSpanMinutes),
     String(effectiveStepMinutes),
   ].join("|");
@@ -271,14 +348,14 @@ export function VolumeChart({
     <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <p className="text-sm text-slate-500 dark:text-neutral-400">
-          Server window {formatMinuteLabel(fromTimestamp)} → {formatMinuteLabel(toTimestamp)} (
-          {globalWindowMinutes}m)
+          Server window {formatMinuteLabel(sFrom)} → {formatMinuteLabel(sTo)} ({sWindow}m)
         </p>
         <div className="flex flex-wrap gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600 dark:text-neutral-300">
             Chart span
             <select
               value={effectiveChartSpanMinutes}
+              disabled={chartsScopePending}
               onChange={(e) => setChartSpanMinutes(Number(e.target.value))}
               className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
@@ -293,6 +370,7 @@ export function VolumeChart({
             Step (minutes)
             <select
               value={effectiveStepMinutes}
+              disabled={chartsScopePending}
               onChange={(e) => setStepMinutesUser(Number(e.target.value))}
               className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
@@ -306,27 +384,34 @@ export function VolumeChart({
         </div>
       </div>
 
-      <div className="relative mt-3">
+      <div className="mt-3 space-y-3">
         {!displayed.length ? (
-          <div className="flex h-16 items-center rounded-xl border border-slate-200/80 bg-white/60 px-3 text-sm text-slate-500 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-neutral-300">
-            No buckets in this chart range.
+          <div className="relative flex min-h-[5rem] items-center overflow-hidden rounded-xl border border-slate-200/80 bg-white/60 dark:border-neutral-700 dark:bg-neutral-900/70">
+            {chartsScopePending ? <ChartScopeTintOverlay className="rounded-xl" /> : null}
+            <div className="relative z-0 flex h-16 w-full items-center px-3 text-sm text-slate-500 dark:text-neutral-300">
+              No buckets in this chart range.
+            </div>
           </div>
         ) : max <= 0 ? (
-          <div className="flex h-16 items-center rounded-xl border border-slate-200/80 bg-white/60 px-3 text-sm text-slate-500 dark:border-neutral-700 dark:bg-neutral-900/70 dark:text-neutral-300">
-            No request volume in these buckets.
+          <div className="relative flex min-h-[5rem] items-center overflow-hidden rounded-xl border border-slate-200/80 bg-white/60 dark:border-neutral-700 dark:bg-neutral-900/70">
+            {chartsScopePending ? <ChartScopeTintOverlay className="rounded-xl" /> : null}
+            <div className="relative z-0 flex h-16 w-full items-center px-3 text-sm text-slate-500 dark:text-neutral-300">
+              No request volume in these buckets.
+            </div>
           </div>
         ) : (
           <>
             <div
-              className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-3 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
+              className="relative w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50 px-2 py-3 dark:border-neutral-700 dark:from-neutral-900 dark:to-neutral-950"
               role="img"
               aria-label="Request volume by time bucket"
             >
-              <div className="w-full" style={{ height: barChartHeight }}>
+              {chartsScopePending ? <ChartScopeTintOverlay className="rounded-xl" /> : null}
+              <div className="relative z-0 w-full" style={{ height: barChartHeight }}>
                 <CanvasBar key={chartLayoutKey} data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
-            <div className="mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
+            <div className="relative mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
               <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-400">
                 Trends — requests by class (stacked)
               </h4>
@@ -335,20 +420,24 @@ export function VolumeChart({
                 unavailable, volume is shown as 2xx vs 5xx using the bucket totals. Hover the bar chart above for
                 latency per bucket.
               </p>
-              <div className="mt-2">
-                <StackedAreaChart
-                  labels={trendLabels}
-                  series={stackedTrendSeries}
-                  height={200}
-                  live
-                  accessibilityLabel={`Stacked request volume by response class. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
-                  onPointClick={(idx) => {
-                    const bucket = displayedRef.current[idx];
-                    if (bucket) {
-                      onBucketClick(bucket);
-                    }
-                  }}
-                />
+              <div className="relative mt-2 min-h-[12rem]">
+                {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
+                <div className="relative z-0">
+                  <StackedAreaChart
+                    labels={trendLabels}
+                    series={stackedTrendSeries}
+                    height={200}
+                    live
+                    chartsScopePending={false}
+                    accessibilityLabel={`Stacked request volume by response class. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
+                    onPointClick={(idx) => {
+                      const bucket = displayedRef.current[idx];
+                      if (bucket) {
+                        onBucketClick(bucket);
+                      }
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </>

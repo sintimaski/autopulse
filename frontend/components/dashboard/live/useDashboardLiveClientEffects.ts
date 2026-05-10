@@ -5,41 +5,38 @@ import { useEffect, type MutableRefObject } from "react";
 import { DASHBOARD_REFRESH_INTERVAL_MS } from "../dashboardDataFetchUtils";
 
 /**
- * Fallback polling when the dashboard WebSocket is disconnected (keeps charts fresh without WS).
- * Lifted from `DashboardDataProvider` to shrink the main context module.
+ * Poll dashboard data on a fixed cadence.
  */
-export function useDashboardWsDisconnectedFallbackPoll(options: {
+export function useDashboardPollingRefresh(options: {
   hasSession: boolean;
-  liveUpdatesConnected: boolean;
   liveRefreshPausedRef: MutableRefObject<boolean>;
   dashboardFetchInFlightRef: MutableRefObject<boolean>;
   dashboardQueuedRefreshRef: MutableRefObject<boolean>;
   bumpRefresh: () => void;
-  liveFallbackRefreshTimerRef: MutableRefObject<ReturnType<typeof setInterval> | null>;
+  pollingTimerRef: MutableRefObject<ReturnType<typeof setInterval> | null>;
 }): void {
   const {
     hasSession,
-    liveUpdatesConnected,
     liveRefreshPausedRef,
     dashboardFetchInFlightRef,
     dashboardQueuedRefreshRef,
     bumpRefresh,
-    liveFallbackRefreshTimerRef,
+    pollingTimerRef,
   } = options;
 
   useEffect(
     () => {
-      if (!hasSession || liveUpdatesConnected) {
-        if (liveFallbackRefreshTimerRef.current) {
-          clearInterval(liveFallbackRefreshTimerRef.current);
-          liveFallbackRefreshTimerRef.current = null;
+      if (!hasSession) {
+        if (pollingTimerRef.current) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
         }
         return;
       }
-      if (liveFallbackRefreshTimerRef.current) {
-        clearInterval(liveFallbackRefreshTimerRef.current);
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
       }
-      liveFallbackRefreshTimerRef.current = setInterval(() => {
+      pollingTimerRef.current = setInterval(() => {
         if (liveRefreshPausedRef.current) {
           return;
         }
@@ -47,20 +44,21 @@ export function useDashboardWsDisconnectedFallbackPoll(options: {
           return;
         }
         if (dashboardFetchInFlightRef.current) {
-          return;
+          dashboardQueuedRefreshRef.current = true;
+        } else {
+          bumpRefresh();
         }
-        bumpRefresh();
       }, DASHBOARD_REFRESH_INTERVAL_MS);
       return () => {
-        if (liveFallbackRefreshTimerRef.current) {
-          clearInterval(liveFallbackRefreshTimerRef.current);
-          liveFallbackRefreshTimerRef.current = null;
+        if (pollingTimerRef.current) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
         }
       };
     },
     // Refs read via `.current` inside the effect (stable ref objects); match prior provider deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasSession, liveUpdatesConnected, bumpRefresh],
+    [hasSession, bumpRefresh],
   );
 }
 

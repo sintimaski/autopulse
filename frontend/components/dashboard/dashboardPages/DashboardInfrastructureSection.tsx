@@ -1,6 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+/* eslint-disable react-hooks/refs --
+   While `chartsScopePending`, infra chart inputs are read from `committedInfraRef`, which is
+   synced in `useLayoutEffect` when not pending. Mirrors VolumeChart freeze-until-query UX. */
+
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { aggregateSeriesByStep, trimSeriesToLastMinutes } from "../../../utils/dashboardData";
 import {
@@ -28,6 +32,7 @@ import {
   buildHostChartAxisLabels,
   parseDashboardInstantMs,
 } from "./infrastructureTimeUtils";
+import { ChartScopeTintOverlay } from "../charts/ChartScopeTintOverlay";
 
 type Props = {
   sparklineSeries: OverviewBucket[];
@@ -35,6 +40,8 @@ type Props = {
   dashboardWidgets: DashboardWidgetsResponse | null;
   /** Main dashboard server query window — chart sub-windows and roll-ups must not exceed this. */
   globalWindowMinutes: number;
+  chartsScopePending?: boolean;
+  chartsScopeAnchorKey?: string;
 };
 
 const HOST_RESOURCES_CUMULATIVE_WIDGET_IDS = new Set<string>([
@@ -475,51 +482,121 @@ function containsKeyword(corpus: string, keyword: string): boolean {
   return re.test(normalizedCorpus);
 }
 
+type InfraChartCommitted = {
+  sparklineSeries: OverviewBucket[];
+  overviewExtended: OverviewExtendedResponse;
+  dashboardWidgets: DashboardWidgetsResponse | null;
+  globalWindowMinutes: number;
+  hostChartWindowMinutes: number;
+  hostChartBucketMinutes: number;
+};
+
 export function DashboardInfrastructureSection({
   sparklineSeries,
   overviewExtended,
   dashboardWidgets,
   globalWindowMinutes,
+  chartsScopePending = false,
+  chartsScopeAnchorKey,
 }: Props) {
-  const routeBreakdownByVolume = [...overviewExtended.route_breakdown]
+  const [hostChartWindowMinutes, setHostChartWindowMinutes] = useState(0);
+  const [hostChartBucketMinutes, setHostChartBucketMinutes] = useState(0);
+
+  const committedInfraRef = useRef<InfraChartCommitted>({
+    sparklineSeries,
+    overviewExtended,
+    dashboardWidgets,
+    globalWindowMinutes,
+    hostChartWindowMinutes: 0,
+    hostChartBucketMinutes: 0,
+  });
+  const prevInfraScopePendingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const wasPending = prevInfraScopePendingRef.current;
+    prevInfraScopePendingRef.current = chartsScopePending;
+    if (
+      wasPending &&
+      !chartsScopePending &&
+      chartsScopeAnchorKey !== undefined
+    ) {
+      setHostChartWindowMinutes(0);
+      setHostChartBucketMinutes(0);
+      committedInfraRef.current = {
+        sparklineSeries,
+        overviewExtended,
+        dashboardWidgets,
+        globalWindowMinutes,
+        hostChartWindowMinutes: 0,
+        hostChartBucketMinutes: 0,
+      };
+      return;
+    }
+    if (!chartsScopePending) {
+      committedInfraRef.current = {
+        sparklineSeries,
+        overviewExtended,
+        dashboardWidgets,
+        globalWindowMinutes,
+        hostChartWindowMinutes,
+        hostChartBucketMinutes,
+      };
+    }
+  }, [
+    chartsScopePending,
+    chartsScopeAnchorKey,
+    sparklineSeries,
+    overviewExtended,
+    dashboardWidgets,
+    globalWindowMinutes,
+    hostChartWindowMinutes,
+    hostChartBucketMinutes,
+  ]);
+
+  const ix = chartsScopePending ? committedInfraRef.current : null;
+  const ixSparkline = ix?.sparklineSeries ?? sparklineSeries;
+  const ixOverview = ix?.overviewExtended ?? overviewExtended;
+  const ixWidgets = ix?.dashboardWidgets ?? dashboardWidgets;
+  const ixGlobalWin = ix?.globalWindowMinutes ?? globalWindowMinutes;
+  const ixHostWin = ix?.hostChartWindowMinutes ?? hostChartWindowMinutes;
+  const ixHostBucket = ix?.hostChartBucketMinutes ?? hostChartBucketMinutes;
+
+  const routeBreakdownByVolume = [...ixOverview.route_breakdown]
     .sort((a, b) => b.request_count - a.request_count)
     .slice(0, 10);
-  const serviceBreakdownByVolume = [...overviewExtended.service_breakdown]
+  const serviceBreakdownByVolume = [...ixOverview.service_breakdown]
     .sort((a, b) => b.request_count - a.request_count)
     .slice(0, 10);
 
-  const total2xx = sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_2xx || 0), 0);
-  const total3xx = sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_3xx || 0), 0);
-  const total4xx = sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_4xx || 0), 0);
-  const total5xx = sparklineSeries.reduce((sum, bucket) => sum + Number(bucket.count_5xx || 0), 0);
+  const total2xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_2xx || 0), 0);
+  const total3xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_3xx || 0), 0);
+  const total4xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_4xx || 0), 0);
+  const total5xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_5xx || 0), 0);
 
-  const widgetDefinitions = normalizeIncomingWidgetDefinitions(dashboardWidgets?.definitions);
+  const widgetDefinitions = normalizeIncomingWidgetDefinitions(ixWidgets?.definitions);
   const widgetPointsById = new Map<string, DashboardWidgetPoint[]>();
-  for (const point of dashboardWidgets?.points ?? []) {
+  for (const point of ixWidgets?.points ?? []) {
     const existing = widgetPointsById.get(point.widget_id) ?? [];
     existing.push(point);
     widgetPointsById.set(point.widget_id, existing);
   }
 
-  const [hostChartWindowMinutes, setHostChartWindowMinutes] = useState(0);
-  const [hostChartBucketMinutes, setHostChartBucketMinutes] = useState(0);
-
   const hostChartWindowOptions = useMemo(
-    () => buildAlignedChartSpanOptions(globalWindowMinutes),
-    [globalWindowMinutes],
+    () => buildAlignedChartSpanOptions(ixGlobalWin),
+    [ixGlobalWin],
   );
 
   const effectiveHostChartWindowMinutes = useMemo(() => {
     const allowed = new Set(hostChartWindowOptions.map((o) => o.value));
-    return allowed.has(hostChartWindowMinutes) ? hostChartWindowMinutes : 0;
-  }, [hostChartWindowMinutes, hostChartWindowOptions]);
+    return allowed.has(ixHostWin) ? ixHostWin : 0;
+  }, [ixHostWin, hostChartWindowOptions]);
 
   const rollupBucketCapMinutes = useMemo(() => {
     if (effectiveHostChartWindowMinutes > 0) {
-      return Math.min(effectiveHostChartWindowMinutes, Math.max(1, globalWindowMinutes));
+      return Math.min(effectiveHostChartWindowMinutes, Math.max(1, ixGlobalWin));
     }
-    return Math.max(1, globalWindowMinutes);
-  }, [effectiveHostChartWindowMinutes, globalWindowMinutes]);
+    return Math.max(1, ixGlobalWin);
+  }, [effectiveHostChartWindowMinutes, ixGlobalWin]);
 
   const hostChartBucketOptions = useMemo(
     () => buildAlignedRollupBucketOptions(rollupBucketCapMinutes),
@@ -528,8 +605,8 @@ export function DashboardInfrastructureSection({
 
   const effectiveHostChartBucketPick = useMemo(() => {
     const allowed = new Set(hostChartBucketOptions.map((o) => o.value));
-    return allowed.has(hostChartBucketMinutes) ? hostChartBucketMinutes : 0;
-  }, [hostChartBucketMinutes, hostChartBucketOptions]);
+    return allowed.has(ixHostBucket) ? ixHostBucket : 0;
+  }, [ixHostBucket, hostChartBucketOptions]);
 
   const effectiveHostChartBucketMinutes = useMemo(() => {
     if (effectiveHostChartBucketPick <= 0) {
@@ -542,13 +619,13 @@ export function DashboardInfrastructureSection({
   }, [effectiveHostChartBucketPick, effectiveHostChartWindowMinutes]);
 
   /** Clip chart data to widget API window (aligned with infra probe points); fall back to overview when missing. */
-  const overviewFrom = overviewExtended.from_timestamp;
-  const overviewTo = overviewExtended.to_timestamp;
-  const chartClipFrom = dashboardWidgets?.from_timestamp || overviewFrom;
-  const chartClipTo = dashboardWidgets?.to_timestamp || overviewTo;
+  const overviewFrom = ixOverview.from_timestamp;
+  const overviewTo = ixOverview.to_timestamp;
+  const chartClipFrom = ixWidgets?.from_timestamp || overviewFrom;
+  const chartClipTo = ixWidgets?.to_timestamp || overviewTo;
 
   const hostChartFilteredPoints = useMemo(() => {
-    const raw = dashboardWidgets?.points ?? [];
+    const raw = ixWidgets?.points ?? [];
     const bounds = { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo };
     const windowSalvageOk = (p: DashboardWidgetPoint) =>
       hostChartPointInWindow(p, bounds, effectiveHostChartWindowMinutes);
@@ -574,7 +651,7 @@ export function DashboardInfrastructureSection({
         : (_p: DashboardWidgetPoint) => false;
     const rescued = mergeMissingHostResourceWidgetPoints(rolling, raw, rollingSalvageOk);
     return rescued.length > 0 ? rescued : mergeMissingHostResourceWidgetPoints(raw, raw, windowSalvageOk);
-  }, [dashboardWidgets?.points, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes]);
+  }, [ixWidgets?.points, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes]);
 
   const hostChartDisplayRangeMs = useMemo(() => {
     return resolveHostChartDisplayRangeMs(
@@ -607,7 +684,7 @@ export function DashboardInfrastructureSection({
 
   const sparklineForHostChart = useMemo(() => {
     let series = trimSparklineForHostChart(
-      sparklineSeries,
+      ixSparkline,
       { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
       effectiveHostChartWindowMinutes,
     );
@@ -615,7 +692,7 @@ export function DashboardInfrastructureSection({
       series = aggregateSeriesByStep(series, effectiveHostChartBucketMinutes);
     }
     return series;
-  }, [sparklineSeries, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes, effectiveHostChartBucketMinutes]);
+  }, [ixSparkline, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes, effectiveHostChartBucketMinutes]);
 
   const findWidgetByKeywords = (keywords: string[]) =>
     widgetDefinitions.find((widget) => {
@@ -1012,8 +1089,8 @@ export function DashboardInfrastructureSection({
     }),
   ];
 
-  const chartCaptionFrom = chartClipFrom.trim() ? chartClipFrom : overviewExtended.server_now;
-  const chartCaptionTo = chartClipTo.trim() ? chartClipTo : overviewExtended.server_now;
+  const chartCaptionFrom = chartClipFrom.trim() ? chartClipFrom : ixOverview.server_now;
+  const chartCaptionTo = chartClipTo.trim() ? chartClipTo : ixOverview.server_now;
 
   const chartWindowCaption =
     effectiveHostChartWindowMinutes > 0
@@ -1074,7 +1151,11 @@ export function DashboardInfrastructureSection({
             title="Host resources over time"
             description="Four independent lines on one chart (0–100% axis): CPU, memory, and disk are real utilization. Network is cumulative MB scaled to 0–100% of the peak in this window so it fits the same axis—hover for actual MB. Roll-up bucket summarizes samples across the chart window."
           >
-            <div className="mb-3 flex flex-col gap-2">
+            <div className="relative min-h-[12rem]">
+              {chartsScopePending ? (
+                <ChartScopeTintOverlay className="rounded-xl" />
+              ) : null}
+              <div className="mb-3 flex flex-col gap-2">
               <div className="flex flex-wrap items-end gap-3">
                 {effectiveHostChartBucketPick > 0 ? (
                   <label className="flex flex-col gap-1">
@@ -1084,6 +1165,7 @@ export function DashboardInfrastructureSection({
                     <select
                       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                       value={effectiveHostChartWindowMinutes}
+                      disabled={chartsScopePending}
                       onChange={(event) => setHostChartWindowMinutes(Number(event.target.value))}
                       aria-label="Host resources chart time window"
                     >
@@ -1102,6 +1184,7 @@ export function DashboardInfrastructureSection({
                   <select
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
                     value={effectiveHostChartBucketPick}
+                    disabled={chartsScopePending}
                     onChange={(event) => setHostChartBucketMinutes(Number(event.target.value))}
                     aria-label="Host resources chart roll-up bucket size"
                   >
@@ -1125,6 +1208,7 @@ export function DashboardInfrastructureSection({
                 pointRadius={effectiveHostChartBucketMinutes <= 0 ? 2.25 : 0}
                 emptyMessage="No infrastructure samples in this chart window."
                 live
+                chartsScopePending={chartsScopePending}
               />
             ) : hasInfraSignals ? (
               <p className="text-sm text-slate-600 dark:text-neutral-300">
@@ -1138,6 +1222,7 @@ export function DashboardInfrastructureSection({
                   labels={statusClassFallbackStack.labels}
                   series={statusClassFallbackStack.series}
                   live
+                  chartsScopePending={chartsScopePending}
                 />
                 <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
                   Showing request volume by HTTP status class until infrastructure widget samples arrive.
@@ -1146,6 +1231,7 @@ export function DashboardInfrastructureSection({
             ) : (
               <p className="text-sm text-slate-600 dark:text-neutral-300">No infrastructure trend data yet.</p>
             )}
+            </div>
           </ChartPanel>
         </div>
       </section>
@@ -1157,6 +1243,7 @@ export function DashboardInfrastructureSection({
             valueLabel="value"
             emptyMessage="No DB query widget data yet."
             live
+            chartsScopePending={chartsScopePending}
           />
           {!dbBars.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
@@ -1170,6 +1257,7 @@ export function DashboardInfrastructureSection({
             valueLabel="value"
             emptyMessage="No cache widget data yet."
             live
+            chartsScopePending={chartsScopePending}
           />
           {!cacheBars.length ? (
             <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">

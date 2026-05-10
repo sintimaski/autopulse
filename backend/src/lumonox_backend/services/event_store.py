@@ -704,18 +704,42 @@ class DuckDbEventStore:
             resolved_columns = columns
         source_sql, source_params = self._resolve_events_source_sql(filters)
         where_sql, params = self._compile_filters(filters)
-        # Avoid COUNT(*) OVER() on an unbounded inner result: that pattern scans
-        # the full filter match before LIMIT. MATERIALIZED CTE + COUNT on the
-        # cached result matches totals while keeping one pass over base events.
-        sql = (
-            f"WITH filtered AS MATERIALIZED ("
-            f"SELECT {resolved_columns} FROM {source_sql} AS scoped_events WHERE {where_sql}"
-            f"), agg AS (SELECT COUNT(*)::BIGINT AS __total FROM filtered) "
-            f"SELECT page.*, agg.__total FROM ("
-            f"SELECT * FROM filtered ORDER BY {order_by} LIMIT ? OFFSET ?"
-            f") AS page CROSS JOIN agg"  # nosec B608
-        )
-        rows = self._fetchall_read(sql, [*source_params, *params, limit, offset])
+        # Fast path for dashboard requests: avoid materializing transformed payload
+        # fields for every matching row before LIMIT/OFFSET.
+        #
+        # We first page on lightweight keys (id,timestamp), then join back to source
+        # to compute selected columns for only the requested page.
+        if order_by.strip().lower() == "timestamp desc, id desc":
+            sql = (
+                "WITH filtered AS MATERIALIZED ("
+                f"SELECT id, timestamp FROM {source_sql} AS scoped_events "  # nosec B608
+                f"WHERE {where_sql}"
+                "), agg AS (SELECT COUNT(*)::BIGINT AS __total FROM filtered), "
+                "page AS MATERIALIZED ("
+                "SELECT id AS __page_id, timestamp AS __page_timestamp FROM filtered "
+                "ORDER BY timestamp DESC, id DESC LIMIT ? OFFSET ?"
+                ") "
+                f"SELECT {resolved_columns}, agg.__total "  # nosec B608
+                f"FROM {source_sql} AS scoped_events "  # nosec B608
+                "INNER JOIN page ON page.__page_id = scoped_events.id "
+                "CROSS JOIN agg "
+                "ORDER BY page.__page_timestamp DESC, page.__page_id DESC"
+            )
+            rows = self._fetchall_read(
+                sql,
+                [*source_params, *params, limit, offset, *source_params],
+            )
+        else:
+            # Generic fallback for non-default orderings.
+            sql = (
+                f"WITH filtered AS MATERIALIZED ("
+                f"SELECT {resolved_columns} FROM {source_sql} AS scoped_events WHERE {where_sql}"
+                f"), agg AS (SELECT COUNT(*)::BIGINT AS __total FROM filtered) "
+                f"SELECT page.*, agg.__total FROM ("
+                f"SELECT * FROM filtered ORDER BY {order_by} LIMIT ? OFFSET ?"
+                f") AS page CROSS JOIN agg"  # nosec B608
+            )
+            rows = self._fetchall_read(sql, [*source_params, *params, limit, offset])
         if not rows:
             return 0, []
         total = int(rows[0][-1])

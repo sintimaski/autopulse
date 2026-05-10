@@ -96,10 +96,9 @@ import {
 } from "./dashboardScopePresetUtils";
 import { useDashboardAuthSession } from "./useDashboardAuthSession";
 import {
+  useDashboardPollingRefresh,
   useDashboardVisibilityRefreshBump,
-  useDashboardWsDisconnectedFallbackPoll,
 } from "./live/useDashboardLiveClientEffects";
-import { useDashboardLiveWebSocket } from "./live/useDashboardLiveWebSocket";
 import { buildOptionalGzipJsonRequest } from "./dashboardDataFetchUtils";
 import {
   dashboardSessionFetch,
@@ -219,6 +218,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [excludeLumonoxTraffic, setExcludeLumonoxTraffic] = useState(true);
   const [errorGroupSort, setErrorGroupSort] = useState<"last_seen" | "count">("last_seen");
   const [loading, setLoading] = useState(false);
+  const [chartsScopePending, setChartsScopePending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const liveRefreshPausedRef = useRef(false);
@@ -247,21 +247,13 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [savedSqlFilterPresets, setSavedSqlFilterPresets] = useState<SavedSqlFilterPreset[]>([]);
   const [savedScopePresets, setSavedScopePresets] = useState<SavedScopePreset[]>([]);
   const runbookTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const liveFallbackRefreshTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const liveReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const livePendingRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const liveSocketRef = useRef<WebSocket | null>(null);
-  const liveLastRefreshAtRef = useRef(0);
-  const liveWsBackoffUntilRef = useRef(0);
-  const liveWsHandshakeFailuresRef = useRef(0);
-  const liveSnapshotVersionRef = useRef(0);
-  const liveGapRecoveryQueuedRef = useRef(false);
-  const liveDeltaProtocolActiveRef = useRef(false);
+  const dashboardPollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLoadedDashboardData = useRef(false);
+  const dashboardHeavyRefreshAtRef = useRef(0);
+  const dashboardHeavyScopeKeyRef = useRef("");
   const dashboardFetchRunId = useRef(0);
   const dashboardFetchInFlightRef = useRef(false);
   const dashboardQueuedRefreshRef = useRef(false);
-  const [liveUpdatesConnected, setLiveUpdatesConnected] = useState(false);
   const rawDashboardPathname = usePathname();
   const dashboardRoutePath = useMemo(
     () => toDashboardRoutePath(rawDashboardPathname),
@@ -324,6 +316,52 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     () => toIsoWindow?.to ?? overview?.to_timestamp ?? requests?.to_timestamp ?? "",
     [toIsoWindow?.to, overview?.to_timestamp, requests?.to_timestamp],
   );
+
+  const chartsScopeAnchorKey = useMemo(
+    () =>
+      JSON.stringify({
+        w: windowMinutes,
+        abs: toIsoWindow ? { f: toIsoWindow.from, t: toIsoWindow.to } : null,
+        method,
+        statusClass,
+        min: minLatencyMs,
+        max: maxLatencyMs,
+        path: pathQuery.trim(),
+        env: normalizeCommaSeparated(serverEnvironmentQuery),
+        svc: normalizeCommaSeparated(serverServiceQuery),
+        sqlOn: sqlFilterEnabled,
+        sql: sqlFilterApplied.trim(),
+        project: sessionProjectId,
+      }),
+    [
+      windowMinutes,
+      toIsoWindow?.from,
+      toIsoWindow?.to,
+      method,
+      statusClass,
+      minLatencyMs,
+      maxLatencyMs,
+      pathQuery,
+      serverEnvironmentQuery,
+      serverServiceQuery,
+      sqlFilterEnabled,
+      sqlFilterApplied,
+      sessionProjectId,
+    ],
+  );
+
+  const chartsScopeAnchorPrevRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (dashboardRoutePath !== "/dashboard") {
+      chartsScopeAnchorPrevRef.current = null;
+      return;
+    }
+    const prev = chartsScopeAnchorPrevRef.current;
+    chartsScopeAnchorPrevRef.current = chartsScopeAnchorKey;
+    if (prev !== null && prev !== chartsScopeAnchorKey && hasLoadedDashboardData.current) {
+      setChartsScopePending(true);
+    }
+  }, [chartsScopeAnchorKey, dashboardRoutePath]);
 
   useEffect(() => {
     if (!hasHydratedPersistedScope.current) {
@@ -468,16 +506,16 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         requestPage,
         errorGroupLimit,
         errorGroupPage,
-        errorGroupSort,
         sqlFilterEnabled,
         sqlFilterApplied,
         absoluteWindow,
         reloadDashboardAuthSession,
-        liveWsBackoffUntilRef,
         dashboardFetchInFlightRef,
         dashboardQueuedRefreshRef,
         liveRefreshPausedRef,
         hasLoadedDashboardData,
+        dashboardHeavyRefreshAtRef,
+        dashboardHeavyScopeKeyRef,
         stretchAbsoluteEndAfterResumeRef,
         setLoading,
         setErrorMessage,
@@ -493,6 +531,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         setRecentJobFailures,
         setAbsoluteWindowState,
         setRefreshToken,
+        setChartsScopePending,
       });
     };
 
@@ -530,57 +569,20 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       if (runbookTimer.current) {
         clearTimeout(runbookTimer.current);
       }
-      const reconnectTimer = liveReconnectTimer.current;
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        liveReconnectTimer.current = null;
-      }
-      const pendingTimer = livePendingRefreshTimer.current;
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        livePendingRefreshTimer.current = null;
-      }
-      if (liveSocketRef.current) {
-        liveSocketRef.current.close();
-        liveSocketRef.current = null;
-      }
-      const fallbackTimer = liveFallbackRefreshTimer.current;
-      if (fallbackTimer) {
-        clearInterval(fallbackTimer);
-        liveFallbackRefreshTimer.current = null;
+      if (dashboardPollingTimerRef.current) {
+        clearInterval(dashboardPollingTimerRef.current);
+        dashboardPollingTimerRef.current = null;
       }
     };
   }, []);
 
-  useDashboardLiveWebSocket({
+  useDashboardPollingRefresh({
     hasSession: hasDashboardSession,
-    authSessionResolved,
-    sessionProjectId,
-    reloadDashboardAuthSession,
-    setLiveUpdatesConnected,
-    liveWsBackoffUntilRef,
-    liveRefreshPausedRef,
-    dashboardFetchInFlightRef,
-    dashboardQueuedRefreshRef,
-    liveLastRefreshAtRef,
-    livePendingRefreshTimerRef: livePendingRefreshTimer,
-    liveReconnectTimerRef: liveReconnectTimer,
-    liveSocketRef,
-    liveWsHandshakeFailuresRef,
-    liveSnapshotVersionRef,
-    liveGapRecoveryQueuedRef,
-    liveDeltaProtocolActiveRef,
-    bumpRefresh: bumpDashboardDataRefresh,
-  });
-
-  useDashboardWsDisconnectedFallbackPoll({
-    hasSession: hasDashboardSession,
-    liveUpdatesConnected,
     liveRefreshPausedRef,
     dashboardFetchInFlightRef,
     dashboardQueuedRefreshRef,
     bumpRefresh: bumpDashboardDataRefresh,
-    liveFallbackRefreshTimerRef: liveFallbackRefreshTimer,
+    pollingTimerRef: dashboardPollingTimerRef,
   });
 
   useDashboardVisibilityRefreshBump({
@@ -1844,6 +1846,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterApplied,
       sqlFilterEnabled,
       errorMessage,
+      chartsScopePending,
+      chartsScopeAnchorKey,
     }),
     [
       overview,
@@ -1871,6 +1875,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sqlFilterApplied,
       sqlFilterEnabled,
       errorMessage,
+      chartsScopePending,
+      chartsScopeAnchorKey,
     ],
   );
 
@@ -1960,6 +1966,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       excludeLumonoxTraffic,
       errorGroupSort,
       loading,
+      chartsScopePending,
+      chartsScopeAnchorKey,
       errorMessage,
       refreshToken,
       liveDataPaused,
@@ -2099,6 +2107,8 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       excludeLumonoxTraffic,
       errorGroupSort,
       loading,
+      chartsScopePending,
+      chartsScopeAnchorKey,
       errorMessage,
       refreshToken,
       liveDataPaused,

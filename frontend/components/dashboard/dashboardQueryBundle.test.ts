@@ -16,7 +16,6 @@ describe("planDashboardBatchQueryForRoute", () => {
     const plan = planDashboardBatchQueryForRoute({ routePath: "/dashboard", ...base });
     expect(plan.requestsLimitForRoute).toBe(25);
     expect(plan.requestsOffsetForRoute).toBe(0);
-    expect(plan.useSnapshot).toBe(true);
     expect(plan.includeWidgets).toBe(true);
   });
 

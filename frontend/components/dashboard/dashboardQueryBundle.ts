@@ -8,7 +8,6 @@ export type DashboardBatchRoutePlan = {
   includeDiagnosis: boolean;
   includeRecentJobFailures: boolean;
   includeAlertDispatches: boolean;
-  useSnapshot: boolean;
   requestsLimitForRoute: number;
   requestsOffsetForRoute: number;
   errorGroupsLimitForRoute: number;
@@ -50,7 +49,6 @@ export function planDashboardBatchQueryForRoute(args: {
   const includeDiagnosis = routePath === "/diagnosis";
   const includeRecentJobFailures = routePath === "/dashboard" || routePath === "/diagnosis";
   const includeAlertDispatches = routePath === "/alerts" || routePath === "/diagnosis";
-  const useSnapshot = routePath === "/dashboard";
   const requestsLimitForRoute =
     routePath === "/dashboard"
       ? Math.min(requestLimit, 25)
@@ -69,7 +67,6 @@ export function planDashboardBatchQueryForRoute(args: {
     includeDiagnosis,
     includeRecentJobFailures,
     includeAlertDispatches,
-    useSnapshot,
     requestsLimitForRoute,
     requestsOffsetForRoute,
     errorGroupsLimitForRoute,

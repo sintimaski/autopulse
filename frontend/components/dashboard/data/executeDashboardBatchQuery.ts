@@ -12,14 +12,8 @@ import {
 } from "../dashboardQueryBundle";
 import { normalizeCommaSeparated } from "../dashboardQueryState";
 import {
-  buildDashboardDataCacheScopeKey,
-  readDashboardSnapshot,
-  writeDashboardSnapshot,
-} from "../dashboardSnapshotCache";
-import {
   buildOptionalGzipJsonRequest,
-  LIVE_FETCH_SLOW_MS,
-  LIVE_REFRESH_BACKOFF_DURATION_MS,
+  DASHBOARD_HEAVY_SLICES_REFRESH_INTERVAL_MS,
   trimDashboardWidgetPayload,
 } from "../dashboardDataFetchUtils";
 import { dashboardSessionFetch } from "../dashboardSessionFetch";
@@ -56,16 +50,16 @@ export type DashboardBatchQueryExecutionArgs = {
   requestPage: number;
   errorGroupLimit: number;
   errorGroupPage: number;
-  errorGroupSort: "last_seen" | "count";
   sqlFilterEnabled: boolean;
   sqlFilterApplied: string;
   absoluteWindow: { from: string; to: string } | null;
   reloadDashboardAuthSession: () => void;
-  liveWsBackoffUntilRef: MutableRefObject<number>;
   dashboardFetchInFlightRef: MutableRefObject<boolean>;
   dashboardQueuedRefreshRef: MutableRefObject<boolean>;
   liveRefreshPausedRef: MutableRefObject<boolean>;
   hasLoadedDashboardData: MutableRefObject<boolean>;
+  dashboardHeavyRefreshAtRef: MutableRefObject<number>;
+  dashboardHeavyScopeKeyRef: MutableRefObject<string>;
   stretchAbsoluteEndAfterResumeRef: MutableRefObject<boolean>;
   setLoading: Dispatch<SetStateAction<boolean>>;
   setErrorMessage: Dispatch<SetStateAction<string | null>>;
@@ -81,6 +75,7 @@ export type DashboardBatchQueryExecutionArgs = {
   setRecentJobFailures: Dispatch<SetStateAction<RecentJobFailuresResponse | null>>;
   setAbsoluteWindowState: Dispatch<SetStateAction<{ from: string; to: string } | null>>;
   setRefreshToken: Dispatch<SetStateAction<number>>;
+  setChartsScopePending: Dispatch<SetStateAction<boolean>>;
 };
 
 /**
@@ -105,16 +100,16 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     requestPage,
     errorGroupLimit,
     errorGroupPage,
-    errorGroupSort,
     sqlFilterEnabled,
     sqlFilterApplied,
     absoluteWindow,
     reloadDashboardAuthSession,
-    liveWsBackoffUntilRef,
     dashboardFetchInFlightRef,
     dashboardQueuedRefreshRef,
     liveRefreshPausedRef,
     hasLoadedDashboardData,
+    dashboardHeavyRefreshAtRef,
+    dashboardHeavyScopeKeyRef,
     stretchAbsoluteEndAfterResumeRef,
     setLoading,
     setErrorMessage,
@@ -130,10 +125,13 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     setRecentJobFailures,
     setAbsoluteWindowState,
     setRefreshToken,
+    setChartsScopePending,
   } = args;
 
-  const fetchStartedAt = Date.now();
   if (routePath === "/settings") {
+    if (!isCancelled()) {
+      setChartsScopePending(false);
+    }
     return;
   }
 
@@ -156,6 +154,43 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     errorGroupLimit,
     errorGroupPage,
   });
+  let effectivePlan = plan;
+
+  const isInitialLoad = !hasLoadedDashboardData.current;
+  if (routePath === "/dashboard") {
+    const heavyScopeKey = JSON.stringify({
+      routePath,
+      from: toIsoWindow?.from ?? "",
+      to: toIsoWindow?.to ?? "",
+      windowMinutes,
+      method,
+      statusClass,
+      minLatencyMs,
+      maxLatencyMs,
+      pathQuery: pathQuery.trim(),
+      serverEnvironmentQuery: normalizeCommaSeparated(serverEnvironmentQuery),
+      serverServiceQuery: normalizeCommaSeparated(serverServiceQuery),
+      sqlFilterEnabled,
+      sqlFilterApplied: sqlFilterApplied.trim(),
+      includeWidgets: plan.includeWidgets,
+    });
+    const now = Date.now();
+    const scopeChanged = dashboardHeavyScopeKeyRef.current !== heavyScopeKey;
+    const shouldRefreshHeavySlices =
+      isInitialLoad || scopeChanged || now >= dashboardHeavyRefreshAtRef.current;
+    if (!shouldRefreshHeavySlices) {
+      effectivePlan = {
+        ...plan,
+        includeExtended: false,
+        includeWidgets: false,
+        includeErrorGroups: false,
+        includeRecentJobFailures: false,
+      };
+    } else {
+      dashboardHeavyScopeKeyRef.current = heavyScopeKey;
+      dashboardHeavyRefreshAtRef.current = now + DASHBOARD_HEAVY_SLICES_REFRESH_INTERVAL_MS;
+    }
+  }
   const {
     includeExtended,
     includeWidgets,
@@ -163,57 +198,20 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     includeDiagnosis,
     includeRecentJobFailures,
     includeAlertDispatches,
-    useSnapshot,
     requestsLimitForRoute,
     requestsOffsetForRoute,
     errorGroupsLimitForRoute,
     errorGroupsOffsetForRoute,
-  } = plan;
+  } = effectivePlan;
 
-  const isInitialLoad = !hasLoadedDashboardData.current;
   if (isInitialLoad) {
     setLoading(true);
   }
   dashboardFetchInFlightRef.current = true;
   setErrorMessage(null);
   try {
-    const serverPath = pathQuery.trim();
-    const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
-    const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
-    const scopeKey = buildDashboardDataCacheScopeKey({
-      windowFrom: toIsoWindow?.from ?? "",
-      windowTo: toIsoWindow?.to ?? "",
-      windowMinutes,
-      isAbsoluteWindow: Boolean(toIsoWindow),
-      method,
-      statusClass,
-      minLatencyMs,
-      maxLatencyMs,
-      pathQuery: serverPath,
-      serverEnvironmentQuery: envCsv,
-      serverServiceQuery: serviceCsv,
-      requestLimit: requestsLimitForRoute,
-      requestPage: requestsOffsetForRoute === 0 ? 0 : requestPage,
-      errorGroupLimit: errorGroupsLimitForRoute,
-      errorGroupPage: errorGroupsOffsetForRoute === 0 ? 0 : errorGroupPage,
-      errorGroupSort,
-      sqlFilterEnabled,
-      sqlFilterApplied,
-    });
-    const cached = useSnapshot ? readDashboardSnapshot(scopeKey) : null;
-    if (cached) {
-      setOverview(cached.overview);
-      setOverviewExtended(cached.overviewExtended ?? null);
-      setRequests(cached.requests);
-      setErrorGroups(cached.errorGroups ?? null);
-      setDiagnosisTimeline(cached.diagnosisTimeline ?? null);
-      setDiagnosisFailures(cached.diagnosisFailures ?? null);
-      setAlertDispatches(cached.alertDispatches ?? null);
-      setRecentJobFailures(cached.recentJobFailures ?? null);
-    }
-
     const scopeRequest: DashboardDataQueryRequest = buildDashboardDataQueryRequest({
-      plan,
+      plan: effectivePlan,
       toIsoWindow,
       windowMinutes,
       method,
@@ -238,13 +236,6 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     );
     if (batchResponse.status === 401) {
       reloadDashboardAuthSession();
-    }
-    const elapsedMs = Date.now() - fetchStartedAt;
-    if (!isCancelled()) {
-      const status = batchResponse.status;
-      if (elapsedMs >= LIVE_FETCH_SLOW_MS || status === 429 || status === 503 || status >= 500) {
-        liveWsBackoffUntilRef.current = Date.now() + LIVE_REFRESH_BACKOFF_DURATION_MS;
-      }
     }
     const results: DashboardFetchResult[] = [{ endpoint: "overview", response: batchResponse }];
     if (isCancelled()) {
@@ -291,7 +282,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     }
     if (includeErrorGroups && data.error_groups) {
       setErrorGroups(data.error_groups);
-    } else {
+    } else if (routePath !== "/dashboard") {
       setErrorGroups(null);
     }
     if (includeDiagnosis && data.diagnosis_timeline && data.diagnosis_failures) {
@@ -309,19 +300,10 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     setDiagnosisErrorGroupEvents(data.diagnosis_error_group_events ?? null);
     if (includeRecentJobFailures && data.recent_job_failures) {
       setRecentJobFailures(data.recent_job_failures);
-    } else {
+    } else if (routePath !== "/dashboard") {
       setRecentJobFailures(null);
     }
 
-    if (useSnapshot && includeExtended && overviewData && requestsData && data.overview_extended) {
-      writeDashboardSnapshot(scopeKey, {
-        overview: overviewData,
-        overviewExtended: data.overview_extended,
-        requests: requestsData,
-        errorGroups: data.error_groups ?? undefined,
-        recentJobFailures: includeRecentJobFailures ? data.recent_job_failures ?? undefined : undefined,
-      });
-    }
     if (overviewData || requestsData) {
       hasLoadedDashboardData.current = true;
     }
@@ -354,9 +336,6 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     }
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      if (!isCancelled() && error.message === "Dashboard request timed out") {
-        liveWsBackoffUntilRef.current = Date.now() + LIVE_REFRESH_BACKOFF_DURATION_MS;
-      }
       return;
     }
     if (!hasLoadedDashboardData.current) {
@@ -372,6 +351,9 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     }
     if (isInitialLoad && !isCancelled()) {
       setLoading(false);
+    }
+    if (!isCancelled()) {
+      setChartsScopePending(false);
     }
   }
 }
