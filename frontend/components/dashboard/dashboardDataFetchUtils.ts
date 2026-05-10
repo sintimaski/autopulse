@@ -133,9 +133,20 @@ export function trimDashboardWidgetPayload(payload: DashboardWidgetsResponse): D
   }
 
   if (merged.length > MAX_WIDGET_POINTS_TOTAL) {
-    merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-    merged = merged.slice(0, MAX_WIDGET_POINTS_TOTAL);
-    merged.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    const infra = merged.filter((p) => p.widget_id.startsWith("infra_"));
+    const rest = merged.filter((p) => !p.widget_id.startsWith("infra_"));
+    let infraTrimmed = infra;
+    if (infraTrimmed.length > MAX_WIDGET_POINTS_TOTAL) {
+      infraTrimmed = [...infraTrimmed]
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+        .slice(0, MAX_WIDGET_POINTS_TOTAL);
+    }
+    const budget = Math.max(0, MAX_WIDGET_POINTS_TOTAL - infraTrimmed.length);
+    const restKept =
+      budget > 0
+        ? [...rest].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, budget)
+        : [];
+    merged = [...infraTrimmed, ...restKept].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 
   return {

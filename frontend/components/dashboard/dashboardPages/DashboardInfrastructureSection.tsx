@@ -6,7 +6,6 @@
 
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import { aggregateSeriesByStep, trimSeriesToLastMinutes } from "../../../utils/dashboardData";
 import {
   buildAlignedChartSpanOptions,
   buildAlignedRollupBucketOptions,
@@ -15,7 +14,6 @@ import {
   BreakdownBarChart,
   ChartPanel,
   MultiSeriesLineChart,
-  StackedAreaChart,
   type MultiSeriesLineChartSeries,
   type StackedAreaSeries,
 } from "../charts";
@@ -195,26 +193,6 @@ function rollingWindowBoundsFromPoints(
     return null;
   }
   return { fromMs, toMs };
-}
-
-function trimSparklineForHostChart(
-  series: OverviewBucket[],
-  bounds: { fromTimestamp: string; toTimestamp: string },
-  lastMinutes: number,
-): OverviewBucket[] {
-  const sorted = [...series].sort((a, b) => a.minute.localeCompare(b.minute));
-  if (lastMinutes > 0) {
-    return trimSeriesToLastMinutes(sorted, lastMinutes, bounds.toTimestamp);
-  }
-  const fromMs = parseDashboardInstantMs(bounds.fromTimestamp);
-  const toMs = parseDashboardInstantMs(bounds.toTimestamp);
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) {
-    return sorted;
-  }
-  return sorted.filter((bucket) => {
-    const t = parseDashboardInstantMs(bucket.minute);
-    return Number.isFinite(t) && t >= fromMs && t <= toMs;
-  });
 }
 
 function trimWidgetPointsLastMinutes(
@@ -682,18 +660,6 @@ export function DashboardInfrastructureSection({
     return grouped;
   }, [hostChartDisplayPoints]);
 
-  const sparklineForHostChart = useMemo(() => {
-    let series = trimSparklineForHostChart(
-      ixSparkline,
-      { fromTimestamp: chartClipFrom, toTimestamp: chartClipTo },
-      effectiveHostChartWindowMinutes,
-    );
-    if (effectiveHostChartBucketMinutes > 0) {
-      series = aggregateSeriesByStep(series, effectiveHostChartBucketMinutes);
-    }
-    return series;
-  }, [ixSparkline, chartClipFrom, chartClipTo, effectiveHostChartWindowMinutes, effectiveHostChartBucketMinutes]);
-
   const findWidgetByKeywords = (keywords: string[]) =>
     widgetDefinitions.find((widget) => {
       const corpus = `${widget.widget_id} ${widget.title} ${widget.description ?? ""}`.toLowerCase();
@@ -703,37 +669,6 @@ export function DashboardInfrastructureSection({
   const definitionOrStubIfPoints = (widgetId: string): DashboardWidgetDefinition | undefined =>
     widgetDefinitions.find((w) => w.widget_id === widgetId) ??
     (widgetPointsById.has(widgetId) ? infraLineStub(widgetId) : undefined);
-
-  /** When infrastructure widgets are absent, show request mix by status class (honest traffic proxy). */
-  const sparklineToStatusStack = (buckets: OverviewBucket[]): { labels: string[]; series: StackedAreaSeries[] } => ({
-    labels: buildHostChartAxisLabels(buckets.map((b) => b.minute)),
-    series: [
-      {
-        id: "2xx",
-        label: "2xx",
-        color: "#10b981",
-        values: buckets.map((b) => Number(b.count_2xx || 0)),
-      },
-      {
-        id: "3xx",
-        label: "3xx",
-        color: "#0ea5e9",
-        values: buckets.map((b) => Number(b.count_3xx || 0)),
-      },
-      {
-        id: "4xx",
-        label: "4xx",
-        color: "#f59e0b",
-        values: buckets.map((b) => Number(b.count_4xx || 0)),
-      },
-      {
-        id: "5xx",
-        label: "5xx",
-        color: "#f43f5e",
-        values: buckets.map((b) => Number(b.count_5xx || 0)),
-      },
-    ],
-  });
 
   const INFRA_COMPOSE = {
     cpu: { label: "CPU", color: "#0ea5e9" },
@@ -872,8 +807,6 @@ export function DashboardInfrastructureSection({
     definitionOrStubIfPoints("infra_disk_io_read_mb") ?? findWidgetByKeywords(["disk i/o read", "disk io read"]);
   const dbWidget = findWidgetByKeywords(["db", "database", "query", "sql"]);
   const cacheWidget = findWidgetByKeywords(["cache", "hit", "miss", "redis"]);
-
-  const statusClassFallbackStack = sparklineToStatusStack(sparklineForHostChart);
 
   const infraCpuTimeline = widgetPointsToTotalsTimelineFromMap(cpuWidget, hostChartPointsByWidget);
   const infraMemoryTimeline = widgetPointsToTotalsTimelineFromMap(memoryWidget, hostChartPointsByWidget);
@@ -1215,21 +1148,12 @@ export function DashboardInfrastructureSection({
                 No infrastructure samples overlap this chart window. Try{' '}
                 <span className="font-medium">&quot;Full loaded range&quot;</span> above or widen the dashboard time window.
               </p>
-            ) : statusClassFallbackStack.series.length ? (
-              <>
-                <StackedAreaChart
-                  height={196}
-                  labels={statusClassFallbackStack.labels}
-                  series={statusClassFallbackStack.series}
-                  live
-                  chartsScopePending={chartsScopePending}
-                />
-                <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-                  Showing request volume by HTTP status class until infrastructure widget samples arrive.
-                </p>
-              </>
             ) : (
-              <p className="text-sm text-slate-600 dark:text-neutral-300">No infrastructure trend data yet.</p>
+              <p className="text-sm text-slate-600 dark:text-neutral-300">
+                No host resource samples yet. After the SDK sends infrastructure metrics (or the server records host
+                samples on ingest), CPU, memory, disk, and network will appear here—this chart does not use HTTP traffic
+                as a substitute.
+              </p>
             )}
             </div>
           </ChartPanel>

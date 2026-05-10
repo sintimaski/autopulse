@@ -13,8 +13,11 @@ from lumonox_backend.dashboard.params import (
     WINDOW_MINUTES_QUERY,
 )
 from lumonox_backend.dashboard.studio_showcase import merge_studio_showcase_widgets
-from lumonox_backend.dashboard.time_window import as_utc_datetime, resolve_time_window
+from lumonox_backend.dashboard.time_window import resolve_time_window
 from lumonox_backend.dashboard.widget_layout import build_widget_layout
+from lumonox_backend.dashboard.widget_points_selection import (
+    merge_narrow_window_with_infra_lookback,
+)
 from lumonox_backend.database import get_db_session
 from lumonox_backend.repositories import dashboard_widgets as dashboard_widgets_repo
 from lumonox_backend.schemas import (
@@ -53,8 +56,11 @@ async def get_dashboard_widgets(
         from_timestamp=points_from,
         to_timestamp=resolved_to,
     )
-    narrow = [p for p in points_raw if resolved_from <= as_utc_datetime(p.timestamp) <= resolved_to]
-    points = narrow if narrow else points_raw
+    points = merge_narrow_window_with_infra_lookback(
+        points_raw,
+        resolved_from=resolved_from,
+        resolved_to=resolved_to,
+    )
     mapped_definitions = [
         DashboardWidgetDefinition(
             widget_id=item.widget_id,

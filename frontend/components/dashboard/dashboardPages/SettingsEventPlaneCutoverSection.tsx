@@ -25,8 +25,9 @@ export function SettingsEventPlaneCutoverSection({
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Event Plane read cutover</h2>
       <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-        Per-project rollback switch for Plan B reads. When enabled, dashboard queries use the published snapshot path
-        when available; when disabled, reads stay on the legacy DuckDB path.
+        Per-project rollback switch for Plan B reads. When enabled, Overview, Requests, and related traffic queries read
+        from the published event snapshot when available, so rows can look older than live ingests until the next
+        snapshot. Host and dashboard widget time series still read from the live DuckDB writer path.
       </p>
       {!canManageEventPlaneCutover ? (
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">

@@ -40,8 +40,8 @@ export function planDashboardBatchQueryForRoute(args: {
   const isStudioWidgetRoute = routePath.startsWith("/w/");
   let includeExtended =
     routePath === "/dashboard" || routePath === "/diagnosis" || routePath === "/widgets" || isStudioWidgetRoute;
-  // Widgets are rendered on `/w/...` studio routes (and legacy `/widgets` redirects client-side).
-  let includeWidgets = routePath === "/widgets" || isStudioWidgetRoute;
+  // Widgets power `/widgets`, studio `/w/...`, and the home dashboard "Advanced infrastructure insights" block.
+  let includeWidgets = routePath === "/dashboard" || routePath === "/widgets" || isStudioWidgetRoute;
   if (!isDocumentVisible) {
     includeExtended = routePath === "/diagnosis";
     includeWidgets = false;

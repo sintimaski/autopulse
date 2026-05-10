@@ -12,11 +12,11 @@ describe("planDashboardBatchQueryForRoute", () => {
     errorGroupPage: 1,
   };
 
-  it("clamps requests on /dashboard", () => {
+  it("clamps requests on /dashboard and loads widgets for infrastructure insights", () => {
     const plan = planDashboardBatchQueryForRoute({ routePath: "/dashboard", ...base });
     expect(plan.requestsLimitForRoute).toBe(25);
     expect(plan.requestsOffsetForRoute).toBe(0);
-    expect(plan.includeWidgets).toBe(false);
+    expect(plan.includeWidgets).toBe(true);
   });
 
   it("loads widgets on /widgets and /w/... studio routes", () => {
