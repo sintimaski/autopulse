@@ -3,8 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   DashboardAlertTestResponse,
-  DashboardMembershipItem,
-  DashboardOrganizationSummary,
   DashboardSystemDiagnosticsResponse,
   RetentionSettings,
 } from "../dashboardTypes";
@@ -28,8 +26,6 @@ import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors"
 import {
   parseDashboardAlertTestResponse,
   parseDashboardInternalMetricsResponse,
-  parseDashboardMembershipItemsPayload,
-  parseDashboardOrganizationListResponse,
   parseDashboardSystemDiagnosticsResponse,
   parseEventPlaneCutoverSettings,
 } from "../../../utils/dashboardResponseGuards";
@@ -45,6 +41,7 @@ import { SettingsApiKeyLifecycleSection } from "./SettingsApiKeyLifecycleSection
 import { SettingsInternalMetricsSection } from "./SettingsInternalMetricsSection";
 import { SettingsSystemDiagnosticsSection } from "./SettingsSystemDiagnosticsSection";
 import { SettingsRetentionPolicySection } from "./SettingsRetentionPolicySection";
+import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembers";
 
 type SystemDiagnosticsSnapshot = DashboardSystemDiagnosticsResponse;
 
@@ -53,18 +50,7 @@ export function SettingsContent() {
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
   const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<RetentionSettings | null>(null);
-  const [organizations, setOrganizations] = useState<DashboardOrganizationSummary[]>([]);
-  const [organizationsLoadState, setOrganizationsLoadState] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
-  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
-  const [members, setMembers] = useState<DashboardMembershipItem[]>([]);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"owner" | "member">("member");
-  const [orgMessage, setOrgMessage] = useState<string | null>(null);
-  const [membersLoadState, setMembersLoadState] = useState<"idle" | "loading" | "ready">("idle");
-  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
-  const [memberBulkRole, setMemberBulkRole] = useState<"" | "owner" | "member">("");
+  const orgMembers = useSettingsOrganizationsMembers(d.sessionProjectId);
   const [selectedKeyIds, setSelectedKeyIds] = useState<Set<string>>(new Set());
   const [keyBulkAction, setKeyBulkAction] = useState<"" | "rotate" | "revoke">("");
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
@@ -97,7 +83,6 @@ export function SettingsContent() {
   const canMutateApiKeys = canManageIngestApiKeys(d.sessionMembershipRole);
   const viewerSession = isDashboardViewer(d.sessionMembershipRole);
 
-  const selectedOrganization = organizations.find((organization) => organization.organization_id === selectedOrganizationId);
   /** Invites are tied to the signed-in dashboard session role, not the org picker alone. */
   const canInviteMembers = canInviteOrganizationMembers(d.sessionMembershipRole);
 
@@ -111,129 +96,6 @@ export function SettingsContent() {
     );
     return sorted[0]?.key_id ?? null;
   }, [d.apiKeys]);
-
-  const loadMembers = async (organizationId: string) => {
-    try {
-      const response = await fetchWithTimeout(
-        buildApiUrl(`/dashboard/organizations/${organizationId}/members`),
-        { credentials: "include" },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
-      if (!response.ok) {
-        setMembers([]);
-        return;
-      }
-      const raw: unknown = await response.json();
-      const members = parseDashboardMembershipItemsPayload(raw);
-      setMembers(members ?? []);
-    } catch {
-      setMembers([]);
-    }
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setOrganizationsLoadState("loading");
-      try {
-        const response = await fetchWithTimeout(buildApiUrl("/dashboard/organizations"), {
-          credentials: "include",
-        }, DASHBOARD_FETCH_TIMEOUT_MS);
-        if (cancelled) {
-          return;
-        }
-        if (!response.ok) {
-          setOrganizationsLoadState("error");
-          return;
-        }
-        const raw: unknown = await response.json();
-        const payload = parseDashboardOrganizationListResponse(raw);
-        if (cancelled) {
-          return;
-        }
-        if (!payload) {
-          setOrganizationsLoadState("error");
-          return;
-        }
-        setOrganizations(payload.organizations);
-        if (payload.organizations[0]) {
-          setSelectedOrganizationId((prev) => prev ?? payload.organizations[0].organization_id);
-        }
-        setOrganizationsLoadState("ready");
-      } catch {
-        if (!cancelled) {
-          setOrganizationsLoadState("error");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (selectedOrganizationId) {
-      queueMicrotask(() => {
-        setMembersLoadState("loading");
-      });
-      void (async () => {
-        try {
-          const response = await fetchWithTimeout(
-            buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members`),
-            { credentials: "include" },
-            DASHBOARD_FETCH_TIMEOUT_MS,
-          );
-          if (!response.ok || cancelled) {
-            setMembers([]);
-            if (!cancelled) {
-              setMembersLoadState("ready");
-            }
-            return;
-          }
-          const raw: unknown = await response.json();
-          const members = parseDashboardMembershipItemsPayload(raw);
-          if (!cancelled) {
-            setMembers(members ?? []);
-            setMembersLoadState("ready");
-          }
-        } catch {
-          if (!cancelled) {
-            setMembers([]);
-            setMembersLoadState("ready");
-          }
-        }
-      })();
-    } else {
-      queueMicrotask(() => {
-        setMembersLoadState("idle");
-      });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedOrganizationId]);
-
-  const accessibleProjects = useMemo(() => {
-    const rows: { id: string; label: string }[] = [];
-    for (const org of organizations) {
-      for (const p of org.projects) {
-        rows.push({
-          id: p.project_id,
-          label: `${org.organization_name} / ${p.project_name}`,
-        });
-      }
-    }
-    rows.sort((a, b) => a.label.localeCompare(b.label));
-    return rows;
-  }, [organizations]);
-
-  const currentProjectLabel = useMemo(() => {
-    if (!d.sessionProjectId) {
-      return null;
-    }
-    return accessibleProjects.find((r) => r.id === d.sessionProjectId)?.label ?? d.sessionProjectId;
-  }, [accessibleProjects, d.sessionProjectId]);
 
   const onActiveProjectChange = useCallback(
     async (nextId: string) => {
@@ -252,81 +114,6 @@ export function SettingsContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- d.setActiveDashboardProject + sessionProjectId are sufficient
     [d.sessionProjectId, d.setActiveDashboardProject],
   );
-
-  const toggleMemberSelected = (userId: string) => {
-    setSelectedMemberIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) {
-        next.delete(userId);
-      } else {
-        next.add(userId);
-      }
-      return next;
-    });
-  };
-
-  const allMemberIdsSelectable = members.map((m) => m.user_id);
-  const allMembersSelected =
-    allMemberIdsSelectable.length > 0 && allMemberIdsSelectable.every((id) => selectedMemberIds.has(id));
-
-  const applyMemberBulk = async () => {
-    if (!selectedOrganizationId || !memberBulkRole || selectedMemberIds.size === 0) {
-      return;
-    }
-    const label = memberBulkRole === "owner" ? "Promote to owner" : "Demote to member";
-    if (!window.confirm(`${label} for ${selectedMemberIds.size} selected member(s)?`)) {
-      return;
-    }
-    let ok = 0;
-    let skipped = 0;
-    let failed = 0;
-    for (const userId of selectedMemberIds) {
-      const member = members.find((m) => m.user_id === userId);
-      if (!member) {
-        continue;
-      }
-      if (memberBulkRole === "member" && isProtectedOwnerEmail(member.email)) {
-        skipped += 1;
-        continue;
-      }
-      if (member.role === memberBulkRole) {
-        continue;
-      }
-      try {
-        const response = await fetchWithTimeout(
-          buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/${userId}/role`),
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ role: memberBulkRole }),
-          },
-          DASHBOARD_FETCH_TIMEOUT_MS,
-        );
-        if (response.ok) {
-          ok += 1;
-        } else {
-          failed += 1;
-        }
-      } catch {
-        failed += 1;
-      }
-    }
-    await loadMembers(selectedOrganizationId);
-    setSelectedMemberIds(new Set());
-    setMemberBulkRole("");
-    const parts = [];
-    if (ok) {
-      parts.push(`Updated ${ok}.`);
-    }
-    if (skipped) {
-      parts.push(`Skipped ${skipped} (protected address).`);
-    }
-    if (failed) {
-      parts.push(`${failed} failed.`);
-    }
-    setOrgMessage(parts.join(" ") || "No changes applied.");
-  };
 
   const toggleKeySelected = (keyId: string) => {
     setSelectedKeyIds((prev) => {
@@ -403,7 +190,7 @@ export function SettingsContent() {
     );
   };
 
-  const orgOwnerAccess = selectedOrganization?.role === "owner";
+  const orgOwnerAccess = orgMembers.selectedOrganization?.role === "owner";
   const alertDeliveryDraft = d.alertSettings;
   const canEditAlertDelivery = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canViewInternalMetrics = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
@@ -770,9 +557,9 @@ export function SettingsContent() {
       />
 
       <SettingsActiveProjectSection
-        organizationsLoadState={organizationsLoadState}
-        accessibleProjects={accessibleProjects}
-        currentProjectLabel={currentProjectLabel}
+        organizationsLoadState={orgMembers.organizationsLoadState}
+        accessibleProjects={orgMembers.accessibleProjects}
+        currentProjectLabel={orgMembers.currentProjectLabel}
         sessionProjectId={d.sessionProjectId}
         activeProjectBusy={activeProjectBusy}
         activeProjectMessage={activeProjectMessage}
@@ -780,68 +567,60 @@ export function SettingsContent() {
       />
 
       <SettingsOrganizationsMembersSection
-        organizationsLoadState={organizationsLoadState}
-        organizations={organizations}
-        selectedOrganizationId={selectedOrganizationId}
-        onSelectedOrganizationIdChange={(value) => {
-          setSelectedMemberIds(new Set());
-          setMemberBulkRole("");
-          setSelectedOrganizationId(value);
-          const nextOrg = organizations.find((o) => o.organization_id === value);
-          if (nextOrg?.role === "admin") {
-            setInviteRole((r) => (r === "owner" ? "member" : r));
-          }
-        }}
-        selectedOrganization={selectedOrganization}
-        members={members}
-        membersLoadState={membersLoadState}
+        organizationsLoadState={orgMembers.organizationsLoadState}
+        organizations={orgMembers.organizations}
+        selectedOrganizationId={orgMembers.selectedOrganizationId}
+        onSelectedOrganizationIdChange={orgMembers.onSelectedOrganizationIdChange}
+        selectedOrganization={orgMembers.selectedOrganization}
+        members={orgMembers.members}
+        membersLoadState={orgMembers.membersLoadState}
         orgOwnerAccess={orgOwnerAccess}
         canInviteMembers={canInviteMembers}
-        memberBulkRole={memberBulkRole}
-        onMemberBulkRoleChange={setMemberBulkRole}
-        selectedMemberIds={selectedMemberIds}
-        allMembersSelected={allMembersSelected}
-        onToggleMemberSelected={toggleMemberSelected}
+        memberBulkRole={orgMembers.memberBulkRole}
+        onMemberBulkRoleChange={orgMembers.setMemberBulkRole}
+        selectedMemberIds={orgMembers.selectedMemberIds}
+        allMembersSelected={orgMembers.allMembersSelected}
+        onToggleMemberSelected={orgMembers.toggleMemberSelected}
         onToggleSelectAllMembers={() => {
-          if (allMembersSelected) {
-            setSelectedMemberIds(new Set());
+          if (orgMembers.allMembersSelected) {
+            orgMembers.setSelectedMemberIds(new Set());
           } else {
-            setSelectedMemberIds(new Set(members.map((m) => m.user_id)));
+            orgMembers.setSelectedMemberIds(new Set(orgMembers.members.map((m) => m.user_id)));
           }
         }}
-        onApplyMemberBulk={() => void applyMemberBulk()}
-        inviteEmail={inviteEmail}
-        onInviteEmailChange={setInviteEmail}
-        inviteRole={inviteRole}
-        onInviteRoleChange={setInviteRole}
+        onApplyMemberBulk={() => void orgMembers.applyMemberBulk()}
+        inviteEmail={orgMembers.inviteEmail}
+        onInviteEmailChange={orgMembers.setInviteEmail}
+        inviteRole={orgMembers.inviteRole}
+        onInviteRoleChange={orgMembers.setInviteRole}
         onSendInvite={async () => {
-          if (!selectedOrganizationId) {
+          if (!orgMembers.selectedOrganizationId) {
             return;
           }
-          const email = inviteEmail.trim();
-          if (inviteRole === "member" && isProtectedOwnerEmail(email)) {
-            setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
+          const email = orgMembers.inviteEmail.trim();
+          if (orgMembers.inviteRole === "member" && isProtectedOwnerEmail(email)) {
+            orgMembers.setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
             return;
           }
           const response = await fetchWithTimeout(
-            buildApiUrl(`/dashboard/organizations/${selectedOrganizationId}/members/invite`),
+            buildApiUrl(`/dashboard/organizations/${orgMembers.selectedOrganizationId}/members/invite`),
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               credentials: "include",
-              body: JSON.stringify({ email, role: inviteRole }),
+              body: JSON.stringify({ email, role: orgMembers.inviteRole }),
             },
             DASHBOARD_FETCH_TIMEOUT_MS,
           );
           if (response.ok) {
-            setInviteEmail("");
-            setOrgMessage("Invitation sent.");
-            void loadMembers(selectedOrganizationId);
+            orgMembers.setInviteEmail("");
+            orgMembers.setOrgMessage("Invitation sent.");
+            void orgMembers.loadMembers(orgMembers.selectedOrganizationId);
           } else {
-            setOrgMessage("Failed to invite member.");
+            orgMembers.setOrgMessage("Failed to invite member.");
           }
         }}
-        orgMessage={orgMessage}
+        orgMessage={orgMembers.orgMessage}
       />
 
       <SettingsApiKeyLifecycleSection
