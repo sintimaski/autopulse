@@ -49,6 +49,33 @@ Core surfaces:
 - **`lib/`** — Client-only helpers (e.g. RUM) without React dashboard imports.
 - **`utils/`** — Pure TS helpers (fetch errors, response shape guards, overview math); safe to unit test in Vitest (`environment: "node"`).
 
-**Data flow:** Route → `DashboardDataProvider` → page components. Prefer `fetchWithTimeout` + `buildDashboardNetworkError` + typed `parse*` guards (see `utils/dashboardResponseGuards.ts`) for standalone `fetch` calls outside the main provider (e.g. Query Explorer, Traces).
+**State boundaries (keep changes predictable):**
+
+| Layer | Owns | Avoid |
+| --- | --- | --- |
+| **`DashboardDataContext`** | Cross-route dashboard data, scope, batch query results, live connection bump | Large UI markup; settings-only fetches belong in settings hooks |
+| **Route / section components** | View-local UI state (open panels, form drafts, table sort) | Duplicating fetch + parse already covered by context or `dashboardSessionFetch` |
+| **`utils/`** | Pure parsing, errors, math | React hooks or browser-only globals without guarding SSR |
+
+**Data flow:** Route → `DashboardDataProvider` → page components. Session-scoped dashboard API calls should use **`components/dashboard/dashboardSessionFetch.ts`** (`dashboardSessionFetch`, `dashboardSessionJsonPost`, …) so timeouts and credentials stay consistent (see `DEVELOPMENT.md` / multi-lane plan FE-08). The main overview batch uses **`parseDashboardDataQueryResponse`** in **`utils/dashboardQueryResponseGuards.ts`**; other JSON shapes use **`utils/dashboardResponseGuards.ts`** + `buildDashboardNetworkError` as appropriate.
 
 **When adding features:** Extend existing types in `dashboardTypes.ts`; avoid widening `DashboardDataContext` unless the value is shared across multiple routes.
+
+## Contributor workflow
+
+Recommended before opening a PR (matches repo pre-commit expectations):
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Optional: `npm run test:e2e` (requires Playwright browser install: `npx playwright install`). Bundle size: after `npm run build`, run `npm run check:bundle-budget`.
+
+**Troubleshooting**
+
+- **`npm run typecheck` fails after a merge** — Often a stale `.next` type cache; run `rm -rf .next out` and retry. Ensure imports resolve to `dashboardTypes` / context exports you actually use.
+- **`npm run build` fails on static export** — Check `next.config` / `LUMONOX_FRONTEND_MODE`; dashboard routes must stay compatible with the static export path used in CI.
+- **ESLint noise** — `eslint.config.mjs` extends `eslint-config-next` and adds a few project rules (`eqeqeq`, `no-debugger`, `import/no-duplicates`, unused-disable directive warnings). Prefer fixing the root cause over blanket `eslint-disable`.

@@ -7,7 +7,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - **Plan name:** Frontend multi-lane quality review -> implementation backlog
 - **Owner:** Frontend + Platform (AI-assisted execution)
 - **Date:** 2026-05-10
-- **Status:** In progress (phase 1 shipped; FE-06, FE-07, FE-08 done for current MVP scope; other lanes remain)
+- **Status:** In progress (phase 1 shipped; FE-06, FE-07, FE-08, FE-10 done for current MVP scope; other lanes remain)
 - **Scope summary (2-4 lines):**
   This plan converts a codebase-wide frontend review into execution tasks. It prioritizes high-impact UX clarity, visual consistency, accessibility, and developer productivity improvements while preserving Lumonox MVP constraints (fast diagnosis, low-friction onboarding, no advanced non-goal platform features).
 - **Out of scope:**
@@ -28,7 +28,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-07 | **Done** | **`parseDashboardDataQueryResponse`** in **`frontend/utils/dashboardQueryResponseGuards.ts`** validates **`POST /dashboard/query`** JSON (used from **`DashboardDataContext`** main batch + diagnosis prefetch). Parse failures yield **`null`**; UI surfaces **"Dashboard query returned an unexpected response. Refresh to retry."** Unit tests cover happy path, invalid nested payloads, and bad roots. Further endpoints can follow the same guard pattern as needed. |
 | FE-08 | **Done** | **`dashboardSessionFetch.ts`** is the single session-scoped entry point on top of **`fetchWithTimeout`** + **`buildApiUrl`** for **`DashboardDataContext`**, settings hooks (diagnostics, event-plane, alerts, orgs), **`QueryExplorerContent`**, **`TracesContent`**, bootstrap helper, etc. Out of scope for this closure: plain **`fetch`** call sites (bookmarks client, magic-link verify, auth session helper) and optional future **shared JSON error parsing**. Slice memo policy: documented in **`useDashboardSlices.ts`**. |
 | FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`** (incl. theme toggle when enabled), **`onboarding-smoke`**, **`widgets-showcase-smoke`**, **`alerts-smoke`**, **`logs-smoke`**, **`requests-smoke`**, **`query-explorer-smoke`**, **`traces-smoke`**, **`bookmarks-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
-| FE-10 | **Partial** | `frontend/README.md` architecture section; ESLint **`reportUnusedDisableDirectives: warn`** and **`eqeqeq`** (`null: ignore`). Heavier custom rules still open. |
+| FE-10 | **Done** | **`frontend/README.md`**: architecture boundaries table, `dashboardSessionFetch` / guard pointers, contributor workflow + troubleshooting. **`eslint.config.mjs`**: existing **`eqeqeq`** + **`reportUnusedDisableDirectives`**, plus **`no-debugger`** (error) and **`import/no-duplicates`** (warn). Intentional **`confirm()`** flows unchanged (no `no-alert` rule). |
 
 ## 2) Context / background
 
@@ -483,10 +483,11 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Safe to re-run? Yes
   - If partial/no, guardrails required: N/A
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
+  - Status: Done (README architecture table + contributor/troubleshooting; ESLint `no-debugger` + `import/no-duplicates` on top of Next defaults)
+  - % complete: 100
   - Last update: 2026-05-10
   - Owner: Frontend platform
+- **Implementation notes:** Shipped with plan table update; verified `npm run lint`, `npm run test`, `npm run build` from `frontend/`. Did not enable `no-alert` (would warn on intentional `confirm()` in bookmarks/settings).
 - **Related documents:** `docs/DEVELOPMENT_PROCESS.md`
 - **References / examples:** `frontend/README.md`
 - **Ambiguity handling:**
@@ -504,7 +505,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   1. P0 reliability/safety foundations: FE-01, FE-05 (FE-07 typed batch parse: done).
   2. UX and consistency uplift: FE-02, FE-03, FE-04.
   3. Maintainability cleanup: FE-06 + FE-08 (both done for current MVP scope).
-  4. Quality hardening and DX guardrails: FE-09, FE-10.
+  4. Quality hardening and DX guardrails: FE-09 (FE-10 done for MVP scope).
 - Parallelization opportunities:
   - FE-02 and FE-03 can run in parallel after FE-01 starts.
   - FE-06 settings modularization and FE-08 session-fetch consolidation are complete; further work is optional polish.
@@ -535,6 +536,10 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Why: Duplicate navigation added complexity without MVP benefit; aligns with operator mental model.
   - Date: 2026-05-10
   - Owner: Product + Frontend
+  - Decision: Close FE-10 for MVP scope — README documents context vs local vs utils, session fetch + guard entry points, contributor commands and troubleshooting; ESLint adds `no-debugger` and `import/no-duplicates` without banning intentional `confirm()` destructive prompts.
+  - Why: Meets AC with low contributor friction; further custom ESLint rules remain optional if noise stays acceptable.
+  - Date: 2026-05-10
+  - Owner: Frontend platform
 
 ## 7) Validation gate before completion
 
