@@ -1,6 +1,6 @@
 # Core user journey — browser E2E (Playwright)
 
-Core Playwright smoke lives in `frontend/tests/e2e/core-journey.spec.ts`, `frontend/tests/e2e/settings-smoke.spec.ts`, `frontend/tests/e2e/alerts-smoke.spec.ts`, `frontend/tests/e2e/logs-smoke.spec.ts`, `frontend/tests/e2e/requests-smoke.spec.ts`, `frontend/tests/e2e/query-explorer-smoke.spec.ts`, and `frontend/tests/e2e/traces-smoke.spec.ts` (shared dev sign-in helper: `frontend/tests/e2e/authDevMagicLink.ts`). Tests run in CI (`browser-smoke` job). This doc is the operator checklist for local maintenance and extension.
+Core Playwright smoke lives in `frontend/tests/e2e/core-journey.spec.ts`, `frontend/tests/e2e/settings-smoke.spec.ts`, `frontend/tests/e2e/alerts-smoke.spec.ts`, `frontend/tests/e2e/logs-smoke.spec.ts`, `frontend/tests/e2e/requests-smoke.spec.ts`, `frontend/tests/e2e/query-explorer-smoke.spec.ts`, `frontend/tests/e2e/traces-smoke.spec.ts`, and `frontend/tests/e2e/bookmarks-smoke.spec.ts` (shared dev sign-in helper: `frontend/tests/e2e/authDevMagicLink.ts`). Tests run in CI (`browser-smoke` job). This doc is the operator checklist for local maintenance and extension.
 
 ## Preconditions
 
@@ -49,7 +49,8 @@ npm --prefix frontend run test:e2e
 8. Load `/lumonox/ui/requests` (same `LogsContent` shell as logs) and assert **Request evidence flow** or **No request data for this view**.
 9. Load `/lumonox/ui/query-explorer` and assert the **Query Explorer** heading and the **SQL query for Query Explorer** field are visible.
 10. Load `/lumonox/ui/traces` and assert the **Full tracing (OTLP)** heading is visible.
-11. (Optional) Load `/lumonox/ui/diagnosis#grouped-errors` or a saved `#error-group:…` bookmark and confirm the page still renders (deep-link + partial-scope UX is covered in unit tests under `frontend/components/dashboard/diagnosisDeepLink.test.ts`).
+11. Load `/lumonox/ui/bookmarks` and assert the **Bookmarks** heading is visible.
+12. (Optional) Load `/lumonox/ui/diagnosis#grouped-errors` or a saved `#error-group:…` bookmark and confirm the page still renders (deep-link + partial-scope UX is covered in unit tests under `frontend/components/dashboard/diagnosisDeepLink.test.ts`).
 
 Record HAR or video on failure (`trace: 'retain-on-failure'` in config).
 

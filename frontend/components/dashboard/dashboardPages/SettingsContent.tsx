@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import type { DashboardAlertTestResponse, RetentionSettings } from "../dashboardTypes";
+import type { RetentionSettings } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { buildApiUrl, isApiSubpathDashboard } from "../dashboardTypes";
 import { DASHBOARD_FETCH_TIMEOUT_MS, fetchWithTimeout } from "../dashboardDataFetchUtils";
@@ -11,15 +11,9 @@ import {
   canManageProjectAlertsAndRetention,
   isDashboardViewer,
 } from "../dashboardRoleHelpers";
-import {
-  PROTECTED_OWNER_EMAIL,
-  isProtectedOwnerEmail,
-  looksLikeCompleteDiscordIncomingWebhook,
-  looksLikeCompleteSlackIncomingWebhook,
-} from "./settingsContentUtils";
+import { PROTECTED_OWNER_EMAIL, isProtectedOwnerEmail } from "./settingsContentUtils";
 import { normalizeSchedulerJobs, normalizeSystemDiagnostics } from "../../../utils/systemDiagnostics";
-import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
-import { parseDashboardAlertTestResponse, parseEventPlaneCutoverSettings } from "../../../utils/dashboardResponseGuards";
+import { parseEventPlaneCutoverSettings } from "../../../utils/dashboardResponseGuards";
 
 import { SettingsAlertDeliverySection } from "./SettingsAlertDeliverySection";
 import { SettingsActiveProjectSection } from "./SettingsActiveProjectSection";
@@ -31,6 +25,7 @@ import { SettingsApiKeyLifecycleSection } from "./SettingsApiKeyLifecycleSection
 import { SettingsInternalMetricsSection } from "./SettingsInternalMetricsSection";
 import { SettingsSystemDiagnosticsSection } from "./SettingsSystemDiagnosticsSection";
 import { SettingsRetentionPolicySection } from "./SettingsRetentionPolicySection";
+import { useSettingsAlertDelivery } from "./useSettingsAlertDelivery";
 import { settingsMetricStatusClass, useSettingsDiagnosticsPanels } from "./useSettingsDiagnosticsPanels";
 import { useSettingsOrganizationsMembers } from "./useSettingsOrganizationsMembers";
 
@@ -40,13 +35,10 @@ export function SettingsContent() {
   const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
   const [retentionDraft, setRetentionDraft] = useState<RetentionSettings | null>(null);
   const orgMembers = useSettingsOrganizationsMembers(d.sessionProjectId);
+  const alertDelivery = useSettingsAlertDelivery(d.alertSettings, d.saveAlertSettings, d.setRefreshToken);
   const [selectedKeyIds, setSelectedKeyIds] = useState<Set<string>>(new Set());
   const [keyBulkAction, setKeyBulkAction] = useState<"" | "rotate" | "revoke">("");
   const [apiKeyMessage, setApiKeyMessage] = useState<string | null>(null);
-  const [channelMessage, setChannelMessage] = useState<string | null>(null);
-  const [testAlertSending, setTestAlertSending] = useState(false);
-  const [testAlertResult, setTestAlertResult] = useState<DashboardAlertTestResponse | null>(null);
-  const [testAlertError, setTestAlertError] = useState<string | null>(null);
   const [activeProjectBusy, setActiveProjectBusy] = useState(false);
   const [activeProjectMessage, setActiveProjectMessage] = useState<string | null>(null);
   const [eventPlaneCutoverSaving, setEventPlaneCutoverSaving] = useState(false);
@@ -163,7 +155,6 @@ export function SettingsContent() {
   };
 
   const orgOwnerAccess = orgMembers.selectedOrganization?.role === "owner";
-  const alertDeliveryDraft = d.alertSettings;
   const canEditAlertDelivery = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canViewInternalMetrics = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
   const canViewSystemDiagnostics = canViewInternalMetrics;
@@ -192,77 +183,6 @@ export function SettingsContent() {
     () => normalizeSchedulerJobs(diagnostics.systemDiagnosticsSnapshot),
     [diagnostics.systemDiagnosticsSnapshot],
   );
-
-  const sendTestAlert = async () => {
-    setTestAlertSending(true);
-    setTestAlertError(null);
-    setTestAlertResult(null);
-    try {
-      const response = await fetchWithTimeout(
-        buildApiUrl("/dashboard/alert-test"),
-        { method: "POST", credentials: "include" },
-        DASHBOARD_FETCH_TIMEOUT_MS,
-      );
-      if (!response.ok) {
-        throw new Error(`alert-test failed (${response.status})`);
-      }
-      const raw: unknown = await response.json();
-      const body = parseDashboardAlertTestResponse(raw);
-      if (!body) {
-        throw new Error("alert-test returned unexpected JSON shape");
-      }
-      setTestAlertResult(body);
-      d.setRefreshToken((token) => token + 1);
-    } catch (error) {
-      setTestAlertError(buildDashboardNetworkError(error));
-    } finally {
-      setTestAlertSending(false);
-    }
-  };
-
-  const saveDeliveryChannels = async () => {
-    if (!alertDeliveryDraft) {
-      return;
-    }
-    if (alertDeliveryDraft.email_enabled && !alertDeliveryDraft.destination_email?.trim()) {
-      setChannelMessage("Email delivery is enabled. Add a destination email address.");
-      return;
-    }
-    if (alertDeliveryDraft.slack_enabled && !alertDeliveryDraft.slack_webhook_url?.trim()) {
-      setChannelMessage("Slack is enabled. Add a Slack webhook URL.");
-      return;
-    }
-    if (
-      alertDeliveryDraft.slack_enabled &&
-      alertDeliveryDraft.slack_webhook_url?.trim() &&
-      !looksLikeCompleteSlackIncomingWebhook(alertDeliveryDraft.slack_webhook_url)
-    ) {
-      setChannelMessage(
-        "Slack URL looks incomplete. Paste the full incoming webhook from Slack (includes /services/…/…/…).",
-      );
-      return;
-    }
-    if (alertDeliveryDraft.discord_enabled && !alertDeliveryDraft.discord_webhook_url?.trim()) {
-      setChannelMessage("Discord is enabled. Add a Discord webhook URL.");
-      return;
-    }
-    if (
-      alertDeliveryDraft.discord_enabled &&
-      alertDeliveryDraft.discord_webhook_url?.trim() &&
-      !looksLikeCompleteDiscordIncomingWebhook(alertDeliveryDraft.discord_webhook_url)
-    ) {
-      setChannelMessage(
-        "Discord URL looks incomplete. Paste the full webhook URL from Discord (ends with /webhooks/id/token).",
-      );
-      return;
-    }
-    if (alertDeliveryDraft.webhook_enabled && !alertDeliveryDraft.webhook_url?.trim()) {
-      setChannelMessage("Webhook is enabled. Add a webhook URL.");
-      return;
-    }
-    const ok = await d.saveAlertSettings(alertDeliveryDraft);
-    setChannelMessage(ok ? "Alert delivery settings saved." : "Failed to save alert delivery settings.");
-  };
 
   return (
     <div className="space-y-6">
@@ -356,7 +276,7 @@ export function SettingsContent() {
       />
 
       <SettingsAlertDeliverySection
-        alertDeliveryDraft={alertDeliveryDraft}
+        alertDeliveryDraft={d.alertSettings}
         dashboardLoading={d.loading}
         dashboardErrorMessage={d.errorMessage}
         canEditAlertDelivery={canEditAlertDelivery}
@@ -364,12 +284,12 @@ export function SettingsContent() {
         alertCapabilities={d.alertCapabilities}
         alertSettingsSaving={d.alertSettingsSaving}
         updateAlertSettingsDraft={d.updateAlertSettingsDraft}
-        onSave={() => void saveDeliveryChannels()}
-        onSendTestAlert={() => void sendTestAlert()}
-        channelMessage={channelMessage}
-        testAlertSending={testAlertSending}
-        testAlertResult={testAlertResult}
-        testAlertError={testAlertError}
+        onSave={() => void alertDelivery.saveDeliveryChannels()}
+        onSendTestAlert={() => void alertDelivery.sendTestAlert()}
+        channelMessage={alertDelivery.channelMessage}
+        testAlertSending={alertDelivery.testAlertSending}
+        testAlertResult={alertDelivery.testAlertResult}
+        testAlertError={alertDelivery.testAlertError}
       />
 
       <SettingsActiveProjectSection
