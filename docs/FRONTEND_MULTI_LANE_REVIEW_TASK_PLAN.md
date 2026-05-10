@@ -7,7 +7,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - **Plan name:** Frontend multi-lane quality review -> implementation backlog
 - **Owner:** Frontend + Platform (AI-assisted execution)
 - **Date:** 2026-05-10
-- **Status:** In progress (phase 1 shipped; FE-08 session-fetch consolidation done; other lanes remain)
+- **Status:** In progress (phase 1 shipped; FE-06 settings modularization + FE-08 session-fetch done; other lanes remain)
 - **Scope summary (2-4 lines):**
   This plan converts a codebase-wide frontend review into execution tasks. It prioritizes high-impact UX clarity, visual consistency, accessibility, and developer productivity improvements while preserving Lumonox MVP constraints (fast diagnosis, low-friction onboarding, no advanced non-goal platform features).
 - **Out of scope:**
@@ -24,7 +24,7 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 | FE-03 | **Done (superseded scope)** | Command palette was **removed** as redundant with the sidebar (`DashboardCommandPalette.tsx` deleted; not mounted from `DashboardLayoutClient.tsx`). `NavIaMigrationBanner` copy updated to sidebar-only. Original “add palette discoverability” work was **intentionally dropped**. |
 | FE-04 | **Partial** | Overview traffic summaries (`aria-live`), Query Explorer / Traces labels, `TimeSeriesLineChart` SR trend line, **Traffic volume** trends as one **stacked area** (2xx–5xx) + `aria-label` in `VolumeChart`. Full chart/a11y audit still open. |
 | FE-05 | **Partial** | WebSocket + live hooks as before; **`dashboardQueryBundle.ts`** centralizes batch query planning; **`dashboardWorkspaceBootstrap.ts`** exposes **`loadDashboardBootstrap`** (fetch + parse) consumed by **`DashboardDataContext`**. Context still owns state, batch fetch effect, and apply logic. |
-| FE-06 | **Partial** | `settingsContentTypes.ts` + settings sections under `dashboardPages/` + hooks: **`useSettingsOrganizationsMembers`**, **`useSettingsDiagnosticsPanels`** (incl. system diagnostics summary + scheduler job memos) / **`settingsMetricStatusClass`**, **`useSettingsAggregateQueueStats`**, **`useSettingsAlertDelivery`**, **`useSettingsApiKeyBulk`** (+ **`settingsApiKeyBulk`**), **`useSettingsEventPlaneCutoverSave`**, **`useSettingsRetentionPolicy`**, **`useSettingsActiveProject`**, **`useSettingsAppearanceTrafficFeedback`**. **`SettingsContent.tsx`** is mostly composition + capability flags. |
+| FE-06 | **Done** | **`SettingsContent.tsx`** is composition + role flags over section components + hooks: **`useSettingsOrganizationsMembers`**, **`useSettingsDiagnosticsPanels`** / **`settingsMetricStatusClass`**, **`useSettingsAggregateQueueStats`**, **`useSettingsAlertDelivery`**, **`useSettingsApiKeyBulk`** (+ **`settingsApiKeyBulk`**), **`useSettingsEventPlaneCutoverSave`**, **`useSettingsRetentionPolicy`**, **`useSettingsActiveProject`**, **`useSettingsAppearanceTrafficFeedback`**, plus **`settingsContentTypes.ts`**. Section-level tests include retention, alerts, API keys, active project, org/members. Optional future work: further splits only if new settings domains appear. |
 | FE-07 | **Partial** | Above plus **`parseDashboardDataQueryResponse`** in `frontend/utils/dashboardQueryResponseGuards.ts` for **`POST /dashboard/query`** (main fetch + diagnosis follow-up). |
 | FE-08 | **Done** | **`dashboardSessionFetch.ts`** is the single session-scoped entry point on top of **`fetchWithTimeout`** + **`buildApiUrl`** for **`DashboardDataContext`**, settings hooks (diagnostics, event-plane, alerts, orgs), **`QueryExplorerContent`**, **`TracesContent`**, bootstrap helper, etc. Out of scope for this closure: plain **`fetch`** call sites (bookmarks client, magic-link verify, auth session helper) and optional future **shared JSON error parsing**. Slice memo policy: documented in **`useDashboardSlices.ts`**. |
 | FE-09 | **Partial** | Guard unit tests + Playwright **`settings-smoke`** (incl. theme toggle when enabled), **`onboarding-smoke`**, **`widgets-showcase-smoke`**, **`alerts-smoke`**, **`logs-smoke`**, **`requests-smoke`**, **`query-explorer-smoke`**, **`traces-smoke`**, **`bookmarks-smoke`** (`authDevMagicLink.ts`). Further interaction coverage still open. |
@@ -307,8 +307,8 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Safe to re-run? Partial
   - If partial/no, guardrails required: Merge in section slices, not one giant rewrite.
 - **State / progress tracking:**
-  - Status: Todo
-  - % complete: 0
+  - Status: Done (`SettingsContent` composition + hooks; section tests including `SettingsRetentionPolicySection.test.tsx`)
+  - % complete: 100
   - Last update: 2026-05-10
   - Owner: Frontend
 - **Related documents:** `frontend/README.md`
@@ -503,11 +503,11 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
 - Delivery sequence:
   1. P0 reliability/safety foundations: FE-01, FE-05, FE-07.
   2. UX and consistency uplift: FE-02, FE-03, FE-04.
-  3. Maintainability cleanup: FE-06 (FE-08 session-fetch wave: done).
+  3. Maintainability cleanup: FE-06 + FE-08 (both done for current MVP scope).
   4. Quality hardening and DX guardrails: FE-09, FE-10.
 - Parallelization opportunities:
   - FE-02 and FE-03 can run in parallel after FE-01 starts.
-  - FE-06 can continue in parallel with other lanes; FE-08 session-fetch consolidation is complete.
+  - FE-06 settings modularization and FE-08 session-fetch consolidation are complete; further work is optional polish.
   - FE-09 starts as soon as FE-01..FE-04 components are merged.
 - Risk register (top 3-5):
   - Large refactors (FE-05/FE-06) may introduce subtle state regressions.
@@ -519,6 +519,10 @@ Use this plan to execute a full frontend quality uplift across UX/UI, visual pol
   - Why: Highest user and developer impact with broad downstream benefits.
   - Date: 2026-05-10
   - Owner: Frontend tech lead
+  - Decision: Close FE-06 for MVP scope — `SettingsContent` decomposed into sections + dedicated hooks with Vitest coverage on critical sections; defer only hypothetical new settings domains.
+  - Why: Meets AC (modular layout, stable save paths, section tests); shrinking the file further yields diminishing returns.
+  - Date: 2026-05-10
+  - Owner: Frontend
   - Decision: Close FE-08 after migrating all dashboard `fetchWithTimeout`+`buildApiUrl` call sites to `dashboardSessionFetch.ts` (including Query Explorer + Traces); defer plain-`fetch` paths and shared JSON error parsing.
   - Why: One timeout/credentials contract for interactive dashboard API calls; remaining `fetch` uses are intentionally lightweight or auth-specific.
   - Date: 2026-05-10
