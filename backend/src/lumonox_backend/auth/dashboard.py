@@ -11,7 +11,6 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import HTTPConnection
 
@@ -490,10 +489,14 @@ async def get_dashboard_auth_session(
     raw_token = _raw_dashboard_session_token_from_request(request, settings)
     if not raw_token:
         return None
+    try:
+        token_hash = _hash_token(raw_token)
+    except UnicodeEncodeError:
+        return None
     now = _now()
     session_row = await session.scalar(
         select(DashboardSession).where(
-            DashboardSession.token_hash == _hash_token(raw_token),
+            DashboardSession.token_hash == token_hash,
             DashboardSession.revoked_at.is_(None),
             DashboardSession.expires_at >= now,
         )
@@ -506,16 +509,15 @@ async def get_dashboard_auth_session(
     if user is None:
         return None
     organization_id = session_row.organization_id
-    membership_role: str | None = None
     if organization_id is None:
-        # Legacy session predates organization tracking. Look up the project's org,
-        # then require an existing membership for this user. Never silently grant
-        # ownership on the auth heartbeat path.
+        # Legacy session predates organization tracking. Resolve org from the bound project.
+        # Do not UPDATE ``dashboard_sessions`` here: this helper must stay read-only so
+        # ``GET /dashboard/auth/session`` never commits/flushes inside the request-scoped
+        # dependency session (avoids SQLite lock errors and transaction edge cases).
         project = await session.scalar(select(Project).where(Project.id == session_row.project_id))
         if project is None or project.organization_id is None:
             return None
         organization_id = project.organization_id
-        session_row.organization_id = organization_id
     membership = await session.scalar(
         select(OrganizationMembership).where(
             OrganizationMembership.organization_id == organization_id,
@@ -527,27 +529,16 @@ async def get_dashboard_auth_session(
         # Treat as unauthenticated so the caller forces a clean re-login that
         # routes through ``_resolve_project_for_user``.
         return None
-    membership_role = membership.role
-    # Keep plain values before any write/rollback path; rollback can expire ORM attributes
-    # and later attribute access may trigger async IO from sync contexts (MissingGreenlet).
+    # Copy primitives before returning (ORM instances stay tied to the session).
     user_id = user.id
     user_email = user.email
     project_id = session_row.project_id
     session_expires_at = session_row.expires_at
-    # Defer mutable writes until all read queries complete so auth checks do not
-    # trigger an autoflush UPDATE in the middle of SELECT statements.
-    session_row.last_seen_at = now
-    try:
-        await session.commit()
-    except OperationalError:
-        # SQLite can transiently lock under concurrent local requests.
-        # Keep auth read-path healthy even if the heartbeat write is skipped.
-        await session.rollback()
     return DashboardAuthSession(
         user_id=user_id,
         project_id=project_id,
         organization_id=organization_id,
-        membership_role=membership_role,
+        membership_role=membership.role,
         email=user_email,
         expires_at=session_expires_at,
     )

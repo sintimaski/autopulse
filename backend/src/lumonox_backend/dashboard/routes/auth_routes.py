@@ -5,7 +5,7 @@ import os
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -70,6 +70,15 @@ OnboardingStep = Literal[
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _normalize_session_expires_at_for_api(dt: Any) -> datetime:
+    """Normalize expiry: SQLite may return naive datetimes; API uses UTC-aware values."""
+    if not isinstance(dt, datetime):
+        return datetime.now(tz=UTC)
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 async def _maybe_align_singleton_duckdb_project(
@@ -195,7 +204,7 @@ async def verify_dashboard_magic_link(
     return DashboardSessionResponse(
         authenticated=True,
         email=auth_session.email,
-        expires_at=auth_session.expires_at,
+        expires_at=_normalize_session_expires_at_for_api(auth_session.expires_at),
         project_id=str(auth_session.project_id),
         organization_id=(
             str(auth_session.organization_id) if auth_session.organization_id is not None else None
@@ -403,7 +412,7 @@ async def set_dashboard_active_project(
     return DashboardSessionResponse(
         authenticated=True,
         email=updated.email,
-        expires_at=updated.expires_at,
+        expires_at=_normalize_session_expires_at_for_api(updated.expires_at),
         project_id=str(updated.project_id),
         organization_id=(
             str(updated.organization_id) if updated.organization_id is not None else None
@@ -428,7 +437,7 @@ async def get_dashboard_session(
     return DashboardSessionResponse(
         authenticated=True,
         email=auth_session.email,
-        expires_at=auth_session.expires_at,
+        expires_at=_normalize_session_expires_at_for_api(auth_session.expires_at),
         project_id=str(auth_session.project_id),
         organization_id=(
             str(auth_session.organization_id) if auth_session.organization_id is not None else None
