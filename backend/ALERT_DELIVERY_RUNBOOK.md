@@ -31,6 +31,7 @@ Set one of the minimal sender configurations:
 - Slack webhook:
   - `ALERT_SENDER_MODE=slack`
   - `ALERT_SLACK_WEBHOOK_URL=...`
+  - Payload shape matches Slack Incoming Webhooks: JSON `{"text": "<summary>"}` (no Block Kit in MVP).
 - Discord webhook:
   - `ALERT_SENDER_MODE=discord`
   - `ALERT_DISCORD_WEBHOOK_URL=...`

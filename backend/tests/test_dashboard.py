@@ -482,6 +482,73 @@ def test_dashboard_requests_support_filters_and_pagination(backend_test_database
     assert payload["items"][0]["status_code"] >= 500
 
 
+def test_dashboard_requests_focus_errors_matches_status_class_five(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Focus")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=20)
+    app = create_app()
+
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/a")
+        _ingest(client, key, base_time + timedelta(minutes=1), 502, "POST", "/b")
+        _ingest(client, key, base_time + timedelta(minutes=2), 404, "GET", "/c")
+
+        via_focus = client.get(
+            "/dashboard/requests",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
+                "focus": "errors",
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+        via_class = client.get(
+            "/dashboard/requests",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
+                "status_class": 5,
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+
+    assert via_focus.status_code == 200
+    assert via_class.status_code == 200
+    assert via_focus.json()["total"] == via_class.json()["total"] == 1
+    assert via_focus.json()["items"][0]["path"] == "/b"
+
+
+def test_dashboard_requests_explicit_status_class_beats_focus_errors(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Focus Override")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=20)
+    app = create_app()
+
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 404, "GET", "/nf")
+        _ingest(client, key, base_time + timedelta(minutes=1), 502, "POST", "/err")
+
+        response = client.get(
+            "/dashboard/requests",
+            params={
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
+                "focus": "errors",
+                "status_class": 4,
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["path"] == "/nf"
+
+
 def test_dashboard_requests_event_sql_filter_scopes_results(backend_test_database_url: str) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project SQL Filter")

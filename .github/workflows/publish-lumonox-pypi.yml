@@ -5,6 +5,7 @@
 # ``version`` is not yet on PyPI (bump version to cut a release).
 #
 # Manual: Actions → Publish lumonox to PyPI → Run workflow.
+# Maintainer checklist: docs/runbooks/LUMONOX_PYPI_RELEASE_CHECKLIST.md
 #
 # One-time PyPI: create project ``lumonox`` → trusted publisher for this workflow (environment ``pypi`` if used).
 name: Publish lumonox to PyPI

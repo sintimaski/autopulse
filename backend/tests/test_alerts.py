@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -361,3 +362,45 @@ def test_email_sender_file_provider_writes_outbox(tmp_path) -> None:
     outbox_path = result.detail.get("outbox_path")
     assert isinstance(outbox_path, str)
     assert outbox_path.endswith(".eml")
+
+
+def test_slack_webhook_sender_posts_incoming_webhook_text_payload() -> None:
+    from lumonox_backend.services.alert_delivery import AlertSignal, SlackWebhookAlertSender
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_post = AsyncMock(return_value=mock_response)
+    async_client = MagicMock()
+    async_client.post = mock_post
+    async_cm = MagicMock()
+    async_cm.__aenter__ = AsyncMock(return_value=async_client)
+    async_cm.__aexit__ = AsyncMock(return_value=None)
+    mock_client_factory = MagicMock(return_value=async_cm)
+
+    client_patch = "lumonox_backend.services.alert_delivery.httpx.AsyncClient"
+
+    async def run() -> object:
+        with patch(client_patch, mock_client_factory):
+            sender = SlackWebhookAlertSender(webhook_url="https://hooks.slack.test/x")
+            signal = AlertSignal(
+                project_id=uuid4(),
+                alert_type="error_spike",
+                destination_email="ops@example.com",
+                triggered_at=datetime.now(tz=UTC),
+                window_start=datetime.now(tz=UTC) - timedelta(minutes=5),
+                window_end=datetime.now(tz=UTC),
+                detail={"request_count": 12, "error_ratio": 0.6},
+            )
+            return await sender.send(signal)
+
+    result = asyncio.run(run())
+    assert result.status == "sent"
+    assert result.delivered_via == "slack"
+    mock_client_factory.assert_called_once()
+    assert mock_post.await_count == 1
+    posted = mock_post.await_args
+    assert posted is not None
+    body = posted.kwargs.get("json")
+    assert isinstance(body, dict)
+    assert "text" in body
+    assert "error_spike" in body["text"]

@@ -65,6 +65,43 @@ jobs:
           uv run python -m lumonox_backend.jobs alerts-once >/dev/null
           uv run python -m lumonox_backend.jobs retention-once >/dev/null
 
+  # Production-like flags disabled in the full baseline job (see docs/ops/CI_RELIABILITY_MATRIX.md).
+  python-sqlite-reliability-matrix:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite+aiosqlite:///./lumonox_ci_matrix.db
+      BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./lumonox_ci_matrix_test.db
+      LUMONOX_EVENT_STORE: sqlite
+      LUMONOX_EVENT_PLANE_MODE: duckdb_single_writer
+      LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events-matrix.duckdb
+      JOBS_ENABLE_SCHEDULER: "true"
+      JOBS_ALERT_INTERVAL_SECONDS: "3600"
+      JOBS_RETENTION_INTERVAL_SECONDS: "3600"
+      INGEST_ASYNC_AGGREGATE_ENABLED: "true"
+      DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "false"
+      DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK: "true"
+      LUMONOX_SQLITE_SIZE_RETENTION_ONLY: "false"
+      LUMONOX_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync environment
+        run: uv sync --group dev
+
+      - name: Pytest (reliability matrix slice)
+        run: >
+          uv run pytest
+          backend/tests/test_event_plane_parity.py
+          backend/tests/test_event_plane_read_path.py
+          backend/tests/test_ci_reliability_matrix.py
+          backend/tests/test_ingest.py::test_ingest_async_aggregate_sync_fallback_when_enqueue_returns_false
+          -q
+
   python-postgres:
     runs-on: ubuntu-latest
     services:

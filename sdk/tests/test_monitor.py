@@ -14,10 +14,12 @@ from fastapi import FastAPI, Response
 
 from lumonox._infrastructure import InfrastructureSampler
 from lumonox._monitor import (
+    DEFAULT_SCRUB_KEYS,
     _build_infrastructure_widget_payload,
     _EventDispatcher,
     _LumonoxMiddleware,
     _MonitorConfig,
+    _scrub_value,
     _stable_error_hash,
     monitor,
 )
@@ -246,6 +248,26 @@ class _PayloadTooLargeStatusClient:
         self.calls += 1
         request = httpx.Request("POST", url)
         return httpx.Response(413, request=request, json={"detail": "too large"})
+
+
+@dataclass
+class _ConflictThenOkClient:
+    calls: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        headers: dict[str, str],
+        **_: Any,
+    ) -> httpx.Response:
+        self.calls += 1
+        request = httpx.Request("POST", url)
+        if self.calls == 1:
+            return httpx.Response(408, request=request, json={"detail": "timeout"})
+        return httpx.Response(200, request=request, json={"accepted": 1})
 
 
 @dataclass
@@ -576,6 +598,37 @@ def test_dispatcher_scrubs_sensitive_fields_before_queueing() -> None:
     assert queued["nested"]["token"] == "[REDACTED]"
 
 
+def test_scrub_value_uses_default_scrub_keys_for_set_cookie_and_nested_tokens() -> None:
+    raw = {
+        "headers": {
+            "Set-Cookie": "session=abc",
+            "x-forwarded-client-secret": "s3cr3t",
+        },
+        "body": {"refresh_token": "rt-1", "safe": "ok"},
+    }
+    out = _scrub_value(raw, DEFAULT_SCRUB_KEYS)
+    assert out["headers"]["Set-Cookie"] == "[REDACTED]"
+    assert out["headers"]["x-forwarded-client-secret"] == "[REDACTED]"
+    assert out["body"]["refresh_token"] == "[REDACTED]"
+    assert out["body"]["safe"] == "ok"
+
+
+def test_dispatcher_stop_flushes_partial_batch_under_batch_size() -> None:
+    async def run() -> None:
+        config = _make_config(batch_size=10, flush_interval_s=60.0)
+        client = _FailingClient(failures_before_success=0)
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher.start()
+        dispatcher.enqueue({"type": "request", "headers": {"cookie": "a=b"}})
+        await asyncio.sleep(0.02)
+        await dispatcher.stop()
+        assert client.calls == 1
+        ev = client.sent_payloads[0]["json"]["events"][0]
+        assert ev["headers"]["cookie"] == "[REDACTED]"
+
+    asyncio.run(run())
+
+
 def test_dispatcher_scrubs_additional_sensitive_key_variants() -> None:
     config = _make_config(scrub_keys=frozenset({"authorization", "id_token"}))
     dispatcher = _EventDispatcher(config, client=_FailingClient(failures_before_success=0))
@@ -607,6 +660,17 @@ def test_send_batch_drops_after_retries_exhausted() -> None:
         dispatcher = _EventDispatcher(config, client=client)
         await dispatcher._send_batch([{"type": "request"}])
         assert client.calls == 3
+
+    asyncio.run(run())
+
+
+def test_send_batch_retries_on_408_request_timeout() -> None:
+    async def run() -> None:
+        config = _make_config(max_retries=2, retry_backoff_s=0.0)
+        client = _ConflictThenOkClient()
+        dispatcher = _EventDispatcher(config, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert client.calls == 2
 
     asyncio.run(run())
 

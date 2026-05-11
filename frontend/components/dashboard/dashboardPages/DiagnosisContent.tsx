@@ -361,6 +361,30 @@ export function DiagnosisContent() {
         </section>
       ) : null}
       <RecentJobFailuresStrip data={diagnosisSlice.recentJobFailures} />
+      <section
+        className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm text-slate-800 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700/80 dark:bg-neutral-900/40 dark:text-neutral-100 dark:ring-white/[0.06]"
+        aria-label="Job and cron query explorer shortcut"
+      >
+        <h3 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-neutral-50">
+          Jobs &amp; cron (deeper slice)
+        </h3>
+        <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
+          Run a read-only starter query against <span className="font-mono text-[11px]">scoped_events</span> for
+          failed <span className="font-mono text-[11px]">type=job</span> rows (DuckDB event store). Uses the header
+          time scope when enabled.
+        </p>
+        <div className="mt-2">
+          <Link
+            href="/query-explorer?preset=job_failures"
+            className="ap-btn inline-flex text-xs"
+            onClick={() =>
+              emitRumEvent("jobs_primary_action", { target: "query_explorer_job_failures_preset" })
+            }
+          >
+            Open Query Explorer (job failures)
+          </Link>
+        </div>
+      </section>
       <section className="grid gap-4 lg:grid-cols-3">
         <MetricCard
           label="Incident summary"

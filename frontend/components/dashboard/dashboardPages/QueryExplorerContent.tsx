@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CardSpinner } from "../../ui/CardSpinner";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
@@ -8,6 +9,10 @@ import { parseQueryExplorerResponse } from "../../../utils/dashboardResponseGuar
 import { useDashboardData } from "../DashboardDataContext";
 import { dashboardSessionJsonPost } from "../dashboardSessionFetch";
 import type { QueryExplorerResponse } from "../dashboardTypes";
+import {
+  JOB_FAILURES_STARTER_SQL,
+  QUERY_EXPLORER_JOB_FAILURES_PRESET,
+} from "../queryExplorerPresets";
 
 const DEFAULT_QUERY = [
   "SELECT",
@@ -23,12 +28,27 @@ const DEFAULT_QUERY = [
 
 export function QueryExplorerContent() {
   const d = useDashboardData();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [rowLimit, setRowLimit] = useState(200);
   const [applyTimeWindow, setApplyTimeWindow] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QueryExplorerResponse | null>(null);
+  const jobFailuresPresetAppliedRef = useRef(false);
+
+  useEffect(() => {
+    const preset = (searchParams.get("preset") ?? "").trim().toLowerCase();
+    if (preset !== QUERY_EXPLORER_JOB_FAILURES_PRESET) {
+      jobFailuresPresetAppliedRef.current = false;
+      return;
+    }
+    if (jobFailuresPresetAppliedRef.current) {
+      return;
+    }
+    setQuery(JOB_FAILURES_STARTER_SQL);
+    jobFailuresPresetAppliedRef.current = true;
+  }, [searchParams]);
 
   const payloadWindow = useMemo(
     () => ({

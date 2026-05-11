@@ -10,6 +10,7 @@ This index focuses on shipping and operating Lumonox safely. For **product scope
 - AI/agent playbooks and workflow index: `AGENTS.md`
 - Cursor rules, @-mentions, and editor workflows: `docs/cursor/CURSOR_DEVELOPMENT.md`, `docs/cursor/WORKFLOWS.md`
 - Production deployment: `docs/ops/PRODUCTION_DEPLOYMENT.md`
+- Version upgrades (operator checklist): `docs/ops/DEPLOYMENT_UPGRADE.md`
 
 ## Developers and planning
 
@@ -22,6 +23,7 @@ This index focuses on shipping and operating Lumonox safely. For **product scope
 
 - Backups and restore: `docs/ops/BACKUP_RESTORE.md`
 - Backend lifespan responsibilities and shutdown order: `docs/ops/BACKEND_LIFECYCLE.md`
+- CI reliability matrix (scheduler + async aggregate slice): `docs/ops/CI_RELIABILITY_MATRIX.md`
 - Multi-instance deployment: `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - Event-plane scaling ADR: `docs/ops/ADR_EVENT_STORE_SCALING.md`
 - Event-plane backpressure runbook: `docs/ops/RUNBOOK_EVENT_PLANE_BACKPRESSURE.md`
@@ -30,6 +32,7 @@ This index focuses on shipping and operating Lumonox safely. For **product scope
 
 ## Runbooks and testing
 
+- PyPI dual-package release (`lumonox` + `lumonox-sdk`): `docs/runbooks/LUMONOX_PYPI_RELEASE_CHECKLIST.md`
 - Release checklist: `docs/runbooks/PHASE5_RELEASE_CHECKLIST.md`
 - Incident drills: `docs/runbooks/PHASE5_INCIDENT_DRILLS.md`
 - Drill cadence + evidence log: `docs/runbooks/PHASE5_DRILL_CYCLE.md`, `docs/runbooks/PHASE5_DRILL_EVIDENCE_LOG.md`

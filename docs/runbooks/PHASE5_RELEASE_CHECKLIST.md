@@ -47,6 +47,10 @@ Use this checklist before promoting any release-hardening changes.
 - [ ] Multi-replica WS deployment validates sticky sessions (or single WS replica) with fresh live updates in staging.
 - [ ] Stale-live symptom remediation (stickiness/single WS replica) is documented in release evidence.
 
+## PyPI (dual packages)
+
+- [ ] Follow `docs/runbooks/LUMONOX_PYPI_RELEASE_CHECKLIST.md` when cutting `lumonox` and/or `lumonox-sdk` releases; confirm the correct `pyproject.toml` version was bumped.
+
 ## Final Gate
 
 - [ ] Run `./scripts/release_gates.sh` from repository root.

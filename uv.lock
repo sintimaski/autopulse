@@ -740,7 +740,7 @@ wheels = [
 
 [[package]]
 name = "lumonox"
-version = "0.2.7"
+version = "0.2.8"
 source = { editable = "backend" }
 dependencies = [
     { name = "aiosqlite" },
@@ -788,7 +788,7 @@ provides-extras = ["parquet-s3"]
 
 [[package]]
 name = "lumonox-sdk"
-version = "0.2.4"
+version = "0.2.5"
 source = { editable = "sdk" }
 dependencies = [
     { name = "fastapi" },

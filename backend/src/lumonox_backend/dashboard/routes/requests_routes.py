@@ -22,10 +22,12 @@ from lumonox_backend.dashboard.params import (
     METHOD_QUERY,
     OFFSET_QUERY,
     PATH_QUERY,
+    REQUESTS_FOCUS_QUERY,
     SERVICES_QUERY,
     STATUS_CLASS_QUERY,
     TO_TIMESTAMP_QUERY,
     WINDOW_MINUTES_QUERY,
+    DashboardRequestsFocus,
 )
 from lumonox_backend.dashboard.parsing import split_csv_values
 from lumonox_backend.dashboard.time_window import as_utc_datetime, resolve_time_window
@@ -67,6 +69,7 @@ async def get_dashboard_requests(
     window_minutes: int = WINDOW_MINUTES_QUERY,
     method: str | None = METHOD_QUERY,
     status_class: int | None = STATUS_CLASS_QUERY,
+    focus: DashboardRequestsFocus | None = REQUESTS_FOCUS_QUERY,
     path_contains: str | None = PATH_QUERY,
     environments: str | None = ENVIRONMENTS_QUERY,
     services: str | None = SERVICES_QUERY,
@@ -80,6 +83,9 @@ async def get_dashboard_requests(
     resolved_from, resolved_to = resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
+    effective_status_class = status_class
+    if effective_status_class is None and focus == DashboardRequestsFocus.errors:
+        effective_status_class = 5
     exclude_lumonox_traffic = await resolve_exclude_lumonox_traffic(session, context.project_id)
     filters = [
         Event.project_id == context.project_id,
@@ -90,8 +96,8 @@ async def get_dashboard_requests(
     append_exclude_lumonox_event_filters(filters, exclude_lumonox_traffic=exclude_lumonox_traffic)
     if method:
         filters.append(Event.method == method.upper())
-    if status_class is not None:
-        lower = status_class * 100
+    if effective_status_class is not None:
+        lower = effective_status_class * 100
         filters.extend([Event.status_code >= lower, Event.status_code < lower + 100])
     if path_contains:
         lowered = path_contains.strip().lower()
@@ -116,7 +122,7 @@ async def get_dashboard_requests(
             from_timestamp=resolved_from,
             to_timestamp=resolved_to,
             method=method,
-            status_class=status_class,
+            status_class=effective_status_class,
             path_contains=path_contains,
             environments=environments,
             services=services,

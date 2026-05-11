@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -17,6 +18,24 @@ from lumonox_backend.models import Event
 
 DASHBOARD_GROUP_HASH_PATH_SEP = "\x1e"
 
+_UUID_RE = re.compile(
+    r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
+    re.IGNORECASE,
+)
+
+
+def normalize_exception_message_for_synthetic_grouping(message: str | None) -> str:
+    """Collapse volatile IDs in messages so unrelated stacks share fewer synthetic buckets.
+
+    Used only when ``error_hash`` is absent (legacy clients). SDK-provided ``error_hash``
+    remains authoritative.
+    """
+    if not message:
+        return ""
+    out = _UUID_RE.sub("<uuid>", message)
+    out = re.sub(r"\b\d{12,}\b", "<id>", out)
+    return out
+
 
 def synthetic_error_key(
     exception_type: str | None,
@@ -26,7 +45,9 @@ def synthetic_error_key(
     digest = hashlib.sha256()
     digest.update((exception_type or "").encode("utf-8"))
     digest.update(b"|")
-    digest.update((exception_message or "").encode("utf-8"))
+    digest.update(
+        normalize_exception_message_for_synthetic_grouping(exception_message).encode("utf-8")
+    )
     digest.update(b"|")
     digest.update(path.encode("utf-8"))
     return digest.hexdigest()

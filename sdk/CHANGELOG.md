@@ -8,6 +8,16 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-05-12
+
+### Added
+
+- Expanded **`lumonox._monitor`** unit test coverage (scrub defaults, partial-batch flush on worker stop, HTTP 408 retry path).
+
+### Packaging
+
+- **`[stack]`** extra depends on **`lumonox>=0.2.8`** (aligned with the **0.2.8** API wheel).
+
 ## [0.2.4] - 2026-05-11
 
 ### Added
