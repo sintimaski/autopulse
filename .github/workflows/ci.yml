@@ -26,7 +26,7 @@ jobs:
       INGEST_ASYNC_AGGREGATE_ENABLED: "false"
       LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events.duckdb
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -83,7 +83,7 @@ jobs:
       LUMONOX_SQLITE_SIZE_RETENTION_ONLY: "false"
       LUMONOX_ENV: development
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -132,7 +132,7 @@ jobs:
       DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "false"
       DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -157,7 +157,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -211,7 +211,7 @@ jobs:
       E2E_BASE_URL: http://127.0.0.1:8000/lumonox/ui
       E2E_DASHBOARD_EMAIL: e2e@example.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
