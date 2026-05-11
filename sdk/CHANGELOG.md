@@ -8,6 +8,16 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-05-11
+
+### Added
+
+- **`create_app`** / **`mount_on_app`** on **`lumonox`** via lazy **`__getattr__`** when the **`lumonox`** API distribution is installed (for example **`lumonox-sdk[stack]`**), so one import path stays consistent with **`pip install lumonox`** alone.
+
+### Packaging
+
+- **`[stack]`** extra depends on **`lumonox>=0.2.6`** (API wheel ships the **`lumonox`** facade module alongside **`lumonox_backend`**).
+
 ## [0.2.3] - 2026-05-11
 
 ### Packaging

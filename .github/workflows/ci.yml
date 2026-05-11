@@ -45,6 +45,9 @@ jobs:
       - name: Mypy
         run: uv run mypy
 
+      - name: lumonox PyPI wheel install smoke
+        run: bash scripts/pre_commit_lumonox_wheel_smoke.sh
+
       - name: Bandit
         run: uv run bandit -c pyproject.toml -r sdk/src/lumonox backend/src/lumonox_backend
 

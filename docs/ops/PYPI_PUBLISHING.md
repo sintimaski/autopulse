@@ -4,7 +4,7 @@ Canonical **install names** on PyPI:
 
 | Distribution | PyPI project | One-line install | What you get |
 |----------------|--------------|------------------|----------------|
-| **API + bundled dashboard** | [**lumonox**](https://pypi.org/project/lumonox/) | `pip install lumonox` | FastAPI ingest + dashboard APIs + static UI under `/lumonox/ui/` (import **`lumonox_backend`**) |
+| **API + bundled dashboard** | [**lumonox**](https://pypi.org/project/lumonox/) | `pip install lumonox` | FastAPI ingest + dashboard APIs + static UI under `/lumonox/ui/` — use **`from lumonox import mount_on_app`** (or **`lumonox_backend`** for internals) |
 | **FastAPI SDK only** | [**lumonox-sdk**](https://pypi.org/project/lumonox-sdk/) | `pip install lumonox-sdk` | `from lumonox import lumonox` — send-only instrumentation |
 | **API + UI + SDK** | same two projects | `pip install "lumonox-sdk[stack]"` | Installs **`lumonox`** as a dependency of the SDK extra |
 
@@ -17,7 +17,7 @@ Until the first upload succeeds, those pages may show “project not found” or
 
 ## PyPI naming
 
-Lumonox ships as **`lumonox`** (API + bundled dashboard) and **`lumonox-sdk`** (client SDK) on PyPI. The API wheel exposes the Python package **`lumonox_backend`**; the SDK wheel exposes **`lumonox`**.
+Lumonox ships as **`lumonox`** (API + bundled dashboard) and **`lumonox-sdk`** (client SDK) on PyPI. The API wheel exposes **`lumonox_backend`** plus a thin top-level **`lumonox`** facade (`create_app`, `mount_on_app`, `__version__`). The SDK wheel exposes **`lumonox`** for instrumentation; with **`lumonox-sdk[stack]`**, the same module also exposes **`mount_on_app`** / **`create_app`** when the API is installed.
 
 ## GitHub Actions (trusted publishing)
 
@@ -59,6 +59,7 @@ ls dist/manual-pypi-test/lumonox-*-py3-none-any.whl
 
 | Version | Highlights |
 |---------|------------|
+| **0.2.6** | API wheel ships **`lumonox/__init__.py`** (`create_app`, `mount_on_app`, `__version__`) plus **`lumonox_backend`**; **`lumonox-sdk[stack]`** requires **`lumonox>=0.2.6`** and exposes **`mount_on_app`** from the SDK-owned **`lumonox`** module. |
 | **0.2.5** | PyPI: API wheel published as **`lumonox`** (distribution formerly documented as `lumonox-api`); `/health` `service` **`lumonox`**; **`lumonox-sdk[stack]`** requires **`lumonox>=0.2.5`**. |
 | **0.2.4** | Developer/CI: `uv run pytest` runs backend DB integration tests against an ephemeral session SQLite DB when `BACKEND_TEST_DATABASE_URL` is unset; CI sqlite/postgres env aligned with that harness (see `backend/tests/conftest.py`, `backend/README.md`). |
 | **0.2.3** | Dashboard home: overview-derived window snapshot widgets (two-row layout: KPI cards, then donut + bar); infra insights panel open by default in phased UI; widgets slice enabled for filtered dashboard scopes. |

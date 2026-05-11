@@ -54,7 +54,7 @@ export LUMONOX_API_KEY="<project ingest key from dashboard>"
 
 ### Run the Lumonox API from another repo 🖥️
 
-Two **PyPI** install lines (import for the API remains **`lumonox_backend`**):
+Two **PyPI** install lines. The **`lumonox`** wheel exposes **`from lumonox import mount_on_app`** (and `lumonox_backend` for the full package tree).
 
 | What you need | One line |
 |-----------------|----------|

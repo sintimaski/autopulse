@@ -2,7 +2,38 @@
 
 FastAPI backend for ingest, dashboard APIs, auth/session flows, alerts, retention jobs, and realtime updates.
 
-Python **import name** is **`lumonox_backend`**. The **distribution / PyPI project name** is **`lumonox`** (API + pre-built dashboard static export bundled in the wheel). Use **`lumonox`** / **`lumonox-sdk`** for installs from PyPI.
+The **PyPI distribution** is **`lumonox`**. The implementation package is **`lumonox_backend`**. The wheel also ships a thin **`lumonox`** import surface (same names as `lumonox_backend`) so `pip install lumonox` matches `from lumonox import mount_on_app` without surprise.
+
+**Policy**
+
+| Install | Canonical mounting / app API |
+|---------|------------------------------|
+| **`pip install lumonox`** (API only) | `from lumonox import create_app, mount_on_app` or `from lumonox_backend import create_app, mount_on_app` |
+| **`pip install "lumonox-sdk[stack]"`** (SDK + API) | `from lumonox import lumonox, mount_on_app` — the SDK owns the `lumonox` module and lazily exposes `mount_on_app` / `create_app` when the API is installed |
+
+### Mount on your FastAPI app (PyPI)
+
+```python
+import os
+
+from fastapi import FastAPI
+from lumonox import mount_on_app
+
+# Local smoke only; tighten for production (see backend/.env.example).
+os.environ.setdefault("LUMONOX_ENV", "development")
+os.environ.setdefault("INGEST_REQUIRE_HTTPS", "false")
+os.environ.setdefault("DASHBOARD_AUTH_ENABLED", "false")
+
+app = FastAPI()
+
+@app.get("/hello")
+def hello() -> dict[str, str]:
+    return {"msg": "host"}
+
+mount_on_app(app, prefix="/lumonox")
+```
+
+Then `GET /lumonox/health` returns `{"status":"ok"}`. Run with `uvicorn main:app` (or your ASGI entrypoint).
 
 ## What lives here
 

@@ -6,9 +6,9 @@ Lumonox SDK instruments a FastAPI app and sends request/error events to Lumonox 
 
 | Goal | PyPI one-liner | Import / process |
 |------|-----------------|------------------|
-| **API + bundled dashboard UI** (ingest, dashboard, static export under `/lumonox/ui/`) | `pip install lumonox` | `import lumonox_backend` · run `uvicorn lumonox_backend.main:app` |
+| **API + bundled dashboard UI** (ingest, dashboard, static export under `/lumonox/ui/`) | `pip install lumonox` | `from lumonox import mount_on_app` (or `lumonox_backend` / `uvicorn lumonox_backend.main:app`) |
 | **Instrument your FastAPI app** (send-only SDK) | `pip install lumonox-sdk` | `from lumonox import lumonox` |
-| **API + UI + SDK in one environment** | `pip install "lumonox-sdk[stack]"` | both of the above |
+| **API + UI + SDK in one environment** | `pip install "lumonox-sdk[stack]"` | `from lumonox import lumonox, mount_on_app` |
 
 `uv add` works the same (`uv add lumonox`, `uv add "lumonox-sdk[stack]"`, …).
 
@@ -37,7 +37,7 @@ twine upload dist/pypi-sdk/*
 
 **On `main`:** the SDK workflow runs when `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` change. The **`lumonox`** publish workflow runs when `backend/pyproject.toml`, `backend/src/**`, or `frontend/**` change. Both upload **only when** the corresponding `[project] version` is **not already** on PyPI.
 
-**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve **`lumonox>=0.2.5`**.
+**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve **`lumonox>=0.2.6`**.
 
 **One-time on PyPI:** create projects **`lumonox-sdk`** and **`lumonox`**, add trusted publishers for each workflow, then merge version bumps or run workflows manually.
 

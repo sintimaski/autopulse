@@ -1,6 +1,9 @@
 """Lumonox SDK: FastAPI observability integration."""
 
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING, Any
 
 from lumonox._jobs import capture_background_job
 from lumonox._monitor import monitor
@@ -40,6 +43,29 @@ def lumonox(app: object, **kwargs: object) -> None:
     monitor(app, **options)
 
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from fastapi import FastAPI
+
+    create_app: Callable[..., FastAPI]
+    mount_on_app: Callable[..., FastAPI]
+
+
+def __getattr__(name: str) -> Any:
+    """Lazy backend API (``lumonox`` PyPI) so ``lumonox-sdk`` stays light when used alone."""
+    if name == "create_app":
+        from lumonox_backend.app import create_app as _create_app
+
+        return _create_app
+    if name == "mount_on_app":
+        from lumonox_backend.app import mount_on_app as _mount_on_app
+
+        return _mount_on_app
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
+
+
 __all__ = [
     "monitor",
     "lumonox",
@@ -52,4 +78,6 @@ __all__ = [
     "HistogramWidget",
     "ScatterPlotWidget",
     "StackedAreaWidget",
+    "create_app",
+    "mount_on_app",
 ]

@@ -32,6 +32,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^backend/src/lumonox_backend/(alembic/|models/)
+      - id: lumonox-wheel-smoke
+        name: lumonox-wheel-smoke
+        entry: bash scripts/pre_commit_lumonox_wheel_smoke.sh
+        language: system
+        pass_filenames: false
+        files: ^(backend/pyproject\.toml|backend/hatch_build\.py|backend/packaging/|scripts/pre_commit_lumonox_wheel_smoke\.sh)$
       - id: frontend-eslint
         name: frontend-eslint
         entry: npm --prefix frontend run lint
