@@ -4,9 +4,11 @@ import asyncio
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
+import duckdb
 import pytest
 from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
@@ -36,6 +38,7 @@ def _seed_project_and_key(database_url: str) -> tuple[str, str]:
                     key_hash=key_hash,
                 )
                 session.add(project)
+                await session.flush()
                 session.add(api_key)
                 await session.commit()
                 return (key_value, str(project.id))
@@ -106,6 +109,38 @@ def _count_events(database_url: str) -> int:
             await engine.dispose()
 
     return asyncio.run(run())
+
+
+def _truncate_duckdb_events_if_configured() -> None:
+    """Clear DuckDB ``events`` when it is the authoritative store (CI Postgres job)."""
+    if get_settings().event_store != "duckdb":
+        return
+    from lumonox_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
+    path = Path(get_settings().event_store_duckdb_path).expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        return
+    conn = duckdb.connect(str(path))
+    try:
+        conn.execute("DELETE FROM events")
+    finally:
+        conn.close()
+
+
+def _count_authoritative_event_rows(database_url: str) -> int:
+    """Count persisted ingest events (SQL or DuckDB) matching production routing."""
+    if get_settings().event_store == "duckdb":
+        path = Path(get_settings().event_store_duckdb_path).expanduser()
+        if not path.exists():
+            return 0
+        conn = duckdb.connect(str(path), read_only=True)
+        try:
+            return int(conn.execute("SELECT COUNT(*) FROM events").fetchone()[0])
+        finally:
+            conn.close()
+    return _count_events(database_url)
 
 
 def _count_sql_tail_repair_items(database_url: str) -> int:
@@ -718,6 +753,7 @@ def test_ingest_idempotency_key_replays_accepted_without_duplicate_events(
             "still open; SQLite file locking can raise OperationalError in this integration path."
         )
     _truncate_tables(backend_test_database_url)
+    _truncate_duckdb_events_if_configured()
     key, _ = _seed_project_and_key(backend_test_database_url)
     app = create_app()
     payload = {
@@ -741,7 +777,7 @@ def test_ingest_idempotency_key_replays_accepted_without_duplicate_events(
     assert first.status_code == 200
     assert second.status_code == 200
     assert first.json() == second.json() == {"accepted": 1}
-    assert _count_events(backend_test_database_url) == 1
+    assert _count_authoritative_event_rows(backend_test_database_url) == 1
 
 
 def test_ingest_second_error_batch_updates_error_group_aggregates_without_datetime_mismatch(

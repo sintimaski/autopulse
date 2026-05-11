@@ -43,6 +43,7 @@ def _seed_project_and_key(database_url: str, project_name: str) -> tuple[str, st
                     key_hash=key_hash,
                 )
                 session.add(project)
+                await session.flush()
                 session.add(api_key)
                 await session.commit()
                 return (key_value, str(project.id))
@@ -1040,6 +1041,7 @@ def test_dashboard_alert_capabilities_reports_active_and_unavailable_channels(
     monkeypatch.setenv("ALERTS_ENABLED", "true")
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_SENDER_MODE", "email")
+    monkeypatch.setenv("ALERT_DEFAULT_DESTINATION_EMAIL", "ops@example.com")
     monkeypatch.setenv("ALERT_SLACK_WEBHOOK_URL", "https://hooks.example.com/slack")
     monkeypatch.delenv("ALERT_DISCORD_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("ALERT_WEBHOOK_URL", raising=False)

@@ -84,8 +84,14 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://lumonox:lumonox@127.0.0.1:5432/lumonox_ci
       BACKEND_TEST_DATABASE_URL: postgresql+asyncpg://lumonox:lumonox@127.0.0.1:5432/lumonox_ci
-      LUMONOX_EVENT_STORE: duckdb
+      # Authoritative events in SQL (matches ``backend/tests/conftest.py`` defaults for
+      # ``BACKEND_TEST_DATABASE_URL``). DuckDB-only mode leaves SQL ``events`` empty and
+      # breaks most integration tests while Postgres is still exercised for metadata/FKs.
+      LUMONOX_EVENT_STORE: sqlite
+      LUMONOX_EVENT_PLANE_MODE: duckdb_single_writer
       LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events-postgres.duckdb
+      JOBS_ENABLE_SCHEDULER: "false"
+      INGEST_ASYNC_AGGREGATE_ENABLED: "false"
       DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "false"
       DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK: "true"
     steps:

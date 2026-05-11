@@ -8,5 +8,7 @@ test("widgets gallery loads after sign-in", async ({ page }) => {
 
   await page.goto("/lumonox/ui/w/lx_showcase");
   await expect(page).toHaveURL(/\/lumonox\/ui\/w\/lx_showcase/);
-  await expect(page.getByRole("heading", { name: "Widget layout lab", exact: true })).toBeVisible();
+  await expect(
+    page.locator("#main-content").getByRole("heading", { name: "Widget layout lab", exact: true }),
+  ).toBeVisible();
 });

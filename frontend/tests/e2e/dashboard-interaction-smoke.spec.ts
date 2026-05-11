@@ -8,7 +8,9 @@ test.describe("dashboard interaction smoke", () => {
     await signInViaDevMagicLink(page);
 
     await page.goto("/lumonox/ui/w/lx_showcase");
-    await expect(page.getByRole("heading", { name: "Widget layout lab", exact: true })).toBeVisible();
+    await expect(
+      page.locator("#main-content").getByRole("heading", { name: "Widget layout lab", exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("Ingest throughput (window)", { exact: true })).toBeVisible({
       timeout: 25_000,
     });
