@@ -59,6 +59,7 @@ ls dist/manual-pypi-test/lumonox_api-*-py3-none-any.whl
 
 | Version | Highlights |
 |---------|------------|
+| **0.2.4** | Developer/CI: `uv run pytest` runs backend DB integration tests against an ephemeral session SQLite DB when `BACKEND_TEST_DATABASE_URL` is unset; CI sqlite/postgres env aligned with that harness (see `backend/tests/conftest.py`, `backend/README.md`). |
 | **0.2.3** | Dashboard home: overview-derived window snapshot widgets (two-row layout: KPI cards, then donut + bar); infra insights panel open by default in phased UI; widgets slice enabled for filtered dashboard scopes. |
 | **0.2.2** | Dashboard default scope: in-memory query snapshot refreshed from ingest deltas (fewer heavy DuckDB reads on poll); optional realtime WebSocket path behind flags; rolling-window chart alignment fixes for overview. |
 

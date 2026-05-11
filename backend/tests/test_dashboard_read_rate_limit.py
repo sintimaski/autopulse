@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from uuid import uuid4
 
+import pytest
 from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -58,11 +59,16 @@ def test_dashboard_query_bundle_rate_limit_returns_429_with_retry_after(
 
 
 def test_dashboard_query_explorer_rate_limit_returns_429_with_retry_after(
-    backend_test_database_url: str, monkeypatch
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key = _seed_project_and_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "true")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(tmp_path / "read_rl_explorer.duckdb"))
+    from lumonox_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
     monkeypatch.setenv("DASHBOARD_READ_RATE_LIMIT_REQUESTS_PER_WINDOW", "2")
     monkeypatch.setenv("DASHBOARD_READ_RATE_LIMIT_WINDOW_SECONDS", "60")
     app = create_app()

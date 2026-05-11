@@ -1,6 +1,6 @@
 [project]
 name = "lumonox-api"
-version = "0.2.3"
+version = "0.2.4"
 description = "Lumonox backend ingestion API"
 requires-python = ">=3.11"
 dependencies = [

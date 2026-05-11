@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from db_reset import truncate_ingest_core_tables as _truncate_tables
@@ -52,11 +53,16 @@ def _query_event_rows(database_url: str) -> list[dict[str, object]]:
             async with session_maker() as session:
                 result = await session.execute(
                     text(
-                        "SELECT CAST(project_id AS TEXT), sdk_version, type, status_code, "
-                        "request_id FROM events ORDER BY id"
+                        "SELECT CAST(project_id AS TEXT) AS project_id, sdk_version, type, "
+                        "status_code, request_id FROM events ORDER BY id"
                     )
                 )
-                return [dict(row) for row in result.mappings().all()]
+                rows = [dict(row) for row in result.mappings().all()]
+                for row in rows:
+                    pid = row.get("project_id")
+                    if pid is not None:
+                        row["project_id"] = str(UUID(str(pid)))
+                return rows
         finally:
             await engine.dispose()
 
@@ -73,7 +79,15 @@ def _query_latest_payload(database_url: str) -> dict[str, object] | None:
                     text("SELECT payload FROM events ORDER BY id DESC LIMIT 1")
                 )
                 payload = result.scalar_one_or_none()
-                return payload if isinstance(payload, dict) else None
+                if isinstance(payload, dict):
+                    return payload
+                if isinstance(payload, str):
+                    try:
+                        parsed = json.loads(payload)
+                    except json.JSONDecodeError:
+                        return None
+                    return parsed if isinstance(parsed, dict) else None
+                return None
         finally:
             await engine.dispose()
 
@@ -133,20 +147,32 @@ def _latest_sql_tail_repair_last_error(database_url: str) -> str | None:
 def _list_indexes(database_url: str) -> list[str]:
     async def run() -> list[str]:
         engine = create_async_engine(database_url, pool_pre_ping=True)
+        dialect = engine.dialect.name
         session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
         try:
             async with session_maker() as session:
-                result = await session.execute(
-                    text(
-                        """
-                        SELECT indexname
-                        FROM pg_indexes
-                        WHERE schemaname = 'public'
-                        ORDER BY indexname
-                        """
+                if dialect == "postgresql":
+                    result = await session.execute(
+                        text(
+                            """
+                            SELECT indexname
+                            FROM pg_indexes
+                            WHERE schemaname = 'public'
+                            ORDER BY indexname
+                            """
+                        )
                     )
-                )
-                return [str(name) for name in result.scalars().all()]
+                    return [str(name) for name in result.scalars().all()]
+                if dialect == "sqlite":
+                    result = await session.execute(
+                        text(
+                            "SELECT name FROM sqlite_master "
+                            "WHERE type = 'index' AND name NOT LIKE 'sqlite_%' "
+                            "ORDER BY name"
+                        )
+                    )
+                    return [str(name) for name in result.scalars().all()]
+                raise AssertionError(f"unsupported dialect for _list_indexes: {dialect}")
         finally:
             await engine.dispose()
 
@@ -349,7 +375,8 @@ def test_ingest_rate_limit_returns_429_with_retry_after(
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url)
-    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "2")
+    # ``effective_ingest_rate_limit_max`` floors at 10; use 10 so the 11th request is rejected.
+    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "10")
     monkeypatch.setenv("INGEST_RATE_LIMIT_WINDOW_SECONDS", "60")
     app = create_app()
     payload = {
@@ -368,15 +395,14 @@ def test_ingest_rate_limit_returns_429_with_retry_after(
     }
     headers = {"Authorization": f"Bearer {key}"}
     with TestClient(app) as client:
-        first = client.post("/ingest", json=payload, headers=headers)
-        second = client.post("/ingest", json=payload, headers=headers)
-        third = client.post("/ingest", json=payload, headers=headers)
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert third.status_code == 429
-    assert third.headers.get("retry-after") == "60"
-    assert third.json() == {"detail": "Ingest rate limit exceeded. Try again in 60 seconds."}
-    assert _count_events(backend_test_database_url) == 2
+        for _ in range(10):
+            response = client.post("/ingest", json=payload, headers=headers)
+            assert response.status_code == 200
+        blocked = client.post("/ingest", json=payload, headers=headers)
+    assert blocked.status_code == 429
+    assert blocked.headers.get("retry-after") == "60"
+    assert blocked.json() == {"detail": "Ingest rate limit exceeded. Try again in 60 seconds."}
+    assert _count_events(backend_test_database_url) == 10
 
 
 def test_ingest_rejects_non_https_when_required(
@@ -444,7 +470,7 @@ def test_ingest_rate_limit_isolated_per_project(
     _truncate_tables(backend_test_database_url)
     key_one, _ = _seed_project_and_key(backend_test_database_url)
     key_two, _ = _seed_project_and_key(backend_test_database_url)
-    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "2")
+    monkeypatch.setenv("INGEST_RATE_LIMIT_REQUESTS_PER_WINDOW", "10")
     monkeypatch.setenv("INGEST_RATE_LIMIT_WINDOW_SECONDS", "60")
     app = create_app()
     payload = {
@@ -462,16 +488,13 @@ def test_ingest_rate_limit_isolated_per_project(
         ]
     }
     with TestClient(app) as client:
-        first = client.post(
-            "/ingest",
-            json=payload,
-            headers={"Authorization": f"Bearer {key_one}"},
-        )
-        second = client.post(
-            "/ingest",
-            json=payload,
-            headers={"Authorization": f"Bearer {key_one}"},
-        )
+        for _ in range(10):
+            response = client.post(
+                "/ingest",
+                json=payload,
+                headers={"Authorization": f"Bearer {key_one}"},
+            )
+            assert response.status_code == 200
         blocked = client.post(
             "/ingest",
             json=payload,
@@ -480,8 +503,6 @@ def test_ingest_rate_limit_isolated_per_project(
         allowed_other_project = client.post(
             "/ingest", json=payload, headers={"Authorization": f"Bearer {key_two}"}
         )
-    assert first.status_code == 200
-    assert second.status_code == 200
     assert blocked.status_code == 429
     assert allowed_other_project.status_code == 200
 
@@ -843,9 +864,16 @@ def test_ingest_async_aggregate_sync_fallback_when_enqueue_returns_false(
 
 def test_ingest_queues_sql_tail_repair_when_event_store_is_authoritative(
     backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url)
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(tmp_path / "sql_tail_repair.duckdb"))
+    from lumonox_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
     app = create_app()
     payload = {
         "events": [

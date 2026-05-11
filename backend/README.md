@@ -95,7 +95,7 @@ See `backend/src/lumonox_backend/core/config.py` and `backend/.env.example` for 
 ## Testing (backend)
 
 - Unit-style deployment guardrails: `uv run pytest backend/tests/test_deployment_settings.py`
-- Integration tests under `backend/tests/` that need a real DB URL skip unless `BACKEND_TEST_DATABASE_URL` is set (see `backend/tests/conftest.py`). Example: `export BACKEND_TEST_DATABASE_URL=sqlite+aiosqlite:////tmp/lx-test.db` then run targeted files such as `backend/tests/test_dashboard_auth.py`.
+- Integration tests under `backend/tests/` use `BACKEND_TEST_DATABASE_URL` when set; otherwise `uv run pytest` uses an **isolated session SQLite file** under pytest’s basetemp (see `backend/tests/conftest.py`). Override explicitly, e.g. `export BACKEND_TEST_DATABASE_URL=sqlite+aiosqlite:////tmp/lx-test.db`, when you want a fixed path or Postgres.
 - Ingest idempotency replay parity is required on Postgres (CI enforced). Local equivalent:
   `export BACKEND_TEST_DATABASE_URL=postgresql+asyncpg://lumonox:lumonox@127.0.0.1:5432/lumonox_ci && uv run pytest backend/tests/test_ingest.py::test_ingest_idempotency_key_replays_accepted_without_duplicate_events -q`
 - Backend CI-equivalent one-command gate (same backend checks split across `python-sqlite` + `python-postgres` CI jobs):

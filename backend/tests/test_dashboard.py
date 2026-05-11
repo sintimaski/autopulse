@@ -9,18 +9,23 @@ from uuid import UUID, uuid4
 import pytest
 from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from lumonox_backend.app import create_app
 from lumonox_backend.auth import generate_api_key
 from lumonox_backend.metrics import JobExecutionTelemetry, service_metrics
 from lumonox_backend.models import (
+    AlertDispatch,
     ApiKey,
     IngestAggregateDeadLetter,
     IngestSqlTailRepairItem,
     Project,
 )
+
+
+def _utc_json_minute(dt: datetime) -> str:
+    """Match dashboard JSON ``minute`` keys (UTC with ``Z`` suffix from SQLite/JSON encoding)."""
+    return dt.astimezone(UTC).replace(second=0, microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _seed_project_and_key(database_url: str, project_name: str) -> tuple[str, str]:
@@ -258,18 +263,52 @@ def test_dashboard_widgets_returns_custom_widget_definitions_and_points(
 
 def test_dashboard_widgets_include_infrastructure_fallback_when_sdk_payload_missing(
     backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project Infra Fallback")
     base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=3)
+
+    # Widget point timestamps follow ingest ``received_at`` (~wall clock), not the synthetic
+    # event ``base_time``; narrow windows around ``base_time`` would exclude operational rows.
+    class _FakeInfraSampler:
+        async def sample(self) -> dict[str, float]:
+            return {
+                "host_cpu_percent": 12.0,
+                "host_memory_used_percent": 55.0,
+                "host_memory_total_bytes": 8_000_000_000.0,
+                "host_memory_used_bytes": 4_000_000_000.0,
+                "process_cpu_percent": 3.0,
+                "process_memory_percent": 4.5,
+                "process_memory_rss_bytes": 200_000_000.0,
+                "disk_used_percent": 50.0,
+                "disk_total_bytes": 500_000_000_000.0,
+                "disk_used_bytes": 250_000_000_000.0,
+                "disk_io_read_bytes": 1_048_576.0,
+                "disk_io_write_bytes": 2_097_152.0,
+                "network_bytes_sent": 10_485_760.0,
+                "network_bytes_recv": 20_971_520.0,
+            }
+
+        def should_persist_fallback_widget_points(self) -> bool:
+            return True
+
+        def mark_fallback_widget_points_persisted(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "lumonox_backend.services.ingest_service._infrastructure_sampler",
+        _FakeInfraSampler(),
+    )
     app = create_app()
     with TestClient(app) as client:
         _ingest(client, key, base_time, 200, "GET", "/health")
+        server_now = datetime.now(tz=UTC)
         response = client.get(
             "/dashboard/widgets",
             params={
-                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
-                "to_timestamp": (base_time + timedelta(minutes=1)).isoformat(),
+                "from_timestamp": (base_time - timedelta(minutes=5)).isoformat(),
+                "to_timestamp": (server_now + timedelta(minutes=2)).isoformat(),
             },
             headers={"Authorization": f"Bearer {key}"},
         )
@@ -317,8 +356,8 @@ def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_u
     assert payload["request_count"] == 3
     assert payload["error_count"] == 1
     series_by_minute = {entry["minute"]: entry for entry in payload["series"]}
-    first_minute = base_time.isoformat()
-    second_minute = (base_time + timedelta(minutes=1)).isoformat()
+    first_minute = _utc_json_minute(base_time)
+    second_minute = _utc_json_minute(base_time + timedelta(minutes=1))
 
     assert first_minute in series_by_minute
     assert second_minute in series_by_minute
@@ -361,7 +400,7 @@ def test_dashboard_overview_series_fills_empty_minute_buckets(
     payload = response.json()
     assert len(payload["series"]) == 3
     by_minute = {entry["minute"]: entry for entry in payload["series"]}
-    gap_minute = (base_time + timedelta(minutes=1)).isoformat()
+    gap_minute = _utc_json_minute(base_time + timedelta(minutes=1))
     assert by_minute[gap_minute]["request_count"] == 0
     assert by_minute[gap_minute]["error_count"] == 0
     assert by_minute[gap_minute]["avg_latency_ms"] == 0.0
@@ -952,25 +991,20 @@ def test_dashboard_alert_dispatches_include_delivery_status_fields(
         session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
         try:
             async with session_maker() as session:
-                await session.execute(
-                    text(
-                        "INSERT INTO alert_dispatches "
-                        "(project_id, alert_type, destination_email, delivered_via, "
-                        "status, reason_code, "
-                        "attempt_count, triggered_at, window_start, window_end, "
-                        "delivered_at, provider_message_id, detail) "
-                        "VALUES "
-                        "(:project_id, 'error_spike', 'ops@example.com', 'email', "
-                        "'failed', 'provider_rejected', "
-                        "2, :triggered_at, :window_start, :window_end, NULL, NULL, :detail)"
-                    ),
-                    {
-                        "project_id": project_id,
-                        "triggered_at": now,
-                        "window_start": now - timedelta(minutes=5),
-                        "window_end": now,
-                        "detail": {"request_count": 42},
-                    },
+                session.add(
+                    AlertDispatch(
+                        project_id=UUID(project_id),
+                        alert_type="error_spike",
+                        destination_email="ops@example.com",
+                        delivered_via="email",
+                        status="failed",
+                        reason_code="provider_rejected",
+                        attempt_count=2,
+                        triggered_at=now,
+                        window_start=now - timedelta(minutes=5),
+                        window_end=now,
+                        detail={"request_count": 42},
+                    )
                 )
                 await session.commit()
         finally:
@@ -1374,7 +1408,7 @@ def test_dashboard_diagnosis_timeline_fills_empty_minute_buckets(
     payload = response.json()
     assert len(payload["buckets"]) == 3
     by_minute = {entry["minute"]: entry for entry in payload["buckets"]}
-    gap_minute = (base_time + timedelta(minutes=1)).isoformat()
+    gap_minute = _utc_json_minute(base_time + timedelta(minutes=1))
     assert by_minute[gap_minute]["request_count"] == 0
     assert by_minute[gap_minute]["error_count"] == 0
 
@@ -1424,9 +1458,16 @@ def test_dashboard_log_query_validate_execute_and_retention_settings(
         assert retention_update.status_code == 401
 
 
-def test_dashboard_query_explorer_executes_scoped_sql(backend_test_database_url: str) -> None:
+def test_dashboard_query_explorer_executes_scoped_sql(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project Query Explorer")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(tmp_path / "query_explorer_scoped.duckdb"))
+    from lumonox_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
     base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
     app = create_app()
     headers = {"Authorization": f"Bearer {key}"}
@@ -1452,10 +1493,15 @@ def test_dashboard_query_explorer_executes_scoped_sql(backend_test_database_url:
 
 
 def test_dashboard_query_explorer_project_wide_counts_outside_time_window(
-    backend_test_database_url: str,
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _truncate_tables(backend_test_database_url)
     key, _ = _seed_project_and_key(backend_test_database_url, "Project Query Explorer Wide")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(tmp_path / "query_explorer_wide.duckdb"))
+    from lumonox_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
     old = datetime.now(tz=UTC) - timedelta(days=40)
     recent = datetime.now(tz=UTC) - timedelta(minutes=5)
     app = create_app()
@@ -1480,9 +1526,16 @@ def test_dashboard_query_explorer_project_wide_counts_outside_time_window(
     assert wide.json()["rows"][0][0] == 2
 
 
-def test_dashboard_traces_search_and_detail(backend_test_database_url: str) -> None:
+def test_dashboard_traces_search_and_detail(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     _truncate_tables(backend_test_database_url)
     key, project_id = _seed_project_and_key(backend_test_database_url, "Project Traces")
+    monkeypatch.setenv("LUMONOX_EVENT_STORE", "duckdb")
+    monkeypatch.setenv("LUMONOX_DUCKDB_PATH", str(tmp_path / "traces_search.duckdb"))
+    from lumonox_backend.services.event_store import shutdown_duckdb_event_store
+
+    shutdown_duckdb_event_store()
     base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
     trace_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     app = create_app()

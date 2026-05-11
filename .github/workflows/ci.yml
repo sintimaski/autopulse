@@ -15,7 +15,15 @@ jobs:
     env:
       DATABASE_URL: sqlite+aiosqlite:///./lumonox_ci.db
       BACKEND_TEST_DATABASE_URL: sqlite+aiosqlite:///./lumonox_ci_test.db
-      LUMONOX_EVENT_STORE: duckdb
+      # SQL ``events`` + dashboard integration tests assert against SQLite; DuckDB-only
+      # mode leaves those tables empty. DuckDB-focused tests monkeypatch as needed.
+      LUMONOX_EVENT_STORE: sqlite
+      LUMONOX_EVENT_PLANE_MODE: duckdb_single_writer
+      JOBS_ENABLE_SCHEDULER: "false"
+      DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "false"
+      DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK: "true"
+      LUMONOX_SQLITE_SIZE_RETENTION_ONLY: "false"
+      INGEST_ASYNC_AGGREGATE_ENABLED: "false"
       LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events.duckdb
     steps:
       - uses: actions/checkout@v4
@@ -75,6 +83,8 @@ jobs:
       BACKEND_TEST_DATABASE_URL: postgresql+asyncpg://lumonox:lumonox@127.0.0.1:5432/lumonox_ci
       LUMONOX_EVENT_STORE: duckdb
       LUMONOX_DUCKDB_PATH: ./.lumonox/ci-events-postgres.duckdb
+      DASHBOARD_ENFORCE_ORIGIN_FOR_MUTATIONS: "false"
+      DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK: "true"
     steps:
       - uses: actions/checkout@v4
 

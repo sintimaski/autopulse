@@ -36,6 +36,34 @@ def _seed_singleton_bootstrap_project(database_url: str) -> str:
     return asyncio.run(run())
 
 
+def _seed_embedded_singleton_project_with_ingest_key(database_url: str) -> str:
+    """Single legacy-named project + API key so magic-link login adopts the same tenant."""
+
+    async def run() -> str:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                project = Project(name="Lumonox Embedded Project")
+                session.add(project)
+                await session.flush()
+                key_value, key_id, key_salt, key_hash = generate_api_key()
+                session.add(
+                    ApiKey(
+                        project_id=project.id,
+                        key_id=key_id,
+                        key_salt=key_salt,
+                        key_hash=key_hash,
+                    )
+                )
+                await session.commit()
+                return key_value
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
 def _seed_project_and_key(database_url: str) -> str:
     async def run() -> str:
         engine = create_async_engine(database_url, pool_pre_ping=True)
@@ -285,7 +313,10 @@ def test_dashboard_magic_link_verify_aligns_singleton_duckdb_project_ids(
             reassign_calls.append((from_project_id, to_project_id))
             return (12, 4)
 
-    async def _run_sync_passthrough(fn, /, *args, **kwargs):
+    async def _run_sync_passthrough(
+        fn, /, *args, duckdb_read_operation: str | None = None, **kwargs
+    ):
+        _ = duckdb_read_operation
         return fn(*args, **kwargs)
 
     monkeypatch.setattr(auth_routes_module, "event_store_enabled", lambda _settings: True)
@@ -1037,7 +1068,7 @@ def test_dashboard_onboarding_status_and_alert_capabilities(
     tmp_path,
 ) -> None:
     _truncate_tables(backend_test_database_url)
-    _seed_project_and_key(backend_test_database_url)
+    _seed_embedded_singleton_project_with_ingest_key(backend_test_database_url)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
     monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
     monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))

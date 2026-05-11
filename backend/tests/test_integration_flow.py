@@ -133,7 +133,9 @@ def test_end_to_end_ingest_then_dashboard_reads(backend_test_database_url: str) 
     assert overview_payload["error_count"] == 1
     assert overview_payload["error_rate"] == 1 / 3
     assert overview_payload["avg_latency_ms"] > 0
-    assert len(overview_payload["series"]) == 3
+    series = overview_payload["series"]
+    assert sum(int(entry["request_count"]) for entry in series) == 3
+    assert len([entry for entry in series if int(entry["request_count"]) > 0]) == 3
 
     assert requests.status_code == 200
     requests_payload = requests.json()
@@ -280,7 +282,9 @@ def test_empty_window_returns_zero_metrics_and_no_rows(backend_test_database_url
     assert overview_payload["error_count"] == 0
     assert overview_payload["error_rate"] == 0.0
     assert overview_payload["avg_latency_ms"] == 0.0
-    assert overview_payload["series"] == []
+    for bucket in overview_payload["series"]:
+        assert int(bucket["request_count"]) == 0
+        assert int(bucket["error_count"]) == 0
 
     assert requests.status_code == 200
     requests_payload = requests.json()

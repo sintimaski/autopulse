@@ -260,6 +260,8 @@ make check-python-ci  # backend CI-equivalent (requires Postgres BACKEND_TEST_DA
 make release-gates
 ```
 
+**Backend pytest default:** `uv run pytest` at the repo root runs SDK + backend tests. Backend integration tests use an **ephemeral session SQLite file** when `BACKEND_TEST_DATABASE_URL` is unset (no local Postgres required for the default suite). Set `BACKEND_TEST_DATABASE_URL` to pin a SQLite path or use Postgres—for example the ingest idempotency test that skips on SQLite—see **`backend/README.md`** and **`backend/tests/conftest.py`**.
+
 Same full gate as a copy-paste script (equivalent to `make release-gates`; see `scripts/release_gates.sh` for steps):
 
 ```bash

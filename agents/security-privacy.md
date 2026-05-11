@@ -33,7 +33,7 @@ Review changes that touch **ingestion**, **authentication**, **storage**, **SDK 
 
 When reviewing deployment or env changes for production: `validate_deployment_settings` in `backend/src/lumonox_backend/core/config.py` rejects unsafe combinations (for example HTTPS ingest, internal metrics token, dashboard auth URL schemes, CORS, session/magic-link TTL bounds). Canonical operator guidance and the full constraint list live in `docs/ops/PRODUCTION_DEPLOYMENT.md`. Regression coverage: `backend/tests/test_deployment_settings.py`.
 
-API key lifecycle actions (`issue` / `rotate` / `revoke`) emit rows in `governance_audit_events` and must not persist raw key material in audit detail—see dashboard auth routes and `backend/tests/test_dashboard_auth.py` (set `BACKEND_TEST_DATABASE_URL` to run integration tests locally; see `backend/tests/conftest.py`).
+API key lifecycle actions (`issue` / `rotate` / `revoke`) emit rows in `governance_audit_events` and must not persist raw key material in audit detail—see dashboard auth routes and `backend/tests/test_dashboard_auth.py` (`uv run pytest` uses an ephemeral SQLite integration DB by default; set `BACKEND_TEST_DATABASE_URL` to pin SQLite or Postgres—see `backend/tests/conftest.py`).
 
 ### Data retention and access
 
