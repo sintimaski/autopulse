@@ -45,6 +45,26 @@ describe("buildDashboardFetchError", () => {
     expect(message).toContain("Backend may be unavailable");
     expect(message).toContain("widgets");
   });
+
+  it("returns rate-limit guidance for 429 responses", () => {
+    const message = buildDashboardFetchError([
+      result("overview", 200),
+      result("requests", 429),
+    ]);
+    expect(message).toContain("rate-limited");
+    expect(message).toContain("Narrow the time window");
+    expect(message).toContain("requests");
+  });
+
+  it("returns slow-or-unavailable guidance for 503 responses", () => {
+    const message = buildDashboardFetchError([
+      result("overview", 200),
+      result("error-groups", 503),
+    ]);
+    expect(message).toContain("unavailable or slow");
+    expect(message).toContain("Narrow the window");
+    expect(message).toContain("error-groups");
+  });
 });
 
 describe("buildDashboardNetworkError", () => {

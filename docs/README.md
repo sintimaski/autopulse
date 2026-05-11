@@ -21,6 +21,7 @@ This index focuses on shipping and operating Lumonox safely. For **product scope
 ## Operations
 
 - Backups and restore: `docs/ops/BACKUP_RESTORE.md`
+- Backend lifespan responsibilities and shutdown order: `docs/ops/BACKEND_LIFECYCLE.md`
 - Multi-instance deployment: `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`
 - Event-plane scaling ADR: `docs/ops/ADR_EVENT_STORE_SCALING.md`
 - Event-plane backpressure runbook: `docs/ops/RUNBOOK_EVENT_PLANE_BACKPRESSURE.md`

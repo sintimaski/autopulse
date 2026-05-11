@@ -11,7 +11,7 @@ from time import monotonic
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import (
@@ -299,9 +299,12 @@ async def post_dashboard_query(
     payload: DashboardDataQueryRequest,
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
     session: Annotated[AsyncSession, Depends(get_db_session)],
+    response: Response,
 ) -> DashboardDataQueryResponse:
     _ = session
     tier = _select_bundle_tier(payload)
+    response.headers["X-Lumonox-Bundle-Tier"] = tier
+    cache_hit = False
     bundle_started = monotonic()
     try:
         enforce_dashboard_read_rate_limit(
@@ -318,11 +321,13 @@ async def post_dashboard_query(
         cache_key = f"{context.project_id}:{version}:{payload_cache_json}"
         cached = await _read_cached_bundle_response(cache_key)
         if cached is not None:
+            cache_hit = True
             return cached
         semaphore = _bundle_semaphore(payload)
         async with semaphore:
             cached = await _read_cached_bundle_response(cache_key)
             if cached is not None:
+                cache_hit = True
                 return cached
             return await _compute_bundle_with_inflight_dedupe(
                 cache_key=cache_key,
@@ -336,13 +341,19 @@ async def post_dashboard_query(
         raise
     finally:
         elapsed_ms = int((monotonic() - bundle_started) * 1000)
+        slow_cutoff = 3000 if tier == "heavy" else 1000
+        is_slow = elapsed_ms >= slow_cutoff
+        with suppress(Exception):
+            response.headers["X-Lumonox-Bundle-Cache"] = "hit" if cache_hit else "miss"
+            response.headers["X-Lumonox-Bundle-Elapsed-Ms"] = str(max(0, elapsed_ms))
+            if is_slow:
+                response.headers["X-Lumonox-Bundle-Slow"] = "1"
         with suppress(Exception):
             service_metrics.increment(
                 f"dashboard.query.{tier}.duration_ms", amount=max(0, elapsed_ms)
             )
             service_metrics.increment(f"dashboard.query.{tier}.total")
-            slow_cutoff = 3000 if tier == "heavy" else 1000
-            if elapsed_ms >= slow_cutoff:
+            if is_slow:
                 service_metrics.increment(f"dashboard.query.{tier}.slow_total")
 
 

@@ -50,6 +50,18 @@ quote-style = "double"
 testpaths = ["sdk/tests", "backend/tests"]
 addopts = "-q"
 
+[tool.coverage.run]
+# Default measurement scope mirrors the CI `--cov=lumonox --cov=lumonox_backend` flags,
+# so local `uv run pytest --cov` (without explicit `--cov=...`) measures the same hot paths.
+source = ["sdk/src/lumonox", "backend/src/lumonox_backend"]
+# Exclude generated or boilerplate code from the coverage metric so `fail_under` reflects
+# behavior that tests can actually exercise (Alembic revisions are skipped under mypy too).
+omit = [
+    "*/alembic/versions/*",
+    "*/__main__.py",
+    "*/conftest.py",
+]
+
 [tool.coverage.report]
 fail_under = 35
 show_missing = true

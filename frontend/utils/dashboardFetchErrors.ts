@@ -28,6 +28,12 @@ export function buildDashboardFetchError(results: DashboardFetchResult[]): strin
   if (status === 401 || status === 403) {
     return `Dashboard ${failed.endpoint} request was rejected (${status} ${statusText}). Check dashboard sign-in and backend auth settings.`;
   }
+  if (status === 429) {
+    return `Dashboard ${failed.endpoint} is rate-limited (429 ${statusText}). Narrow the time window or wait a moment before retrying.`;
+  }
+  if (status === 503 || status === 504) {
+    return `Dashboard ${failed.endpoint} is unavailable or slow (${status} ${statusText}). Narrow the window or retry shortly.`;
+  }
   if (status >= 500) {
     return `Dashboard ${failed.endpoint} request failed (${status} ${statusText}). Backend may be unavailable.`;
   }

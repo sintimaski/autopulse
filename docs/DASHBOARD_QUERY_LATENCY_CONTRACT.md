@@ -25,6 +25,7 @@ This document defines how the dashboard balances **low latency**, **stability**,
   - `duckdb.read.<operation>.cancelled_wait_total` when the asyncio waiter is cancelled before completion
   - `duckdb.read.<operation>.slow_light_total` / `slow_heavy_total` (thresholds 1s / 3s wall time)
 - **`POST /dashboard/query`:** `dashboard.query.<light|heavy>.duration_ms|total|slow_total|cancelled_total` plus per-slice `dashboard.query.slice.<name>.duration_ms`.
+- **Response headers (additive, non-breaking):** every `POST /dashboard/query` reply sets `X-Lumonox-Bundle-Tier` (`light`/`heavy`), `X-Lumonox-Bundle-Cache` (`hit`/`miss`), and `X-Lumonox-Bundle-Elapsed-Ms`. Slow responses also set `X-Lumonox-Bundle-Slow: 1` (light ≥ 1000 ms, heavy ≥ 3000 ms). Clients may surface these headers for diagnostic banners; absence implies a hit on a server that pre-dates the headers.
 - **Dedupe shield:** `LUMONOX_DASHBOARD_QUERY_DEDUPE_USE_SHIELD` (default `1`). When `0`, duplicate waiters on the same cache key are not `asyncio.shield`ed (cancellations propagate to waiters; use only if orphan work is worse than stampede risk).
 - **Concurrency defaults:** Read executor workers default to `min(64, max(4, cpu*2))`. Heavy bundle concurrency defaults to `max(2, min(8, cpu))`. Override with `LUMONOX_DUCKDB_READ_EXECUTOR_WORKERS` and `LUMONOX_DASHBOARD_QUERY_HEAVY_CONCURRENCY`.
 

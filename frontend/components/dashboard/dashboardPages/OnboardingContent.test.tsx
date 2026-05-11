@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   onboardingFirstIngestGuidance,
   onboardingNoDataPrimaryAction,
+  onboardingNoiseControlHint,
   onboardingRoleActionCopy,
 } from "./OnboardingContent";
 
@@ -43,5 +44,14 @@ describe("onboarding role and no-data guidance", () => {
     const copy = onboardingNoDataPrimaryAction(false, true);
     expect(copy).toContain("Primary next action");
     expect(copy).toContain("owner/admin");
+  });
+});
+
+describe("onboardingNoiseControlHint", () => {
+  it("surfaces SDK noise-control knobs that align with monitor() defaults", () => {
+    const copy = onboardingNoiseControlHint();
+    expect(copy).toContain("ignore_path_prefixes");
+    expect(copy).toContain("/health");
+    expect(copy).toContain("request_sample_rate");
   });
 });

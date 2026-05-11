@@ -37,6 +37,17 @@ export function onboardingNoDataPrimaryAction(canIssueKeys: boolean, subpathUi: 
   return "Primary next action: ask an owner/admin for a key update, then send one request to confirm data flow.";
 }
 
+/**
+ * Surfaces practical SDK knobs that reduce noisy telemetry without expanding MVP scope.
+ * Mirrors `lumonox.monitor(..., request_sample_rate=..., ignore_path_prefixes=(...))` defaults.
+ */
+export function onboardingNoiseControlHint(): string {
+  return (
+    "Reduce noise: pass `ignore_path_prefixes=(\"/health\", \"/ready\")` to skip probes, " +
+    "and set `request_sample_rate=0.5` (or lower) on high-volume routes to keep ingest small."
+  );
+}
+
 export function OnboardingContent() {
   const router = useRouter();
   const d = useDashboardData();
@@ -161,6 +172,9 @@ export function OnboardingContent() {
               {onboardingNoDataPrimaryAction(canIssueKeys, subpathUi)}
             </p>
           ) : null}
+          <p className="mt-2 text-xs text-slate-500 dark:text-neutral-500">
+            {onboardingNoiseControlHint()}
+          </p>
         </li>
       </ol>
 
