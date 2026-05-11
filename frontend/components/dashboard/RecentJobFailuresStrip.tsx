@@ -5,6 +5,7 @@ import Link from "next/link";
 import { emitRumEvent } from "../../lib/rumRuntime";
 import type { RecentJobFailuresResponse } from "./dashboardTypes";
 import { formatTimestamp } from "./dashboardTypes";
+import { buildRequestsPageHref, type DashboardScopedQueryState } from "./dashboardQueryState";
 
 type RecentJobFailuresStripProps = {
   data: RecentJobFailuresResponse | null;
@@ -12,6 +13,8 @@ type RecentJobFailuresStripProps = {
   moreHref?: string;
   moreLabel?: string;
   diagnosticsHref?: string;
+  /** When set, correlated request ids link to Requests with the same server scope + correlation filter. */
+  scopeForCorrelation?: DashboardScopedQueryState | null;
 };
 
 export function RecentJobFailuresStrip({
@@ -19,6 +22,7 @@ export function RecentJobFailuresStrip({
   moreHref,
   moreLabel,
   diagnosticsHref = "/settings#system-diagnostics",
+  scopeForCorrelation = null,
 }: RecentJobFailuresStripProps) {
   if (!data?.items?.length) {
     return null;
@@ -71,7 +75,20 @@ export function RecentJobFailuresStrip({
               {item.correlated_request_id ? (
                 <>
                   {" "}
-                  · request <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">{item.correlated_request_id}</code>
+                  · request{" "}
+                  {scopeForCorrelation ? (
+                    <Link
+                      href={buildRequestsPageHref(scopeForCorrelation, {
+                        correlationRequestId: String(item.correlated_request_id).trim().slice(0, 128),
+                        requestPage: 0,
+                      })}
+                      className="rounded bg-amber-100/80 px-1 font-mono underline-offset-2 hover:underline dark:bg-amber-900/60"
+                    >
+                      {item.correlated_request_id}
+                    </Link>
+                  ) : (
+                    <code className="rounded bg-amber-100/80 px-1 dark:bg-amber-900/60">{item.correlated_request_id}</code>
+                  )}
                 </>
               ) : null}
             </div>

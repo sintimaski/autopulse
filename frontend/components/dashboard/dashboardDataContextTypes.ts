@@ -120,6 +120,8 @@ export type DashboardDataContextValue = {
   serverServiceTags: string[];
   serverEnvironmentTags: string[];
   pathQuery: string;
+  /** When set, requests bundle includes correlated HTTP + job rows for this ``request_id``. */
+  correlationRequestId: string;
   groupBy: GroupBy;
   sortKey: SortKey;
   sortDir: SortDir;
@@ -180,6 +182,7 @@ export type DashboardDataContextValue = {
   setServerServiceTags: (tags: string[]) => void;
   setServerEnvironmentTags: (tags: string[]) => void;
   setPathQuery: Dispatch<SetStateAction<string>>;
+  setCorrelationRequestId: Dispatch<SetStateAction<string>>;
   setGroupBy: Dispatch<SetStateAction<GroupBy>>;
   setErrorGroupSort: (s: "last_seen" | "count") => void;
   setRefreshToken: Dispatch<SetStateAction<number>>;
@@ -284,6 +287,7 @@ export type DashboardHomeSliceValue = {
   minLatencyMs: string;
   maxLatencyMs: string;
   pathQuery: string;
+  correlationRequestId: string;
   serverEnvironmentQuery: string;
   serverServiceQuery: string;
   sqlFilterApplied: string;

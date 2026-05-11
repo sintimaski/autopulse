@@ -52,6 +52,8 @@ class EventStoreFilters:
     skip_timestamp_filter: bool = False
     #: When True, add the dashboard ``error_like`` predicate (matches ORM error-groups scope).
     dashboard_error_like_only: bool = False
+    #: Exact ``request_id`` match (HTTP requests, errors, and correlated job rows).
+    correlation_request_id: str | None = None
     #: Keyset continuation for log-style pagination (applied in SQL, avoids rescanning head rows).
     log_keyset_timestamp: datetime | None = None
     log_keyset_id: int | None = None
@@ -364,6 +366,9 @@ class DuckDbEventStore:
         if filters.max_latency_ms is not None:
             clauses.append("latency_ms <= ?")
             params.append(filters.max_latency_ms)
+        if filters.correlation_request_id and str(filters.correlation_request_id).strip():
+            clauses.append("request_id = ?")
+            params.append(str(filters.correlation_request_id).strip()[:128])
         if filters.require_event_types:
             placeholders = ",".join("?" for _ in filters.require_event_types)
             clauses.append(f"type IN ({placeholders})")

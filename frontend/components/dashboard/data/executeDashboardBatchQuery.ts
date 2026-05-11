@@ -44,6 +44,7 @@ export type DashboardBatchQueryExecutionArgs = {
   minLatencyMs: string;
   maxLatencyMs: string;
   pathQuery: string;
+  correlationRequestId: string;
   serverEnvironmentQuery: string;
   serverServiceQuery: string;
   requestLimit: number;
@@ -96,6 +97,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     minLatencyMs,
     maxLatencyMs,
     pathQuery,
+    correlationRequestId,
     serverEnvironmentQuery,
     serverServiceQuery,
     requestLimit,
@@ -145,6 +147,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
     minLatencyMs.trim() !== "" ||
     maxLatencyMs.trim() !== "" ||
     pathQuery.trim() !== "" ||
+    correlationRequestId.trim() !== "" ||
     normalizeCommaSeparated(serverEnvironmentQuery) !== "" ||
     normalizeCommaSeparated(serverServiceQuery) !== "" ||
     (sqlFilterEnabled && sqlFilterApplied.trim() !== "");
@@ -173,6 +176,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
       minLatencyMs,
       maxLatencyMs,
       pathQuery: pathQuery.trim(),
+      correlationRequestId: correlationRequestId.trim(),
       serverEnvironmentQuery: normalizeCommaSeparated(serverEnvironmentQuery),
       serverServiceQuery: normalizeCommaSeparated(serverServiceQuery),
       sqlFilterEnabled,
@@ -225,6 +229,7 @@ export async function executeDashboardBatchQuery(args: DashboardBatchQueryExecut
       minLatencyMs,
       maxLatencyMs,
       pathQuery,
+      correlationRequestId,
       serverEnvironmentQuery,
       serverServiceQuery,
       sqlFilterEnabled,

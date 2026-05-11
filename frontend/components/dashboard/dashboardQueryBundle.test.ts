@@ -68,6 +68,7 @@ describe("buildDashboardDataQueryRequest", () => {
       minLatencyMs: "",
       maxLatencyMs: "",
       pathQuery: "",
+      correlationRequestId: "",
       serverEnvironmentQuery: "",
       serverServiceQuery: "",
       sqlFilterEnabled: false,

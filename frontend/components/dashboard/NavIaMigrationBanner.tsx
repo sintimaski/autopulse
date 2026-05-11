@@ -29,8 +29,9 @@ export function NavIaMigrationBanner() {
     >
       <div className="flex items-start justify-between gap-2">
         <p>
-          <span className="font-semibold text-white">Navigation tip:</span> Query Explorer and Traces live under{" "}
-          <span className="font-medium">Advanced</span> in the sidebar.
+          <span className="font-semibold text-white">Progressive disclosure:</span> the primary path stays Overview →
+          Diagnosis → Requests. Query Explorer and Traces are under{" "}
+          <span className="font-medium">Advanced</span> for power users only.
         </p>
         <button
           type="button"

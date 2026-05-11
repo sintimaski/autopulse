@@ -84,6 +84,7 @@ type BuildDashboardQueryRequestArgs = {
   minLatencyMs: string;
   maxLatencyMs: string;
   pathQuery: string;
+  correlationRequestId: string;
   serverEnvironmentQuery: string;
   serverServiceQuery: string;
   sqlFilterEnabled: boolean;
@@ -101,6 +102,7 @@ export function buildDashboardDataQueryRequest(args: BuildDashboardQueryRequestA
     minLatencyMs,
     maxLatencyMs,
     pathQuery,
+    correlationRequestId,
     serverEnvironmentQuery,
     serverServiceQuery,
     sqlFilterEnabled,
@@ -110,6 +112,7 @@ export function buildDashboardDataQueryRequest(args: BuildDashboardQueryRequestA
   const minLatency = Number(minLatencyMs);
   const maxLatency = Number(maxLatencyMs);
   const serverPath = pathQuery.trim();
+  const corr = correlationRequestId.trim().slice(0, 128);
   const envCsv = normalizeCommaSeparated(serverEnvironmentQuery);
   const serviceCsv = normalizeCommaSeparated(serverServiceQuery);
 
@@ -128,6 +131,7 @@ export function buildDashboardDataQueryRequest(args: BuildDashboardQueryRequestA
       max_latency_ms:
         maxLatencyMs.trim() !== "" && Number.isFinite(maxLatency) && maxLatency >= 0 ? maxLatency : undefined,
       event_sql_filter: sqlFilterEnabled && sqlFilterApplied.trim() ? sqlFilterApplied.trim() : undefined,
+      correlation_request_id: corr || undefined,
     },
     include_extended: plan.includeExtended,
     include_widgets: plan.includeWidgets,

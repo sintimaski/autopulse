@@ -27,7 +27,10 @@ export function SettingsInternalMetricsSection({
   queueUsageRatio,
 }: SettingsInternalMetricsSectionProps) {
   return (
-    <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <section
+      id="lx-settings-internal-metrics"
+      className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+    >
       <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Internal metrics</h2>
       <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
         Operator-only health snapshot mirrored from the server&apos;s internal metrics endpoint.

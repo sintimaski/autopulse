@@ -50,6 +50,7 @@ export function savedPresetScopeToDashboardQuery(
     errorGroupLimit,
     errorGroupPage: 0,
     errorGroupSort: scope.errorGroupSort === "count" ? "count" : "last_seen",
+    correlationRequestId: "",
     sqlFilterApplied: typeof scope.sqlFilterApplied === "string" ? scope.sqlFilterApplied : "",
     sqlFilterEnabled: Boolean(scope.sqlFilterEnabled),
   };

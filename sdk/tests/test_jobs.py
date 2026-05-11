@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from lumonox._jobs import capture_background_job
+from lumonox._runtime_context import reset_correlation_id, set_correlation_id
 
 
 def test_capture_background_job_is_silent_without_dispatcher() -> None:
@@ -46,3 +47,25 @@ def test_capture_background_job_enqueues_when_dispatcher_present() -> None:
     assert ev["path"] == "rollups"
     assert ev["status_code"] == 200
     assert ev["request_id"] == "abc"
+
+
+def test_capture_background_job_inherits_correlation_context() -> None:
+    enqueued: list[dict] = []
+
+    class _Disp:
+        def enqueue(self, event: dict) -> None:
+            enqueued.append(event)
+
+    app = SimpleNamespace(
+        state=SimpleNamespace(
+            _lumonox_dispatcher=_Disp(),
+            _lumonox_config=SimpleNamespace(service_name="svc", environment="staging"),
+        )
+    )
+    token = set_correlation_id("ctx-rid")
+    try:
+        capture_background_job(app, name="bg", success=True, latency_ms=1.0, trigger="job")
+    finally:
+        reset_correlation_id(token)
+    assert len(enqueued) == 1
+    assert enqueued[0]["request_id"] == "ctx-rid"

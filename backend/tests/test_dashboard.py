@@ -1669,3 +1669,44 @@ def test_dashboard_traces_search_and_detail(
     assert detail_payload["trace_id"] == trace_id
     assert len(detail_payload["items"]) == 2
     assert detail_payload["error_count"] == 1
+
+
+def test_dashboard_requests_correlation_filter_includes_job_events(
+    backend_test_database_url: str,
+) -> None:
+    """``correlation_request_id`` widens the requests table to HTTP + correlated job rows."""
+    _truncate_tables(backend_test_database_url)
+    key, _project_id = _seed_project_and_key(backend_test_database_url, "corr-requests")
+    app = create_app()
+    now = datetime.now(tz=UTC)
+    shared_rid = "shared-rid-for-corr-test"
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            now,
+            200,
+            "GET",
+            "/visible-route",
+            payload_overrides={"request_id": shared_rid},
+        )
+        _ingest(
+            client,
+            key,
+            now,
+            500,
+            "JOB",
+            "nightly_job",
+            event_type="job",
+            payload_overrides={"request_id": shared_rid},
+        )
+        filtered = client.get(
+            "/dashboard/requests",
+            params={"correlation_request_id": shared_rid, "window_minutes": 120},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert filtered.status_code == 200
+    body = filtered.json()
+    paths = {item["path"] for item in body["items"]}
+    assert "/visible-route" in paths
+    assert "nightly_job" in paths

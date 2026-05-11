@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { recordActivationMilestone } from "../../../lib/activationClientMetrics";
 import { ApCard } from "../../ui/ApCard";
 import { useDashboardData } from "../DashboardDataContext";
 import { isApiSubpathDashboard } from "../dashboardTypes";
@@ -66,6 +67,20 @@ export function OnboardingContent() {
     return null;
   }, [d.apiKeys, d.lastIssuedApiKey]);
 
+  useEffect(() => {
+    recordActivationMilestone("onboarding_view");
+  }, []);
+  useEffect(() => {
+    if (hasIssuedApiKey) {
+      recordActivationMilestone("key_issued_view");
+    }
+  }, [hasIssuedApiKey]);
+  useEffect(() => {
+    if (hasFirstEvent) {
+      recordActivationMilestone("first_event_seen");
+    }
+  }, [hasFirstEvent]);
+
   return (
     <ApCard className="space-y-4">
       <div>
@@ -90,6 +105,12 @@ export function OnboardingContent() {
         <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
           {onboardingRoleActionCopy(canIssueKeys)}
         </p>
+        <ul className="mt-3 list-inside list-disc space-y-1 text-xs text-slate-600 dark:text-neutral-400">
+          <li>Confirm backend health: <code className="rounded bg-slate-100 px-1 dark:bg-neutral-950">/health</code> and{" "}
+            <code className="rounded bg-slate-100 px-1 dark:bg-neutral-950">/ready</code> return OK.</li>
+          <li>Instrument with one call — see sample below — then hit any route once.</li>
+          <li>Use the same scope pivot (Overview / Diagnosis / Requests) after data arrives.</li>
+        </ul>
       </div>
 
       <ol className="space-y-3">
@@ -175,6 +196,17 @@ export function OnboardingContent() {
           <p className="mt-2 text-xs text-slate-500 dark:text-neutral-500">
             {onboardingNoiseControlHint()}
           </p>
+          <pre className="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-3 text-[11px] leading-relaxed text-emerald-100">
+            {`from fastapi import FastAPI
+from lumonox import lumonox
+
+app = FastAPI()
+lumonox(
+    app,
+    request_sample_rate=1.0,
+    ignore_path_prefixes=("/health", "/ready"),
+)`}
+          </pre>
         </li>
       </ol>
 

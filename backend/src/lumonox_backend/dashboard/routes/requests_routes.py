@@ -13,6 +13,7 @@ from lumonox_backend.dashboard.event_scope import http_scoped_event_types_clause
 from lumonox_backend.dashboard.log_query import append_event_sql_filters
 from lumonox_backend.dashboard.messages import dashboard_request_log_message
 from lumonox_backend.dashboard.params import (
+    CORRELATION_REQUEST_ID_QUERY,
     ENVIRONMENTS_QUERY,
     EVENT_SQL_FILTER_QUERY,
     FROM_TIMESTAMP_QUERY,
@@ -78,6 +79,7 @@ async def get_dashboard_requests(
     limit: int = LIMIT_QUERY,
     offset: int = OFFSET_QUERY,
     event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
+    correlation_request_id: str | None = CORRELATION_REQUEST_ID_QUERY,
 ) -> DashboardRequestsResponse:
     server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = resolve_time_window(
@@ -87,12 +89,20 @@ async def get_dashboard_requests(
     if effective_status_class is None and focus == DashboardRequestsFocus.errors:
         effective_status_class = 5
     exclude_lumonox_traffic = await resolve_exclude_lumonox_traffic(session, context.project_id)
+    correlation_norm = str(correlation_request_id or "").strip()[:128] or None
+    type_clause = (
+        Event.type.in_(("request", "error", "job"))
+        if correlation_norm
+        else http_scoped_event_types_clause()
+    )
     filters = [
         Event.project_id == context.project_id,
         Event.timestamp >= resolved_from,
         Event.timestamp <= resolved_to,
-        http_scoped_event_types_clause(),
+        type_clause,
     ]
+    if correlation_norm:
+        filters.append(Event.request_id == correlation_norm)
     append_exclude_lumonox_event_filters(filters, exclude_lumonox_traffic=exclude_lumonox_traffic)
     if method:
         filters.append(Event.method == method.upper())
@@ -131,6 +141,7 @@ async def get_dashboard_requests(
             exclude_lumonox_traffic=exclude_lumonox_traffic,
             event_sql_filter=event_sql_filter,
             http_events_only=True,
+            correlation_request_id=correlation_norm,
         )
         total, items = await run_duckdb_read_sync(
             request_items,

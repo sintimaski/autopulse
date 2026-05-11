@@ -403,6 +403,47 @@ def test_middleware_captures_request_event_with_route_template() -> None:
     assert isinstance(event["latency_ms"], float)
 
 
+def test_middleware_sets_x_request_id_response_header_when_missing() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config()
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/ping")
+    async def ping() -> dict[str, str]:
+        return {"ok": "1"}
+
+    with lifespan_test_client(app) as client:
+        response = client.get("/ping")
+
+    assert response.status_code == 200
+    header_rid = response.headers.get("x-request-id") or response.headers.get("X-Request-ID")
+    assert header_rid
+    assert len(dispatcher.events) == 1
+    assert dispatcher.events[0]["request_id"] == header_rid
+
+
+def test_middleware_prefers_x_correlation_id_for_request_id() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config()
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/ping")
+    async def ping() -> dict[str, str]:
+        return {"ok": "1"}
+
+    with lifespan_test_client(app) as client:
+        response = client.get("/ping", headers={"X-Correlation-ID": "corr-from-client"})
+
+    assert response.status_code == 200
+    assert len(dispatcher.events) == 1
+    assert dispatcher.events[0]["request_id"] == "corr-from-client"
+    assert (
+        response.headers.get("x-request-id") or response.headers.get("X-Request-ID")
+    ) == "corr-from-client"
+
+
 def test_middleware_respects_capture_toggles() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()

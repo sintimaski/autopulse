@@ -18,6 +18,7 @@ import { SettingsApiKeyLifecycleSection } from "./SettingsApiKeyLifecycleSection
 import { SettingsInternalMetricsSection } from "./SettingsInternalMetricsSection";
 import { SettingsSystemDiagnosticsSection } from "./SettingsSystemDiagnosticsSection";
 import { SettingsRetentionPolicySection } from "./SettingsRetentionPolicySection";
+import { SettingsSdkNoiseSection } from "./SettingsSdkNoiseSection";
 import { useSettingsAlertDelivery } from "./useSettingsAlertDelivery";
 import { useSettingsApiKeyBulk } from "./useSettingsApiKeyBulk";
 import { useSettingsEventPlaneCutoverSave } from "./useSettingsEventPlaneCutoverSave";
@@ -77,6 +78,8 @@ export function SettingsContent() {
         onDraftChange={(next) => retentionPolicy.setRetentionDraft(next)}
         onSave={() => retentionPolicy.saveRetention()}
       />
+
+      <SettingsSdkNoiseSection />
 
       <SettingsInternalMetricsSection
         canViewInternalMetrics={canViewInternalMetrics}

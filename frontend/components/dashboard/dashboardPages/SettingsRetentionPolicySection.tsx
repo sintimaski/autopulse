@@ -123,7 +123,10 @@ export function SettingsRetentionPolicySection({
             <label className="block w-full max-w-xs text-sm text-slate-700 dark:text-neutral-200">
               Retention tier
               <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-neutral-400">
-                Preset labels for rotation policy in this build — not a billing plan or paid upgrade.
+                Preset labels for rotation policy in this build — not a billing plan or paid upgrade. The{" "}
+                <span className="font-medium">starter</span> tier also applies a lower ingest rate multiplier server-side
+                (see <code className="rounded bg-slate-100 px-1 dark:bg-neutral-800">plan_limits.py</code>) so noisy
+                tenants stay within single-node budgets.
               </span>
               <select
                 value={effectiveDraft.retention_plan}

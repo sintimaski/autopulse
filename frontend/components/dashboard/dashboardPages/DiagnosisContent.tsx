@@ -22,6 +22,7 @@ import { CardSpinner } from "../../ui/CardSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
+import { DiagnosisScopePivotBar } from "../DiagnosisScopePivotBar";
 import { MetricCard } from "../MetricCard";
 import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
 import {
@@ -63,6 +64,7 @@ export function DiagnosisContent() {
         errorGroupLimit: d.errorGroupLimit,
         errorGroupPage: d.errorGroupPage,
         errorGroupSort: d.errorGroupSort,
+        correlationRequestId: d.correlationRequestId,
         sqlFilterApplied: d.sqlFilterApplied,
         sqlFilterEnabled: d.sqlFilterEnabled,
       }),
@@ -83,6 +85,7 @@ export function DiagnosisContent() {
     d.errorGroupLimit,
     d.errorGroupPage,
     d.errorGroupSort,
+    d.correlationRequestId,
     d.sqlFilterApplied,
     d.sqlFilterEnabled,
     ],
@@ -216,6 +219,9 @@ export function DiagnosisContent() {
       return (
         <>
           <DiagnosisRequestsStickyScopeBar />
+          <div className="mb-2">
+            <DiagnosisScopePivotBar />
+          </div>
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <CardSpinner size="compact" label="Requests" />
@@ -237,6 +243,9 @@ export function DiagnosisContent() {
     return (
       <>
         <DiagnosisRequestsStickyScopeBar />
+        <div className="mb-2">
+          <DiagnosisScopePivotBar />
+        </div>
         <section
         className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
         role="status"
@@ -281,6 +290,9 @@ export function DiagnosisContent() {
   return (
     <>
       <DiagnosisRequestsStickyScopeBar />
+      <div className="mb-2">
+        <DiagnosisScopePivotBar />
+      </div>
       {d.errorMessage ? (
         <section
           className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
@@ -360,7 +372,7 @@ export function DiagnosisContent() {
           </div>
         </section>
       ) : null}
-      <RecentJobFailuresStrip data={diagnosisSlice.recentJobFailures} />
+      <RecentJobFailuresStrip data={diagnosisSlice.recentJobFailures} scopeForCorrelation={scopedState} />
       <section
         className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm text-slate-800 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700/80 dark:bg-neutral-900/40 dark:text-neutral-100 dark:ring-white/[0.06]"
         aria-label="Job and cron query explorer shortcut"

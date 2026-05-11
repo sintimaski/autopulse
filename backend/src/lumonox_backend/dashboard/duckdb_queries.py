@@ -67,7 +67,14 @@ def build_filters(
     require_event_types: tuple[str, ...] | None = None,
     include_received_at_in_time_window: bool = False,
     skip_timestamp_filter: bool = False,
+    correlation_request_id: str | None = None,
 ) -> EventStoreFilters:
+    corr = str(correlation_request_id or "").strip()[:128] or None
+    merged_require = require_event_types
+    effective_http_only = http_events_only
+    if corr:
+        merged_require = ("request", "error", "job")
+        effective_http_only = False
     return EventStoreFilters(
         project_id=project_id,
         from_timestamp=from_timestamp,
@@ -81,10 +88,11 @@ def build_filters(
         min_latency_ms=min_latency_ms,
         max_latency_ms=max_latency_ms,
         event_sql_filter=event_sql_filter,
-        http_events_only=http_events_only,
-        require_event_types=require_event_types,
+        http_events_only=effective_http_only,
+        require_event_types=merged_require,
         include_received_at_in_time_window=include_received_at_in_time_window,
         skip_timestamp_filter=skip_timestamp_filter,
+        correlation_request_id=corr,
     )
 
 

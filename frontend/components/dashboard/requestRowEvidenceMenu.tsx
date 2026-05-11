@@ -9,8 +9,10 @@ export function buildRequestEvidenceMenuItems(args: {
   rowId: string;
   onOpenInModal: () => void;
   onSaveBookmark: () => void;
+  /** When set, adds a jump to Requests with `correlation` scoped to this row's `request_id`. */
+  correlationTrailHref?: string;
 }): RowActionItem[] {
-  const { item, rowId, onOpenInModal, onSaveBookmark } = args;
+  const { item, rowId, onOpenInModal, onSaveBookmark, correlationTrailHref } = args;
   const requestJson = JSON.stringify(item, null, 2);
   const logText = [
     `timestamp: ${item.timestamp}`,
@@ -34,7 +36,7 @@ export function buildRequestEvidenceMenuItems(args: {
     .join("\n");
   const bookmarkFragment = `request-row:${encodeURIComponent(rowId)}`;
 
-  return [
+  const items: RowActionItem[] = [
     {
       id: "open-modal",
       label: "Open in modal",
@@ -80,4 +82,17 @@ export function buildRequestEvidenceMenuItems(args: {
       },
     },
   ];
+  if (correlationTrailHref) {
+    items.push({
+      id: "correlation-trail",
+      label: "Correlation trail (HTTP + jobs)",
+      run: () => {
+        if (typeof window !== "undefined") {
+          window.location.assign(correlationTrailHref);
+        }
+        return "Opening Requests with correlation filter…";
+      },
+    });
+  }
+  return items;
 }

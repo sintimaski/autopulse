@@ -34,6 +34,7 @@ export function GuidedTroubleshootingPanel() {
       errorGroupLimit: d.errorGroupLimit,
       errorGroupPage: 0,
       errorGroupSort: d.errorGroupSort,
+      correlationRequestId: d.correlationRequestId,
       sqlFilterApplied: d.sqlFilterApplied,
       sqlFilterEnabled: d.sqlFilterEnabled,
     }),

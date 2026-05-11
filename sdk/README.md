@@ -37,7 +37,7 @@ twine upload dist/pypi-sdk/*
 
 **On `main`:** the SDK workflow runs when `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` change. The **`lumonox`** publish workflow runs when `backend/pyproject.toml`, `backend/src/**`, or `frontend/**` change. Both upload **only when** the corresponding `[project] version` is **not already** on PyPI.
 
-**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve **`lumonox>=0.2.6`**.
+**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve **`lumonox>=0.2.9`** (see `sdk/pyproject.toml` **`[project.optional-dependencies]`**).
 
 **One-time on PyPI:** create projects **`lumonox-sdk`** and **`lumonox`**, add trusted publishers for each workflow, then merge version bumps or run workflows manually.
 
@@ -79,6 +79,12 @@ If **either** variable is missing, the sender stays off: middleware still runs, 
 - `ignore_path_prefixes` (tuple/list of path prefixes to skip, e.g. `("/health", "/ready")`)
 - `scrub_keys` (additional sensitive keys to redact)
 - `queue_maxsize`, `batch_size`, `flush_interval_s`, `max_retries`, `retry_backoff_s`
+
+## Request correlation IDs
+
+- Incoming **`X-Request-ID`** or **`X-Correlation-ID`** (when **`X-Request-ID`** is absent) becomes the event **`request_id`** for that HTTP request.
+- Responses include **`X-Request-ID`** when the client did not send one, so callers and downstream services can propagate the same value.
+- **`capture_background_job(...)`** can omit **`correlated_request_id`** when it runs inside work that still has the middleware’s correlation context (for example right after handling a request).
 
 ## Security defaults
 

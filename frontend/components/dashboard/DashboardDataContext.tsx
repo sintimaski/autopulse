@@ -190,6 +190,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [serverServiceQuery, setServerServiceQuery] = useState("");
   const [serverEnvironmentQuery, setServerEnvironmentQuery] = useState("");
   const [pathQuery, setPathQuery] = useState("");
+  const [correlationRequestId, setCorrelationRequestId] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -334,6 +335,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         svc: normalizeCommaSeparated(serverServiceQuery),
         sqlOn: sqlFilterEnabled,
         sql: sqlFilterApplied.trim(),
+        corr: correlationRequestId.trim(),
         project: sessionProjectId,
       }),
     [
@@ -348,6 +350,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       serverServiceQuery,
       sqlFilterEnabled,
       sqlFilterApplied,
+      correlationRequestId,
       sessionProjectId,
     ],
   );
@@ -387,6 +390,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       minLatencyMs,
       maxLatencyMs,
       pathQuery,
+      correlationRequestId,
       serverEnvironmentQuery,
       serverServiceQuery,
       requestLimit,
@@ -421,6 +425,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     minLatencyMs,
     maxLatencyMs,
     pathQuery,
+    correlationRequestId,
     serverEnvironmentQuery,
     serverServiceQuery,
     requestLimit,
@@ -505,6 +510,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
         minLatencyMs,
         maxLatencyMs,
         pathQuery,
+        correlationRequestId,
         serverEnvironmentQuery,
         serverServiceQuery,
         requestLimit,
@@ -742,6 +748,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
           setSqlFilterApplied,
           setSqlFilterDraft,
           setSqlFilterEnabled,
+          setCorrelationRequestId,
         },
         scoped,
       );
@@ -810,6 +817,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
 
   const clearClientFilters = useCallback(() => {
     setPathQuery("");
+    setCorrelationRequestId("");
     setMinLatencyMs("");
     setMaxLatencyMs("");
     setServerServiceQuery("");
@@ -1445,6 +1453,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
             setSqlFilterApplied,
             setSqlFilterDraft,
             setSqlFilterEnabled,
+            setCorrelationRequestId,
           },
           parsed,
         );
@@ -1473,6 +1482,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setSqlFilterApplied,
       setSqlFilterDraft,
       setSqlFilterEnabled,
+      setCorrelationRequestId,
     ],
   );
 
@@ -1847,6 +1857,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       minLatencyMs,
       maxLatencyMs,
       pathQuery,
+      correlationRequestId,
       serverEnvironmentQuery,
       serverServiceQuery,
       sqlFilterApplied,
@@ -1876,6 +1887,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       minLatencyMs,
       maxLatencyMs,
       pathQuery,
+      correlationRequestId,
       serverEnvironmentQuery,
       serverServiceQuery,
       sqlFilterApplied,
@@ -1945,6 +1957,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       serverServiceTags,
       serverEnvironmentTags,
       pathQuery,
+      correlationRequestId,
       groupBy,
       sortKey,
       sortDir,
@@ -1996,6 +2009,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setServerServiceTags,
       setServerEnvironmentTags,
       setPathQuery,
+      setCorrelationRequestId,
       setGroupBy,
       setErrorGroupSort,
       setRefreshToken,
@@ -2098,6 +2112,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       serverServiceTags,
       serverEnvironmentTags,
       pathQuery,
+      correlationRequestId,
       groupBy,
       sortKey,
       sortDir,

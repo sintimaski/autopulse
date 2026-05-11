@@ -33,6 +33,7 @@ from lumonox_backend.auth import (
 from lumonox_backend.auth.dashboard import derive_magic_link_base_url
 from lumonox_backend.core.config import Settings, get_settings
 from lumonox_backend.database import get_db_session
+from lumonox_backend.metrics import service_metrics
 from lumonox_backend.models import (
     ApiKey,
     ErrorGroupAggregate,
@@ -529,6 +530,8 @@ async def post_dashboard_onboarding_complete(
     project.onboarding_completed = True
     await session.commit()
     await session.refresh(project)
+    with suppress(Exception):
+        service_metrics.increment("dashboard.workspace.onboarding_completed_total")
     return await get_dashboard_onboarding_status(auth_session=auth_session, session=session)
 
 

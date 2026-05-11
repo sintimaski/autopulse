@@ -18,6 +18,7 @@ type ScopeResetActions = {
   setSqlFilterDraft: (value: string) => void;
   setSqlFilterApplied: (value: string) => void;
   setSqlFilterEnabled: (enabled: boolean) => void;
+  setCorrelationRequestId: (value: string) => void;
 };
 
 export function resetServerScope(actions: ScopeResetActions, variant: ScopeResetVariant): void {
@@ -36,6 +37,7 @@ export function resetServerScope(actions: ScopeResetActions, variant: ScopeReset
   actions.setSqlFilterDraft("");
   actions.setSqlFilterApplied("");
   actions.setSqlFilterEnabled(false);
+  actions.setCorrelationRequestId("");
 
   if (variant === "diagnosis") {
     actions.setRequestPage(0);

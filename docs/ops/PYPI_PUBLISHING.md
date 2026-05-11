@@ -59,6 +59,7 @@ ls dist/manual-pypi-test/lumonox-*-py3-none-any.whl
 
 | Version | Highlights |
 |---------|------------|
+| **0.2.9** | Dashboard: **`correlation`** query scope end-to-end; **`GET /dashboard/requests?correlation_request_id=…`** includes correlated **`job`** rows; onboarding activation hints, diagnosis pivot bar (Overview / Diagnosis / Requests), SDK noise section in Settings, operator reliability callout + Settings anchor links; internal metric **`dashboard.query.correlation_scope_total`** and **`dashboard.workspace.onboarding_completed_total`**. |
 | **0.2.7** | Dashboard log exploration is **HTTP-only** (`POST /dashboard/log-query/validate` and `POST /dashboard/log-query/execute`); the unused **`/dashboard/log-query/stream`** WebSocket placeholder is removed (live updates remain on **`/dashboard/updates`** when realtime is enabled). |
 | **0.2.6** | API wheel ships **`lumonox/__init__.py`** (`create_app`, `mount_on_app`, `__version__`) plus **`lumonox_backend`**; **`lumonox-sdk[stack]`** requires **`lumonox>=0.2.6`** and exposes **`mount_on_app`** from the SDK-owned **`lumonox`** module. |
 | **0.2.5** | PyPI: API wheel published as **`lumonox`** (distribution formerly documented as `lumonox-api`); `/health` `service` **`lumonox`**; **`lumonox-sdk[stack]`** requires **`lumonox>=0.2.5`**. |

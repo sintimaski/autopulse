@@ -22,6 +22,7 @@ export type DashboardScopedApplyTarget = {
   setSqlFilterApplied: (value: string) => void;
   setSqlFilterDraft: (value: string) => void;
   setSqlFilterEnabled: (value: boolean) => void;
+  setCorrelationRequestId: (value: string) => void;
 };
 
 export function applyDashboardScopedQueryState(
@@ -56,4 +57,5 @@ export function applyDashboardScopedQueryState(
     d.setSqlFilterDraft("");
     d.setSqlFilterEnabled(false);
   }
+  d.setCorrelationRequestId(parsed.correlationRequestId ?? "");
 }

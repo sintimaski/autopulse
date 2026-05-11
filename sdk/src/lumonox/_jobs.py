@@ -6,6 +6,8 @@ import traceback
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from lumonox._runtime_context import get_correlation_id
+
 
 def capture_background_job(
     app: Any,
@@ -43,9 +45,14 @@ def capture_background_job(
             "latency_ms": max(0.0, float(latency_ms)),
             "job_trigger": trigger,
         }
-        if correlated_request_id and str(correlated_request_id).strip():
-            payload["correlated_request_id"] = str(correlated_request_id).strip()[:128]
-            payload["request_id"] = str(correlated_request_id).strip()[:128]
+        effective_correlation = (
+            str(correlated_request_id).strip()[:128]
+            if correlated_request_id and str(correlated_request_id).strip()
+            else (get_correlation_id() or "").strip()[:128] or None
+        )
+        if effective_correlation:
+            payload["correlated_request_id"] = effective_correlation
+            payload["request_id"] = effective_correlation
         if exception is not None:
             payload["exception_type"] = type(exception).__name__
             msg = str(exception).strip()

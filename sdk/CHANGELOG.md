@@ -8,6 +8,17 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-05-12
+
+### Added
+
+- **Correlation IDs:** middleware prefers incoming **`X-Request-ID`** or **`X-Correlation-ID`** for the captured **`request_id`**, and echoes **`X-Request-ID`** on the HTTP response when the client did not send one.
+- **Background jobs:** when **`correlated_request_id`** is omitted, **`capture_background_job`** can inherit the active correlation from request context (contextvar set by the middleware).
+
+### Packaging
+
+- **`[stack]`** extra depends on **`lumonox>=0.2.9`** (aligned with the **0.2.9** API wheel).
+
 ## [0.2.5] - 2026-05-12
 
 ### Added

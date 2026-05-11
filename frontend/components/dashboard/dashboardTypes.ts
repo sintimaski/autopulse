@@ -535,6 +535,7 @@ export type DashboardDataQueryScope = {
   min_latency_ms?: number;
   max_latency_ms?: number;
   event_sql_filter?: string;
+  correlation_request_id?: string;
 };
 
 export type DashboardDataQueryRequest = {

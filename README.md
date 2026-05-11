@@ -7,6 +7,7 @@ Lumonox gives Python teams a fast path to useful production visibility without o
 ### Highlights
 
 - **Instant visibility:** add one middleware call to capture requests and errors without blocking app traffic.
+- **Request correlation:** SDK middleware honors **`X-Request-ID`** / **`X-Correlation-ID`**, echoes **`X-Request-ID`** when missing, and the dashboard can pivot Overview → Diagnosis → Requests with a shared **`correlation`** scope (including **`job`** rows tied to the same id).
 - **Fast diagnosis UI:** dashboard answers "what broke, when, and why" in seconds.
 - **Custom + built-in insights:** add your own widgets next to system diagnostics.
 - **Self-hosted control:** tune auth, retention, storage, and alerting for your environment.

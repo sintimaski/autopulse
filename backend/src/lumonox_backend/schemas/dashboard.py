@@ -31,6 +31,7 @@ class DashboardDataQueryScope(BaseModel):
     min_latency_ms: float | None = None
     max_latency_ms: float | None = None
     event_sql_filter: str | None = None
+    correlation_request_id: str | None = Field(default=None, max_length=128)
 
 
 class DashboardDataQueryPagination(BaseModel):

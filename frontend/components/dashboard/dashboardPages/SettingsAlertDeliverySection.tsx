@@ -51,8 +51,8 @@ export function SettingsAlertDeliverySection({
       {alertDeliveryDraft ? (
         <>
           <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-            Turn project alerts on, set where notifications go (email and webhooks), then save. Heuristic thresholds
-            (error spikes, cooldown) stay on the{" "}
+            Turn project alerts on, set where notifications go (email, Slack/Discord webhooks via env, or generic
+            webhooks), then save. Heuristic thresholds (error spikes, cooldown) stay on the{" "}
             <Link
               href="/alerts"
               className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"

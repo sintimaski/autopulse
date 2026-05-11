@@ -55,6 +55,7 @@ export function AlertsContent() {
     errorGroupLimit: d.errorGroupLimit,
     errorGroupPage: 0,
     errorGroupSort: d.errorGroupSort,
+    correlationRequestId: d.correlationRequestId,
     sqlFilterApplied: d.sqlFilterApplied,
     sqlFilterEnabled: d.sqlFilterEnabled,
   }).toString();

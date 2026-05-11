@@ -27,6 +27,7 @@ describe("dashboardQueryState", () => {
       errorGroupLimit: 50,
       errorGroupPage: 3,
       errorGroupSort: "count",
+      correlationRequestId: "abc-123",
       sqlFilterApplied: "status_code >= 500",
       sqlFilterEnabled: true,
     });
@@ -40,6 +41,7 @@ describe("dashboardQueryState", () => {
     expect(query.get("error_group_page")).toBe("3");
     expect(query.get("error_group_sort")).toBe("count");
     expect(query.get("sql_filter")).toBe("status_code >= 500");
+    expect(query.get("correlation")).toBe("abc-123");
   });
 
   it("parses scoped query and falls back to defaults", () => {
@@ -76,6 +78,7 @@ describe("dashboardQueryState", () => {
     expect(parsed.errorGroupSort).toBe("count");
     expect(parsed.sqlFilterApplied).toBe("method = 'GET'");
     expect(parsed.sqlFilterEnabled).toBe(true);
+    expect(parsed.correlationRequestId).toBe("");
   });
 
   it("parseScopedQuery omits sql fields when absent from URL", () => {
@@ -107,6 +110,7 @@ describe("dashboardQueryState", () => {
       errorGroupLimit: 25,
       errorGroupPage: 0,
       errorGroupSort: "last_seen",
+      correlationRequestId: "",
       sqlFilterApplied: "status_code >= 500",
       sqlFilterEnabled: false,
     });
@@ -130,6 +134,7 @@ describe("dashboardQueryState", () => {
     errorGroupLimit: 25,
     errorGroupPage: 0,
     errorGroupSort: "last_seen" as const,
+    correlationRequestId: "",
     sqlFilterApplied: "",
     sqlFilterEnabled: false,
   };
@@ -171,6 +176,7 @@ describe("dashboardQueryState", () => {
       errorGroupSort: "count" as const,
       sqlFilterApplied: "status_code >= 400",
       sqlFilterEnabled: true,
+      correlationRequestId: "rid-1",
     };
     const built = buildScopedQuery(state);
     const parsed = parseScopedQuery(new URLSearchParams(built.toString()));
@@ -187,5 +193,6 @@ describe("dashboardQueryState", () => {
     expect(parsed.errorGroupSort).toBe("count");
     expect(parsed.sqlFilterApplied).toBe("status_code >= 400");
     expect(parsed.sqlFilterEnabled).toBe(true);
+    expect(parsed.correlationRequestId).toBe("rid-1");
   });
 });

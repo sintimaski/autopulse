@@ -373,6 +373,9 @@ async def _run_bundle_query(
     *, payload: DashboardDataQueryRequest, context: ProjectContext
 ) -> DashboardDataQueryResponse:
     scope = payload.scope
+    if str(scope.correlation_request_id or "").strip():
+        with suppress(Exception):
+            service_metrics.increment("dashboard.query.correlation_scope_total")
     session_maker = get_session_maker()
 
     async def run_with_session(
@@ -413,6 +416,7 @@ async def _run_bundle_query(
                 limit=payload.requests.limit,
                 offset=payload.requests.offset,
                 event_sql_filter=scope.event_sql_filter,
+                correlation_request_id=scope.correlation_request_id,
             ),
         ),
     )

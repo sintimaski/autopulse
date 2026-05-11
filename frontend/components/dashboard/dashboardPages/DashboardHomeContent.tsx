@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { MetricCard } from "../MetricCard";
 import { DashboardScopeFacetShell } from "../DashboardScopeFacetShell";
+import { DiagnosisScopePivotBar } from "../DiagnosisScopePivotBar";
 import { OverviewScopeFacetBoard } from "../OverviewScopeFacetBoard";
 import { SparklineMini } from "../SparklineMini";
 import { StatusPill } from "../StatusPill";
@@ -30,6 +31,7 @@ import {
 import { CardSpinner } from "../../ui/CardSpinner";
 import { ChartScopeTintOverlay } from "../charts/ChartScopeTintOverlay";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
+import { OperatorReliabilityCallout } from "../OperatorReliabilityCallout";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
@@ -74,6 +76,7 @@ export function DashboardHomeContent() {
         errorGroupLimit: d.errorGroupLimit,
         errorGroupPage: d.errorGroupPage,
         errorGroupSort: d.errorGroupSort,
+        correlationRequestId: d.correlationRequestId,
         sqlFilterApplied: d.sqlFilterApplied,
         sqlFilterEnabled: d.sqlFilterEnabled,
       }),
@@ -94,6 +97,7 @@ export function DashboardHomeContent() {
       d.errorGroupLimit,
       d.errorGroupPage,
       d.errorGroupSort,
+      d.correlationRequestId,
       d.sqlFilterApplied,
       d.sqlFilterEnabled,
     ],
@@ -106,6 +110,9 @@ export function DashboardHomeContent() {
         <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
+        <div className="mb-2">
+          <DiagnosisScopePivotBar />
+        </div>
         {d.loading && !d.errorMessage ? (
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -141,6 +148,7 @@ export function DashboardHomeContent() {
     errorGroupLimit: d.errorGroupLimit,
     errorGroupPage: 0,
     errorGroupSort: d.errorGroupSort,
+    correlationRequestId: d.correlationRequestId,
     sqlFilterApplied: d.sqlFilterApplied,
     sqlFilterEnabled: d.sqlFilterEnabled,
   });
@@ -265,6 +273,9 @@ export function DashboardHomeContent() {
         <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
+        <div className="mb-2">
+          <DiagnosisScopePivotBar />
+        </div>
         {homeSlice.errorMessage ? (
           <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
             {homeSlice.errorMessage}
@@ -292,7 +303,12 @@ export function DashboardHomeContent() {
             />
           ))}
         </div>
-        <RecentJobFailuresStrip data={homeSlice.recentJobFailures} moreHref={diagnosisBaseHref} />
+        <RecentJobFailuresStrip
+          data={homeSlice.recentJobFailures}
+          moreHref={diagnosisBaseHref}
+          scopeForCorrelation={scopedState}
+        />
+        <OperatorReliabilityCallout />
         <div className="w-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
           <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic volume</h3>
           <p className="mb-2 text-xs text-slate-600 dark:text-neutral-400" aria-live="polite">
@@ -962,6 +978,10 @@ export function DashboardHomeContent() {
           </div>
         </div>
       </DashboardScopeFacetShell>
+      <div className="mb-2">
+        <DiagnosisScopePivotBar />
+      </div>
+      <OperatorReliabilityCallout />
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>

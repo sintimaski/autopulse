@@ -22,6 +22,8 @@ export type DashboardScopedQueryState = {
   errorGroupLimit: number;
   errorGroupPage: number;
   errorGroupSort: "last_seen" | "count";
+  /** URL key `correlation`: filter requests (and correlated job rows) by `request_id`. */
+  correlationRequestId: string;
   /** URL key `sql_filter`: applied WHERE fragment when SQL filter is enabled. */
   sqlFilterApplied?: string;
   sqlFilterEnabled?: boolean;
@@ -56,6 +58,7 @@ type ScopedStateSource = Pick<
   | "errorGroupLimit"
   | "errorGroupPage"
   | "errorGroupSort"
+  | "correlationRequestId"
   | "sqlFilterApplied"
   | "sqlFilterEnabled"
 >;
@@ -78,6 +81,7 @@ export function buildCurrentScopedState(source: ScopedStateSource): DashboardSco
     errorGroupLimit: source.errorGroupLimit,
     errorGroupPage: source.errorGroupPage,
     errorGroupSort: source.errorGroupSort,
+    correlationRequestId: source.correlationRequestId ?? "",
     sqlFilterApplied: source.sqlFilterApplied,
     sqlFilterEnabled: source.sqlFilterEnabled,
   };
@@ -177,6 +181,10 @@ export function buildScopedQuery(
   if (state.errorGroupSort === "count") {
     params.set("error_group_sort", "count");
   }
+  const corr = state.correlationRequestId.trim();
+  if (corr) {
+    params.set("correlation", corr);
+  }
   const applied = (state.sqlFilterApplied ?? "").trim();
   if (state.sqlFilterEnabled && applied) {
     params.set("sql_filter", applied);
@@ -230,6 +238,20 @@ export function buildDiagnosisPageHref(
   return `/diagnosis?${q}${hash}`;
 }
 
+/** Build `/dashboard` href preserving the current server scope (and optional patch). */
+export function buildDashboardPageHref(
+  state: DashboardScopedQueryState,
+  patch?: Partial<DashboardScopedQueryState>,
+): string {
+  const next: DashboardScopedQueryState = {
+    ...state,
+    ...patch,
+    requestPage: patch?.requestPage ?? 0,
+    errorGroupPage: patch?.errorGroupPage ?? 0,
+  };
+  return `/dashboard?${buildScopedQuery(next).toString()}`;
+}
+
 export function parseScopedQuery(
   searchParams: URLSearchParams,
 ): DashboardScopedQueryState {
@@ -271,6 +293,7 @@ export function parseScopedQuery(
       DEFAULTS.errorGroupPage,
     ),
     errorGroupSort,
+    correlationRequestId: (searchParams.get("correlation") ?? "").trim().slice(0, 128),
   };
   if (searchParams.has("sql_filter")) {
     const f = (searchParams.get("sql_filter") ?? "").trim();

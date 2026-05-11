@@ -206,6 +206,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
         setSqlFilterDraft: d.setSqlFilterDraft,
         setSqlFilterApplied: d.setSqlFilterApplied,
         setSqlFilterEnabled: d.setSqlFilterEnabled,
+        setCorrelationRequestId: d.setCorrelationRequestId,
       },
       variant,
     );

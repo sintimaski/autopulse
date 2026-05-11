@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from lumonox._infrastructure import InfrastructureSampler
+from lumonox._runtime_context import reset_correlation_id, set_correlation_id
 from lumonox.widgets import BaseDashboardWidget, serialize_dashboard_widgets
 
 logger = logging.getLogger("lumonox.monitor")
@@ -624,12 +625,22 @@ class _LumonoxMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         started_at = perf_counter()
+        header_rid = (request.headers.get("x-request-id") or "").strip()
+        header_cid = (request.headers.get("x-correlation-id") or "").strip()
+        correlation_id = (header_rid or header_cid or str(uuid4()))[:128]
+        correlation_token = set_correlation_id(correlation_id)
+
+        def _stamp_response(resp: Response) -> Response:
+            if correlation_id:
+                resp.headers.setdefault("X-Request-ID", correlation_id)
+            return resp
+
         common: dict[str, Any] = {
             "timestamp": _utc_now_iso(),
             "service_name": self._config.service_name,
             "environment": self._config.environment,
             "method": request.method,
-            "request_id": request.headers.get("x-request-id"),
+            "request_id": correlation_id,
         }
         send_ok = getattr(
             self._dispatcher,
@@ -643,63 +654,66 @@ class _LumonoxMiddleware(BaseHTTPMiddleware):
         if send_ok and self._config.capture_query_params:
             common["query_params"] = dict(request.query_params.multi_items())
         try:
-            response = await call_next(request)
-        except Exception as exc:
+            try:
+                response = await call_next(request)
+            except Exception as exc:
+                resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
+                if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
+                    raise
+                latency_ms = (perf_counter() - started_at) * 1000
+                stack_trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                self._dispatcher.enqueue(
+                    {
+                        **common,
+                        "path": resolved_path,
+                        "type": "request",
+                        "status_code": 500,
+                        "latency_ms": round(latency_ms, 3),
+                    }
+                )
+                self._dispatcher.enqueue(
+                    {
+                        **common,
+                        "path": resolved_path,
+                        "type": "error",
+                        "status_code": 500,
+                        "latency_ms": round(latency_ms, 3),
+                        "exception_type": type(exc).__name__,
+                        "exception_message": str(exc),
+                        "stack_trace": stack_trace,
+                        "error_hash": _stable_error_hash(
+                            type(exc).__name__,
+                            str(exc),
+                            stack_trace,
+                            resolved_path,
+                        ),
+                    }
+                )
+                raise
             resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
             if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
-                raise
+                return _stamp_response(response)
             latency_ms = (perf_counter() - started_at) * 1000
-            stack_trace = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+            should_capture_request = response.status_code >= 500 or _should_sample_request(
+                request_sample_rate=self._config.request_sample_rate,
+                method=request.method,
+                path=resolved_path,
+                request_id=correlation_id,
+            )
+            if not should_capture_request:
+                return _stamp_response(response)
             self._dispatcher.enqueue(
                 {
                     **common,
                     "path": resolved_path,
                     "type": "request",
-                    "status_code": 500,
+                    "status_code": response.status_code,
                     "latency_ms": round(latency_ms, 3),
                 }
             )
-            self._dispatcher.enqueue(
-                {
-                    **common,
-                    "path": resolved_path,
-                    "type": "error",
-                    "status_code": 500,
-                    "latency_ms": round(latency_ms, 3),
-                    "exception_type": type(exc).__name__,
-                    "exception_message": str(exc),
-                    "stack_trace": stack_trace,
-                    "error_hash": _stable_error_hash(
-                        type(exc).__name__,
-                        str(exc),
-                        stack_trace,
-                        resolved_path,
-                    ),
-                }
-            )
-            raise
-        resolved_path = _resolve_route_path(request, mount_prefix=self._config.mount_prefix)
-        if _path_is_ignored(resolved_path, self._config.ignore_path_prefixes):
-            return response
-        latency_ms = (perf_counter() - started_at) * 1000
-        should_capture_request = response.status_code >= 500 or _should_sample_request(
-            request_sample_rate=self._config.request_sample_rate,
-            method=request.method,
-            path=resolved_path,
-            request_id=request.headers.get("x-request-id"),
-        )
-        if not should_capture_request:
-            return response
-        self._dispatcher.enqueue(
-            {
-                **common,
-                "path": resolved_path,
-                "type": "request",
-                "status_code": response.status_code,
-                "latency_ms": round(latency_ms, 3),
-            }
-        )
-        return response
+            return _stamp_response(response)
+        finally:
+            reset_correlation_id(correlation_token)
 
 
 def monitor(app: Any, **kwargs: Any) -> None:

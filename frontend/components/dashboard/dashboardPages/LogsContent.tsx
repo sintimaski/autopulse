@@ -7,7 +7,11 @@ import { useEffect, useMemo, useState } from "react";
 import { DashboardDetailModal } from "../DashboardDetailModal";
 import { RequestEvidenceBody } from "../RequestEvidenceBody";
 import { SaveBookmarkModal } from "../SaveBookmarkModal";
-import { buildCurrentScopedState, type DashboardScopedQueryState } from "../dashboardQueryState";
+import {
+  buildCurrentScopedState,
+  buildRequestsPageHref,
+  type DashboardScopedQueryState,
+} from "../dashboardQueryState";
 import { toDashboardRoutePath } from "../dashboardRoutePath";
 import {
   formatTimestamp,
@@ -21,6 +25,7 @@ import {
 import { useDashboardData } from "../DashboardDataContext";
 import { useDashboardLogsSlice } from "../data/useDashboardSlices";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
+import { DiagnosisScopePivotBar } from "../DiagnosisScopePivotBar";
 import { CardSpinner } from "../../ui/CardSpinner";
 import { ExpandableTableRow } from "../ExpandableTableRow";
 import { RowActionsMenu } from "../RowActionsMenu";
@@ -56,6 +61,7 @@ export function LogsContent() {
         errorGroupLimit: d.errorGroupLimit,
         errorGroupPage: d.errorGroupPage,
         errorGroupSort: d.errorGroupSort,
+        correlationRequestId: d.correlationRequestId,
         sqlFilterApplied: d.sqlFilterApplied,
         sqlFilterEnabled: d.sqlFilterEnabled,
       }),
@@ -76,6 +82,7 @@ export function LogsContent() {
     d.errorGroupLimit,
     d.errorGroupPage,
     d.errorGroupSort,
+    d.correlationRequestId,
     d.sqlFilterApplied,
     d.sqlFilterEnabled,
     ],
@@ -151,6 +158,9 @@ export function LogsContent() {
       return (
         <>
           <DiagnosisRequestsStickyScopeBar />
+          <div className="mb-2">
+            <DiagnosisScopePivotBar />
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <CardSpinner size="compact" label="Overview & window" />
             <CardSpinner size="compact" label="Request log" />
@@ -161,6 +171,9 @@ export function LogsContent() {
     return (
       <>
         <DiagnosisRequestsStickyScopeBar />
+        <div className="mb-2">
+          <DiagnosisScopePivotBar />
+        </div>
         <section
         className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
         role="status"
@@ -195,6 +208,9 @@ export function LogsContent() {
   return (
     <>
       <DiagnosisRequestsStickyScopeBar />
+      <div className="mb-2">
+        <DiagnosisScopePivotBar />
+      </div>
       {d.errorMessage ? (
         <section
           className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"
@@ -400,6 +416,13 @@ export function LogsContent() {
                           item.log_message ?? "",
                         ].join("|");
                         const open = d.expandedRequestIds.has(rowId);
+                        const rid = item.request_id?.trim();
+                        const correlationTrailHref = rid
+                          ? buildRequestsPageHref(scopedState, {
+                              correlationRequestId: rid.slice(0, 128),
+                              requestPage: 0,
+                            })
+                          : undefined;
                         const menuItems = buildRequestEvidenceMenuItems({
                           item,
                           rowId,
@@ -409,6 +432,7 @@ export function LogsContent() {
                               title: `${item.method} ${item.path}`.slice(0, 200),
                               hashFragment: `request-row:${encodeURIComponent(rowId)}`,
                             }),
+                          correlationTrailHref,
                         });
                         return (
                           <ExpandableTableRow
@@ -534,6 +558,12 @@ export function LogsContent() {
                       title: `${evidenceModal.item.method} ${evidenceModal.item.path}`.slice(0, 200),
                       hashFragment: `request-row:${encodeURIComponent(evidenceModal.rowId)}`,
                     }),
+                  correlationTrailHref: evidenceModal.item.request_id?.trim()
+                    ? buildRequestsPageHref(scopedState, {
+                        correlationRequestId: evidenceModal.item.request_id.trim().slice(0, 128),
+                        requestPage: 0,
+                      })
+                    : undefined,
                 }).filter((i) => i.id !== "open-modal")}
               />
             }

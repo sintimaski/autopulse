@@ -52,6 +52,7 @@ type ScopedServerState = {
   sqlFilterDraft: string;
   sqlFilterApplied: string;
   sqlFilterEnabled: boolean;
+  correlationRequestId: string;
 };
 
 function buildDefaultScopedState(d: ReturnType<typeof useDashboardData>): ScopedServerState {
@@ -75,6 +76,7 @@ function buildDefaultScopedState(d: ReturnType<typeof useDashboardData>): Scoped
     sqlFilterDraft: "",
     sqlFilterApplied: "",
     sqlFilterEnabled: false,
+    correlationRequestId: "",
   };
 }
 
@@ -98,6 +100,7 @@ function scopedServerStateToParsed(state: ScopedServerState): DashboardScopedQue
     errorGroupSort: state.errorGroupSort,
     sqlFilterApplied: state.sqlFilterApplied,
     sqlFilterEnabled: state.sqlFilterEnabled,
+    correlationRequestId: state.correlationRequestId,
   };
 }
 
@@ -151,6 +154,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     setSqlFilterApplied: d.setSqlFilterApplied,
     setSqlFilterDraft: d.setSqlFilterDraft,
     setSqlFilterEnabled: d.setSqlFilterEnabled,
+    setCorrelationRequestId: d.setCorrelationRequestId,
   } as const;
 
   const scopedServerStateForUrl = useMemo(
@@ -174,6 +178,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         errorGroupSort: d.errorGroupSort,
         sqlFilterApplied: d.sqlFilterApplied,
         sqlFilterEnabled: d.sqlFilterEnabled,
+        correlationRequestId: d.correlationRequestId,
       }),
     [
       d.errorGroupLimit,
@@ -191,6 +196,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       d.statusClass,
       d.sqlFilterApplied,
       d.sqlFilterEnabled,
+      d.correlationRequestId,
       d.windowMinutes,
       d.windowFromTimestamp,
       d.windowToTimestamp,
@@ -253,6 +259,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       sqlFilterDraft: d.sqlFilterDraft,
       sqlFilterApplied: d.sqlFilterApplied,
       sqlFilterEnabled: d.sqlFilterEnabled,
+      correlationRequestId: d.correlationRequestId,
     });
 
     const applyState = (state: ScopedServerState) => {
@@ -523,6 +530,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         setSqlFilterDraft: d.setSqlFilterDraft,
         setSqlFilterApplied: d.setSqlFilterApplied,
         setSqlFilterEnabled: d.setSqlFilterEnabled,
+        setCorrelationRequestId: d.setCorrelationRequestId,
       },
       "diagnosis",
     );
@@ -544,6 +552,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         setSqlFilterDraft: d.setSqlFilterDraft,
         setSqlFilterApplied: d.setSqlFilterApplied,
         setSqlFilterEnabled: d.setSqlFilterEnabled,
+        setCorrelationRequestId: d.setCorrelationRequestId,
       },
       variant,
     );
