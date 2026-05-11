@@ -1,14 +1,44 @@
-.PHONY: help setup sync frontend-install lint typecheck test check check-python check-python-ci check-frontend build release-gates
+.PHONY: help setup sync frontend-install install \
+	lint typecheck format \
+	test test-py test-fe test-all \
+	check check-python check-python-ci check-frontend \
+	ci \
+	build \
+	synthetic-stack synthetic-load stack load \
+	release-gates
 
+# Default: quick orientation (grouped for DX).
 help:
-	@echo "Lumonox root commands"
-	@echo "  make setup           # install backend + frontend dependencies"
-	@echo "  make check-python    # ruff/mypy/bandit/python tests"
-	@echo "  make check-python-ci # CI-equivalent backend gate (requires Postgres BACKEND_TEST_DATABASE_URL)"
-	@echo "  make check-frontend  # frontend lint/typecheck/test/build"
-	@echo "  make check           # python + frontend checks"
-	@echo "  make release-gates   # full release gate script"
-	@echo "  make test            # alias for check"
+	@echo "Lumonox — common targets"
+	@echo ""
+	@echo "Setup"
+	@echo "  make setup | make install   # uv sync + npm ci (frontend)"
+	@echo ""
+	@echo "Synthetic local stack (DuckDB + backend :8000 + sample app :8001; FE build is always first)"
+	@echo "  make synthetic-stack | make stack   # ./scripts/run_synthetic_stack.sh"
+	@echo "  make synthetic-load  | make load   # traffic generator (run with stack already up)"
+	@echo ""
+	@echo "Tests (no linters)"
+	@echo "  make test-all    # pytest + frontend unit tests"
+	@echo "  make test-py     # uv run pytest"
+	@echo "  make test-fe     # npm --prefix frontend run test"
+	@echo ""
+	@echo "Lint + tests (fast local feedback)"
+	@echo "  make check           # Python + frontend gates (see targets below)"
+	@echo "  make check-python    # ruff, mypy, bandit, pytest"
+	@echo "  make check-frontend  # lint, typecheck, vitest, next build"
+	@echo "  make format          # apply Ruff formatting (not CI-enforced autofix for JS)"
+	@echo ""
+	@echo "CI parity (mirrors .github/workflows/ci.yml; see scripts/ci_local.sh)"
+	@echo "  make ci              # SQLite job + frontend job (+ backend wheel static check)"
+	@echo "    Optional: LUMONOX_CI_POSTGRES=1 with BACKEND_TEST_DATABASE_URL=postgresql+asyncpg://..."
+	@echo "    Optional: LUMONOX_CI_E2E=1  (Playwright; install browsers once: cd frontend && npx playwright install --with-deps chromium)"
+	@echo ""
+	@echo "Other"
+	@echo "  make test            # alias for make check (historical)"
+	@echo "  make check-python-ci # stricter backend gate; requires Postgres BACKEND_TEST_DATABASE_URL"
+	@echo "  make release-gates   # scripts/release_gates.sh (release-oriented; not identical to make ci)"
+	@echo "  make build           # npm --prefix frontend run build only"
 
 sync:
 	uv sync --group dev
@@ -18,6 +48,8 @@ frontend-install:
 
 setup: sync frontend-install
 
+install: setup
+
 lint:
 	uv run ruff check .
 	uv run ruff format --check .
@@ -26,6 +58,9 @@ lint:
 typecheck:
 	uv run mypy
 	npm --prefix frontend run typecheck
+
+format:
+	uv run ruff format .
 
 check-python:
 	uv run ruff check .
@@ -68,6 +103,27 @@ check-frontend:
 check: check-python check-frontend
 
 test: check
+
+test-py:
+	uv run pytest
+
+test-fe:
+	npm --prefix frontend run test
+
+test-all: test-py test-fe
+
+ci:
+	bash ./scripts/ci_local.sh
+
+synthetic-stack:
+	bash ./scripts/run_synthetic_stack.sh
+
+synthetic-load:
+	bash ./scripts/examples/synthetic_load_demo.sh
+
+stack: synthetic-stack
+
+load: synthetic-load
 
 build:
 	npm --prefix frontend run build

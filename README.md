@@ -242,6 +242,8 @@ make setup
 ./scripts/run_synthetic_stack.sh
 ```
 
+Same as `make synthetic-stack` (or `make stack`). The script always runs `npm --prefix frontend run build` first, then starts the backend and sample app.
+
 💡 Then open the dashboard (`http://127.0.0.1:8000/lumonox/ui/dashboard/` when serving the static export from the backend, or the Next dev URL printed if you run in sidecar mode), sign in, and copy an ingest key for experiments.
 
 🚦 Optional traffic against the sample app (`:8001`):
@@ -250,12 +252,15 @@ make setup
 ./scripts/examples/synthetic_load_demo.sh
 ```
 
+Same as `make synthetic-load` (or `make load`) once the stack is listening.
+
 From a cold clone: `make setup`, then the two script lines above, then `curl -s http://127.0.0.1:8000/health` and `curl -s http://127.0.0.1:8000/ready` (expect `{"status":"ok"}` and a ready JSON body). Ops and drill details: [docs/README.md](./docs/README.md).
 
 Core validation commands from repository root:
 
 ```bash
 make check
+make ci                 # mirrors GitHub Actions CI (SQLite + frontend jobs); see scripts/ci_local.sh
 make check-python-ci  # backend CI-equivalent (requires Postgres BACKEND_TEST_DATABASE_URL)
 make release-gates
 ```
@@ -281,6 +286,7 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 
 | Check | Local default | CI |
 | --- | --- | --- |
+| Full CI mirror (default: `python-sqlite` + `frontend` jobs; optional Postgres + Playwright via env) | `make ci` (`scripts/ci_local.sh`) | `.github/workflows/ci.yml` |
 | Ruff, mypy, bandit, pytest | `make check` / release gates | `python-sqlite` job |
 | Backend CI-equivalent gate (ruff/format/mypy/bandit/pip-audit/pytest+coverage/packaging/jobs + Postgres backend tests) | `make check-python-ci` (requires `BACKEND_TEST_DATABASE_URL=postgresql+asyncpg://...`) | `python-sqlite` + `python-postgres` jobs |
 | Backend tests on Postgres | Optional (`LUMONOX_RELEASE_GATES_POSTGRES=1`) | `python-postgres` job |
