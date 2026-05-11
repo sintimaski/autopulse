@@ -26,6 +26,10 @@ def _async_pool_kwargs(database_url: str) -> dict[str, Any]:
     """Connection pool options: NullPool for SQLite; bounded pool for Postgres/async drivers."""
     if database_url.startswith("sqlite"):
         return {"pool_pre_ping": True, "poolclass": NullPool}
+    if getenv("LUMONOX_TEST_PG_ASYNC_NULLPOOL", "").strip().lower() in {"1", "true", "yes"}:
+        # Pytest + Starlette ``TestClient`` uses a per-client event loop; pooled asyncpg
+        # connections must not be reused across ``asyncio.run`` / sequential clients.
+        return {"pool_pre_ping": True, "poolclass": NullPool}
 
     def _env_int_bounded(
         name: str, *, default: int, minimum: int, maximum: int | None = None
@@ -71,6 +75,24 @@ async def dispose_engine_for_url(database_url: str) -> None:
     _session_makers.pop(normalized, None)
     if engine is not None:
         await engine.dispose()
+
+
+def dispose_all_cached_async_engines() -> None:
+    """Close every cached async engine and session factory (synchronous).
+
+    Integration tests that call :func:`asyncio.run` around job helpers (which use
+    :func:`get_session_maker`) can bind asyncpg connections to a short-lived loop.
+    Starlette's :class:`TestClient` runs the app on another loop; awaiting
+    :meth:`AsyncEngine.dispose` from the main thread then hits "different loop" errors.
+    Disposing via the bound :attr:`AsyncEngine.sync_engine` avoids awaiting on the wrong loop.
+    """
+    entries = list(_engines.items())
+    _engines.clear()
+    _session_makers.clear()
+    for _, engine in entries:
+        sync_engine = getattr(engine, "sync_engine", None)
+        if sync_engine is not None:
+            sync_engine.dispose()
 
 
 def get_session_maker(

@@ -28,6 +28,7 @@ def _seed_project_and_key(database_url: str) -> str:
                     key_hash=key_hash,
                 )
                 session.add(project)
+                await session.flush()
                 session.add(api_key)
                 await session.commit()
                 return key_value

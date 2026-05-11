@@ -226,6 +226,8 @@ def test_retention_cleanup_archives_before_delete_when_enabled(
 def test_retention_cleanup_enforces_project_log_row_cap_for_sqlite(
     backend_test_database_url: str,
 ) -> None:
+    if "sqlite" not in backend_test_database_url.lower():
+        pytest.skip("Log row cap enforcement is validated against SQLite ingest tables.")
     now = datetime.now(tz=UTC)
 
     async def run() -> tuple[int, int]:

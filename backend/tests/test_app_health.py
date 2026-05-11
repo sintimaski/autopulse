@@ -299,6 +299,10 @@ def test_ready_stays_ready_with_non_ideal_scheduler_ownership_mix(
     monkeypatch.setenv("JOBS_ENABLE_SCHEDULER", "true")
     monkeypatch.setenv("JOBS_EXTERNAL_CRON_OWNERSHIP", "true")
     monkeypatch.setenv("DASHBOARD_REALTIME_BUS_BACKEND", "postgres_notify")
+    # Postgres + staging otherwise adds a *risky* startup-migrations guardrail, which makes
+    # ``/ready`` degraded (503); this test targets the non-ideal scheduler ownership mix only.
+    if not backend_test_database_url.startswith("sqlite"):
+        monkeypatch.setenv("DATABASE_RUN_MIGRATIONS_ON_STARTUP", "false")
     app = create_app()
     with TestClient(app) as client:
         response = client.get("/ready")

@@ -29,6 +29,11 @@ if _using_default_backend_integration_db:
     _pytest_duck_root = Path(tempfile.mkdtemp(prefix="lumonox-pytest-duckdb-"))
     os.environ["LUMONOX_DUCKDB_PATH"] = str(_pytest_duck_root / "events.duckdb")
 
+# Postgres + Starlette TestClient/asyncio.run mix: avoid asyncpg connections bound to a
+# finished event loop (see ``database.session._async_pool_kwargs``).
+if (os.getenv("BACKEND_TEST_DATABASE_URL") or "").strip().lower().startswith("postgresql"):
+    os.environ.setdefault("LUMONOX_TEST_PG_ASYNC_NULLPOOL", "true")
+
 from sqlalchemy.engine.url import make_url  # noqa: E402
 
 from lumonox_backend.database import upgrade_to_head  # noqa: E402

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import String, case, cast, func, literal, select
+from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import ProjectContext, authenticate_dashboard_project
@@ -289,10 +289,12 @@ async def get_dashboard_error_groups(
             items=paged_items,
         )
 
-    error_hash = cast(Event.payload["error_hash"], String)
-    exception_type = cast(Event.payload["exception_type"], String)
-    exception_message = cast(Event.payload["exception_message"], String)
-    stack_trace = cast(Event.payload["stack_trace"], String)
+    # Use JSON text extraction (->> / as_string) so Postgres does not cast jsonb
+    # string scalars to quoted SQL text (breaks group_key + labels vs SQLite/DuckDB).
+    error_hash = Event.payload["error_hash"].as_string()
+    exception_type = Event.payload["exception_type"].as_string()
+    exception_message = Event.payload["exception_message"].as_string()
+    stack_trace = Event.payload["stack_trace"].as_string()
     synthetic_group_key = func.md5(
         func.concat_ws(
             "|",
