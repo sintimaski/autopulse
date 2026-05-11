@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import false as sa_false
 
 # revision identifiers, used by Alembic.
 revision = "initial"
@@ -178,7 +179,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
-            "onboarding_completed", sa.Boolean(), server_default=sa.text("0"), nullable=False
+            "onboarding_completed",
+            sa.Boolean(),
+            server_default=sa_false(),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),

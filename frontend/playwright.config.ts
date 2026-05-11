@@ -4,6 +4,8 @@ export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 30_000,
   fullyParallel: false,
+  // Single shared SQLite + one uvicorn: parallel workers race session/auth state in CI.
+  workers: process.env.CI ? 1 : undefined,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
