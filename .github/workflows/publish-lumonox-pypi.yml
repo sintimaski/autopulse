@@ -1,13 +1,13 @@
-# Publishes the ``lumonox-api`` distribution (FastAPI API + bundled Next static export under ``/lumonox/ui/``).
-# PyPI project name is ``lumonox-api`` (FastAPI ingest + bundled dashboard static export).
+# Publishes the ``lumonox`` distribution (FastAPI API + bundled Next static export under ``/lumonox/ui/``).
+# PyPI project name is ``lumonox`` (FastAPI ingest + bundled dashboard static export).
 #
 # Runs on pushes to ``main`` when backend or frontend sources change; uploads only when ``backend/pyproject.toml``
 # ``version`` is not yet on PyPI (bump version to cut a release).
 #
-# Manual: Actions → Publish lumonox-api to PyPI → Run workflow.
+# Manual: Actions → Publish lumonox to PyPI → Run workflow.
 #
-# One-time PyPI: create project ``lumonox-api`` → trusted publisher for this workflow (environment ``pypi`` if used).
-name: Publish lumonox-api to PyPI
+# One-time PyPI: create project ``lumonox`` → trusted publisher for this workflow (environment ``pypi`` if used).
+name: Publish lumonox to PyPI
 
 on:
   push:
@@ -16,11 +16,11 @@ on:
       - "backend/pyproject.toml"
       - "backend/src/**"
       - "frontend/**"
-      - ".github/workflows/publish-lumonox-api-pypi.yml"
+      - ".github/workflows/publish-lumonox-pypi.yml"
   workflow_dispatch:
 
 concurrency:
-  group: lumonox-api-pypi-publish
+  group: lumonox-pypi-publish
   cancel-in-progress: true
 
 permissions:
@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/lumonox-api/
+      url: https://pypi.org/project/lumonox/
     permissions:
       id-token: write
 
@@ -43,17 +43,17 @@ jobs:
         run: |
           set -euo pipefail
           VERSION=$(python3 -c "import tomllib; print(tomllib.load(open('backend/pyproject.toml', 'rb'))['project']['version'])")
-          echo "lumonox_api_version=${VERSION}"
-          CODE=$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/lumonox-api/${VERSION}/json")
+          echo "lumonox_version=${VERSION}"
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/lumonox/${VERSION}/json")
           echo "pypi_version_probe_http=${CODE}"
           if [ "${CODE}" = "200" ]; then
             echo "publish=false" >> "${GITHUB_OUTPUT}"
-            echo "::notice::Skipping PyPI upload: lumonox-api ${VERSION} already exists on PyPI. Bump backend/pyproject.toml version to release."
+            echo "::notice::Skipping PyPI upload: lumonox ${VERSION} already exists on PyPI. Bump backend/pyproject.toml version to release."
           elif [ "${CODE}" = "404" ]; then
             echo "publish=true" >> "${GITHUB_OUTPUT}"
-            echo "::notice::Will publish lumonox-api ${VERSION} to PyPI."
+            echo "::notice::Will publish lumonox ${VERSION} to PyPI."
           else
-            echo "::error::Unexpected PyPI response (${CODE}) for lumonox-api ${VERSION}; not publishing."
+            echo "::error::Unexpected PyPI response (${CODE}) for lumonox ${VERSION}; not publishing."
             exit 1
           fi
 
@@ -89,7 +89,7 @@ jobs:
         if: steps.decide.outputs.publish == 'true'
         run: |
           set -euo pipefail
-          whl="$(ls dist/lumonox_api-*-py3-none-any.whl | head -1)"
+          whl="$(ls dist/lumonox-*-py3-none-any.whl | head -1)"
           unzip -l "$whl" | grep -Fq "lumonox_backend/dashboard_static/index.html"
 
       - name: Upload to PyPI

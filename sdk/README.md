@@ -6,17 +6,17 @@ Lumonox SDK instruments a FastAPI app and sends request/error events to Lumonox 
 
 | Goal | PyPI one-liner | Import / process |
 |------|-----------------|------------------|
-| **API + bundled dashboard UI** (ingest, dashboard, static export under `/lumonox/ui/`) | `pip install lumonox-api` | `import lumonox_backend` · run `uvicorn lumonox_backend.main:app` |
+| **API + bundled dashboard UI** (ingest, dashboard, static export under `/lumonox/ui/`) | `pip install lumonox` | `import lumonox_backend` · run `uvicorn lumonox_backend.main:app` |
 | **Instrument your FastAPI app** (send-only SDK) | `pip install lumonox-sdk` | `from lumonox import lumonox` |
 | **API + UI + SDK in one environment** | `pip install "lumonox-sdk[stack]"` | both of the above |
 
-`uv add` works the same (`uv add lumonox-api`, `uv add "lumonox-sdk[stack]"`, …).
+`uv add` works the same (`uv add lumonox`, `uv add "lumonox-sdk[stack]"`, …).
 
 **From a git checkout** (offline wheels from repo root):
 
 ```bash
 ./scripts/build_sdk_release_wheels.sh   # writes dist/wheels/*.whl
-pip install dist/wheels/lumonox_api-*.whl dist/wheels/lumonox_sdk-*.whl
+pip install dist/wheels/lumonox-*.whl dist/wheels/lumonox_sdk-*.whl
 ```
 
 ## Publish to PyPI
@@ -33,13 +33,13 @@ twine upload dist/pypi-sdk/*
 **Recommended:** use [trusted publishing](https://docs.pypi.org/trusted-publishers/) from GitHub Actions instead of storing a long-lived PyPI token in CI secrets:
 
 - **SDK:** `.github/workflows/publish-lumonox-sdk-pypi.yml` → project **`lumonox-sdk`**
-- **API + bundled UI:** `.github/workflows/publish-lumonox-api-pypi.yml` → project **`lumonox-api`**
+- **API + bundled UI:** `.github/workflows/publish-lumonox-pypi.yml` → project **`lumonox`**
 
-**On `main`:** the SDK workflow runs when `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` change. The **`lumonox-api`** publish workflow runs when `backend/pyproject.toml`, `backend/src/**`, or `frontend/**` change. Both upload **only when** the corresponding `[project] version` is **not already** on PyPI.
+**On `main`:** the SDK workflow runs when `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` change. The **`lumonox`** publish workflow runs when `backend/pyproject.toml`, `backend/src/**`, or `frontend/**` change. Both upload **only when** the corresponding `[project] version` is **not already** on PyPI.
 
-**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox-api`** first (or same release train) so the extra can resolve **`lumonox-api>=0.2.1`**.
+**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve **`lumonox>=0.2.5`**.
 
-**One-time on PyPI:** create projects **`lumonox-sdk`** and **`lumonox-api`**, add trusted publishers for each workflow, then merge version bumps or run workflows manually.
+**One-time on PyPI:** create projects **`lumonox-sdk`** and **`lumonox`**, add trusted publishers for each workflow, then merge version bumps or run workflows manually.
 
 ## Integration
 

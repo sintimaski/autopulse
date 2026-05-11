@@ -20,10 +20,10 @@ Use this checklist **after** implementation matches the plan’s acceptance crit
 - **Frontend:** `npm run build` in `frontend/` when any dashboard/UI or env contract changed.
 - **Lint:** fix new diagnostics in edited files.
 
-## Release (`lumonox-api` on PyPI)
+## Release (`lumonox` on PyPI)
 
-- Bump **`backend/pyproject.toml`** `version` when shipping the API wheel; workflow uploads only when the version is new on PyPI (see `.github/workflows/publish-lumonox-api-pypi.yml`).
-- Add a one-line row to **`docs/ops/PYPI_PUBLISHING.md`** “Recent `lumonox-api` wheel notes” for user-visible behavior (changelog-lite). Governed spec changes still follow **`docs/DOCUMENTATION_GOVERNANCE.md`**.
+- Bump **`backend/pyproject.toml`** `version` when shipping the API wheel; workflow uploads only when the version is new on PyPI (see `.github/workflows/publish-lumonox-pypi.yml`).
+- Add a one-line row to **`docs/ops/PYPI_PUBLISHING.md`** “Recent `lumonox` wheel notes” for user-visible behavior (changelog-lite). Governed spec changes still follow **`docs/DOCUMENTATION_GOVERNANCE.md`**.
 
 ## Docs touchpoints (blocking before final commit)
 

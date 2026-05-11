@@ -148,7 +148,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           uv build backend -o /tmp/ap-wheel-smoke
-          unzip -l /tmp/ap-wheel-smoke/lumonox_api-*-py3-none-any.whl | grep -Fq "lumonox_backend/dashboard_static/index.html"
+          unzip -l /tmp/ap-wheel-smoke/lumonox-*-py3-none-any.whl | grep -Fq "lumonox_backend/dashboard_static/index.html"
 
   browser-smoke:
     runs-on: ubuntu-latest
@@ -197,7 +197,7 @@ jobs:
       - name: Start backend
         run: |
           uv run uvicorn lumonox_backend.main:app --app-dir backend/src --host 127.0.0.1 --port 8000 --log-level info &
-          echo $! > /tmp/lumonox-api.pid
+          echo $! > /tmp/lumonox-backend.pid
 
       - name: Wait for backend readiness
         run: |
@@ -217,6 +217,6 @@ jobs:
       - name: Stop backend
         if: always()
         run: |
-          if [ -f /tmp/lumonox-api.pid ]; then
-            kill "$(cat /tmp/lumonox-api.pid)" || true
+          if [ -f /tmp/lumonox-backend.pid ]; then
+            kill "$(cat /tmp/lumonox-backend.pid)" || true
           fi

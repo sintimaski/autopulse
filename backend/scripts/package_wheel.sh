@@ -21,4 +21,4 @@ out_dir="${1:-dist/pypi-backend}"
 mkdir -p "$out_dir"
 uv build backend -o "$out_dir"
 
-echo "Built lumonox-api wheel + sdist → ${ROOT}/${out_dir}"
+echo "Built lumonox wheel + sdist → ${ROOT}/${out_dir}"

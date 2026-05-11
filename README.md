@@ -58,17 +58,17 @@ Two **PyPI** install lines (import for the API remains **`lumonox_backend`**):
 
 | What you need | One line |
 |-----------------|----------|
-| **API + pre-built dashboard** (wheel bundles static UI; published on pushes to `main` via `.github/workflows/publish-lumonox-api-pypi.yml` after PyPI trusted publishing is set up) | `pip install lumonox-api` or `uv add lumonox-api` |
+| **API + pre-built dashboard** (wheel bundles static UI; published on pushes to `main` via `.github/workflows/publish-lumonox-pypi.yml` after PyPI trusted publishing is set up) | `pip install lumonox` or `uv add lumonox` |
 | **Same as above + FastAPI SDK** (`from lumonox import lumonox` in your app) | `pip install "lumonox-sdk[stack]"` or `uv add "lumonox-sdk[stack]"` |
 
 **Git** (always works; pin `main` to a tag or commit SHA in production):
 
 ```bash
-uv add "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
+uv add "lumonox @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
 ```
 
 ```bash
-pip install "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
+pip install "lumonox @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
 ```
 
 ```bash
@@ -78,11 +78,11 @@ uv run uvicorn lumonox_backend.main:app --host 0.0.0.0 --port 8000
 **API + SDK from Git in one line:**
 
 ```bash
-uv add "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend" "lumonox-sdk @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=sdk"
+uv add "lumonox @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend" "lumonox-sdk @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=sdk"
 ```
 
 ```bash
-pip install "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend" "lumonox-sdk @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=sdk"
+pip install "lumonox @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend" "lumonox-sdk @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=sdk"
 ```
 
 Use `--env-file /path/to/.env` only when that file exists. Otherwise omit it or create one (see `backend/.env.example` in the repo).
@@ -149,7 +149,7 @@ lumonox(
 | Use case                          | What to run                                 | When to use                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **🏗️ Full local stack**          | `./scripts/run_synthetic_stack.sh`          | End-to-end demo or integration work: API on `:8000`, synthetic FastAPI app on `:8001`, dashboard (static mount or Next sidecar per `LUMONOX_FRONTEND_MODE`).       |
-| **🖥️ Backend only**              | `uv run python -m lumonox_backend.main` (requires **`lumonox-api`**; [install](./backend/README.md#install-outside-the-monorepo) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
+| **🖥️ Backend only**              | `uv run python -m lumonox_backend.main` (requires **`lumonox`**; [install](./backend/README.md#install-outside-the-monorepo) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
 | **🔥 API + Next with hot reload** | Backend + `npm --prefix frontend run dev`   | Frontend iteration: HMR on the dashboard while the API serves JSON; point `NEXT_PUBLIC_LUMONOX_API_BASE_URL` (and related `NEXT_PUBLIC_`* vars) at the API origin. |
 | **📈 Synthetic load**             | `./scripts/examples/synthetic_load_demo.sh` | Generate realistic mixed traffic against the sample app; override `BASE_URL`, `DURATION_MINUTES`, `TARGET_REQUESTS`, `ROLE_MODE`, or `SCENARIO` as needed.           |
 

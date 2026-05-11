@@ -8,6 +8,18 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-05-11
+
+### Packaging
+
+- **`[stack]`** extra depends on **`lumonox>=0.2.5`** (aligned with the **0.2.5** API wheel on PyPI).
+
+## [0.2.2] - 2026-05-11
+
+### Packaging
+
+- **`[stack]`** extra depends on **`lumonox>=0.2.1`** (PyPI project **`lumonox`** for the API + bundled dashboard; replaces the prior **`lumonox-api`** distribution name).
+
 ## [0.2.1] - 2026-05-10
 
 ### Changed

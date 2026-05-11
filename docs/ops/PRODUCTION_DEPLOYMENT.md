@@ -237,7 +237,7 @@ Staging evidence before go-live:
 - Parquet phase-4 object storage + DR restore (optional):
   - Enable with `LUMONOX_PARQUET_OBJECT_STORAGE_ENABLED=true`.
   - Configure target with `LUMONOX_PARQUET_OBJECT_STORAGE_URI` (`s3://bucket/prefix` or `file:///...`).
-  - **`s3://` requires `boto3` in the Python environment.** The repo Dockerfile installs `lumonox-api[parquet-s3]` so the shipped runtime image includes it. Custom images or bare-metal installs must add the same extra (for example `pip install -e "./backend[parquet-s3]"` from the repository root, or `pip install boto3` equivalent). `file://` targets do not need `boto3`.
+  - **`s3://` requires `boto3` in the Python environment.** The repo Dockerfile installs the backend editable with **`[parquet-s3]`** so the shipped runtime image includes it. For PyPI-based images use `lumonox[parquet-s3]`. Custom images or bare-metal installs must add the same extra (for example `pip install -e "./backend[parquet-s3]"` from the repository root, or `pip install boto3` equivalent). `file://` targets do not need `boto3`.
   - Optional tuning:
     - `LUMONOX_PARQUET_OBJECT_STORAGE_PREFIX`
     - `LUMONOX_PARQUET_OBJECT_STORAGE_INTERVAL_SECONDS`

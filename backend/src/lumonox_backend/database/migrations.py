@@ -60,7 +60,7 @@ def upgrade_to_head() -> None:
     if not alembic_dir.is_dir():
         msg = (
             "Alembic migration scripts not found next to lumonox_backend package "
-            f"({alembic_dir}); reinstall lumonox-api or run from repository sources."
+            f"({alembic_dir}); reinstall lumonox or run from repository sources."
         )
         raise RuntimeError(msg)
     # Load config without relying on alembic.ini on disk — required for installs from wheels

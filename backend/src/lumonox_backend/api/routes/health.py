@@ -310,7 +310,7 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         aggregate_queue_depth = None
         fanout_tasks_pending = 0
     return {
-        "service": "lumonox-api",
+        "service": "lumonox",
         "lumonox_env": settings.lumonox_env,
         "event_plane_mode": settings.event_plane_mode,
         "dashboard_auth_enabled": settings.dashboard_auth_enabled,

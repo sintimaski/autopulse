@@ -2,7 +2,7 @@
 
 FastAPI backend for ingest, dashboard APIs, auth/session flows, alerts, retention jobs, and realtime updates.
 
-Python **import name** is **`lumonox_backend`**. The **distribution / PyPI project name** is **`lumonox-api`** (API + pre-built dashboard static export bundled in the wheel). Older Git or docs may reference prior distribution names; use **`lumonox-api`** / **`lumonox-sdk`** for installs.
+Python **import name** is **`lumonox_backend`**. The **distribution / PyPI project name** is **`lumonox`** (API + pre-built dashboard static export bundled in the wheel). Use **`lumonox`** / **`lumonox-sdk`** for installs from PyPI.
 
 ## What lives here
 
@@ -17,21 +17,21 @@ Python **import name** is **`lumonox_backend`**. The **distribution / PyPI proje
 **One line (PyPI, after trusted publishing is enabled):**
 
 ```bash
-pip install lumonox-api
+pip install lumonox
 ```
 
 ```bash
-uv add lumonox-api
+uv add lumonox
 ```
 
 **One line (Git — always works; pin `main` to a tag or SHA in production):**
 
 ```bash
-uv add "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
+uv add "lumonox @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
 ```
 
 ```bash
-pip install "lumonox-api @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
+pip install "lumonox @ git+https://github.com/sintimaski/lumonox.git@main#subdirectory=backend"
 ```
 
 **API + Fast instrumented app in one line:** use the SDK extra (see [sdk/README.md](../sdk/README.md)):
@@ -44,7 +44,7 @@ If Python **3.14** fails to resolve wheels, try **3.12 or 3.13**.
 
 ### Wheel build (bundled dashboard)
 
-The **`lumonox-api`** sdist/wheel ships the Next static export under **`lumonox_backend/dashboard_static/`** (mounted at **`/lumonox/ui/`** when **`LUMONOX_FRONTEND_STATIC_DIR`** is unset and **`index.html`** exists). Build **`frontend/out`** first (see **`scripts/run_synthetic_stack.sh`** for **`NEXT_PUBLIC_*`** defaults):
+The **`lumonox`** sdist/wheel ships the Next static export under **`lumonox_backend/dashboard_static/`** (mounted at **`/lumonox/ui/`** when **`LUMONOX_FRONTEND_STATIC_DIR`** is unset and **`index.html`** exists). Build **`frontend/out`** first (see **`scripts/run_synthetic_stack.sh`** for **`NEXT_PUBLIC_*`** defaults):
 
 ```bash
 ./backend/scripts/package_wheel.sh
