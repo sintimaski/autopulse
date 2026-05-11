@@ -59,6 +59,7 @@ ls dist/manual-pypi-test/lumonox-*-py3-none-any.whl
 
 | Version | Highlights |
 |---------|------------|
+| **0.2.7** | Dashboard log exploration is **HTTP-only** (`POST /dashboard/log-query/validate` and `POST /dashboard/log-query/execute`); the unused **`/dashboard/log-query/stream`** WebSocket placeholder is removed (live updates remain on **`/dashboard/updates`** when realtime is enabled). |
 | **0.2.6** | API wheel ships **`lumonox/__init__.py`** (`create_app`, `mount_on_app`, `__version__`) plus **`lumonox_backend`**; **`lumonox-sdk[stack]`** requires **`lumonox>=0.2.6`** and exposes **`mount_on_app`** from the SDK-owned **`lumonox`** module. |
 | **0.2.5** | PyPI: API wheel published as **`lumonox`** (distribution formerly documented as `lumonox-api`); `/health` `service` **`lumonox`**; **`lumonox-sdk[stack]`** requires **`lumonox>=0.2.5`**. |
 | **0.2.4** | Developer/CI: `uv run pytest` runs backend DB integration tests against an ephemeral session SQLite DB when `BACKEND_TEST_DATABASE_URL` is unset; CI sqlite/postgres env aligned with that harness (see `backend/tests/conftest.py`, `backend/README.md`). |

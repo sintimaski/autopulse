@@ -1,3 +1,12 @@
+"""Dashboard WebSocket routes.
+
+Live overview/metrics use ``/dashboard/updates`` when realtime is enabled.
+
+Structured log exploration uses **HTTP only**: ``POST /dashboard/log-query/validate`` and
+``POST /dashboard/log-query/execute`` (poll or refetch as needed). There is no WebSocket
+stream for log queries.
+"""
+
 from __future__ import annotations
 
 import json
@@ -85,38 +94,6 @@ async def dashboard_updates(websocket: WebSocket) -> None:
                     continue
                 if int(snapshot.snapshot_version) > client_version:
                     await websocket.send_text(build_dashboard_snapshot_payload(snapshot))
-    except WebSocketDisconnect:
-        pass
-    finally:
-        project_websocket_hub.remove_connection(project_id=context.project_id, websocket=websocket)
-
-
-@router.websocket("/log-query/stream")
-async def dashboard_log_query_stream(websocket: WebSocket) -> None:
-    settings = get_settings()
-    if not (settings.dashboard_realtime_enabled and settings.dashboard_realtime_ws_enabled):
-        await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION,
-            reason="Dashboard realtime websocket is disabled",
-        )
-        return
-    await websocket.accept()
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        auth_session = await get_dashboard_auth_session(
-            session=session, settings=settings, request=websocket
-        )
-        if auth_session is None:
-            await websocket.close(
-                code=status.WS_1008_POLICY_VIOLATION,
-                reason="Missing or invalid dashboard session",
-            )
-            return
-        context = ProjectContext(project_id=auth_session.project_id)
-    project_websocket_hub.add_connection(project_id=context.project_id, websocket=websocket)
-    try:
-        while True:
-            await websocket.receive_text()
     except WebSocketDisconnect:
         pass
     finally:

@@ -10,6 +10,7 @@ import pytest
 from db_reset import truncate_ingest_core_tables as _truncate_tables
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from starlette.websockets import WebSocketDisconnect
 
 from lumonox_backend.app import create_app
 from lumonox_backend.auth import generate_api_key
@@ -1458,6 +1459,25 @@ def test_dashboard_log_query_validate_execute_and_retention_settings(
             headers=headers,
         )
         assert retention_update.status_code == 401
+
+
+def test_dashboard_log_query_has_no_websocket_stream(
+    backend_test_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Log queries are HTTP-only; the old /dashboard/log-query/stream path must not exist."""
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url, "No WS Log Query")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    app = create_app()
+    with TestClient(app) as client:
+        for path in ("/dashboard/log-query/stream", "/lumonox/dashboard/log-query/stream"):
+            with pytest.raises(WebSocketDisconnect) as excinfo, client.websocket_connect(path):
+                pass
+            # Starlette closes unknown WebSocket routes without accepting (no matching handler).
+            assert excinfo.value.code == 1000
 
 
 def test_dashboard_query_explorer_executes_scoped_sql(

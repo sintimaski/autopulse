@@ -1,3 +1,10 @@
+"""Dashboard SQL log query API (HTTP only).
+
+Clients validate with ``POST /dashboard/log-query/validate`` and fetch pages with
+``POST /dashboard/log-query/execute`` (cursor-based pagination). There is **no** WebSocket
+for log streaming; use repeated HTTP execute calls for refresh.
+"""
+
 from __future__ import annotations
 
 from dataclasses import replace
