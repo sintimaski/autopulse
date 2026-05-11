@@ -8,6 +8,7 @@ Thanks for contributing to Lumonox.
 - `docs/DEVELOPMENT_PROCESS.md` (execution and release gates)
 - `docs/DOCUMENTATION_GOVERNANCE.md` (governed docs policy)
 - `AGENTS.md` (workflow pointers)
+- `docs/cursor/CURSOR_DEVELOPMENT.md` (Cursor rules layout and @-mention patterns)
 
 ## Local setup
 

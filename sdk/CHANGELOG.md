@@ -34,7 +34,7 @@ for public API and packaging.
 
 ### Changed
 
-- **Dashboard (bundled in `lumonox-api`):** settings composition and hooks, shared session-scoped dashboard fetches, stricter JSON guards for dashboard query responses, chart and query-toolbar accessibility improvements, extended Vitest/Playwright smoke coverage, and frontend README/ESLint contributor guardrails (see `docs/FRONTEND_MULTI_LANE_REVIEW_TASK_PLAN.md`).
+- **Dashboard (bundled in `lumonox-api`):** settings composition and hooks, shared session-scoped dashboard fetches, stricter JSON guards for dashboard query responses, chart and query-toolbar accessibility improvements, extended Vitest/Playwright smoke coverage, and frontend README/ESLint contributor guardrails (see `frontend/README.md`).
 - **Release tooling:** `/dashboard` first-load uncompressed JS bundle budget headroom updated to match current Next.js output (`frontend/scripts/checkRouteBundleBudgets.mjs`).
 
 ### Packaging

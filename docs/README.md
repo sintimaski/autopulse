@@ -1,13 +1,22 @@
 # Docs index (production-first)
 
-This index keeps documentation focused on shipping and operating Lumonox safely.
+This index focuses on shipping and operating Lumonox safely. For **product scope and architecture**, use `DEVELOPMENT.md` at the repository root.
 
 ## Start here
 
 - Product scope and constraints: `DEVELOPMENT.md`
 - Repo usage and quickstart: `README.md`
 - Contributor workflow and root `make` commands: `CONTRIBUTING.md`
+- AI/agent playbooks and workflow index: `AGENTS.md`
+- Cursor rules, @-mentions, and editor workflows: `docs/cursor/CURSOR_DEVELOPMENT.md`, `docs/cursor/WORKFLOWS.md`
 - Production deployment: `docs/ops/PRODUCTION_DEPLOYMENT.md`
+
+## Developers and planning
+
+- Detailed process, quality gates, MVP and release checks: `docs/DEVELOPMENT_PROCESS.md`
+- Task card template for multi-step work: `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`
+- Disposable initiative plans (not governed long-term docs): `docs/plans/README.md`
+- Dashboard read-path latency expectations: `docs/DASHBOARD_QUERY_LATENCY_CONTRACT.md`
 
 ## Operations
 
@@ -25,11 +34,8 @@ This index keeps documentation focused on shipping and operating Lumonox safely.
 - Drill cadence + evidence log: `docs/runbooks/PHASE5_DRILL_CYCLE.md`, `docs/runbooks/PHASE5_DRILL_EVIDENCE_LOG.md`
 - SQL-tail replay recovery: `docs/ops/RUNBOOK_SQL_TAIL_REPLAY_RECOVERY.md`
 - E2E core journey: `docs/testing/E2E_CORE_JOURNEY.md`
-- Development plan/task template: `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`
-- Production+Parquet development plan: `docs/DEVELOPMENT_PLAN_LUMONOX_PRODUCTION_AND_PARQUET.md`
 
 ## Contracts and governance
 
 - Ingest API contract: `docs/contracts/ingest-api.md`
 - Documentation governance policy: `docs/DOCUMENTATION_GOVERNANCE.md`
-- Development process: `docs/DEVELOPMENT_PROCESS.md`

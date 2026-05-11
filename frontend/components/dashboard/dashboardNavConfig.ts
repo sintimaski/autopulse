@@ -21,7 +21,7 @@ export type DashboardNavSection = {
 
 /**
  * Console IA: core diagnosis paths first, then workspace tools, then advanced analytics.
- * See docs/FRONTEND_MULTI_LANE_REVIEW_TASK_PLAN.md (nav / IA context).
+ * Keep aligned with the MVP “fast diagnosis” goal in root DEVELOPMENT.md.
  */
 export const DASHBOARD_NAV_SECTIONS: readonly DashboardNavSection[] = [
   {
