@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Build the ``lumonox`` wheel, install into a throwaway venv under /tmp, and smoke-test
 # ``from lumonox import mount_on_app`` + ``GET /lumonox/health`` (matches PyPI consumer layout).
+#
+# Uses ``uv build --wheel`` only (no sdist). Full ``uv build`` runs ``build_sdist`` first, which
+# applies hatch ``sdist.force-include`` for ``../frontend/out``; that path is absent on CI jobs
+# that do not build the Next export, so wheel-only keeps this check self-contained.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,7 +32,7 @@ uv venv -p 3.12 "${VENV}"
 # shellcheck disable=SC1090
 source "${VENV}/bin/activate"
 
-uv build "${ROOT}/backend" -o "${DIST}"
+uv build "${ROOT}/backend" --wheel -o "${DIST}"
 WHL=""
 for _cand in "${DIST}"/lumonox-*-py3-none-any.whl; do
   if [[ -f "${_cand}" ]]; then
