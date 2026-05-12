@@ -49,7 +49,7 @@ Confirmed on `main` (newest first for this initiative):
 | *(follow-up commit)* | SDK ingest circuit breaker: `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`, fast-fail telemetry, slow-server overlap test in `sdk/tests/test_monitor.py`. |
 | *(follow-up commit)* | **PROD-008:** project alert **mute / snooze / acknowledge** fields + evaluation skip + dashboard session `PUT` test + runbook §4 + Alerts UI controls. |
 | `2269572` | **PROD-009 (core):** overview `release_markers` (DuckDB + SQL), snapshot-cache trim, SDK release/git env + kwargs, home release chips, backend + SDK tests. |
-| *(PROD-009 charts)* | **PROD-009 (UI charts):** vertical dashed release lines on **`VolumeChart`** (bar + class overlay) via Chart.js plugin; **`/diagnosis`** “Traffic in scope” `VolumeChart`; `frontend/utils/releaseMarkersChart` + Vitest. |
+| `a808f16` | **PROD-009 (UI charts):** vertical dashed release lines on **`VolumeChart`** (bar + class overlay) via Chart.js plugin; **`/diagnosis`** “Traffic in scope” `VolumeChart`; `frontend/utils/releaseMarkersChart` + Vitest. |
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
 
@@ -295,7 +295,7 @@ Confirmed on `main` (newest first for this initiative):
 - **State / progress tracking:**
   - **Status:** Done
   - **% complete:** 100
-  - **Last update:** 2026-05-12 — **`2269572`:** backend + SDK + overview chips. **Follow-up commit:** vertical dashed release lines on **`VolumeChart`** (bars + class overlay) via registered Chart.js plugin; **`/diagnosis`** adds **Traffic in scope** reusing `VolumeChart` with the same markers; `frontend/utils/releaseMarkersChart.ts` + Vitest coverage.
+  - **Last update:** 2026-05-12 — **`2269572`:** backend + SDK + overview chips. **`a808f16`:** vertical dashed release lines on **`VolumeChart`** (bars + class overlay) via Chart.js plugin; **`/diagnosis`** “Traffic in scope” reuses `VolumeChart`; `frontend/utils/releaseMarkersChart.ts` + Vitest.
   - **Owner:** (assign)
 
 ---
