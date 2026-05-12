@@ -7,6 +7,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   buildCurrentScopedState,
   buildRequestsPageHref,
+  buildScopedQuery,
   type DashboardScopedQueryState,
 } from "../dashboardQueryState";
 import { DashboardDetailModal } from "../DashboardDetailModal";
@@ -24,6 +25,7 @@ import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
 import { CorrelationClearBar } from "../CorrelationClearBar";
 import { MetricCard } from "../MetricCard";
+import { VolumeChart } from "../VolumeChart";
 import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
 import {
   isDiagnosisScopePartial,
@@ -88,6 +90,51 @@ export function DiagnosisContent() {
     d.correlationRequestId,
     d.sqlFilterApplied,
     d.sqlFilterEnabled,
+    ],
+  );
+  const diagnosisVolumeQuery = useMemo(
+    () =>
+      Object.fromEntries(
+        buildScopedQuery({
+          isAbsoluteWindow: d.isAbsoluteWindow,
+          windowMinutes: d.windowMinutes,
+          windowFromTimestamp: d.windowFromTimestamp,
+          windowToTimestamp: d.windowToTimestamp,
+          method: d.method,
+          statusClass: d.statusClass,
+          minLatencyMs: d.minLatencyMs,
+          maxLatencyMs: d.maxLatencyMs,
+          pathQuery: d.pathQuery,
+          serverEnvironmentQuery: d.serverEnvironmentQuery,
+          serverServiceQuery: d.serverServiceQuery,
+          requestLimit: d.requestLimit,
+          requestPage: 0,
+          errorGroupLimit: d.errorGroupLimit,
+          errorGroupPage: 0,
+          errorGroupSort: d.errorGroupSort,
+          correlationRequestId: d.correlationRequestId,
+          sqlFilterApplied: d.sqlFilterApplied,
+          sqlFilterEnabled: d.sqlFilterEnabled,
+        }).entries(),
+      ),
+    [
+      d.isAbsoluteWindow,
+      d.windowMinutes,
+      d.windowFromTimestamp,
+      d.windowToTimestamp,
+      d.method,
+      d.statusClass,
+      d.minLatencyMs,
+      d.maxLatencyMs,
+      d.pathQuery,
+      d.serverEnvironmentQuery,
+      d.serverServiceQuery,
+      d.requestLimit,
+      d.errorGroupLimit,
+      d.errorGroupSort,
+      d.correlationRequestId,
+      d.sqlFilterApplied,
+      d.sqlFilterEnabled,
     ],
   );
   const requests = d.requests;
@@ -367,6 +414,27 @@ export function DiagnosisContent() {
         </section>
       ) : null}
       <RecentJobFailuresStrip data={diagnosisSlice.recentJobFailures} scopeForCorrelation={scopedState} />
+      {d.overview ? (
+        <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic in scope</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-neutral-400">
+            Same time window as grouped errors. Dashed vertical lines mark first-seen release payloads when the SDK
+            sends <span className="font-mono text-xs">release</span> / <span className="font-mono text-xs">git_sha</span>.
+          </p>
+          <div className="mt-4">
+            <VolumeChart
+              series={d.sparklineSeries}
+              fromTimestamp={d.windowFromTimestamp}
+              toTimestamp={d.windowToTimestamp}
+              globalWindowMinutes={d.windowMinutes}
+              diagnosisBaseQuery={diagnosisVolumeQuery}
+              releaseMarkers={d.overview.release_markers}
+              scopeAnchorKey={d.chartsScopeAnchorKey}
+              chartsScopePending={d.chartsScopePending}
+            />
+          </div>
+        </section>
+      ) : null}
       <section
         className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-4 text-sm text-slate-800 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700/80 dark:bg-neutral-900/40 dark:text-neutral-100 dark:ring-white/[0.06]"
         aria-label="Job and cron query explorer shortcut"

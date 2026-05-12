@@ -16,6 +16,8 @@ import {
   maxBucketRequestCount,
   trimSeriesToLastMinutes,
 } from "../../utils/dashboardData";
+import type { OverviewReleaseMarker } from "./dashboardTypes";
+import { uniqueReleaseMarkerFractions } from "../../utils/releaseMarkersChart";
 import {
   buildAlignedChartSpanOptions,
   buildVolumeStepOptions,
@@ -84,6 +86,7 @@ export function VolumeChart({
   toTimestamp,
   globalWindowMinutes,
   diagnosisBaseQuery,
+  releaseMarkers,
   scopeAnchorKey,
   chartsScopePending = false,
 }: {
@@ -92,6 +95,8 @@ export function VolumeChart({
   toTimestamp: string;
   globalWindowMinutes: number;
   diagnosisBaseQuery?: Record<string, string>;
+  /** Optional release / deploy instants (same window as overview API) drawn as vertical lines. */
+  releaseMarkers?: readonly OverviewReleaseMarker[];
   /** When set, chart remount key tracks dashboard query scope (not live poll clock drift). */
   scopeAnchorKey?: string;
   chartsScopePending?: boolean;
@@ -196,6 +201,11 @@ export function VolumeChart({
     return aggregateSeriesByStep(trimmed, effectiveStepMinutes);
   }, [sSeries, effectiveChartSpanMinutes, effectiveStepMinutes, sTo]);
 
+  const releaseMarkerFractions = useMemo(
+    () => uniqueReleaseMarkerFractions(displayed, effectiveStepMinutes, releaseMarkers ?? []),
+    [displayed, effectiveStepMinutes, releaseMarkers],
+  );
+
   const max = maxBucketRequestCount(displayed);
   const displayedRef = useRef(displayed);
   useLayoutEffect(() => {
@@ -281,6 +291,7 @@ export function VolumeChart({
       },
       plugins: {
         legend: { display: false },
+        lumonoxReleaseMarkers: { fractions: releaseMarkerFractions },
         tooltip: {
           callbacks: {
             title: (items) => {
@@ -326,7 +337,7 @@ export function VolumeChart({
         },
       },
     }),
-    [max, onBucketClick],
+    [max, onBucketClick, releaseMarkerFractions],
   );
 
   const barChartHeight = Math.round(120 * 1.25);
@@ -430,6 +441,7 @@ export function VolumeChart({
                     height={192}
                     variant="overlay"
                     live
+                    releaseMarkerFractions={releaseMarkerFractions}
                     chartsScopePending={false}
                     accessibilityLabel={`Request volume by response class, plotted per bucket. Window ${totalRequests.toLocaleString()} requests, ${totalErrors.toLocaleString()} errors (${overallErrorRatePct.toFixed(1)}% avg error rate). Click a point to open diagnosis for that bucket.`}
                     onPointClick={(idx) => {

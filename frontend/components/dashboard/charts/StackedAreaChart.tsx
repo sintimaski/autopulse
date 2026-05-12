@@ -30,6 +30,8 @@ type StackedAreaChartProps = {
   accessibilityLabel?: string;
   /** Semi-transparent overlay while a new dashboard scope query is in flight. */
   chartsScopePending?: boolean;
+  /** Fractional x indices (same as bar chart) for vertical release/deploy lines. */
+  releaseMarkerFractions?: readonly number[];
 };
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -54,6 +56,7 @@ export function StackedAreaChart({
   live = false,
   accessibilityLabel,
   chartsScopePending = false,
+  releaseMarkerFractions,
 }: StackedAreaChartProps) {
   const hasData = useMemo(() => Boolean(labels.length && series.length), [labels.length, series.length]);
 
@@ -141,6 +144,9 @@ export function StackedAreaChart({
           position: "bottom",
           labels: { boxWidth: 10, font: { size: 11 }, color: "rgba(100, 116, 139, 0.95)" },
         },
+        lumonoxReleaseMarkers: {
+          fractions: releaseMarkerFractions?.length ? [...releaseMarkerFractions] : [],
+        },
         tooltip: {
           enabled: hasData,
           mode: "index",
@@ -199,7 +205,7 @@ export function StackedAreaChart({
         },
       },
     }),
-    [hasData, isOverlay, labels, live, maxStack, onPointClick, series],
+    [hasData, isOverlay, labels, live, maxStack, onPointClick, releaseMarkerFractions, series],
   );
 
   if (!hasData) {

@@ -24,6 +24,8 @@ import {
   type Plugin,
 } from "chart.js";
 
+import { lumonoxReleaseMarkersVerticalLines } from "./releaseMarkersChartPlugin";
+
 type ChartWithTooltipPreserve = Chart & {
   __apTooltipPreserve?: ActiveDataPoint[];
   __apTooltipCaret?: { x: number; y: number };
@@ -90,4 +92,5 @@ ChartJS.register(
   ScatterController,
   Tooltip,
   lumonoxTooltipPersistAcrossUpdate,
+  lumonoxReleaseMarkersVerticalLines,
 );

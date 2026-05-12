@@ -334,6 +334,7 @@ export function DashboardHomeContent() {
             fromTimestamp={homeSlice.windowFromTimestamp}
             toTimestamp={homeSlice.windowToTimestamp}
             globalWindowMinutes={homeSlice.windowMinutes}
+            releaseMarkers={overview.release_markers}
             scopeAnchorKey={homeSlice.chartsScopeAnchorKey}
             chartsScopePending={homeSlice.chartsScopePending}
           />
@@ -1035,6 +1036,7 @@ export function DashboardHomeContent() {
             toTimestamp={overview.to_timestamp}
             globalWindowMinutes={d.windowMinutes}
             diagnosisBaseQuery={Object.fromEntries(diagnosisParams.entries())}
+            releaseMarkers={overview.release_markers}
             scopeAnchorKey={d.chartsScopeAnchorKey}
             chartsScopePending={d.chartsScopePending}
           />
