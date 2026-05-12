@@ -74,6 +74,8 @@ If **either** variable is missing, the sender stays off: middleware still runs, 
 - `LUMONOX_MAX_CONCURRENT_SENDS` — max parallel ingest POSTs from this process (default `1`).
 - `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` — consecutive **terminal** ingest failures (after retries) before the SDK **opens** a cooldown and **fast-fails** further POSTs for `LUMONOX_CIRCUIT_OPEN_SECONDS` (default **`0`** = disabled). Use a small positive value in production when the backend may be unavailable for long stretches. While open, the sender **does not** start new HTTP requests for those batches (no `Idempotency-Key` is consumed server-side for skipped work); each real POST still sends a fresh key.
 - `LUMONOX_CIRCUIT_OPEN_SECONDS` — cooldown length after the threshold is hit (default `30`; minimum enforced `0.5`).
+- `LUMONOX_RELEASE` — optional short release label (for example `v1.4.2` or a deploy id), trimmed and capped; attached to captured HTTP events, the startup onboarding ping, and infrastructure probe events when set.
+- `LUMONOX_GIT_SHA` — optional git commit id (trimmed, capped); stored with events when set so the dashboard can show **release markers** on the overview when the backend aggregates them.
 
 `lumonox()` and `monitor()` support explicit kwargs for runtime behavior:
 
@@ -84,6 +86,7 @@ If **either** variable is missing, the sender stays off: middleware still runs, 
 - `scrub_keys` (additional sensitive keys to redact)
 - `ingest_max_batch_bytes` / `max_concurrent_sends` (override the env defaults above)
 - `circuit_failure_threshold` / `circuit_open_seconds` (override env; threshold `0` keeps the breaker off)
+- `release` / `git_sha` — override `LUMONOX_RELEASE` / `LUMONOX_GIT_SHA` for this process (same trimming/caps as env); kwargs win when both are set.
 - `telemetry_observer` — optional callable taking a small read-only dict per finished ingest POST (`kind="ingest_batch"`, `ok`, `events`, `attempt`, `duration_ms`, `queue_depth`, …). Must stay fast and must not raise; omit for zero overhead beyond a `None` check.
 - `queue_maxsize`, `batch_size`, `flush_interval_s`, `max_retries`, `retry_backoff_s`
 

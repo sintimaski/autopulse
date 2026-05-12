@@ -311,6 +311,24 @@ export function DashboardHomeContent() {
             Window summary: {requestCount.toLocaleString()} requests · {errorCount.toLocaleString()} errors (
             {(errorRate * 100).toFixed(2)}% rate) · avg latency {avgLatency.toFixed(1)} ms.
           </p>
+          {overview.release_markers.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-1.5" aria-label="Releases seen in this window">
+              {overview.release_markers.map((m) => (
+                <span
+                  key={`${m.at}\0${m.release}\0${m.git_sha ?? ""}`}
+                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200/90 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700 dark:border-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-200"
+                  title={`${m.release}${m.git_sha ? ` · ${m.git_sha}` : ""} · ${m.at}`}
+                >
+                  <span className="max-w-[10rem] truncate font-medium">{m.release}</span>
+                  {m.git_sha ? (
+                    <span className="font-mono text-[10px] text-slate-500 dark:text-neutral-400">
+                      {m.git_sha.slice(0, 7)}
+                    </span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <VolumeChart
             series={homeSlice.sparklineSeries}
             fromTimestamp={homeSlice.windowFromTimestamp}
@@ -992,6 +1010,24 @@ export function DashboardHomeContent() {
           errors · {(overview.error_rate * 100).toFixed(2)}% error rate · avg latency {overview.avg_latency_ms.toFixed(1)}{" "}
           ms.
         </p>
+        {overview.release_markers.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Releases seen in this window">
+            {overview.release_markers.map((m) => (
+              <span
+                key={`${m.at}\0${m.release}\0${m.git_sha ?? ""}`}
+                className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-700 dark:border-neutral-600 dark:bg-neutral-800/80 dark:text-neutral-200"
+                title={`${m.release}${m.git_sha ? ` · ${m.git_sha}` : ""} · ${m.at}`}
+              >
+                <span className="max-w-[10rem] truncate font-medium">{m.release}</span>
+                {m.git_sha ? (
+                  <span className="font-mono text-[10px] text-slate-500 dark:text-neutral-400">
+                    {m.git_sha.slice(0, 7)}
+                  </span>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
         <div className="mt-3">
           <VolumeChart
             series={d.sparklineSeries}

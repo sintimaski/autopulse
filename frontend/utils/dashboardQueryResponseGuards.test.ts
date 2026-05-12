@@ -23,6 +23,7 @@ const minimalOverview = {
       count_5xx: 0,
     },
   ],
+  release_markers: [],
 };
 
 const minimalRequests = {
@@ -50,6 +51,28 @@ const minimalRequests = {
 describe("parseOverviewResponse", () => {
   it("accepts a minimal overview", () => {
     expect(parseOverviewResponse(minimalOverview)).toEqual(minimalOverview);
+  });
+
+  it("defaults missing release_markers to an empty array", () => {
+    const { release_markers: _rm, ...rest } = minimalOverview;
+    expect(parseOverviewResponse(rest)).toEqual(minimalOverview);
+  });
+
+  it("accepts valid release_markers", () => {
+    const withMarkers = {
+      ...minimalOverview,
+      release_markers: [{ at: "2026-01-01T00:15:00Z", release: "v1.0.0", git_sha: "deadbeef" }],
+    };
+    expect(parseOverviewResponse(withMarkers)).toEqual(withMarkers);
+  });
+
+  it("rejects invalid release_markers", () => {
+    expect(
+      parseOverviewResponse({
+        ...minimalOverview,
+        release_markers: [{ at: "x", release: 1 }],
+      }),
+    ).toBeNull();
   });
 
   it("rejects invalid series", () => {

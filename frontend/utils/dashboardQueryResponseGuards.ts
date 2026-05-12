@@ -15,6 +15,7 @@ import type {
   ErrorGroupsResponse,
   OverviewBucket,
   OverviewExtendedResponse,
+  OverviewReleaseMarker,
   OverviewResponse,
   RecentJobFailureItem,
   RecentJobFailuresResponse,
@@ -52,6 +53,20 @@ function isOverviewBucket(v: unknown): v is OverviewBucket {
   return true;
 }
 
+function isOverviewReleaseMarker(v: unknown): v is { at: string; release: string; git_sha?: string | null } {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (typeof v.at !== "string" || typeof v.release !== "string") {
+    return false;
+  }
+  const gs = v.git_sha;
+  if (gs !== null && gs !== undefined && typeof gs !== "string") {
+    return false;
+  }
+  return true;
+}
+
 export function parseOverviewResponse(raw: unknown): OverviewResponse | null {
   if (!isRecord(raw)) {
     return null;
@@ -77,7 +92,32 @@ export function parseOverviewResponse(raw: unknown): OverviewResponse | null {
   if (!Array.isArray(raw.series) || !raw.series.every(isOverviewBucket)) {
     return null;
   }
-  return raw as OverviewResponse;
+  const markersRaw = raw.release_markers;
+  let release_markers: OverviewReleaseMarker[];
+  if (markersRaw === undefined) {
+    release_markers = [];
+  } else {
+    if (!Array.isArray(markersRaw) || !markersRaw.every(isOverviewReleaseMarker)) {
+      return null;
+    }
+    release_markers = markersRaw.map((m) => ({
+      at: m.at,
+      release: m.release,
+      git_sha: m.git_sha ?? null,
+    }));
+  }
+  return {
+    server_now: raw.server_now as string,
+    from_timestamp: raw.from_timestamp as string,
+    to_timestamp: raw.to_timestamp as string,
+    request_count: raw.request_count as number,
+    error_count: raw.error_count as number,
+    error_rate: raw.error_rate as number,
+    avg_latency_ms: raw.avg_latency_ms as number,
+    requests_per_minute: raw.requests_per_minute as number,
+    series: raw.series as OverviewBucket[],
+    release_markers,
+  };
 }
 
 function isRequestItem(v: unknown): v is RequestItem {

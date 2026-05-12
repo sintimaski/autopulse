@@ -12,6 +12,7 @@ from lumonox_backend.schemas.dashboard import DashboardDataQueryScope
 from lumonox_backend.schemas.dashboard_overview_models import (
     DashboardOverviewBucket,
     DashboardOverviewResponse,
+    DashboardReleaseMarker,
     DashboardRequestItem,
     DashboardRequestsResponse,
 )
@@ -134,6 +135,52 @@ def test_query_snapshot_cache_applies_ingest_delta() -> None:
     assert hit.requests.total == hit.overview.request_count
     assert hit.overview.to_timestamp > hit.overview.from_timestamp
     assert len(hit.requests.items) == 1
+
+
+def test_query_snapshot_cache_delta_trims_release_markers_outside_window() -> None:
+    project_id = uuid4()
+    payload = _supported_query_request()
+    response = _base_query_response()
+    start = response.overview.from_timestamp
+    response.overview.release_markers = [
+        DashboardReleaseMarker(at=start - timedelta(hours=3), release="ancient", git_sha="111"),
+        DashboardReleaseMarker(
+            at=response.overview.to_timestamp - timedelta(minutes=1),
+            release="recent",
+            git_sha="222",
+        ),
+    ]
+    dashboard_query_snapshot_cache.seed(
+        project_id=project_id,
+        payload=payload,
+        version=1,
+        response=response,
+    )
+    dashboard_query_snapshot_cache.apply_live_ingest_delta(
+        project_id=project_id,
+        version=2,
+        delta=LiveIngestDelta(
+            accepted=1,
+            error_count=0,
+            latency_total_ms=10.0,
+            count_2xx=1,
+            count_3xx=0,
+            count_4xx=0,
+            count_5xx=0,
+            requests=(),
+        ),
+    )
+
+    hit = dashboard_query_snapshot_cache.read_if_fresh(
+        project_id=project_id,
+        payload=payload,
+        current_version=2,
+    )
+    assert hit is not None
+    ws = hit.overview.from_timestamp
+    assert all(m.at >= ws for m in hit.overview.release_markers)
+    assert not any(m.release == "ancient" for m in hit.overview.release_markers)
+    assert any(m.release == "recent" for m in hit.overview.release_markers)
 
 
 def test_query_snapshot_cache_skips_absolute_scope() -> None:

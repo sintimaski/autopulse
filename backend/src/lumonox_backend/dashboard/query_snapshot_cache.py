@@ -227,6 +227,7 @@ def _apply_delta_to_response(
     overview.avg_latency_ms = total_latency_ms / max(1, total_requests)
     overview.error_rate = total_errors / max(1, total_requests)
     overview.requests_per_minute = total_requests / max(1.0, float(window_minutes))
+    overview.release_markers = [m for m in overview.release_markers if m.at >= window_start]
 
     requests.server_now = updated_at
     requests.from_timestamp = window_start

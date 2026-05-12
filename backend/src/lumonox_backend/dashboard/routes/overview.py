@@ -12,6 +12,7 @@ from lumonox_backend.auth import ProjectContext, authenticate_dashboard_project
 from lumonox_backend.dashboard.duckdb_queries import (
     build_filters,
     overview_extended,
+    overview_release_markers,
     overview_series,
 )
 from lumonox_backend.dashboard.event_scope import http_scoped_event_types_clause
@@ -22,6 +23,7 @@ from lumonox_backend.dashboard.params import (
     TO_TIMESTAMP_QUERY,
     WINDOW_MINUTES_QUERY,
 )
+from lumonox_backend.dashboard.release_markers import fetch_release_markers_for_event_filters
 from lumonox_backend.dashboard.time_window import (
     as_utc_datetime,
     hour_bucket,
@@ -231,6 +233,12 @@ async def get_dashboard_overview(
             )
             request_total, error_total, avg_latency_ms = _overview_totals_from_series(series)
         window_minutes_val = max((resolved_to - resolved_from).total_seconds() / 60.0, 1.0)
+        release_markers = await run_duckdb_read_sync(
+            overview_release_markers,
+            duckdb_filters,
+            store=read_store,
+            duckdb_read_operation="overview_release_markers",
+        )
         return DashboardOverviewResponse(
             server_now=server_now,
             from_timestamp=resolved_from,
@@ -241,6 +249,7 @@ async def get_dashboard_overview(
             avg_latency_ms=avg_latency_ms,
             requests_per_minute=request_total / window_minutes_val,
             series=series,
+            release_markers=release_markers,
         )
 
     if not exclude_lumonox_traffic and not event_sql_filter:
@@ -314,6 +323,7 @@ async def get_dashboard_overview(
             avg_latency_ms=avg_latency_ms,
             requests_per_minute=requests_per_minute,
             series=series,
+            release_markers=[],
         )
 
     totals_query = select(
@@ -428,6 +438,11 @@ async def get_dashboard_overview(
         to_timestamp=resolved_to,
     )
 
+    dialect_name = session.bind.dialect.name if session.bind is not None else ""
+    release_markers = await fetch_release_markers_for_event_filters(
+        session, dialect_name=dialect_name, filters=filters
+    )
+
     return DashboardOverviewResponse(
         server_now=server_now,
         from_timestamp=resolved_from,
@@ -438,6 +453,7 @@ async def get_dashboard_overview(
         avg_latency_ms=avg_latency_ms,
         requests_per_minute=requests_per_minute,
         series=series,
+        release_markers=release_markers,
     )
 
 

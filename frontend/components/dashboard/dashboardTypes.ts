@@ -9,6 +9,13 @@ export type OverviewBucket = {
   count_5xx?: number;
 };
 
+/** First-seen time for a distinct (release, git_sha) pair in the overview window (backend-capped). */
+export type OverviewReleaseMarker = {
+  at: string;
+  release: string;
+  git_sha: string | null;
+};
+
 export type OverviewResponse = {
   server_now: string;
   from_timestamp: string;
@@ -19,6 +26,7 @@ export type OverviewResponse = {
   avg_latency_ms: number;
   requests_per_minute: number;
   series: OverviewBucket[];
+  release_markers: OverviewReleaseMarker[];
 };
 
 export type BreakdownItem = {

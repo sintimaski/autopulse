@@ -87,6 +87,15 @@ class _MonitorConfig:
     # ``circuit_open_seconds`` (half-open: next POST after cooldown tries again). ``0`` disables.
     circuit_failure_threshold: int
     circuit_open_seconds: float
+    release: str | None
+    git_sha: str | None
+
+
+def _merge_release_git_into_event(config: _MonitorConfig, event: dict[str, Any]) -> None:
+    if config.release:
+        event["release"] = config.release
+    if config.git_sha:
+        event["git_sha"] = config.git_sha
 
 
 def _utc_now_iso() -> str:
@@ -209,6 +218,13 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
+
+
+def _optional_metadata_str(kwargs_val: object, env_name: str, *, max_len: int) -> str | None:
+    if isinstance(kwargs_val, str) and kwargs_val.strip():
+        return kwargs_val.strip()[:max_len]
+    raw = (os.getenv(env_name) or "").strip()
+    return raw[:max_len] if raw else None
 
 
 def _env_csv(name: str, default: str = "") -> tuple[str, ...]:
@@ -464,19 +480,19 @@ class _EventDispatcher:
         if self._config.startup_ingest_ping:
             # Synthetic request so dashboard onboarding can observe first ingest without
             # waiting for application traffic. Path avoids is_lumonox_internal_path filters.
-            self.enqueue(
-                {
-                    "type": "request",
-                    "timestamp": _utc_now_iso(),
-                    "service_name": self._config.service_name,
-                    "environment": self._config.environment,
-                    "method": "GET",
-                    "path": "/.well-known/lumonox-onboarding",
-                    "status_code": 204,
-                    "latency_ms": 0.0,
-                    "request_id": None,
-                }
-            )
+            ping: dict[str, Any] = {
+                "type": "request",
+                "timestamp": _utc_now_iso(),
+                "service_name": self._config.service_name,
+                "environment": self._config.environment,
+                "method": "GET",
+                "path": "/.well-known/lumonox-onboarding",
+                "status_code": 204,
+                "latency_ms": 0.0,
+                "request_id": None,
+            }
+            _merge_release_git_into_event(self._config, ping)
+            self.enqueue(ping)
 
     async def stop(self) -> None:
         if self._task is None:
@@ -740,21 +756,21 @@ class _EventDispatcher:
             metrics = sampler.sample()
             if metrics:
                 infra_widgets = _build_infrastructure_widget_payload(metrics)
-                self.enqueue(
-                    {
-                        "type": "request",
-                        "timestamp": _utc_now_iso(),
-                        "service_name": self._config.service_name,
-                        "environment": self._config.environment,
-                        "method": "GET",
-                        "path": "/lumonox/internal/infrastructure-probe",
-                        "status_code": 204,
-                        "latency_ms": 0.0,
-                        "request_id": None,
-                        "infrastructure_metrics": metrics,
-                        "dashboard_widgets": infra_widgets,
-                    }
-                )
+                infra_evt: dict[str, Any] = {
+                    "type": "request",
+                    "timestamp": _utc_now_iso(),
+                    "service_name": self._config.service_name,
+                    "environment": self._config.environment,
+                    "method": "GET",
+                    "path": "/lumonox/internal/infrastructure-probe",
+                    "status_code": 204,
+                    "latency_ms": 0.0,
+                    "request_id": None,
+                    "infrastructure_metrics": metrics,
+                    "dashboard_widgets": infra_widgets,
+                }
+                _merge_release_git_into_event(self._config, infra_evt)
+                self.enqueue(infra_evt)
             try:
                 await asyncio.wait_for(
                     self._stopping.wait(),
@@ -840,6 +856,7 @@ class _LumonoxMiddleware(BaseHTTPMiddleware):
             common["headers"] = dict(request.headers.items())
         if send_ok and self._config.capture_query_params:
             common["query_params"] = dict(request.query_params.multi_items())
+        _merge_release_git_into_event(self._config, common)
         try:
             try:
                 response = await call_next(request)
@@ -1070,6 +1087,12 @@ def monitor(app: Any, **kwargs: Any) -> None:
                     _env_float("LUMONOX_CIRCUIT_OPEN_SECONDS", 30.0),
                 )
             ),
+        ),
+        release=_optional_metadata_str(
+            resolved_kwargs.get("release"), "LUMONOX_RELEASE", max_len=200
+        ),
+        git_sha=_optional_metadata_str(
+            resolved_kwargs.get("git_sha"), "LUMONOX_GIT_SHA", max_len=120
         ),
     )
     dispatcher = _EventDispatcher(

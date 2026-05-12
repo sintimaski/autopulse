@@ -34,6 +34,7 @@ from lumonox_backend.schemas import (
     DashboardDiagnosisTimelineBucket,
     DashboardErrorGroupItem,
     DashboardOverviewBucket,
+    DashboardReleaseMarker,
     DashboardRequestItem,
 )
 from lumonox_backend.services.event_store import (
@@ -636,3 +637,35 @@ def recent_job_failures(
             }
         )
     return items
+
+
+def overview_release_markers(
+    filters: EventStoreFilters, *, store: DuckDbEventStore | None = None
+) -> list[DashboardReleaseMarker]:
+    """Distinct ``release`` values (optional ``git_sha``) with earliest timestamp in window."""
+
+    resolved_store = store if store is not None else get_duckdb_event_store()
+    rows = resolved_store.query_events_sql(
+        filters,
+        select_sql=(
+            "MIN(timestamp) AS marker_at, "
+            "json_extract_string(payload, '$.release') AS rel, "
+            "NULLIF(TRIM(json_extract_string(payload, '$.git_sha')), '') AS git_sha"
+        ),
+        suffix_sql=(
+            "GROUP BY rel, git_sha HAVING rel IS NOT NULL AND LENGTH(TRIM(rel)) > 0 "
+            "ORDER BY MIN(timestamp) ASC LIMIT 40"
+        ),
+    )
+    out: list[DashboardReleaseMarker] = []
+    for marker_at, rel, sha in rows:
+        if marker_at is None or rel is None:
+            continue
+        rel_s = str(rel).strip()[:200]
+        if not rel_s:
+            continue
+        git_s = str(sha).strip()[:120] if sha is not None and str(sha).strip() else None
+        out.append(
+            DashboardReleaseMarker(at=as_utc_datetime(marker_at), release=rel_s, git_sha=git_s)
+        )
+    return out

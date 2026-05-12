@@ -114,6 +114,8 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "max_concurrent_sends": 1,
         "circuit_failure_threshold": 0,
         "circuit_open_seconds": 30.0,
+        "release": None,
+        "git_sha": None,
     }
     values.update(overrides)
     return _MonitorConfig(**values)
@@ -159,6 +161,24 @@ def test_middleware_dashboard_widgets_attach_throttles() -> None:
     assert len(dispatcher.events) == 2
     assert "dashboard_widgets" in dispatcher.events[0]
     assert "dashboard_widgets" not in dispatcher.events[1]
+
+
+def test_middleware_attaches_release_and_git_sha_from_config() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config(release="v2.0.0", git_sha="abc1234567890")
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/ok")
+    async def ok() -> dict[str, bool]:
+        return {"ok": True}
+
+    with lifespan_test_client(app) as client:
+        assert client.get("/ok").status_code == 200
+
+    assert len(dispatcher.events) == 1
+    assert dispatcher.events[0].get("release") == "v2.0.0"
+    assert dispatcher.events[0].get("git_sha") == "abc1234567890"
 
 
 @dataclass

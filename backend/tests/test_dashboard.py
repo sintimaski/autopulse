@@ -357,6 +357,7 @@ def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_u
     assert "server_now" in payload
     assert payload["request_count"] == 3
     assert payload["error_count"] == 1
+    assert payload.get("release_markers") == []
     series_by_minute = {entry["minute"]: entry for entry in payload["series"]}
     first_minute = _utc_json_minute(base_time)
     second_minute = _utc_json_minute(base_time + timedelta(minutes=1))
@@ -376,6 +377,40 @@ def test_dashboard_overview_series_aggregates_per_minute(backend_test_database_u
     assert series_by_minute[second_minute]["count_3xx"] == 0
     assert series_by_minute[second_minute]["count_4xx"] == 0
     assert series_by_minute[second_minute]["count_5xx"] == 0
+
+
+def test_dashboard_overview_release_markers_from_event_payload(
+    backend_test_database_url: str,
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Release Markers")
+    base_time = datetime.now(tz=UTC).replace(second=0, microsecond=0) - timedelta(minutes=10)
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(
+            client,
+            key,
+            base_time,
+            200,
+            "GET",
+            "/v1",
+            payload_overrides={"release": "v2.4.0", "git_sha": "deadbeef"},
+        )
+        _ingest(client, key, base_time + timedelta(seconds=5), 200, "GET", "/v2")
+        response = client.get(
+            "/dashboard/overview",
+            params={
+                "from_timestamp": (base_time - timedelta(seconds=10)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=2)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    markers = payload.get("release_markers") or []
+    assert isinstance(markers, list) and len(markers) >= 1
+    labels = {(m.get("release"), m.get("git_sha")) for m in markers}
+    assert ("v2.4.0", "deadbeef") in labels
 
 
 def test_dashboard_overview_series_fills_empty_minute_buckets(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DashboardOverviewBucket(BaseModel):
@@ -17,6 +17,14 @@ class DashboardOverviewBucket(BaseModel):
     count_5xx: int
 
 
+class DashboardReleaseMarker(BaseModel):
+    """First-seen timestamp for a distinct (release, git_sha) pair in the overview window."""
+
+    at: datetime
+    release: str
+    git_sha: str | None = None
+
+
 class DashboardOverviewResponse(BaseModel):
     server_now: datetime
     from_timestamp: datetime
@@ -27,6 +35,7 @@ class DashboardOverviewResponse(BaseModel):
     avg_latency_ms: float
     requests_per_minute: float
     series: list[DashboardOverviewBucket]
+    release_markers: list[DashboardReleaseMarker] = Field(default_factory=list)
 
 
 class DashboardBreakdownItem(BaseModel):

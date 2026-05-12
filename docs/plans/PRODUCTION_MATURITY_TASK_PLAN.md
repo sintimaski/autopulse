@@ -290,7 +290,11 @@ Confirmed on `main` (newest first for this initiative):
 - **Constraints:** Avoid high-cardinality explosion in aggregates.
 - **Validation / verification:** Sample dataset test; manual UI check.
 - **Idempotency:** Yes.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** In progress
+  - **% complete:** ~85
+  - **Last update:** 2026-05-12 — Backend `release_markers` on overview (DuckDB + SQL paths); snapshot cache trims markers with live deltas; SDK attaches `release` / `git_sha` from env or kwargs to enqueued events; dashboard types/guards + home overview chips when markers exist; `sdk/README.md` env/kwargs docs.
+  - **Owner:** (assign)
 
 ---
 
