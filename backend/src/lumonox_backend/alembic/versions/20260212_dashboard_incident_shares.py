@@ -23,7 +23,6 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("project_id", sa.Uuid(), nullable=False),
         sa.Column("created_by_user_id", sa.Uuid(), nullable=False),
-        sa.Column("token_hash", sa.LargeBinary(), nullable=False),
         sa.Column("scope_state", sa.JSON(), nullable=False),
         sa.Column("access_mode", sa.String(length=32), nullable=False),
         sa.Column("allowed_user_ids", sa.JSON(), nullable=True),
@@ -38,7 +37,6 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["created_by_user_id"], ["dashboard_users.id"], ondelete="CASCADE"),
         sa.ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("token_hash"),
     )
     op.create_index(
         "ix_dashboard_incident_shares_project_created",

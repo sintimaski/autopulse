@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -798,19 +799,27 @@ class DashboardBookmarkUpdate(BaseModel):
         return n
 
 
+_MAX_INCIDENT_SHARE_NOTEBOOK_BYTES = 400_000
+
+
 class DashboardIncidentShareCreate(BaseModel):
-    """Create a DB-backed incident share link (scoped query + ACL)."""
+    """Persist scope and optional notebook JSON; open later with ``share_id`` in the URL."""
 
     scope_state: dict[str, Any] = Field(
         ...,
         description="Dashboard scoped state (same shape as frontend ``buildCurrentScopedState``).",
     )
+    notebook_document: dict[str, Any] | None = Field(
+        default=None,
+        description="Full incident notebook document (cells JSON), same shape as local export.",
+    )
+    title: str | None = Field(default=None, max_length=200)
     access_mode: Literal["organization", "restricted"]
     allowed_user_ids: list[UUID] | None = None
     expires_in_days: int = Field(default=7, ge=1, le=90)
 
     @model_validator(mode="after")
-    def validate_restricted(self) -> DashboardIncidentShareCreate:
+    def validate_restricted(self) -> Self:
         if self.access_mode == "restricted":
             if not self.allowed_user_ids:
                 raise ValueError("allowed_user_ids required when access_mode is restricted")
@@ -820,38 +829,77 @@ class DashboardIncidentShareCreate(BaseModel):
             self.allowed_user_ids = None
         return self
 
+    @model_validator(mode="after")
+    def cap_notebook_document_size(self) -> Self:
+        if self.notebook_document is None:
+            return self
+        try:
+            encoded = json.dumps(self.notebook_document, separators=(",", ":"), default=str)
+        except (TypeError, ValueError) as e:
+            raise ValueError("notebook_document must be JSON-serializable") from e
+        if len(encoded) > _MAX_INCIDENT_SHARE_NOTEBOOK_BYTES:
+            raise ValueError("notebook_document too large")
+        return self
+
 
 class DashboardIncidentShareCreateResponse(BaseModel):
     share_id: UUID
-    token: str
     expires_at: datetime
 
 
 class DashboardIncidentShareListItem(BaseModel):
-    """Published share metadata (no token — secret is only returned at creation)."""
+    """Saved incident row (list + open in notebook)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    title: str | None = None
     created_at: datetime
+    updated_at: datetime
     expires_at: datetime
     access_mode: str
     allowed_user_ids: list[str] | None = None
     revoked_at: datetime | None = None
 
 
-class DashboardIncidentShareRedeemRequest(BaseModel):
-    token: str = Field(..., min_length=8, max_length=512)
+class DashboardIncidentShareGetResponse(BaseModel):
+    """Open a saved incident in the notebook (same project; ignores share expiry)."""
 
-    @field_validator("token")
-    @classmethod
-    def strip_token(cls, value: str) -> str:
-        return value.strip()
+    id: UUID
+    title: str | None = None
+    project_id: UUID
+    scoped_query: str
+    notebook_document: dict[str, Any] | None = None
+
+
+class DashboardIncidentShareUpdate(BaseModel):
+    """Partial update (creator only). Send only fields to change."""
+
+    title: str | None = Field(default=None, max_length=200)
+    scope_state: dict[str, Any] | None = None
+    notebook_document: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def cap_notebook_patch(self) -> Self:
+        if self.notebook_document is None:
+            return self
+        try:
+            encoded = json.dumps(self.notebook_document, separators=(",", ":"), default=str)
+        except (TypeError, ValueError) as e:
+            raise ValueError("notebook_document must be JSON-serializable") from e
+        if len(encoded) > _MAX_INCIDENT_SHARE_NOTEBOOK_BYTES:
+            raise ValueError("notebook_document too large")
+        return self
+
+
+class DashboardIncidentShareRedeemRequest(BaseModel):
+    share_id: UUID
 
 
 class DashboardIncidentShareRedeemResponse(BaseModel):
     scoped_query: str
     project_id: UUID
+    notebook_document: dict[str, Any] | None = None
 
 
 class DashboardIncidentShareWrongProjectResponse(BaseModel):

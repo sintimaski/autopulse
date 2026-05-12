@@ -52,6 +52,16 @@ describe("incidentNotebookModel", () => {
     expect(parsed!.cells[0]).toEqual({ id: "scope-1", type: "scope", source: "Scope notes", filters: null });
   });
 
+  it("parses legacy text cells as note", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      cells: [{ id: "t1", type: "text", source: "hello" }],
+    });
+    const parsed = parseIncidentNotebookJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.cells[0]).toEqual({ id: "t1", type: "note", source: "hello" });
+  });
+
   it("parses scope with filters and checklist", () => {
     const filters = {
       isAbsoluteWindow: false,

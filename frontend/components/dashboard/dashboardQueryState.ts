@@ -233,20 +233,26 @@ export function scopedQueryStringsEqual(a: string, b: string): boolean {
 }
 
 /**
- * Re-attach ``incident_share`` from the current URL onto a rebuilt scope query string.
- * {@link DashboardLayoutClient} scope sync must not erase the token before
- * ``IncidentWorkspaceContent`` redeems it.
+ * Re-attach incident URL persistence keys from the current URL onto a rebuilt scope query string so
+ * {@link DashboardLayoutClient} scope sync does not drop them before redemption / GET load.
  */
 export function mergeIncidentShareIntoScopeQueryString(
   normalizedScopedSearch: string,
   currentSearchWithoutLeadingQuestionMark: string,
 ): string {
-  const share = new URLSearchParams(currentSearchWithoutLeadingQuestionMark).get("incident_share")?.trim();
-  if (!share) {
+  const cur = new URLSearchParams(currentSearchWithoutLeadingQuestionMark);
+  const shareId = cur.get("incident_share_id")?.trim();
+  const savedId = cur.get("incident_saved_id")?.trim();
+  if (!shareId && !savedId) {
     return normalizedScopedSearch;
   }
   const merged = new URLSearchParams(normalizedScopedSearch);
-  merged.set("incident_share", share);
+  if (shareId) {
+    merged.set("incident_share_id", shareId);
+  }
+  if (savedId) {
+    merged.set("incident_saved_id", savedId);
+  }
   return merged.toString();
 }
 

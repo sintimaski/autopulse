@@ -242,6 +242,18 @@ function parseCell(raw: unknown): IncidentNotebookCell | null {
   return { id, type: "sql", source, rowLimit, applyTimeWindow };
 }
 
+/** Parse notebook JSON from an API object (e.g. ``POST …/redeem``). */
+export function parseIncidentNotebookFromUnknown(raw: unknown): IncidentNotebookDocument | null {
+  if (raw === null || raw === undefined) {
+    return null;
+  }
+  try {
+    return parseIncidentNotebookJson(JSON.stringify(raw));
+  } catch {
+    return null;
+  }
+}
+
 export function parseIncidentNotebookJson(raw: string): IncidentNotebookDocument | null {
   let parsed: unknown;
   try {

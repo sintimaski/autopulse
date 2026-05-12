@@ -94,12 +94,32 @@ describe("dashboardQueryState", () => {
     expect(scopedQueryStringsEqual("a=1", "a=2")).toBe(false);
   });
 
-  it("mergeIncidentShareIntoScopeQueryString preserves handoff token", () => {
+  it("mergeIncidentShareIntoScopeQueryString preserves incident_share_id", () => {
     expect(
-      mergeIncidentShareIntoScopeQueryString("window_minutes=60", "incident_share=abc&window_minutes=60"),
-    ).toBe("window_minutes=60&incident_share=abc");
+      mergeIncidentShareIntoScopeQueryString(
+        "window_minutes=60",
+        "incident_share_id=ba7c5357-e73e-40bc-a835-d23df3471057&window_minutes=60",
+      ),
+    ).toBe("window_minutes=60&incident_share_id=ba7c5357-e73e-40bc-a835-d23df3471057");
     expect(mergeIncidentShareIntoScopeQueryString("window_minutes=60", "window_minutes=60")).toBe(
       "window_minutes=60",
+    );
+  });
+
+  it("mergeIncidentShareIntoScopeQueryString preserves incident_saved_id and both ids", () => {
+    expect(
+      mergeIncidentShareIntoScopeQueryString(
+        "window_minutes=30",
+        "window_minutes=30&incident_saved_id=11111111-1111-1111-1111-111111111111",
+      ),
+    ).toBe("window_minutes=30&incident_saved_id=11111111-1111-1111-1111-111111111111");
+    expect(
+      mergeIncidentShareIntoScopeQueryString(
+        "window_minutes=15",
+        "incident_share_id=ba7c5357-e73e-40bc-a835-d23df3471057&incident_saved_id=22222222-2222-2222-2222-222222222222&window_minutes=15",
+      ),
+    ).toBe(
+      "window_minutes=15&incident_share_id=ba7c5357-e73e-40bc-a835-d23df3471057&incident_saved_id=22222222-2222-2222-2222-222222222222",
     );
   });
 

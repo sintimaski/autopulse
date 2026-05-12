@@ -515,7 +515,7 @@ class DashboardSession(Base):
 
 
 class DashboardIncidentShare(Base):
-    """Durable incident handoff links: scoped dashboard query + optional user ACL."""
+    """Saved incident workbook; URLs use ``incident_share_id`` or ``incident_saved_id``."""
 
     __tablename__ = "dashboard_incident_shares"
     __table_args__ = (
@@ -530,7 +530,8 @@ class DashboardIncidentShare(Base):
     created_by_user_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("dashboard_users.id", ondelete="CASCADE"), nullable=False
     )
-    token_hash: Mapped[bytes] = mapped_column(nullable=False, unique=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notebook_document: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     scope_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     access_mode: Mapped[str] = mapped_column(String(32), nullable=False)
     allowed_user_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
@@ -538,6 +539,13 @@ class DashboardIncidentShare(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+        server_default=_TS_DEFAULT,
+        onupdate=_utc_now,
     )
 
 

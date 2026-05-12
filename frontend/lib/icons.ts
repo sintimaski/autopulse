@@ -20,6 +20,7 @@ export {
   LayoutDashboard,
   LayoutGrid,
   LayoutTemplate,
+  Library,
   ListChecks,
   LogOut,
   MoreVertical,

@@ -48,3 +48,19 @@ export function dashboardSessionJsonPost(
     parentSignal,
   );
 }
+
+export function dashboardSessionJsonPatch(
+  path: string,
+  body: unknown,
+  parentSignal?: AbortSignal,
+): Promise<Response> {
+  return dashboardSessionFetch(
+    path,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    parentSignal,
+  );
+}

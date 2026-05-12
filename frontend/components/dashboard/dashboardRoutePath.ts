@@ -1,12 +1,21 @@
 /** Matches `basePath` in `frontend/next.config.ts`. */
 const DASHBOARD_UI_BASE_PATH = "/lumonox/ui";
 
+/** Set in ``next.config.ts`` sidecar branch via ``env.NEXT_PUBLIC_LUMONOX_FRONTEND_MODE``. */
+const IS_NEXT_SIDECAR =
+  process.env.NEXT_PUBLIC_LUMONOX_FRONTEND_MODE?.trim().toLowerCase() === "sidecar";
+
 /**
  * UI prefix for same-origin navigation (static export under ``/lumonox/ui``, or ``""`` when
- * ``LUMONOX_FRONTEND_MODE=sidecar`` with no basePath).
+ * ``NEXT_PUBLIC_LUMONOX_FRONTEND_MODE=sidecar`` / Next sidecar config with no basePath).
  */
 function resolveDashboardUiPrefix(): string {
   if (typeof window === "undefined") {
+    // Next SSR/RSC: no ``location`` yet. Sidecar dev has no ``/lumonox/ui`` basePath; defaulting to
+    // ``DASHBOARD_UI_BASE_PATH`` here produced wrong hrefs (e.g. DB share links → ``/lumonox/ui/incident/`` → 404).
+    if (IS_NEXT_SIDECAR) {
+      return "";
+    }
     return DASHBOARD_UI_BASE_PATH;
   }
   const path = window.location.pathname;

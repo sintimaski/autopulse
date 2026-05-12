@@ -6,7 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CardSpinner } from "../../ui/CardSpinner";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
-import { parseDashboardMembershipItemsPayload } from "../../../utils/dashboardResponseGuards";
+import {
+  parseDashboardMembershipItemsPayload,
+  parseQueryExplorerResponse,
+} from "../../../utils/dashboardResponseGuards";
 import {
   defaultEmptyIncidentScope,
   defaultIncidentNotebook,
@@ -29,10 +32,9 @@ import {
   buildQueryExplorerExecutePayload,
   type QueryExplorerExecuteInput,
 } from "../../../utils/queryExplorerExecute";
-import { parseQueryExplorerResponse } from "../../../utils/dashboardResponseGuards";
-import { ChevronDown, ChevronUp, ClipboardList, ExternalLink, Plus, Trash2 } from "../../../lib/icons";
+import { ChevronDown, ChevronUp, ExternalLink, Plus, Trash2 } from "../../../lib/icons";
 import { useDashboardData } from "../DashboardDataContext";
-import { dashboardSessionFetch, dashboardSessionJsonPost } from "../dashboardSessionFetch";
+import { dashboardSessionFetch, dashboardSessionJsonPatch, dashboardSessionJsonPost } from "../dashboardSessionFetch";
 import type { DashboardMembershipItem, QueryExplorerResponse } from "../dashboardTypes";
 
 const IncidentMarkdownBody = dynamic(
@@ -41,8 +43,6 @@ const IncidentMarkdownBody = dynamic(
 );
 
 type SqlOutput = { loading: boolean; error: string | null; data: QueryExplorerResponse | null };
-type NotebookSaveState = "idle" | "saving" | "saved" | "error";
-type NotebookSnapshot = { id: string; name: string; savedAtIso: string; payload: string };
 type FlowChecklist = {
   captured: boolean;
   investigated: boolean;
@@ -60,44 +60,6 @@ function randomId(): string {
     return crypto.randomUUID();
   }
   return `snapshot-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function formatSavedAt(ts: string): string {
-  const ms = Date.parse(ts);
-  if (!Number.isFinite(ms)) {
-    return "Unknown time";
-  }
-  return new Date(ms).toLocaleString();
-}
-
-function parseSnapshotList(raw: string | null): NotebookSnapshot[] {
-  if (!raw) {
-    return [];
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw) as unknown;
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-  const list: NotebookSnapshot[] = [];
-  for (const item of parsed) {
-    if (typeof item !== "object" || item === null || Array.isArray(item)) {
-      continue;
-    }
-    const id = "id" in item && typeof item.id === "string" ? item.id : "";
-    const name = "name" in item && typeof item.name === "string" ? item.name : "";
-    const savedAtIso = "savedAtIso" in item && typeof item.savedAtIso === "string" ? item.savedAtIso : "";
-    const payload = "payload" in item && typeof item.payload === "string" ? item.payload : "";
-    if (!id || !name || !savedAtIso || !payload) {
-      continue;
-    }
-    list.push({ id, name, savedAtIso, payload });
-  }
-  return list;
 }
 
 function parseFlowChecklist(raw: string | null): FlowChecklist {
@@ -143,30 +105,6 @@ function briefCell(cell: IncidentNotebookCell): string {
     return cell.type === "sql" ? "SQL (empty)" : `${cell.type} (empty)`;
   }
   return first.length > 120 ? `${first.slice(0, 117)}...` : first;
-}
-
-function buildHandoffBrief(
-  doc: IncidentNotebookDocument,
-  scopeSummary: string,
-  quickLinks: ReadonlyArray<{ label: string; href: string }>,
-  incidentPageHref: string,
-): string {
-  const lines: string[] = [
-    "# Incident handoff brief",
-    "",
-    `- Scope: ${scopeSummary}`,
-    `- Incident page: ${incidentPageHref}`,
-    "",
-    "## Quick links",
-    "",
-    ...quickLinks.map((item) => `- ${item.label}: ${item.href}`),
-    "",
-    "## Notebook highlights",
-    "",
-    ...doc.cells.map((cell, idx) => `${idx + 1}. [${cell.type}] ${briefCell(cell)}`),
-    "",
-  ];
-  return lines.join("\n");
 }
 
 function cloneCell(cell: IncidentNotebookCell): IncidentNotebookCell {
@@ -492,32 +430,32 @@ export function IncidentNotebook({
   legacyPlaintextStorageKey,
   scopeSummary,
   scopeDetailRows,
-  scopeHash,
   incidentPagePath,
   quickLinks,
   onApplyDashboardScope,
   getLiveScopeState,
   sessionOrganizationId,
+  handoffNotebookDocument = null,
+  serverSavedIncidentId = null,
 }: {
   storageKey: string;
   legacyPlaintextStorageKey?: string;
   scopeSummary: string;
   scopeDetailRows: readonly string[];
-  scopeHash: string;
   incidentPagePath: string;
   quickLinks: ReadonlyArray<{ label: string; href: string }>;
   onApplyDashboardScope: (state: IncidentScopeCapturedState) => void;
   getLiveScopeState: () => IncidentScopeCapturedState;
   sessionOrganizationId: string | null;
+  /** When set (e.g. after opening a share link), replaces local notebook load for this mount cycle. */
+  handoffNotebookDocument?: IncidentNotebookDocument | null;
+  /** When set, notebook JSON is persisted to the server (saved incident row); localStorage notebook body is not used as source of truth. */
+  serverSavedIncidentId?: string | null;
 }) {
   const d = useDashboardData();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [doc, setDoc] = useState<IncidentNotebookDocument>(() => defaultIncidentNotebook());
   const [hydrated, setHydrated] = useState(false);
   const [sqlOutputs, setSqlOutputs] = useState<Record<string, SqlOutput>>({});
-  const [saveState, setSaveState] = useState<NotebookSaveState>("idle");
-  const [snapshots, setSnapshots] = useState<NotebookSnapshot[]>([]);
-  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [collapsedCellIds, setCollapsedCellIds] = useState<Set<string>>(new Set());
   const [flowChecklist, setFlowChecklist] = useState<FlowChecklist>(FLOW_CHECKLIST_DEFAULT);
   const [shareAccessMode, setShareAccessMode] = useState<"organization" | "restricted">("organization");
@@ -539,15 +477,8 @@ export function IncidentNotebook({
     }[]
   >([]);
   const [publishedSharesLoad, setPublishedSharesLoad] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const snapshotsStorageKey = `${storageKey}:snapshots.v1`;
   const flowChecklistStorageKey = `${storageKey}:flow-checklist.v1`;
-
-  const incidentPageHref = useMemo(() => {
-    if (typeof window === "undefined") {
-      return incidentPagePath;
-    }
-    return new URL(incidentPagePath, window.location.origin).href;
-  }, [incidentPagePath]);
+  const skipFirstNotebookPersistRef = useRef(false);
 
   useEffect(() => {
     if (!sessionOrganizationId) {
@@ -654,8 +585,15 @@ export function IncidentNotebook({
     setShareBusy(true);
     try {
       const scope_state = getLiveScopeState();
+      let notebook_document: Record<string, unknown> | undefined;
+      try {
+        notebook_document = JSON.parse(serializeIncidentNotebook(doc)) as Record<string, unknown>;
+      } catch {
+        notebook_document = undefined;
+      }
       const body = {
         scope_state,
+        notebook_document,
         access_mode: shareAccessMode,
         allowed_user_ids:
           shareAccessMode === "restricted" ? Array.from(selectedShareUserIds) : null,
@@ -671,11 +609,14 @@ export function IncidentNotebook({
         setShareMessage(detail);
         return;
       }
-      const token =
-        typeof raw === "object" && raw && "token" in raw && typeof (raw as { token: unknown }).token === "string"
-          ? (raw as { token: string }).token
+      const share_id =
+        typeof raw === "object" &&
+        raw &&
+        "share_id" in raw &&
+        typeof (raw as { share_id: unknown }).share_id === "string"
+          ? (raw as { share_id: string }).share_id
           : null;
-      if (!token) {
+      if (!share_id) {
         setShareMessage("Unexpected response.");
         return;
       }
@@ -683,7 +624,7 @@ export function IncidentNotebook({
         incidentPagePath,
         typeof window !== "undefined" ? window.location.origin : "http://localhost",
       );
-      base.searchParams.set("incident_share", token);
+      base.searchParams.set("incident_share_id", share_id);
       setLastCreatedShareUrl(`${base.pathname}${base.search}${base.hash}`);
       setShareMessage("Share link created. Copy the URL below.");
       void loadPublishedShares();
@@ -693,6 +634,7 @@ export function IncidentNotebook({
       setShareBusy(false);
     }
   }, [
+    doc,
     getLiveScopeState,
     incidentPagePath,
     loadPublishedShares,
@@ -734,19 +676,22 @@ export function IncidentNotebook({
     ],
   );
 
-  const persistSnapshots = useCallback(
-    (next: NotebookSnapshot[]) => {
-      setSnapshots(next);
-      try {
-        window.localStorage.setItem(snapshotsStorageKey, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
-    },
-    [snapshotsStorageKey],
-  );
-
   useEffect(() => {
+    if (handoffNotebookDocument) {
+      skipFirstNotebookPersistRef.current = true;
+      setDoc(handoffNotebookDocument);
+      try {
+        const flowRaw = window.localStorage.getItem(flowChecklistStorageKey);
+        setFlowChecklist(parseFlowChecklist(flowRaw));
+      } catch {
+        setFlowChecklist(FLOW_CHECKLIST_DEFAULT);
+      }
+      setHydrated(true);
+      return;
+    }
+
+    skipFirstNotebookPersistRef.current = false;
+
     let raw: string | null = null;
     try {
       raw = window.localStorage.getItem(storageKey);
@@ -776,37 +721,56 @@ export function IncidentNotebook({
       setDoc(defaultIncidentNotebook());
     }
     try {
-      const snapshotRaw = window.localStorage.getItem(snapshotsStorageKey);
-      const list = parseSnapshotList(snapshotRaw).sort((a, b) => b.savedAtIso.localeCompare(a.savedAtIso));
-      setSnapshots(list);
-      setSelectedSnapshotId((prev) => prev || list[0]?.id || "");
-    } catch {
-      setSnapshots([]);
-    }
-    try {
       const flowRaw = window.localStorage.getItem(flowChecklistStorageKey);
       setFlowChecklist(parseFlowChecklist(flowRaw));
     } catch {
       setFlowChecklist(FLOW_CHECKLIST_DEFAULT);
     }
     setHydrated(true);
-  }, [flowChecklistStorageKey, legacyPlaintextStorageKey, snapshotsStorageKey, storageKey]);
+  }, [flowChecklistStorageKey, handoffNotebookDocument, legacyPlaintextStorageKey, storageKey]);
 
   useEffect(() => {
     if (!hydrated) {
       return;
     }
-    setSaveState("saving");
+    if (serverSavedIncidentId?.trim()) {
+      return;
+    }
+    if (skipFirstNotebookPersistRef.current) {
+      skipFirstNotebookPersistRef.current = false;
+      return;
+    }
     const handle = window.setTimeout(() => {
       try {
         window.localStorage.setItem(storageKey, serializeIncidentNotebook(doc));
-        setSaveState("saved");
       } catch {
-        setSaveState("error");
+        /* ignore */
       }
     }, 350);
     return () => window.clearTimeout(handle);
-  }, [doc, hydrated, storageKey]);
+  }, [doc, hydrated, serverSavedIncidentId, storageKey]);
+
+  useEffect(() => {
+    if (!hydrated) {
+      return;
+    }
+    const id = serverSavedIncidentId?.trim();
+    if (!id) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      let notebook_document: Record<string, unknown>;
+      try {
+        notebook_document = JSON.parse(serializeIncidentNotebook(doc)) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      void dashboardSessionJsonPatch(`/dashboard/incident-shares/${id}`, { notebook_document }).catch(() => {
+        /* ignore */
+      });
+    }, 850);
+    return () => window.clearTimeout(handle);
+  }, [doc, hydrated, serverSavedIncidentId]);
 
   useEffect(() => {
     if (!hydrated) {
@@ -876,114 +840,6 @@ export function IncidentNotebook({
     },
     [executeInput],
   );
-
-  const addSnapshot = useCallback(() => {
-    const defaultName = `Snapshot ${new Date().toLocaleString()}`;
-    const name = window.prompt("Save notebook snapshot as:", defaultName)?.trim();
-    if (!name) {
-      return;
-    }
-    const payload = serializeIncidentNotebook(doc);
-    const snapshot: NotebookSnapshot = {
-      id: randomId(),
-      name,
-      savedAtIso: new Date().toISOString(),
-      payload,
-    };
-    const next = [snapshot, ...snapshots].slice(0, 30);
-    persistSnapshots(next);
-    setSelectedSnapshotId(snapshot.id);
-  }, [doc, persistSnapshots, snapshots]);
-
-  const loadSnapshot = useCallback(() => {
-    if (!selectedSnapshotId) {
-      return;
-    }
-    const found = snapshots.find((item) => item.id === selectedSnapshotId);
-    if (!found) {
-      return;
-    }
-    const parsed = parseIncidentNotebookJson(found.payload);
-    if (!parsed) {
-      window.alert("Saved snapshot is not valid notebook JSON.");
-      return;
-    }
-    if (!window.confirm(`Replace notebook with "${found.name}"?`)) {
-      return;
-    }
-    setDoc(parsed);
-    setSqlOutputs({});
-  }, [selectedSnapshotId, snapshots]);
-
-  const deleteSnapshot = useCallback(() => {
-    if (!selectedSnapshotId) {
-      return;
-    }
-    const found = snapshots.find((item) => item.id === selectedSnapshotId);
-    if (!found) {
-      return;
-    }
-    if (!window.confirm(`Delete snapshot "${found.name}"?`)) {
-      return;
-    }
-    const next = snapshots.filter((item) => item.id !== selectedSnapshotId);
-    persistSnapshots(next);
-    setSelectedSnapshotId(next[0]?.id ?? "");
-  }, [persistSnapshots, selectedSnapshotId, snapshots]);
-
-  const exportNotebook = useCallback(() => {
-    const blob = new Blob([serializeIncidentNotebook(doc)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `incident-notebook-${scopeHash}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [doc, scopeHash]);
-
-  const handleImportClick = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
-
-  const importNotebookFile = useCallback(async (file: File) => {
-    let text: string;
-    try {
-      text = await file.text();
-    } catch {
-      window.alert("Could not read file.");
-      return;
-    }
-    const parsed = parseIncidentNotebookJson(text);
-    if (!parsed) {
-      window.alert("File is not valid incident notebook JSON.");
-      return;
-    }
-    if (!window.confirm("Replace current notebook with imported file?")) {
-      return;
-    }
-    setDoc(parsed);
-    setSqlOutputs({});
-  }, []);
-
-  const copyNotebookJson = useCallback(async () => {
-    const json = serializeIncidentNotebook(doc);
-    try {
-      await navigator.clipboard.writeText(json);
-    } catch {
-      window.prompt("Copy notebook JSON (Ctrl+C / Cmd+C):", json);
-    }
-  }, [doc]);
-
-  const copyHandoffBrief = useCallback(async () => {
-    const brief = buildHandoffBrief(doc, scopeSummary, quickLinks, incidentPageHref);
-    try {
-      await navigator.clipboard.writeText(brief);
-    } catch {
-      window.prompt("Copy handoff brief (Ctrl+C / Cmd+C):", brief);
-    }
-  }, [doc, incidentPageHref, quickLinks, scopeSummary]);
 
   const applyStarterTemplate = useCallback(() => {
     if (!window.confirm("Replace notebook with the incident starter template?")) {
@@ -1109,109 +965,6 @@ export function IncidentNotebook({
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
       <div className="space-y-4">
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50/70 p-3 dark:border-neutral-700 dark:bg-neutral-900/70">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-300">
-                Notebook storage
-              </p>
-              <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
-                Autosave:{" "}
-                <span className="font-medium text-slate-800 dark:text-neutral-100">
-                  {saveState === "saving"
-                    ? "Saving..."
-                    : saveState === "saved"
-                      ? "Saved"
-                      : saveState === "error"
-                        ? "Failed (localStorage unavailable)"
-                        : "Idle"}
-                </span>
-              </p>
-              <p className="mt-1 text-[11px] text-slate-500 dark:text-neutral-500">
-                Scope key <code className="rounded bg-white px-1 dark:bg-neutral-950">{scopeHash}</code>
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
-                onClick={addSnapshot}
-              >
-                <ClipboardList className="size-3.5" aria-hidden /> Save snapshot
-              </button>
-              <select
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100"
-                value={selectedSnapshotId}
-                onChange={(e) => setSelectedSnapshotId(e.target.value)}
-              >
-                <option value="">Choose snapshot...</option>
-                {snapshots.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} - {formatSavedAt(item.savedAtIso)}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-                disabled={!selectedSnapshotId}
-                onClick={loadSnapshot}
-              >
-                Load
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-rose-200 bg-white px-2 py-1 text-xs font-medium text-rose-700 shadow-sm hover:bg-rose-50 disabled:opacity-50 dark:border-rose-900/40 dark:bg-neutral-800 dark:text-rose-300 dark:hover:bg-rose-950/40"
-                disabled={!selectedSnapshotId}
-                onClick={deleteSnapshot}
-              >
-                Delete
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-                onClick={copyNotebookJson}
-              >
-                Copy JSON
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-                onClick={copyHandoffBrief}
-              >
-                Copy handoff brief
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-                onClick={exportNotebook}
-              >
-                Export
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
-                onClick={handleImportClick}
-              >
-                Import
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                accept=".json,application/json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    void importNotebookFile(file);
-                  }
-                  e.currentTarget.value = "";
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
         <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">Templates</span>
@@ -1289,19 +1042,6 @@ export function IncidentNotebook({
             onClick={() => setDoc((p) => ({ ...p, cells: [...p.cells, newLinkCell()] }))}
           >
             <Plus className="size-3.5" aria-hidden /> Link
-          </button>
-          <button
-            type="button"
-            className="ml-auto text-xs text-rose-600 hover:underline dark:text-rose-400"
-            onClick={() => {
-              if (window.confirm("Reset the entire notebook to the default template?")) {
-                setDoc(defaultIncidentNotebook());
-                setSqlOutputs({});
-                setCollapsedCellIds(new Set());
-              }
-            }}
-          >
-            Reset notebook
           </button>
         </div>
 
@@ -1731,7 +1471,8 @@ export function IncidentNotebook({
             DB-backed share link
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-neutral-400">
-            Stored on the server with expiry and access control. Recipients must be signed in to the same project.
+            Saves the current notebook and time scope on the server. The URL keeps the share id so you can reopen
+            the same snapshot while it is active. Recipients must be signed in with access to this project.
           </p>
           <label className="mt-2 block text-[11px] font-medium text-slate-700 dark:text-neutral-200">Access</label>
           <select
@@ -1833,7 +1574,8 @@ export function IncidentNotebook({
             </button>
           </div>
           <p className="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-neutral-500">
-            Secret tokens are only shown once when you create a link. This list is metadata for your project.
+            Metadata only (id, expiry, access). Notebook content lives in each share row; reopen the link to load it
+            again.
           </p>
           {publishedSharesLoad === "loading" ? (
             <p className="mt-2 text-[11px] text-slate-500">Loading…</p>
