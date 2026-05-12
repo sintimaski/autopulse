@@ -369,6 +369,208 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
     }
 
 
+_STATUS_RANK = ("critical", "degraded", "unknown", "not_configured", "healthy")
+
+
+def _rank_status(status: str) -> int:
+    try:
+        return _STATUS_RANK.index(status)
+    except ValueError:
+        return len(_STATUS_RANK)
+
+
+def _pick_worse(a: str, b: str) -> str:
+    return a if _rank_status(a) <= _rank_status(b) else b
+
+
+def build_operator_health_subsystems(snapshot: dict[str, object]) -> dict[str, object]:
+    """Derive a compact operator-facing health matrix from an internal metrics snapshot.
+
+    Status semantics align with the dashboard: ``healthy``, ``degraded``, ``critical``,
+    ``unknown`` (insufficient signal), and ``not_configured`` (subsystem intentionally off).
+    """
+    subsystems: list[dict[str, str | None]] = []
+    overall = "healthy"
+
+    tg_raw = snapshot.get("topology_guardrails")
+    tg = tg_raw if isinstance(tg_raw, dict) else {}
+    unsafe = int(tg.get("unsafe_count") or 0)
+    risky = int(tg.get("risky_count") or 0)
+    non_ideal = int(tg.get("non_ideal_count") or 0)
+    tg_status = str(tg.get("status") or "unknown")
+    if unsafe > 0:
+        topo_status: str = "critical"
+    elif risky > 0 or tg_status != "healthy" or non_ideal > 0:
+        topo_status = "degraded"
+    else:
+        topo_status = "healthy"
+    topo_summary = (
+        f"{unsafe} unsafe, {risky} risky, {non_ideal} non-ideal topology signals"
+        if (unsafe or risky or non_ideal)
+        else "No blocking topology guardrail findings on this process."
+    )
+    subsystems.append(
+        {
+            "id": "topology",
+            "label": "Topology guardrails",
+            "status": topo_status,
+            "summary": topo_summary,
+            "settings_anchor": "lx-settings-system-diagnostics",
+        }
+    )
+    overall = _pick_worse(overall, topo_status)
+
+    jobs_enable = bool(snapshot.get("jobs_enable_scheduler"))
+    scheduler_running = bool(snapshot.get("scheduler_running"))
+    if not jobs_enable:
+        sched_status = "not_configured"
+        sched_summary = "In-process scheduler disabled (`JOBS_ENABLE_SCHEDULER=false`)."
+    elif scheduler_running:
+        sched_status = "healthy"
+        sched_summary = "Scheduler task loop is running on this worker."
+    else:
+        sched_status = "critical"
+        sched_summary = "Scheduler enabled but no active scheduler tasks observed on this worker."
+    subsystems.append(
+        {
+            "id": "scheduler",
+            "label": "Scheduler",
+            "status": sched_status,
+            "summary": sched_summary,
+            "settings_anchor": "lx-settings-internal-metrics",
+        }
+    )
+    overall = _pick_worse(overall, sched_status)
+
+    pressure_raw = snapshot.get("ingest_pressure")
+    pressure = pressure_raw if isinstance(pressure_raw, dict) else {}
+    worker_failed = int(pressure.get("aggregate_worker_failed_total") or 0)
+    dead_letter = int(pressure.get("sql_tail_repair_dead_lettered_total") or 0)
+    plane_failed = int(pressure.get("event_plane_append_failed_total") or 0)
+    persist_failed = int(pressure.get("persist_sql_tail_failed_total") or 0)
+    payload_large = int(pressure.get("payload_too_large_total") or 0)
+    rate_limited = int(pressure.get("rate_limited_total") or 0)
+    sync_fb = int(pressure.get("aggregate_worker_sync_fallback_total") or 0)
+    if worker_failed or dead_letter or plane_failed:
+        ingest_status = "critical"
+        ingest_summary = (
+            f"Ingest pipeline errors: worker_failed={worker_failed}, "
+            f"sql_tail_dead_lettered={dead_letter}, event_plane_failed={plane_failed}."
+        )
+    elif persist_failed or sync_fb:
+        ingest_status = "degraded"
+        ingest_summary = (
+            f"Pressure signals: persist_sql_tail_failed={persist_failed}, "
+            f"aggregate_sync_fallback={sync_fb}, rate_limited={rate_limited}."
+        )
+    elif payload_large or rate_limited > 0:
+        ingest_status = "degraded"
+        ingest_summary = (
+            f"Clients hitting limits: payload_too_large={payload_large}, "
+            f"rate_limited_batches={rate_limited}."
+        )
+    else:
+        ingest_status = "healthy"
+        ingest_summary = "No elevated ingest rejection or worker failure counters on this process."
+    subsystems.append(
+        {
+            "id": "ingest",
+            "label": "Ingest + aggregate pipeline",
+            "status": ingest_status,
+            "summary": ingest_summary,
+            "settings_anchor": "lx-settings-internal-metrics",
+        }
+    )
+    overall = _pick_worse(overall, ingest_status)
+
+    bus_backend = str(snapshot.get("dashboard_realtime_bus_backend") or "none").strip().lower()
+    bus_running = bool(snapshot.get("dashboard_realtime_bus_subscriber_running"))
+    lumonox_env = str(snapshot.get("lumonox_env") or "development").strip().lower()
+    if bus_backend in {"", "none"}:
+        if lumonox_env in {"staging", "production"}:
+            rt_status = "degraded"
+            rt_summary = (
+                "Realtime bus backend is `none`; multi-replica live dashboards need sticky WS "
+                "sessions or `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` on Postgres."
+            )
+        else:
+            rt_status = "healthy"
+            rt_summary = "Realtime bus backend is `none` (typical for single-process development)."
+    elif bus_backend == "postgres_notify" and not bus_running:
+        rt_status = "degraded"
+        rt_summary = (
+            "Postgres notify bus configured but subscriber task is not running on this worker."
+        )
+    else:
+        rt_status = "healthy"
+        rt_summary = f"Realtime bus backend `{bus_backend}` reports healthy subscriber state."
+    subsystems.append(
+        {
+            "id": "realtime",
+            "label": "Dashboard realtime bus",
+            "status": rt_status,
+            "summary": rt_summary,
+            "settings_anchor": "lx-settings-system-diagnostics",
+        }
+    )
+    overall = _pick_worse(overall, rt_status)
+
+    retention_running = bool(snapshot.get("retention_pressure_poll_running"))
+    if jobs_enable:
+        ret_status = "healthy" if retention_running else "degraded"
+        ret_summary = (
+            "Retention pressure poll task is running."
+            if retention_running
+            else "Scheduler enabled but retention pressure poll is not running on this worker."
+        )
+    else:
+        ret_status = "not_configured"
+        ret_summary = "Scheduler off; retention poll not expected on this process."
+    subsystems.append(
+        {
+            "id": "retention_poll",
+            "label": "Retention pressure poll",
+            "status": ret_status,
+            "summary": ret_summary,
+            "settings_anchor": "lx-settings-internal-metrics",
+        }
+    )
+    overall = _pick_worse(overall, ret_status)
+
+    jobs_raw = snapshot.get("jobs")
+    jobs = jobs_raw if isinstance(jobs_raw, dict) else {}
+    alerts_telemetry = jobs.get("alerts")
+    if not isinstance(alerts_telemetry, dict):
+        alert_status = "unknown"
+        alert_summary = "No recent `alerts` job telemetry on this process yet."
+    else:
+        alert_state = str(alerts_telemetry.get("status") or "unknown").lower()
+        if alert_state == "failed":
+            alert_status = "degraded"
+            reason = alerts_telemetry.get("failure_reason") or "unknown"
+            alert_summary = (
+                f"Last alerts job run failed ({reason}). Check SMTP/webhook settings and logs."
+            )
+        elif alert_state in {"succeeded", "started"}:
+            alert_status = "healthy"
+            alert_summary = f"Last alerts job status: {alert_state}."
+        else:
+            alert_status = "unknown"
+            alert_summary = f"Alerts job in state `{alert_state}`."
+    subsystems.append(
+        {
+            "id": "alerts",
+            "label": "Alert delivery job",
+            "status": alert_status,
+            "summary": alert_summary,
+            "settings_anchor": "lx-settings-system-diagnostics",
+        }
+    )
+    overall = _pick_worse(overall, alert_status)
+
+    return {"overall_status": overall, "subsystems": subsystems}
+
+
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

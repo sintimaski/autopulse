@@ -1329,6 +1329,24 @@ def test_dashboard_internal_metrics_returns_snapshot_for_admin_scope(
     assert response.status_code == 401
 
 
+def test_dashboard_operator_health_requires_dashboard_session_not_project_key(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Operator Health")
+    monkeypatch.setenv("INTERNAL_METRICS_BEARER_TOKEN", "test-dashboard-operator-health")
+    monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/operator-health",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 401
+
+
 def test_dashboard_system_diagnostics_returns_supportability_snapshot(
     backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

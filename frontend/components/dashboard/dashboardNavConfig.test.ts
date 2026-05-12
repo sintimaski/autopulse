@@ -10,6 +10,7 @@ describe("dashboardNavConfig", () => {
       "/dashboard",
       "/diagnosis",
       "/requests",
+      "/incident",
       "/bookmarks",
       "/alerts",
     ]);
@@ -34,6 +35,7 @@ describe("dashboardNavConfig", () => {
       "/dashboard",
       "/diagnosis",
       "/requests",
+      "/incident",
       "/bookmarks",
       "/alerts",
       "/query-explorer",

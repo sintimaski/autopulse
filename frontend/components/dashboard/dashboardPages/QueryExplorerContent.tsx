@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CardSpinner } from "../../ui/CardSpinner";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
+import { buildQueryExplorerExecutePayload } from "../../../utils/queryExplorerExecute";
 import { parseQueryExplorerResponse } from "../../../utils/dashboardResponseGuards";
 import { useDashboardData } from "../DashboardDataContext";
 import { dashboardSessionJsonPost } from "../dashboardSessionFetch";
@@ -12,6 +13,7 @@ import type { QueryExplorerResponse } from "../dashboardTypes";
 import {
   JOB_FAILURES_STARTER_SQL,
   QUERY_EXPLORER_JOB_FAILURES_PRESET,
+  QUERY_EXPLORER_TEMPLATES,
 } from "../queryExplorerPresets";
 
 const DEFAULT_QUERY = [
@@ -35,7 +37,12 @@ export function QueryExplorerContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QueryExplorerResponse | null>(null);
+  const [templateId, setTemplateId] = useState("");
   const jobFailuresPresetAppliedRef = useRef(false);
+  const activeTemplate = useMemo(
+    () => QUERY_EXPLORER_TEMPLATES.find((item) => item.id === templateId),
+    [templateId],
+  );
 
   useEffect(() => {
     const preset = (searchParams.get("preset") ?? "").trim().toLowerCase();
@@ -50,32 +57,28 @@ export function QueryExplorerContent() {
     jobFailuresPresetAppliedRef.current = true;
   }, [searchParams]);
 
-  const payloadWindow = useMemo(
-    () => ({
-      window_minutes: d.windowMinutes,
-      from_timestamp: d.isAbsoluteWindow ? d.windowFromTimestamp : undefined,
-      to_timestamp: d.isAbsoluteWindow ? d.windowToTimestamp : undefined,
-    }),
-    [d.isAbsoluteWindow, d.windowFromTimestamp, d.windowToTimestamp, d.windowMinutes],
-  );
-
   const execute = async () => {
     setLoading(true);
     setError(null);
     try {
-      const scoped = applyTimeWindow;
-      const body = scoped
-        ? {
-            query,
-            row_limit: rowLimit,
-            scope_mode: "time_window" as const,
-            ...payloadWindow,
-          }
-        : {
-            query,
-            row_limit: rowLimit,
-            scope_mode: "project_wide" as const,
-          };
+      const body = buildQueryExplorerExecutePayload({
+        query,
+        rowLimit,
+        applyTimeWindow,
+        windowMinutes: d.windowMinutes,
+        isAbsoluteWindow: d.isAbsoluteWindow,
+        windowFromTimestamp: d.windowFromTimestamp,
+        windowToTimestamp: d.windowToTimestamp,
+        method: d.method,
+        statusClass: d.statusClass,
+        pathQuery: d.pathQuery,
+        serverEnvironmentQuery: d.serverEnvironmentQuery,
+        serverServiceQuery: d.serverServiceQuery,
+        minLatencyMs: d.minLatencyMs,
+        maxLatencyMs: d.maxLatencyMs,
+        sqlFilterEnabled: d.sqlFilterEnabled,
+        sqlFilterApplied: d.sqlFilterApplied,
+      });
       const response = await dashboardSessionJsonPost("/dashboard/query-explorer/execute", body);
       const raw: unknown = await response.json();
       if (!response.ok) {
@@ -113,6 +116,33 @@ export function QueryExplorerContent() {
         (same as <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-neutral-800">project_wide</code> on the
         server).
       </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <label className="flex min-w-[220px] flex-col gap-1 text-xs font-medium text-slate-700 dark:text-neutral-200">
+          Curated template
+          <select
+            value={templateId}
+            onChange={(event) => {
+              const id = event.target.value;
+              setTemplateId(id);
+              const picked = QUERY_EXPLORER_TEMPLATES.find((item) => item.id === id);
+              if (picked) {
+                setQuery(picked.sql);
+              }
+            }}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+          >
+            <option value="">Custom SQL</option>
+            {QUERY_EXPLORER_TEMPLATES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {activeTemplate ? (
+          <p className="text-xs text-slate-500 dark:text-neutral-400 sm:flex-1">{activeTemplate.description}</p>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-3">
         <textarea
           id="query-explorer-sql"

@@ -20,6 +20,8 @@ from lumonox._monitor import (
     _LumonoxMiddleware,
     _MonitorConfig,
     _scrub_value,
+    _sdk_version,
+    _split_events_for_ingest_json_budget,
     _stable_error_hash,
     monitor,
 )
@@ -107,6 +109,9 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "infrastructure_sampler": None,
         "infrastructure_probe_interval_s": 0.0,
         "dashboard_widgets_attach_interval_s": 0.0,
+        "ingest_max_batch_bytes": 786_432,
+        "telemetry_observer": None,
+        "max_concurrent_sends": 1,
     }
     values.update(overrides)
     return _MonitorConfig(**values)
@@ -832,6 +837,52 @@ def test_stable_error_hash_differs_by_path() -> None:
     h_a = _stable_error_hash("ValueError", "boom", stack, "/boom")
     h_b = _stable_error_hash("ValueError", "boom", stack, "/orders")
     assert h_a != h_b
+
+
+def test_split_events_for_ingest_json_budget_splits_oversize_groups() -> None:
+    pad = "p" * 500
+    events = [{"i": 1, "pad": pad}, {"i": 2, "pad": pad}, {"i": 3, "pad": pad}]
+    chunks = _split_events_for_ingest_json_budget(events, max_bytes=700, sdk_version="9.9.9-test")
+    assert sum(len(c) for c in chunks) == len(events)
+    assert len(chunks) >= 2
+
+
+def test_sdk_version_resolves_for_workspace_install() -> None:
+    assert _sdk_version() != "unknown"
+
+
+def test_send_batch_splits_into_multiple_posts_when_over_budget() -> None:
+    async def run() -> None:
+        pad = "q" * 600
+        events = [{"type": "request", "k": i, "pad": pad} for i in range(4)]
+        cfg = _make_config(ingest_max_batch_bytes=900, batch_size=50)
+        client = _FailingClient(failures_before_success=0)
+        dispatcher = _EventDispatcher(cfg, client=client)
+        await dispatcher._send_batch(events)
+        assert client.calls >= 2
+        assert sum(len(p["json"]["events"]) for p in client.sent_payloads) == len(events)
+
+    asyncio.run(run())
+
+
+def test_telemetry_observer_called_on_success() -> None:
+    async def run() -> None:
+        payloads: list[Any] = []
+
+        def obs(payload: object) -> None:
+            payloads.append(payload)
+
+        cfg = _make_config(telemetry_observer=obs)
+        client = _FailingClient(failures_before_success=0)
+        dispatcher = _EventDispatcher(cfg, client=client)
+        await dispatcher._send_batch([{"type": "request"}])
+        assert len(payloads) == 1
+        first = payloads[0]
+        assert isinstance(first, dict)
+        assert first.get("ok") is True
+        assert first.get("events") == 1
+
+    asyncio.run(run())
 
 
 def test_monitor_warns_and_ignores_deprecated_embedded_mode(

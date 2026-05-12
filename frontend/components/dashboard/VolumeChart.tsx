@@ -335,7 +335,7 @@ export function VolumeChart({
 
   const responseClassStack = useMemo(() => buildResponseClassStackValues(displayed), [displayed]);
 
-  const stackedTrendSeries = useMemo((): StackedAreaSeries[] => {
+  const overlayClassTrendSeries = useMemo((): StackedAreaSeries[] => {
     return [
       { id: "2xx", label: "2xx", color: "#22c55e", values: responseClassStack.counts2xx },
       { id: "3xx", label: "3xx", color: "#38bdf8", values: responseClassStack.counts3xx },
@@ -343,6 +343,9 @@ export function VolumeChart({
       { id: "5xx", label: "5xx", color: "#f43f5e", values: responseClassStack.counts5xx },
     ];
   }, [responseClassStack]);
+
+  const trendCardShell =
+    "relative rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20";
 
   return (
     <div>
@@ -411,22 +414,20 @@ export function VolumeChart({
                 <CanvasBar key={chartLayoutKey} data={volumeBarData} options={volumeBarOptions} />
               </div>
             </div>
-            <div className="relative mt-3 rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20">
+            <div className={`${trendCardShell} mt-3`}>
               <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-neutral-400">
                 Trends — requests by class
               </h4>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-500">
-                Each line is the request count for 2xx / 3xx / 4xx / 5xx at that time bucket (not stacked). When
-                class splits are unavailable, volume is shown as 2xx vs 5xx using the bucket totals. Hover the bar
-                chart above for latency per bucket.
+                2xx / 3xx / 4xx / 5xx counts per bucket (overlay). Click a point to open Diagnosis for that bucket.
               </p>
-              <div className="relative mt-2 min-h-[12rem]">
+              <div className="relative mt-2 min-h-[12rem] w-full min-w-0">
                 {chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
                 <div className="relative z-0">
                   <StackedAreaChart
                     labels={trendLabels}
-                    series={stackedTrendSeries}
-                    height={200}
+                    series={overlayClassTrendSeries}
+                    height={192}
                     variant="overlay"
                     live
                     chartsScopePending={false}

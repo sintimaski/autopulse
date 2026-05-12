@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useContext, useState } from "react";
 import type { ReactNode } from "react";
 
+import { OnboardingCompletionNudge } from "./OnboardingCompletionNudge";
 import { DashboardInitialLoadGrid } from "../ui/DashboardInitialLoadGrid";
 import { CardSpinner, dashboardSpinnerRingClassName } from "../ui/CardSpinner";
 import { DashboardDataContext, useDashboardData } from "./DashboardDataContext";
@@ -334,5 +335,10 @@ export function DashboardPageBoundary({
     );
   }
 
-  return <div className="mx-auto max-w-[88rem] space-y-6">{children}</div>;
+  return (
+    <div className="mx-auto max-w-[88rem] space-y-6">
+      <OnboardingCompletionNudge />
+      {children}
+    </div>
+  );
 }

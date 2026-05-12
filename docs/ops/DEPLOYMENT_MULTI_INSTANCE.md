@@ -2,6 +2,8 @@
 
 Lumonox can run multiple API processes behind a load balancer. A few subsystems are **single-process by default** unless you add infrastructure.
 
+**Canonical HA checklist:** use [PRODUCTION_DEPLOYMENT.md — section 1.2](./PRODUCTION_DEPLOYMENT.md#12-golden-path-horizontally-scaled-api-ha) as the single entry point; this file expands WebSocket, ingest, DuckDB, and job details.
+
 ## WebSocket dashboard updates
 
 `project_websocket_hub` is in-memory by default. Clients connected to instance **A** will not receive ingest-triggered pushes from instance **B** unless a shared realtime bus is enabled.

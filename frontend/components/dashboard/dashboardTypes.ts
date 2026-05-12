@@ -514,6 +514,24 @@ export type DashboardInternalMetricsResponse = {
   metrics: Record<string, unknown> | null;
 };
 
+export type OperatorHealthStatus = "healthy" | "degraded" | "critical" | "unknown" | "not_configured";
+
+export type DashboardOperatorHealthSubsystem = {
+  id: string;
+  label: string;
+  status: OperatorHealthStatus;
+  summary: string;
+  settings_anchor: string | null;
+};
+
+export type DashboardOperatorHealthResponse = {
+  enabled: boolean;
+  reason: string | null;
+  generated_at: string;
+  overall_status: OperatorHealthStatus;
+  subsystems: DashboardOperatorHealthSubsystem[];
+};
+
 export type DashboardSystemDiagnosticsResponse = {
   generated_at: string;
   topology: Record<string, unknown>;

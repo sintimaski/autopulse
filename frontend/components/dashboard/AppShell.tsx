@@ -44,6 +44,7 @@ export function DashboardAppShell({
   isDark,
   diagnosisNavQuery = "",
   logsNavQuery = "",
+  incidentNavQuery = "",
   studioNavPages,
 }: {
   children: ReactNode;
@@ -63,6 +64,8 @@ export function DashboardAppShell({
   diagnosisNavQuery?: string;
   /** Last persisted or live `/logs` server-scope query string (without `?`). */
   logsNavQuery?: string;
+  /** Scoped time window for `/incident` share link (without `?`). */
+  incidentNavQuery?: string;
   /** Backend-driven `/w/...` entries from `GET /dashboard/bootstrap`. */
   studioNavPages?: readonly DashboardStudioNavPage[];
 }) {
@@ -190,7 +193,9 @@ export function DashboardAppShell({
                             ? `${item.href}?${diagnosisNavQuery}`
                             : (item.href === "/logs" || item.href === "/requests") && logsNavQuery
                               ? `${item.href}?${logsNavQuery}`
-                              : item.href
+                              : item.href === "/incident" && incidentNavQuery
+                                ? `${item.href}?${incidentNavQuery}`
+                                : item.href
                         }
                         title={sidebarCollapsed ? item.label : undefined}
                         aria-current={active ? "page" : undefined}

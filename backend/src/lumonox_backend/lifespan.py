@@ -212,6 +212,14 @@ def _log_grouped_startup_settings() -> None:
             settings.event_plane_snapshots_path,
             str(resolve_lumonox_data_root()),
         )
+    env = (settings.lumonox_env or "development").strip().lower()
+    if env in {"staging", "production"}:
+        log.info(
+            "HA operator reminder: validate multi-replica topology against "
+            "docs/ops/PRODUCTION_DEPLOYMENT.md (section 1.2) and "
+            "docs/ops/DEPLOYMENT_MULTI_INSTANCE.md "
+            "(DuckDB single-writer, DASHBOARD_REALTIME_BUS_BACKEND, distributed ingest limits)."
+        )
 
 
 @asynccontextmanager

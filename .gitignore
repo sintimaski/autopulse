@@ -40,6 +40,8 @@ node_modules/
 out/
 .turbo/
 *.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
 
 # OS / editors
 .DS_Store

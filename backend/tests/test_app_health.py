@@ -333,3 +333,41 @@ def test_ready_reports_degraded_when_replay_queue_has_dead_letters(
     assert replay["status"] == "degraded"
     assert "dead_lettered_sql_tail_repairs_present" in replay["reasons"]
     assert "aggregate_dead_letter_backlog_present" in replay["reasons"]
+
+
+def test_build_operator_health_subsystems_covers_expected_rows() -> None:
+    from lumonox_backend.api.routes.health import build_operator_health_subsystems
+
+    snapshot: dict[str, object] = {
+        "topology_guardrails": {
+            "status": "healthy",
+            "unsafe_count": 0,
+            "risky_count": 0,
+            "non_ideal_count": 0,
+            "findings": [],
+            "scheduler_required": True,
+        },
+        "jobs_enable_scheduler": True,
+        "scheduler_running": True,
+        "ingest_pressure": {},
+        "dashboard_realtime_bus_backend": "none",
+        "dashboard_realtime_bus_subscriber_running": False,
+        "lumonox_env": "development",
+        "retention_pressure_poll_running": True,
+        "jobs": {
+            "alerts": {
+                "status": "succeeded",
+                "started_at": "",
+                "finished_at": "",
+                "duration_ms": 1,
+                "records_processed": 0,
+                "failure_reason": None,
+            }
+        },
+    }
+    out = build_operator_health_subsystems(snapshot)
+    assert out["overall_status"] in {"healthy", "degraded", "critical", "unknown", "not_configured"}
+    rows = out["subsystems"]
+    assert isinstance(rows, list)
+    ids = {str(row["id"]) for row in rows if isinstance(row, dict)}
+    assert ids == {"topology", "scheduler", "ingest", "realtime", "retention_poll", "alerts"}

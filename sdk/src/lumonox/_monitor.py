@@ -76,6 +76,13 @@ class _MonitorConfig:
     infrastructure_probe_interval_s: float
     # Min seconds between attaching widget payloads to each captured HTTP event (0 = every event).
     dashboard_widgets_attach_interval_s: float
+    # Serialized JSON body budget per POST (UTF-8 bytes, pre-gzip).
+    # Aligns with server INGEST_MAX_REQUEST_BYTES.
+    ingest_max_batch_bytes: int
+    # Optional sync observer for SDK pressure (off by default; must not raise).
+    telemetry_observer: Callable[[Mapping[str, Any]], None] | None
+    # Bounded parallel ingest POSTs (1 preserves strict ordering).
+    max_concurrent_sends: int
 
 
 def _utc_now_iso() -> str:
@@ -89,10 +96,46 @@ def _debug_log(enabled: bool, message: str) -> None:
 
 
 def _sdk_version() -> str:
-    try:
-        return metadata.version("lumonox")
-    except metadata.PackageNotFoundError:
-        return "unknown"
+    """Resolve the installed distribution version (PyPI ``lumonox-sdk`` or API ``lumonox``)."""
+    for dist_name in ("lumonox-sdk", "lumonox"):
+        try:
+            return metadata.version(dist_name)
+        except metadata.PackageNotFoundError:
+            continue
+    return "unknown"
+
+
+def _split_events_for_ingest_json_budget(
+    events: list[dict[str, Any]], *, max_bytes: int, sdk_version: str
+) -> list[list[dict[str, Any]]]:
+    """Split ``events`` so each chunk's JSON body stays under ``max_bytes`` (best-effort).
+
+    If a single event still exceeds ``max_bytes``, it is sent alone so operators see 413s
+    instead of silently merging oversized payloads.
+    """
+    if not events:
+        return []
+    if max_bytes <= 0:
+        return [list(events)]
+    chunks: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    for ev in events:
+        trial = current + [ev]
+        trial_bytes = len(json.dumps({"events": trial, "sdk_version": sdk_version}).encode("utf-8"))
+        if trial_bytes <= max_bytes:
+            current = trial
+            continue
+        if current:
+            chunks.append(current)
+            current = []
+        single_bytes = len(json.dumps({"events": [ev], "sdk_version": sdk_version}).encode("utf-8"))
+        if single_bytes <= max_bytes:
+            current = [ev]
+        else:
+            chunks.append([ev])
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def _stable_error_hash(
@@ -382,6 +425,8 @@ class _EventDispatcher:
         self._client = client
         self._owns_client = client is None if owns_client is None else owns_client
         self._send_enabled = bool(config.ingest_url and config.api_key)
+        self._send_semaphore: asyncio.Semaphore | None = None
+        self._pending_send_tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
         if self._task is not None:
@@ -393,6 +438,7 @@ class _EventDispatcher:
             )
             return
         self._stopping.clear()
+        self._send_semaphore = asyncio.Semaphore(max(1, self._config.max_concurrent_sends))
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=5.0)
         self._task = asyncio.create_task(self._sender_loop())
@@ -450,38 +496,76 @@ class _EventDispatcher:
         except asyncio.QueueFull:
             _debug_log(self._config.debug, "event queue is full; dropping event")
 
+    def _emit_telemetry(self, payload: Mapping[str, Any]) -> None:
+        observer = self._config.telemetry_observer
+        if observer is None:
+            return
+        try:
+            observer(dict(payload))
+        except Exception:
+            return
+
     async def _sender_loop(self) -> None:
         if not self._send_enabled:
             return
         loop = asyncio.get_running_loop()
         batch: list[dict[str, Any]] = []
         next_flush = loop.time() + self._config.flush_interval_s
-        while not self._stopping.is_set():
-            timeout = max(0.0, next_flush - loop.time())
-            try:
-                event = await asyncio.wait_for(self._queue.get(), timeout=timeout)
-                batch.append(event)
-            except TimeoutError:
-                if not batch:
+        sem = self._send_semaphore
+        if sem is None:
+            return
+
+        async def _bounded_send(payload: list[dict[str, Any]]) -> None:
+            async with sem:
+                await self._send_batch(payload)
+
+        try:
+            while not self._stopping.is_set():
+                timeout = max(0.0, next_flush - loop.time())
+                try:
+                    event = await asyncio.wait_for(self._queue.get(), timeout=timeout)
+                    batch.append(event)
+                except TimeoutError:
+                    if not batch:
+                        next_flush = loop.time() + self._config.flush_interval_s
+                if batch and (len(batch) >= self._config.batch_size or loop.time() >= next_flush):
+                    to_send = list(batch)
+                    batch.clear()
                     next_flush = loop.time() + self._config.flush_interval_s
-            if batch and (len(batch) >= self._config.batch_size or loop.time() >= next_flush):
-                await self._send_batch(batch)
-                batch = []
-                next_flush = loop.time() + self._config.flush_interval_s
-        if batch:
-            await self._send_batch(batch)
+                    task = asyncio.create_task(_bounded_send(to_send))
+                    self._pending_send_tasks.add(task)
+                    task.add_done_callback(self._pending_send_tasks.discard)
+        finally:
+            if self._pending_send_tasks:
+                await asyncio.gather(*list(self._pending_send_tasks), return_exceptions=True)
+            if batch:
+                async with sem:
+                    await self._send_batch(list(batch))
 
     async def _send_batch(self, batch: list[dict[str, Any]]) -> None:
         if not batch:
             return
         if self._client is None or self._config.ingest_url is None or self._config.api_key is None:
             return
-        # One key per batch send; retries reuse the same key to enable backend dedup.
+        sdk_ver = _sdk_version()
+        parts = _split_events_for_ingest_json_budget(
+            batch, max_bytes=self._config.ingest_max_batch_bytes, sdk_version=sdk_ver
+        )
+        for part in parts:
+            await self._send_single_json_chunk(part, sdk_ver)
+
+    async def _send_single_json_chunk(self, batch: list[dict[str, Any]], sdk_ver: str) -> None:
+        if not batch:
+            return
+        if self._client is None or self._config.ingest_url is None or self._config.api_key is None:
+            return
+        started = monotonic()
+        # One key per HTTP POST; retries reuse the same key to enable backend dedup.
         headers = {
             "Authorization": f"Bearer {self._config.api_key}",
             "Idempotency-Key": uuid4().hex,
         }
-        payload = {"events": batch, "sdk_version": _sdk_version()}
+        payload = {"events": batch, "sdk_version": sdk_ver}
         body_json = json.dumps(payload).encode("utf-8")
         post_headers = dict(headers)
         post_kwargs: dict[str, Any]
@@ -509,6 +593,16 @@ class _EventDispatcher:
                     "batch sent successfully "
                     f"status={response.status_code} accepted_events={len(batch)}",
                 )
+                self._emit_telemetry(
+                    {
+                        "kind": "ingest_batch",
+                        "ok": True,
+                        "events": len(batch),
+                        "attempt": attempt + 1,
+                        "duration_ms": round((monotonic() - started) * 1000.0, 3),
+                        "queue_depth": self._queue.qsize(),
+                    }
+                )
                 return
             except httpx.HTTPStatusError as exc:
                 code = exc.response.status_code
@@ -519,6 +613,16 @@ class _EventDispatcher:
                         self._config.debug,
                         f"batch send got non-retryable status={code}; not retrying",
                     )
+                    self._emit_telemetry(
+                        {
+                            "kind": "ingest_batch",
+                            "ok": False,
+                            "events": len(batch),
+                            "attempt": attempt + 1,
+                            "http_status": code,
+                            "queue_depth": self._queue.qsize(),
+                        }
+                    )
                     return
                 _debug_log(
                     self._config.debug,
@@ -526,6 +630,17 @@ class _EventDispatcher:
                 )
                 if attempt >= self._config.max_retries:
                     _debug_log(self._config.debug, "dropping batch after retries exhausted")
+                    self._emit_telemetry(
+                        {
+                            "kind": "ingest_batch",
+                            "ok": False,
+                            "events": len(batch),
+                            "attempt": attempt + 1,
+                            "http_status": code,
+                            "queue_depth": self._queue.qsize(),
+                            "terminal": True,
+                        }
+                    )
                     return
                 retry_after = _retry_after_seconds(exc.response) if code == 429 else None
                 sleep_seconds = (
@@ -541,6 +656,17 @@ class _EventDispatcher:
                 )
                 if attempt >= self._config.max_retries:
                     _debug_log(self._config.debug, "dropping batch after retries exhausted")
+                    self._emit_telemetry(
+                        {
+                            "kind": "ingest_batch",
+                            "ok": False,
+                            "events": len(batch),
+                            "attempt": attempt + 1,
+                            "queue_depth": self._queue.qsize(),
+                            "terminal": True,
+                            "error": type(exc).__name__,
+                        }
+                    )
                     return
                 sleep_seconds = self._config.retry_backoff_s * (2**attempt)
                 await asyncio.sleep(sleep_seconds)
@@ -840,6 +966,29 @@ def monitor(app: Any, **kwargs: Any) -> None:
                 resolved_kwargs.get(
                     "dashboard_widgets_attach_interval_s",
                     _env_float("LUMONOX_DASHBOARD_WIDGET_ATTACH_INTERVAL_S", 15.0),
+                )
+            ),
+        ),
+        ingest_max_batch_bytes=max(
+            256,
+            int(
+                resolved_kwargs.get(
+                    "ingest_max_batch_bytes",
+                    _env_int("LUMONOX_INGEST_MAX_BATCH_BYTES", 786_432),
+                )
+            ),
+        ),
+        telemetry_observer=(
+            _telemetry_observer_arg
+            if callable(_telemetry_observer_arg := resolved_kwargs.get("telemetry_observer"))
+            else None
+        ),
+        max_concurrent_sends=max(
+            1,
+            int(
+                resolved_kwargs.get(
+                    "max_concurrent_sends",
+                    _env_int("LUMONOX_MAX_CONCURRENT_SENDS", 1),
                 )
             ),
         ),

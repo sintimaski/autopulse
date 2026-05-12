@@ -35,6 +35,22 @@ Operational assumptions for this embedded mode:
 - DuckDB event writes must follow the documented single-writer pattern.
 - Prefer one API writer process per DuckDB file unless/until you move to a shared event transport/store architecture.
 
+## 1.2 Golden path: horizontally scaled API (HA)
+
+Use this checklist when running **more than one** API process behind a load balancer. It is the canonical “safe HA” story for the current MVP stack; deeper rationale lives in [DEPLOYMENT_MULTI_INSTANCE.md](./DEPLOYMENT_MULTI_INSTANCE.md) and [ADR_EVENT_STORE_SCALING.md](./ADR_EVENT_STORE_SCALING.md).
+
+| Concern | Supported pattern | No-Go / requires explicit mitigation |
+|--------|---------------------|--------------------------------------|
+| **DuckDB event file** | Exactly **one** live writer process (or single pod) appends to the configured `LUMONOX_DUCKDB_PATH` / event-plane paths; other replicas must not write the same file. | Multiple replicas concurrently writing the same DuckDB file. |
+| **Event plane** | `LUMONOX_EVENT_PLANE_MODE=duckdb_single_writer` with `LUMONOX_DUCKDB_SINGLE_WRITER_PROFILE=true` in production (enforced by `validate_deployment_settings`), **or** `duckdb_log_shards` with the compactor path you have load-tested. | Mixed assumptions between docs and env without an acknowledged profile. |
+| **Dashboard live updates** | `DASHBOARD_REALTIME_BUS_BACKEND=postgres_notify` on Postgres **or** LB **stickiness** / a dedicated WS replica for `/dashboard/ws` traffic. | `none` + multi-replica + unsticky WS (stale live UI; see multi-instance doc). |
+| **Ingest rate limits** | `INGEST_DISTRIBUTED_RATE_LIMIT_ENABLED=true` when you need cluster-wide caps. | Expecting per-process limits to hold globally behind an LB. |
+| **Migrations** | One-shot `alembic upgrade head` before scale-out; `DATABASE_RUN_MIGRATIONS_ON_STARTUP=false` on steady-state replicas (especially non-SQLite metadata). | Every replica migrating on boot against shared Postgres. |
+
+**Rollout / rollback:** tightening HA settings (for example enabling `postgres_notify` or moving to single-writer) is a normal rolling restart. Moving **from** single-writer DuckDB to concurrent writers without a supported event plane is **not** supported—treat that as a product/architecture change with data migration, not a flag toggle.
+
+**Operator verification (staging):** capture `/ready` and `GET /internal/metrics` `topology_profile` + `topology_guardrails` after changing replica count or LB policy; confirm `ingest_pressure` and scheduler counters look sane under load.
+
 ## 2. Environment and secrets
 
 1. Set `LUMONOX_ENV=production` and run through production guardrails (dashboard auth, HTTPS ingest, origin enforcement). See [test_deployment_settings.py](../../backend/tests/test_deployment_settings.py) and `validate_deployment_settings` in [`backend/src/lumonox_backend/core/config.py`](../../backend/src/lumonox_backend/core/config.py).

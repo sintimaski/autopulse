@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDiagnosisPageHref,
+  buildIncidentShareQuery,
   buildRequestsPageHref,
   buildScopedQuery,
   parseScopedQuery,
@@ -194,5 +195,56 @@ describe("dashboardQueryState", () => {
     expect(parsed.sqlFilterApplied).toBe("status_code >= 400");
     expect(parsed.sqlFilterEnabled).toBe(true);
     expect(parsed.correlationRequestId).toBe("rid-1");
+  });
+
+  it("buildIncidentShareQuery carries only the time window", () => {
+    const absolute = buildIncidentShareQuery({
+      isAbsoluteWindow: true,
+      windowMinutes: 60,
+      windowFromTimestamp: "2026-04-27T10:00:00.000Z",
+      windowToTimestamp: "2026-04-27T11:00:00.000Z",
+      method: "GET",
+      statusClass: "ALL",
+      minLatencyMs: "",
+      maxLatencyMs: "",
+      pathQuery: "",
+      serverEnvironmentQuery: "",
+      serverServiceQuery: "",
+      requestLimit: 50,
+      requestPage: 0,
+      errorGroupLimit: 100,
+      errorGroupPage: 0,
+      errorGroupSort: "last_seen",
+      correlationRequestId: "",
+      sqlFilterApplied: "",
+      sqlFilterEnabled: false,
+    });
+    const absParams = new URLSearchParams(absolute);
+    expect(absParams.get("from_timestamp")).toBe("2026-04-27T10:00:00.000Z");
+    expect(absParams.get("to_timestamp")).toBe("2026-04-27T11:00:00.000Z");
+    expect(absParams.get("method")).toBeNull();
+
+    const rolling = buildIncidentShareQuery({
+      isAbsoluteWindow: false,
+      windowMinutes: 45,
+      windowFromTimestamp: "",
+      windowToTimestamp: "",
+      method: "ALL",
+      statusClass: "ALL",
+      minLatencyMs: "",
+      maxLatencyMs: "",
+      pathQuery: "",
+      serverEnvironmentQuery: "",
+      serverServiceQuery: "",
+      requestLimit: 50,
+      requestPage: 0,
+      errorGroupLimit: 100,
+      errorGroupPage: 0,
+      errorGroupSort: "last_seen",
+      correlationRequestId: "",
+      sqlFilterApplied: "",
+      sqlFilterEnabled: false,
+    });
+    expect(new URLSearchParams(rolling).get("window_minutes")).toBe("45");
   });
 });

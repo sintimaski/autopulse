@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lumonox_backend.api.routes.health import _build_metrics_snapshot
+from lumonox_backend.api.routes.health import (
+    _build_metrics_snapshot,
+    build_operator_health_subsystems,
+)
 from lumonox_backend.auth import (
     DashboardAuthSession,
     ProjectContext,
@@ -31,6 +34,8 @@ from lumonox_backend.schemas import (
     DashboardEventPlaneCutoverSettings,
     DashboardEventPlaneCutoverSettingsUpdate,
     DashboardInternalMetricsResponse,
+    DashboardOperatorHealthResponse,
+    DashboardOperatorHealthSubsystem,
     DashboardRetentionSettings,
     DashboardRetentionSettingsUpdate,
     DashboardSystemDiagnosticsResponse,
@@ -42,6 +47,18 @@ from lumonox_backend.services.event_plane_parity import build_cutover_decision
 router = APIRouter()
 logger = logging.getLogger(__name__)
 _CUTOVER_PARITY_WINDOW_MINUTES = 60
+
+_OPERATOR_HEALTH_STATUSES = frozenset(
+    {"healthy", "degraded", "critical", "unknown", "not_configured"},
+)
+OperatorHealthLevel = Literal["healthy", "degraded", "critical", "unknown", "not_configured"]
+
+
+def _coerce_operator_health_status(raw: object) -> OperatorHealthLevel:
+    s = str(raw or "unknown").strip().lower()
+    if s in _OPERATOR_HEALTH_STATUSES:
+        return cast(OperatorHealthLevel, s)
+    return "unknown"
 
 
 def _parse_iso_datetime(value: Any) -> datetime | None:
@@ -277,6 +294,49 @@ async def get_dashboard_internal_metrics(
         enabled=True,
         reason=None,
         metrics=_build_metrics_snapshot(request),
+    )
+
+
+@router.get("/operator-health", response_model=DashboardOperatorHealthResponse)
+async def get_dashboard_operator_health(
+    request: Request,
+    _: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    __: Annotated[None, Depends(ensure_dashboard_admin_or_owner)],
+) -> DashboardOperatorHealthResponse:
+    settings = get_settings()
+    if not settings.internal_metrics_bearer_token:
+        return DashboardOperatorHealthResponse(
+            enabled=False,
+            reason="INTERNAL_METRICS_BEARER_TOKEN is not configured on the server.",
+            generated_at=datetime.now(tz=UTC),
+            overall_status="unknown",
+            subsystems=[],
+        )
+    metrics = _build_metrics_snapshot(request)
+    summary = build_operator_health_subsystems(metrics)
+    rows = summary.get("subsystems")
+    if not isinstance(rows, list):
+        rows = []
+    subsystems = [
+        DashboardOperatorHealthSubsystem(
+            id=str(row.get("id") or ""),
+            label=str(row.get("label") or ""),
+            status=_coerce_operator_health_status(row.get("status")),
+            summary=str(row.get("summary") or ""),
+            settings_anchor=(
+                str(row["settings_anchor"]) if row.get("settings_anchor") is not None else None
+            ),
+        )
+        for row in rows
+        if isinstance(row, dict)
+    ]
+    overall = _coerce_operator_health_status(summary.get("overall_status"))
+    return DashboardOperatorHealthResponse(
+        enabled=True,
+        reason=None,
+        generated_at=datetime.now(tz=UTC),
+        overall_status=overall,
+        subsystems=subsystems,
     )
 
 

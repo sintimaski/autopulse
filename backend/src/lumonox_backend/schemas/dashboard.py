@@ -131,6 +131,26 @@ class DashboardInternalMetricsResponse(BaseModel):
     metrics: dict[str, Any] | None = None
 
 
+class DashboardOperatorHealthSubsystem(BaseModel):
+    """One row in the operator health matrix (overview + settings deep links)."""
+
+    id: str
+    label: str
+    status: Literal["healthy", "degraded", "critical", "unknown", "not_configured"]
+    summary: str
+    settings_anchor: str | None = None
+
+
+class DashboardOperatorHealthResponse(BaseModel):
+    """Aggregated subsystem health for dashboard operators (admin/owner session)."""
+
+    enabled: bool
+    reason: str | None = None
+    generated_at: datetime
+    overall_status: Literal["healthy", "degraded", "critical", "unknown", "not_configured"]
+    subsystems: list[DashboardOperatorHealthSubsystem]
+
+
 class DashboardSystemDiagnosticsResponse(BaseModel):
     generated_at: datetime
     topology: dict[str, Any]

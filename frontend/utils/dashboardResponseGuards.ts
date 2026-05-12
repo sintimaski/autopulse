@@ -9,6 +9,9 @@ import type {
   DashboardApiKeyRotateResponse,
   DashboardBootstrapResponse,
   DashboardInternalMetricsResponse,
+  DashboardOperatorHealthResponse,
+  DashboardOperatorHealthSubsystem,
+  OperatorHealthStatus,
   DashboardStudioNavPage,
   DashboardMembershipItem,
   DashboardOnboardingStatusResponse,
@@ -261,6 +264,55 @@ export function parseDashboardInternalMetricsResponse(raw: unknown): DashboardIn
     return null;
   }
   return raw as DashboardInternalMetricsResponse;
+}
+
+function isOperatorHealthStatus(v: unknown): v is OperatorHealthStatus {
+  return (
+    v === "healthy" ||
+    v === "degraded" ||
+    v === "critical" ||
+    v === "unknown" ||
+    v === "not_configured"
+  );
+}
+
+function isDashboardOperatorHealthSubsystem(v: unknown): v is DashboardOperatorHealthSubsystem {
+  if (!isRecord(v)) {
+    return false;
+  }
+  if (typeof v.id !== "string" || typeof v.label !== "string" || typeof v.summary !== "string") {
+    return false;
+  }
+  if (!isOperatorHealthStatus(v.status)) {
+    return false;
+  }
+  if (v.settings_anchor !== null && typeof v.settings_anchor !== "string") {
+    return false;
+  }
+  return true;
+}
+
+/** `GET /dashboard/operator-health` */
+export function parseDashboardOperatorHealthResponse(raw: unknown): DashboardOperatorHealthResponse | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (typeof raw.enabled !== "boolean") {
+    return null;
+  }
+  if (raw.reason !== null && typeof raw.reason !== "string") {
+    return null;
+  }
+  if (typeof raw.generated_at !== "string") {
+    return null;
+  }
+  if (!isOperatorHealthStatus(raw.overall_status)) {
+    return null;
+  }
+  if (!Array.isArray(raw.subsystems) || !raw.subsystems.every(isDashboardOperatorHealthSubsystem)) {
+    return null;
+  }
+  return raw as DashboardOperatorHealthResponse;
 }
 
 /** `GET /dashboard/system-diagnostics` */

@@ -1,6 +1,7 @@
 import {
   Bell,
   Bookmark,
+  ClipboardList,
   History,
   LayoutDashboard,
   ListChecks,
@@ -31,6 +32,7 @@ export const DASHBOARD_NAV_SECTIONS: readonly DashboardNavSection[] = [
       { href: "/dashboard", label: "Overview", Icon: LayoutDashboard },
       { href: "/diagnosis", label: "Errors & Diagnosis", Icon: Stethoscope },
       { href: "/requests", label: "Requests", Icon: ScrollText },
+      { href: "/incident", label: "Incident", Icon: ClipboardList },
       { href: "/bookmarks", label: "Bookmarks", Icon: Bookmark },
       { href: "/alerts", label: "Alerts", Icon: Bell },
     ],

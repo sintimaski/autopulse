@@ -22,7 +22,7 @@ import { CardSpinner } from "../../ui/CardSpinner";
 import { GuidedTroubleshootingPanel } from "../GuidedTroubleshootingPanel";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScopeBar";
-import { DiagnosisScopePivotBar } from "../DiagnosisScopePivotBar";
+import { CorrelationClearBar } from "../CorrelationClearBar";
 import { MetricCard } from "../MetricCard";
 import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
 import {
@@ -219,9 +219,7 @@ export function DiagnosisContent() {
       return (
         <>
           <DiagnosisRequestsStickyScopeBar />
-          <div className="mb-2">
-            <DiagnosisScopePivotBar />
-          </div>
+          <CorrelationClearBar />
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <CardSpinner size="compact" label="Requests" />
@@ -243,9 +241,7 @@ export function DiagnosisContent() {
     return (
       <>
         <DiagnosisRequestsStickyScopeBar />
-        <div className="mb-2">
-          <DiagnosisScopePivotBar />
-        </div>
+        <CorrelationClearBar />
         <section
         className="rounded-2xl border border-slate-200 bg-white/95 p-6 text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"
         role="status"
@@ -290,9 +286,7 @@ export function DiagnosisContent() {
   return (
     <>
       <DiagnosisRequestsStickyScopeBar />
-      <div className="mb-2">
-        <DiagnosisScopePivotBar />
-      </div>
+      <CorrelationClearBar />
       {d.errorMessage ? (
         <section
           className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100"

@@ -193,6 +193,29 @@ export function buildScopedQuery(
   return params;
 }
 
+/**
+ * Minimal query for `/incident` share links (time window only).
+ *
+ * **Developer / ops:** `{origin}{basePath}/incident?{buildIncidentShareQuery(state)}` opens the incident
+ * worksheet with that window; full filters live in the URL after the scope toolbar syncs. Optional `title` /
+ * `label` query params are ignored by scope sync — add to the worksheet manually if needed.
+ * In the UI, the sidebar **Incident** entry uses this string via `DashboardLayoutClient`.
+ */
+export function buildIncidentShareQuery(state: DashboardScopedQueryState): string {
+  const params = new URLSearchParams();
+  if (
+    state.isAbsoluteWindow &&
+    state.windowFromTimestamp?.trim() &&
+    state.windowToTimestamp?.trim()
+  ) {
+    params.set("from_timestamp", state.windowFromTimestamp.trim());
+    params.set("to_timestamp", state.windowToTimestamp.trim());
+  } else {
+    params.set("window_minutes", String(state.windowMinutes));
+  }
+  return params.toString();
+}
+
 /** Compare query strings semantically (key order in toString() may differ). */
 export function scopedQueryStringsEqual(a: string, b: string): boolean {
   if (a === b) {

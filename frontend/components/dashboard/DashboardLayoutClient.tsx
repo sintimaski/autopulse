@@ -17,6 +17,7 @@ import {
 import { ServerQueryToolbar } from "./ServerQueryToolbar";
 import {
   buildCurrentScopedState,
+  buildIncidentShareQuery,
   buildScopedQuery,
   parseScopedQuery,
   scopedQueryStringsEqual,
@@ -225,6 +226,11 @@ function ShellWithData({ children }: { children: ReactNode }) {
     [scopedServerStateForUrl, logsClientForUrl],
   );
 
+  const incidentNavQueryComputed = useMemo(
+    () => buildIncidentShareQuery(scopedServerStateForUrl),
+    [scopedServerStateForUrl],
+  );
+
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (event: MediaQueryListEvent) => {
@@ -282,6 +288,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
         const fromRef = scopedStateRef.current[pathname];
         if (fromRef) {
           applyState(fromRef);
+        } else if (pathname === "/incident") {
+          // First visit: keep the in-memory scope from Overview / Requests / Diagnosis (shared filters).
         } else {
           const persisted = readPersistedDashboardSession();
           const scoped =
@@ -456,7 +464,8 @@ function ShellWithData({ children }: { children: ReactNode }) {
     pathname === "/diagnosis" ||
     pathname === "/logs" ||
     pathname === "/requests" ||
-    pathname === "/query-explorer";
+    pathname === "/query-explorer" ||
+    pathname === "/incident";
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const subpathStaticUi = isApiSubpathDashboard();
@@ -586,19 +595,22 @@ function ShellWithData({ children }: { children: ReactNode }) {
       isDark={isDark}
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}
+      incidentNavQuery={incidentNavQueryComputed}
       filterToolbarAutoCollapse={showServerScope}
       filterToolbarCompactLabel={
         pathname === "/diagnosis"
           ? "Diagnosis scope"
           : pathname === "/query-explorer"
             ? "Time scope"
-            : pathname === "/logs" || pathname === "/requests"
-              ? "Requests scope"
-              : "Server scope"
+            : pathname === "/incident"
+              ? "Incident scope"
+              : pathname === "/logs" || pathname === "/requests"
+                ? "Requests scope"
+                : "Server scope"
       }
       onResetServerFilters={
         showServerScope
-          ? pathname === "/diagnosis"
+          ? pathname === "/diagnosis" || pathname === "/incident"
             ? resetDiagnosisScope
             : pathname === "/query-explorer"
               ? () => {
@@ -614,7 +626,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         showServerScope ? (
           <ServerQueryToolbar
             variant={
-              pathname === "/diagnosis"
+              pathname === "/diagnosis" || pathname === "/incident"
                 ? "diagnosis"
                 : pathname === "/query-explorer"
                   ? "query-explorer"

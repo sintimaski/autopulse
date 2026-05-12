@@ -24,6 +24,11 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Requests",
     subtitle: "Request-level evidence — same investigation scope as Overview and Diagnosis.",
   },
+  "/incident": {
+    title: "Incident",
+    subtitle:
+      "Notebook-style worksheet: markdown, notes, runnable SQL on scoped_events, and quick links to diagnosis, requests, traces, and more.",
+  },
   "/diagnosis": {
     title: "Errors & Diagnosis",
     subtitle: "Grouped failures and signals — start here when something breaks.",
@@ -65,12 +70,18 @@ export function isScopedUrlSyncRoute(pathname: string): boolean {
     pathname === "/diagnosis" ||
     pathname === "/logs" ||
     pathname === "/requests" ||
-    pathname === "/query-explorer"
+    pathname === "/query-explorer" ||
+    pathname === "/incident"
   );
 }
 
 export function isScopedPathRestoreRoute(pathname: string): boolean {
-  return pathname === "/diagnosis" || pathname === "/logs" || pathname === "/requests";
+  return (
+    pathname === "/diagnosis" ||
+    pathname === "/logs" ||
+    pathname === "/requests" ||
+    pathname === "/incident"
+  );
 }
 
 export function replaceScopedUrlInPlace(nextHref: string): void {

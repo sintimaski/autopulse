@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 
 import { MetricCard } from "../MetricCard";
 import { DashboardScopeFacetShell } from "../DashboardScopeFacetShell";
-import { DiagnosisScopePivotBar } from "../DiagnosisScopePivotBar";
+import { CorrelationClearBar } from "../CorrelationClearBar";
 import { OverviewScopeFacetBoard } from "../OverviewScopeFacetBoard";
 import { SparklineMini } from "../SparklineMini";
 import { StatusPill } from "../StatusPill";
@@ -31,7 +31,7 @@ import {
 import { CardSpinner } from "../../ui/CardSpinner";
 import { ChartScopeTintOverlay } from "../charts/ChartScopeTintOverlay";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
-import { OperatorReliabilityCallout } from "../OperatorReliabilityCallout";
+import { OperatorPipelineHealthSection } from "../OperatorPipelineHealthSection";
 import { RecentJobFailuresStrip } from "../RecentJobFailuresStrip";
 import { APDEX_THRESHOLDS_MS } from "../../../utils/apdex";
 import { resolveOverviewExtendedForHome } from "../../../utils/overviewExtendedInference";
@@ -110,9 +110,7 @@ export function DashboardHomeContent() {
         <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
-        <div className="mb-2">
-          <DiagnosisScopePivotBar />
-        </div>
+        <CorrelationClearBar />
         {d.loading && !d.errorMessage ? (
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -273,9 +271,7 @@ export function DashboardHomeContent() {
         <DashboardScopeFacetShell className="sticky top-0 z-30">
           <OverviewScopeFacetBoard />
         </DashboardScopeFacetShell>
-        <div className="mb-2">
-          <DiagnosisScopePivotBar />
-        </div>
+        <CorrelationClearBar />
         {homeSlice.errorMessage ? (
           <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
             {homeSlice.errorMessage}
@@ -308,7 +304,7 @@ export function DashboardHomeContent() {
           moreHref={diagnosisBaseHref}
           scopeForCorrelation={scopedState}
         />
-        <OperatorReliabilityCallout />
+        <OperatorPipelineHealthSection />
         <div className="w-full rounded-xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.04] dark:border-neutral-700 dark:bg-neutral-900 dark:ring-white/[0.06]">
           <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">Traffic volume</h3>
           <p className="mb-2 text-xs text-slate-600 dark:text-neutral-400" aria-live="polite">
@@ -978,16 +974,14 @@ export function DashboardHomeContent() {
           </div>
         </div>
       </DashboardScopeFacetShell>
-      <div className="mb-2">
-        <DiagnosisScopePivotBar />
-      </div>
-      <OperatorReliabilityCallout />
+      <CorrelationClearBar />
+      <OperatorPipelineHealthSection />
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Traffic graphs</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-          Requests (bars) and trend cards for volume, error rate, error count, and latency. Hover for values or
-          click a bar to open Errors &amp; Diagnosis for that bucket.{" "}
+          Requests (bars) plus a full-width class trend overlay. Hover for values or click a bar to open Errors
+          &amp; Diagnosis for that bucket.{" "}
           <Link href={diagnosisBaseHref} className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
             Errors &amp; Diagnosis
           </Link>
