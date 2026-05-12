@@ -126,6 +126,7 @@ class Settings:
     alert_email_smtp_password: str | None = None
     alert_slack_webhook_url: str | None = None
     alert_discord_webhook_url: str | None = None
+    alert_webhook_min_interval_seconds: float = 1.0
     lumonox_env: str = "development"
     dev_scenarios_enabled: bool = False
     dev_scenarios_max_duration_seconds: int = 180
@@ -916,6 +917,10 @@ def get_settings() -> Settings:
         alert_email_smtp_password=getenv("ALERT_EMAIL_SMTP_PASSWORD"),
         alert_slack_webhook_url=getenv("ALERT_SLACK_WEBHOOK_URL"),
         alert_discord_webhook_url=getenv("ALERT_DISCORD_WEBHOOK_URL"),
+        alert_webhook_min_interval_seconds=max(
+            0.0,
+            _env_float("ALERT_WEBHOOK_MIN_INTERVAL_SECONDS", 1.0),
+        ),
         lumonox_env=lumonox_env,
         dev_scenarios_enabled=_env_bool("DEV_SCENARIOS_ENABLED", False),
         dev_scenarios_max_duration_seconds=_env_int(

@@ -232,6 +232,25 @@ class DashboardAlertSettingsUpdate(BaseModel):
             raise ValueError("must be at least 1")
         return value
 
+    @model_validator(mode="after")
+    def validate_outbound_webhook_urls(self) -> Self:
+        from lumonox_backend.core.config import get_settings
+        from lumonox_backend.services.alert_webhook_security import (
+            AlertWebhookUrlError,
+            validate_alert_outbound_webhook_url,
+        )
+
+        settings = get_settings()
+        for field in ("slack_webhook_url", "discord_webhook_url", "webhook_url"):
+            value = getattr(self, field)
+            if not value:
+                continue
+            try:
+                validate_alert_outbound_webhook_url(value, lumonox_env=settings.lumonox_env)
+            except AlertWebhookUrlError as exc:
+                raise ValueError(str(exc)) from exc
+        return self
+
 
 class DashboardAlertDispatchItem(BaseModel):
     id: int

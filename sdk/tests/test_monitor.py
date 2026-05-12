@@ -112,6 +112,8 @@ def _make_config(**overrides: Any) -> _MonitorConfig:
         "ingest_max_batch_bytes": 786_432,
         "telemetry_observer": None,
         "max_concurrent_sends": 1,
+        "circuit_failure_threshold": 0,
+        "circuit_open_seconds": 30.0,
     }
     values.update(overrides)
     return _MonitorConfig(**values)
@@ -298,6 +300,33 @@ class _RetryAfterStatusClient:
                 json={"detail": "rate limited"},
             )
         return httpx.Response(200, request=request, json={"accepted": 1})
+
+
+@dataclass
+class _SlowOkClient:
+    delay_s: float
+    calls: int = 0
+    in_flight: int = 0
+    max_in_flight: int = 0
+
+    async def post(
+        self,
+        url: str,
+        *,
+        json: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        headers: dict[str, str],
+        **_: Any,
+    ) -> httpx.Response:
+        self.calls += 1
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        await asyncio.sleep(self.delay_s)
+        self.in_flight -= 1
+        payload = _resolved_json_payload(json=json, content=content, headers=headers)
+        request = httpx.Request("POST", url)
+        accepted = len(payload.get("events", []))
+        return httpx.Response(200, request=request, json={"accepted": accepted})
 
 
 def test_monitor_is_noop_for_non_fastapi_object() -> None:
@@ -881,6 +910,87 @@ def test_telemetry_observer_called_on_success() -> None:
         assert isinstance(first, dict)
         assert first.get("ok") is True
         assert first.get("events") == 1
+
+    asyncio.run(run())
+
+
+def test_ingest_circuit_opens_and_skips_posts_while_cooldown() -> None:
+    """Terminal failures increment toward threshold; open circuit skips HTTP until success path."""
+
+    async def run() -> None:
+        payloads: list[Any] = []
+
+        def obs(payload: object) -> None:
+            payloads.append(payload)
+
+        cfg = _make_config(
+            telemetry_observer=obs,
+            max_retries=0,
+            circuit_failure_threshold=2,
+            circuit_open_seconds=60.0,
+        )
+        err = _ErrorStatusClient()
+        dispatcher = _EventDispatcher(cfg, client=err)
+        await dispatcher._send_batch([{"type": "request", "a": 1}])
+        await dispatcher._send_batch([{"type": "request", "a": 2}])
+        calls_after_open = err.calls
+        assert any(
+            isinstance(p, dict) and p.get("circuit_opened") is True for p in payloads
+        ), payloads
+        await dispatcher._send_batch([{"type": "request", "a": 3}])
+        assert err.calls == calls_after_open
+        skip_payloads = [
+            p for p in payloads if isinstance(p, dict) and p.get("circuit_open") is True
+        ]
+        assert skip_payloads, payloads
+
+    asyncio.run(run())
+
+
+def test_ingest_circuit_success_resets_consecutive_failures() -> None:
+    """A successful batch clears the consecutive terminal counter before opening the circuit."""
+
+    async def run() -> None:
+        cfg = _make_config(
+            max_retries=0,
+            circuit_failure_threshold=2,
+            circuit_open_seconds=60.0,
+        )
+        err = _ErrorStatusClient()
+        ok = _FailingClient(failures_before_success=0)
+        dispatcher = _EventDispatcher(cfg, client=err)
+        await dispatcher._send_batch([{"type": "request", "n": 1}])
+        dispatcher._client = ok
+        await dispatcher._send_batch([{"type": "request", "n": 2}])
+        dispatcher._client = err
+        await dispatcher._send_batch([{"type": "request", "n": 3}])
+        await dispatcher._send_batch([{"type": "request", "n": 4}])
+        calls_after_open = err.calls
+        await dispatcher._send_batch([{"type": "request", "n": 5}])
+        assert err.calls == calls_after_open
+
+    asyncio.run(run())
+
+
+def test_sender_loop_overlaps_slow_posts_when_max_concurrent_sends_gt_one() -> None:
+    """Mocked slow server: two in-flight POSTs should overlap with semaphore width 2."""
+
+    async def run() -> None:
+        cfg = _make_config(
+            batch_size=1,
+            flush_interval_s=0.02,
+            max_concurrent_sends=2,
+            queue_maxsize=20,
+            circuit_failure_threshold=0,
+        )
+        client = _SlowOkClient(delay_s=0.07)
+        dispatcher = _EventDispatcher(cfg, client=client)
+        await dispatcher.start()
+        for i in range(5):
+            dispatcher.enqueue({"type": "request", "i": i})
+        await asyncio.sleep(0.45)
+        await dispatcher.stop()
+        assert client.max_in_flight >= 2
 
     asyncio.run(run())
 

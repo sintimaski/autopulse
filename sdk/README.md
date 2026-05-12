@@ -72,6 +72,8 @@ If **either** variable is missing, the sender stays off: middleware still runs, 
 - `LUMONOX_CAPTURE_QUERY_PARAMS` — when truthy, capture query parameters (default **off**).
 - `LUMONOX_INGEST_MAX_BATCH_BYTES` — max UTF-8 JSON size per ingest POST before gzip (default `786432`, sized under the API default `INGEST_MAX_REQUEST_BYTES` of 1 MiB). Oversized logical batches are split automatically.
 - `LUMONOX_MAX_CONCURRENT_SENDS` — max parallel ingest POSTs from this process (default `1`).
+- `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` — consecutive **terminal** ingest failures (after retries) before the SDK **opens** a cooldown and **fast-fails** further POSTs for `LUMONOX_CIRCUIT_OPEN_SECONDS` (default **`0`** = disabled). Use a small positive value in production when the backend may be unavailable for long stretches. While open, the sender **does not** start new HTTP requests for those batches (no `Idempotency-Key` is consumed server-side for skipped work); each real POST still sends a fresh key.
+- `LUMONOX_CIRCUIT_OPEN_SECONDS` — cooldown length after the threshold is hit (default `30`; minimum enforced `0.5`).
 
 `lumonox()` and `monitor()` support explicit kwargs for runtime behavior:
 
@@ -81,6 +83,7 @@ If **either** variable is missing, the sender stays off: middleware still runs, 
 - `ignore_path_prefixes` (tuple/list of path prefixes to skip, e.g. `("/health", "/ready")`)
 - `scrub_keys` (additional sensitive keys to redact)
 - `ingest_max_batch_bytes` / `max_concurrent_sends` (override the env defaults above)
+- `circuit_failure_threshold` / `circuit_open_seconds` (override env; threshold `0` keeps the breaker off)
 - `telemetry_observer` — optional callable taking a small read-only dict per finished ingest POST (`kind="ingest_batch"`, `ok`, `events`, `attempt`, `duration_ms`, `queue_depth`, …). Must stay fast and must not raise; omit for zero overhead beyond a `None` check.
 - `queue_maxsize`, `batch_size`, `flush_interval_s`, `max_retries`, `retry_backoff_s`
 

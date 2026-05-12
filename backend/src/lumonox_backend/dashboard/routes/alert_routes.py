@@ -83,6 +83,10 @@ _REASON_CODE_MESSAGES: dict[str, str] = {
     "sendmail_failed": "sendmail exited non-zero. Check local MTA queue and logs.",
     "smtp_failed": "SMTP delivery failed. Check host, port, auth, and TLS settings.",
     "unknown": "Delivery failed for an unspecified reason. See provider metadata.",
+    "unsafe_webhook_url": (
+        "Webhook URL is not allowed (must be https to a public host, "
+        "or http localhost in development only)."
+    ),
 }
 
 

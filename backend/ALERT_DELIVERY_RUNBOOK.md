@@ -39,6 +39,12 @@ Set one of the minimal sender configurations:
   - `ALERT_SENDER_MODE=composite`
   - combine email + Slack and/or Discord vars above.
 
+**Outbound webhook URL rules (dashboard project settings + global `ALERT_*_WEBHOOK_URL`):**
+
+- **Staging / production (`LUMONOX_ENV`):** `https` only; host must resolve to **public** unicast addresses (private IPs, loopback, and link-local are rejected). No userinfo in the URL.
+- **Development:** same as above for `https`, or **`http` only to `127.0.0.1` / `localhost`** for local receivers.
+- **Pacing:** set `ALERT_WEBHOOK_MIN_INTERVAL_SECONDS` (default `1`, use `0` to disable per-process spacing) to avoid hammering a destination when multiple channels fire in one evaluation.
+
 ## 2) Trigger one evaluation pass
 
 ```bash

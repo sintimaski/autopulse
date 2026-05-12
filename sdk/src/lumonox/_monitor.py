@@ -83,6 +83,10 @@ class _MonitorConfig:
     telemetry_observer: Callable[[Mapping[str, Any]], None] | None
     # Bounded parallel ingest POSTs (1 preserves strict ordering).
     max_concurrent_sends: int
+    # After this many consecutive terminal send failures (per process), fast-fail POSTs for
+    # ``circuit_open_seconds`` (half-open: next POST after cooldown tries again). ``0`` disables.
+    circuit_failure_threshold: int
+    circuit_open_seconds: float
 
 
 def _utc_now_iso() -> str:
@@ -427,6 +431,9 @@ class _EventDispatcher:
         self._send_enabled = bool(config.ingest_url and config.api_key)
         self._send_semaphore: asyncio.Semaphore | None = None
         self._pending_send_tasks: set[asyncio.Task[None]] = set()
+        self._circuit_lock: asyncio.Lock | None = None
+        self._circuit_consecutive_failures: int = 0
+        self._circuit_open_until: float = 0.0
 
     async def start(self) -> None:
         if self._task is not None:
@@ -505,6 +512,40 @@ class _EventDispatcher:
         except Exception:
             return
 
+    def _ensure_circuit_lock_sync(self) -> asyncio.Lock | None:
+        if self._config.circuit_failure_threshold <= 0:
+            return None
+        if self._circuit_lock is None:
+            self._circuit_lock = asyncio.Lock()
+        return self._circuit_lock
+
+    async def _circuit_on_send_success(self, lock: asyncio.Lock | None) -> None:
+        if lock is None:
+            return
+        async with lock:
+            self._circuit_consecutive_failures = 0
+            self._circuit_open_until = 0.0
+
+    async def _circuit_on_terminal_failure(self, lock: asyncio.Lock | None) -> dict[str, Any]:
+        """Record a dropped batch; returns extra telemetry keys when the circuit opens."""
+        if lock is None:
+            return {}
+        extra: dict[str, Any] = {}
+        async with lock:
+            self._circuit_consecutive_failures += 1
+            thr = self._config.circuit_failure_threshold
+            if self._circuit_consecutive_failures >= thr:
+                self._circuit_open_until = monotonic() + self._config.circuit_open_seconds
+                self._circuit_consecutive_failures = 0
+                extra["circuit_opened"] = True
+                _debug_log(
+                    self._config.debug,
+                    "ingest circuit opened: "
+                    f"fast-fail for {self._config.circuit_open_seconds}s "
+                    f"after {thr} consecutive terminal failures",
+                )
+        return extra
+
     async def _sender_loop(self) -> None:
         if not self._send_enabled:
             return
@@ -559,6 +600,25 @@ class _EventDispatcher:
             return
         if self._client is None or self._config.ingest_url is None or self._config.api_key is None:
             return
+        circuit_lock = self._ensure_circuit_lock_sync()
+        if circuit_lock is not None:
+            async with circuit_lock:
+                if monotonic() < self._circuit_open_until:
+                    self._emit_telemetry(
+                        {
+                            "kind": "ingest_batch",
+                            "ok": False,
+                            "circuit_open": True,
+                            "skipped": True,
+                            "events": len(batch),
+                            "queue_depth": self._queue.qsize(),
+                        }
+                    )
+                    _debug_log(
+                        self._config.debug,
+                        "ingest circuit open; skipping POST until cooldown elapses",
+                    )
+                    return
         started = monotonic()
         # One key per HTTP POST; retries reuse the same key to enable backend dedup.
         headers = {
@@ -603,6 +663,7 @@ class _EventDispatcher:
                         "queue_depth": self._queue.qsize(),
                     }
                 )
+                await self._circuit_on_send_success(circuit_lock)
                 return
             except httpx.HTTPStatusError as exc:
                 code = exc.response.status_code
@@ -613,16 +674,16 @@ class _EventDispatcher:
                         self._config.debug,
                         f"batch send got non-retryable status={code}; not retrying",
                     )
-                    self._emit_telemetry(
-                        {
-                            "kind": "ingest_batch",
-                            "ok": False,
-                            "events": len(batch),
-                            "attempt": attempt + 1,
-                            "http_status": code,
-                            "queue_depth": self._queue.qsize(),
-                        }
-                    )
+                    tel = {
+                        "kind": "ingest_batch",
+                        "ok": False,
+                        "events": len(batch),
+                        "attempt": attempt + 1,
+                        "http_status": code,
+                        "queue_depth": self._queue.qsize(),
+                    }
+                    tel.update(await self._circuit_on_terminal_failure(circuit_lock))
+                    self._emit_telemetry(tel)
                     return
                 _debug_log(
                     self._config.debug,
@@ -630,17 +691,17 @@ class _EventDispatcher:
                 )
                 if attempt >= self._config.max_retries:
                     _debug_log(self._config.debug, "dropping batch after retries exhausted")
-                    self._emit_telemetry(
-                        {
-                            "kind": "ingest_batch",
-                            "ok": False,
-                            "events": len(batch),
-                            "attempt": attempt + 1,
-                            "http_status": code,
-                            "queue_depth": self._queue.qsize(),
-                            "terminal": True,
-                        }
-                    )
+                    tel = {
+                        "kind": "ingest_batch",
+                        "ok": False,
+                        "events": len(batch),
+                        "attempt": attempt + 1,
+                        "http_status": code,
+                        "queue_depth": self._queue.qsize(),
+                        "terminal": True,
+                    }
+                    tel.update(await self._circuit_on_terminal_failure(circuit_lock))
+                    self._emit_telemetry(tel)
                     return
                 retry_after = _retry_after_seconds(exc.response) if code == 429 else None
                 sleep_seconds = (
@@ -656,17 +717,17 @@ class _EventDispatcher:
                 )
                 if attempt >= self._config.max_retries:
                     _debug_log(self._config.debug, "dropping batch after retries exhausted")
-                    self._emit_telemetry(
-                        {
-                            "kind": "ingest_batch",
-                            "ok": False,
-                            "events": len(batch),
-                            "attempt": attempt + 1,
-                            "queue_depth": self._queue.qsize(),
-                            "terminal": True,
-                            "error": type(exc).__name__,
-                        }
-                    )
+                    tel = {
+                        "kind": "ingest_batch",
+                        "ok": False,
+                        "events": len(batch),
+                        "attempt": attempt + 1,
+                        "queue_depth": self._queue.qsize(),
+                        "terminal": True,
+                        "error": type(exc).__name__,
+                    }
+                    tel.update(await self._circuit_on_terminal_failure(circuit_lock))
+                    self._emit_telemetry(tel)
                     return
                 sleep_seconds = self._config.retry_backoff_s * (2**attempt)
                 await asyncio.sleep(sleep_seconds)
@@ -989,6 +1050,24 @@ def monitor(app: Any, **kwargs: Any) -> None:
                 resolved_kwargs.get(
                     "max_concurrent_sends",
                     _env_int("LUMONOX_MAX_CONCURRENT_SENDS", 1),
+                )
+            ),
+        ),
+        circuit_failure_threshold=max(
+            0,
+            int(
+                resolved_kwargs.get(
+                    "circuit_failure_threshold",
+                    _env_int("LUMONOX_CIRCUIT_FAILURE_THRESHOLD", 0),
+                )
+            ),
+        ),
+        circuit_open_seconds=max(
+            0.5,
+            float(
+                resolved_kwargs.get(
+                    "circuit_open_seconds",
+                    _env_float("LUMONOX_CIRCUIT_OPEN_SECONDS", 30.0),
                 )
             ),
         ),

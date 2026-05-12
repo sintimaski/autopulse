@@ -14,7 +14,13 @@ from uuid import UUID
 
 import httpx
 
-from lumonox_backend.core.config import Settings
+from lumonox_backend.core.config import Settings, get_settings
+from lumonox_backend.metrics import service_metrics
+from lumonox_backend.services.alert_webhook_rate_limit import throttle_alert_webhook_url
+from lumonox_backend.services.alert_webhook_security import (
+    AlertWebhookUrlError,
+    validate_alert_outbound_webhook_url,
+)
 
 
 @dataclass(slots=True)
@@ -43,6 +49,10 @@ class AlertSender(Protocol):
     delivery_kind: str
 
     def send(self, signal: AlertSignal) -> Awaitable[AlertDeliveryResult]: ...
+
+
+def _resolve_alert_webhook_min_interval(settings: Settings, explicit: float) -> float:
+    return settings.alert_webhook_min_interval_seconds if explicit <= 0 else float(explicit)
 
 
 @dataclass(slots=True)
@@ -99,9 +109,26 @@ class WebhookAlertSender:
     timeout_seconds: float = 3.0
     max_attempts: int = 3
     initial_backoff_seconds: float = 0.25
+    webhook_min_interval_seconds: float = 0.0
     delivery_kind: str = "webhook"
 
     async def send(self, signal: AlertSignal) -> AlertDeliveryResult:
+        settings = get_settings()
+        try:
+            validate_alert_outbound_webhook_url(self.webhook_url, lumonox_env=settings.lumonox_env)
+        except AlertWebhookUrlError as exc:
+            service_metrics.increment("alerts.webhook.validation_rejected")
+            return AlertDeliveryResult(
+                status="failed",
+                delivered_via=self.delivery_kind,
+                reason_code="unsafe_webhook_url",
+                attempt_count=1,
+                detail={"message": str(exc)},
+            )
+        await throttle_alert_webhook_url(
+            self.webhook_url,
+            _resolve_alert_webhook_min_interval(settings, self.webhook_min_interval_seconds),
+        )
         payload = {
             "alert_type": signal.alert_type,
             "project_id": str(signal.project_id),
@@ -116,6 +143,7 @@ class WebhookAlertSender:
                 try:
                     response = await client.post(self.webhook_url, json=payload)
                     response.raise_for_status()
+                    service_metrics.increment("alerts.webhook.send.succeeded")
                     return AlertDeliveryResult(
                         status="sent",
                         delivered_via=self.delivery_kind,
@@ -125,6 +153,7 @@ class WebhookAlertSender:
                     )
                 except Exception as exc:
                     if attempt >= self.max_attempts:
+                        service_metrics.increment("alerts.webhook.send.failed")
                         return AlertDeliveryResult(
                             status="failed",
                             delivered_via=self.delivery_kind,
@@ -133,6 +162,7 @@ class WebhookAlertSender:
                             detail={"delivery_error": str(exc)},
                         )
                     await asyncio.sleep(self.initial_backoff_seconds * attempt)
+        service_metrics.increment("alerts.webhook.send.failed")
         return AlertDeliveryResult(
             status="failed",
             delivered_via=self.delivery_kind,
@@ -394,6 +424,7 @@ class SlackWebhookAlertSender(WebhookAlertSender):
             max_attempts=self.max_attempts,
             initial_backoff_seconds=self.initial_backoff_seconds,
             delivery_kind=self.delivery_kind,
+            webhook_min_interval_seconds=self.webhook_min_interval_seconds,
         )
 
 
@@ -410,6 +441,7 @@ class DiscordWebhookAlertSender(WebhookAlertSender):
             max_attempts=self.max_attempts,
             initial_backoff_seconds=self.initial_backoff_seconds,
             delivery_kind=self.delivery_kind,
+            webhook_min_interval_seconds=self.webhook_min_interval_seconds,
         )
 
 
@@ -421,12 +453,30 @@ async def _send_webhook_payload(
     max_attempts: int,
     initial_backoff_seconds: float,
     delivery_kind: str,
+    webhook_min_interval_seconds: float = 0.0,
 ) -> AlertDeliveryResult:
+    settings = get_settings()
+    try:
+        validate_alert_outbound_webhook_url(webhook_url, lumonox_env=settings.lumonox_env)
+    except AlertWebhookUrlError as exc:
+        service_metrics.increment("alerts.webhook.validation_rejected")
+        return AlertDeliveryResult(
+            status="failed",
+            delivered_via=delivery_kind,
+            reason_code="unsafe_webhook_url",
+            attempt_count=1,
+            detail={"message": str(exc)},
+        )
+    await throttle_alert_webhook_url(
+        webhook_url,
+        _resolve_alert_webhook_min_interval(settings, webhook_min_interval_seconds),
+    )
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         for attempt in range(1, max(1, max_attempts) + 1):
             try:
                 response = await client.post(webhook_url, json=payload)
                 response.raise_for_status()
+                service_metrics.increment("alerts.webhook.send.succeeded")
                 return AlertDeliveryResult(
                     status="sent",
                     delivered_via=delivery_kind,
@@ -436,6 +486,7 @@ async def _send_webhook_payload(
                 )
             except Exception as exc:
                 if attempt >= max_attempts:
+                    service_metrics.increment("alerts.webhook.send.failed")
                     return AlertDeliveryResult(
                         status="failed",
                         delivered_via=delivery_kind,
@@ -444,6 +495,7 @@ async def _send_webhook_payload(
                         detail={"delivery_error": str(exc)},
                     )
                 await asyncio.sleep(initial_backoff_seconds * attempt)
+    service_metrics.increment("alerts.webhook.send.failed")
     return AlertDeliveryResult(
         status="failed",
         delivered_via=delivery_kind,

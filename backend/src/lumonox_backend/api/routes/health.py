@@ -540,6 +540,10 @@ def build_operator_health_subsystems(snapshot: dict[str, object]) -> dict[str, o
     jobs_raw = snapshot.get("jobs")
     jobs = jobs_raw if isinstance(jobs_raw, dict) else {}
     alerts_telemetry = jobs.get("alerts")
+    counters_raw = snapshot.get("counters")
+    counters = counters_raw if isinstance(counters_raw, dict) else {}
+    webhook_send_failed = int(counters.get("alerts.webhook.send.failed", 0) or 0)
+    webhook_url_rejected = int(counters.get("alerts.webhook.validation_rejected", 0) or 0)
     if not isinstance(alerts_telemetry, dict):
         alert_status = "unknown"
         alert_summary = "No recent `alerts` job telemetry on this process yet."
@@ -557,6 +561,14 @@ def build_operator_health_subsystems(snapshot: dict[str, object]) -> dict[str, o
         else:
             alert_status = "unknown"
             alert_summary = f"Alerts job in state `{alert_state}`."
+    if webhook_send_failed > 0 or webhook_url_rejected > 0:
+        extra = (
+            f" Outbound webhook telemetry on this process: "
+            f"send_failed={webhook_send_failed}, url_validation_rejected={webhook_url_rejected}."
+        )
+        if alert_status == "healthy" or alert_status == "unknown":
+            alert_status = "degraded"
+        alert_summary = f"{alert_summary.rstrip('.')}.{extra}"
     subsystems.append(
         {
             "id": "alerts",

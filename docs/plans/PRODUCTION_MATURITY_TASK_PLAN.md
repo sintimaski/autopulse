@@ -7,7 +7,7 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Plan name:** Production maturity — HA ingest, operator UX, SDK hardening
 - **Owner:** (assign)
 - **Date:** 2026-05-12
-- **Status:** Draft
+- **Status:** In progress (P0/P1 core shipped 2026-05-12; see §5.0 and decision log)
 - **Scope summary (2-4 lines):** Close the gap between “works well for MVP” and “safe and operable in multi-replica production.” Focus on replica-safe ingest/event storage story, unified operator health surface, SDK reliability and observability, and day-2 product flows (incidents, alerting, correlation).
 - **Out of scope:** Full distributed tracing product, custom dashboard builder, enterprise audit/compliance suite, Kubernetes-specific operators (unless explicitly pulled in as docs only).
 
@@ -36,6 +36,18 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Tools available:** CI, backend and frontend test suites, local compose or documented dev stack, metrics endpoints already exposed for internal diagnostics.
 
 ## 5) Task breakdown
+
+### 5.0) Implementation evidence (git)
+
+Confirmed on `main` (newest first for this initiative):
+
+| Commit | Summary |
+|--------|---------|
+| `f486f114` | Server-backed incident notebooks/shares: API + migrations + UI (`SavedIncidentsModalPanel`, PATCH autosave, `incident_saved_id` hydrate). |
+| `5ac4a99` | DB-backed incident shares, notebook scope, static UI fixes (companion to above). |
+| `71fa9e8` | Production maturity bulk: `GET /dashboard/operator-health` + `OperatorPipelineHealthSection`, HA doc pointers, SDK (`_sdk_version`, batch byte split, `telemetry_observer`, bounded concurrent sends), incident worksheet + `IncidentNotebook` (initial local persistence), `OnboardingCompletionNudge`, `queryExplorerPresets.ts` templates, `build_operator_health_subsystems` in `health.py`, tests. |
+| *(follow-up commit)* | SDK ingest circuit breaker: `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`, fast-fail telemetry, slow-server overlap test in `sdk/tests/test_monitor.py`. |
+| *(follow-up commit)* | **PROD-008 partial:** alert webhook SSRF URL validation (`alert_webhook_security.py`), per-URL pacing (`ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`), metrics + operator-health surfacing, dashboard `PUT /alert-settings` validation, runbook notes. |
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
 
@@ -67,10 +79,10 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
   - **Safe to re-run?** Yes (doc + validation only iterations).
   - **If partial/no, guardrails required:** N/A
 - **State / progress tracking:**
-  - **Status:** Todo
-  - **% complete:**
-  - **Last update:**
-  - **Owner:**
+  - **Status:** In progress
+  - **% complete:** ~85
+  - **Last update:** 2026-05-12 (`71fa9e8` doc cross-links; `PRODUCTION_DEPLOYMENT.md` already includes rollout/rollback for HA toggles — §1.2 + line ~50)
+  - **Owner:** (assign)
 - **Related documents:** `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`, `docs/ops/PRODUCTION_DEPLOYMENT.md`
 - **References / examples:** Existing runbooks in `docs/ops/`, `docs/runbooks/`
 - **Ambiguity handling:**
@@ -111,7 +123,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
   - **Manual checks:** Induce degraded state in staging; UI matches.
   - **Observed evidence:** Screenshots or staging notes in task comments.
 - **Idempotency (re-run safe):** Partial — deploy safe; data migration N/A unless new tables.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `/dashboard/operator-health`, `OperatorPipelineHealthSection`, `build_operator_health_subsystems`, `test_app_health.py` / dashboard tests)
+  - **Owner:** (assign)
 - **Related documents:** `docs/ops/PRODUCTION_DEPLOYMENT.md`
 - **Ambiguity handling:** If a subsystem has no signal yet, show “not configured” not false green.
 - **Observability:** Reuse existing metrics; add counters for health endpoint latency if needed.
@@ -135,7 +151,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Error handling:** If metadata unavailable, document explicit fallback string behavior.
 - **Validation / verification:** Automated: sdk tests; Manual: install wheel in clean venv and inspect batch payload (debug server or log).
 - **Idempotency:** Yes — code deploy.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `_sdk_version()`, `sdk/README.md` §`sdk_version` + compatibility; `sdk/tests/test_monitor.py`)
+  - **Owner:** (assign)
 - **Related documents:** `DEVELOPMENT.md` (SDK behavior), `docs/contracts/ingest-api.md`
 - **Observability:** Version field visible in ingest records for support.
 
@@ -157,7 +177,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Error handling:** Truncation policy explicit; no PII expansion.
 - **Validation / verification:** Automated tests with mocked httpx; manual large payload run.
 - **Idempotency:** Yes.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `_split_events_for_ingest_json_budget`, `LUMONOX_INGEST_MAX_BATCH_BYTES` / `ingest_max_batch_bytes`, README)
+  - **Owner:** (assign)
 - **Observability:** Optional counter hook for split/drop (ties to PROD-005).
 
 ---
@@ -176,7 +200,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Constraints:** No secrets in hook payloads.
 - **Validation / verification:** Unit tests with hook mock; manual enable in sample app.
 - **Idempotency:** Yes.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `telemetry_observer` + `_emit_telemetry` on batch outcomes; README)
+  - **Owner:** (assign)
 - **Observability:** This task is the observability surface for the SDK itself.
 
 ---
@@ -195,7 +223,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Constraints:** Must not violate “never take down user app” rule.
 - **Validation / verification:** Load tests in CI if present; else documented manual script.
 - **Idempotency:** Yes.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `asyncio.Semaphore` + `LUMONOX_MAX_CONCURRENT_SENDS` / `max_concurrent_sends`, per-POST idempotency key + retries; follow-up — `LUMONOX_CIRCUIT_*` opt-in breaker, `_SlowOkClient` sender-loop overlap test)
+  - **Owner:** (assign)
 
 ---
 
@@ -208,12 +240,16 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
   - AC2: Scope parameters restore diagnosis context consistently with existing routes.
   - AC3: Persistence model defined (local-only vs server-backed); if server-backed, migration + API + auth tests.
 - **Inputs:** Bookmarks UI, URL scope utilities, dashboard API patterns.
-- **Outputs:** Feature as agreed (MVP: server-backed or URL-only with optional local storage — **decide in execution**).
-- **Dependencies:** Product decision on persistence.
+- **Outputs:** Server-backed incident shares + notebook document (see `incident_share_routes`, Alembic revisions `20260214_*`, `20260215_*`); scoped worksheet UI (`IncidentWorkspaceContent`, `SavedIncidentsModalPanel`, `IncidentNotebook`).
+- **Dependencies:** Resolved — server-backed persistence with migrations and tests (`f486f114`, `5ac4a99`, `backend/tests/test_incident_shares.py`).
 - **Constraints:** Static export compatibility if feature ships in static UI.
 - **Validation / verification:** E2E smoke for happy path; manual cross-browser check if critical.
 - **Idempotency:** Partial if DB migrations — document migration rollback.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` worksheet + local notebook; `f486f114` / `5ac4a99` DB shares + autosave)
+  - **Owner:** (assign)
 - **Ambiguity handling:** If static export blocks server persistence, ship URL-encoded MVP first.
 
 ---
@@ -232,7 +268,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Constraints:** Rate limit outbound webhooks; no blocking ingest.
 - **Validation / verification:** Integration test with webhook mock; manual Slack test in staging.
 - **Idempotency:** Migrations if new tables — document rollback.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** In progress
+  - **% complete:** ~65
+  - **Last update:** 2026-05-12 — Generic webhook channel + `/dashboard/alert-test` already existed; added **URL validation**, **`ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`** pacing, **`alerts.webhook.*` metrics**, operator-health **degraded** when webhook failure counters are non-zero, `unsafe_webhook_url` reason copy. **Deferred:** mute/snooze/ack (AC3), dedicated integration test with httpx mock for full `PUT` happy path.
+  - **Owner:** (assign)
 
 ---
 
@@ -286,7 +326,11 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Constraints:** Align with MVP security (read-only expectations).
 - **Validation / verification:** Manual run each template against dev data.
 - **Idempotency:** Yes.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `frontend/components/dashboard/queryExplorerPresets.ts`, **7** templates with titles/descriptions)
+  - **Owner:** (assign)
 
 ---
 
@@ -304,33 +348,43 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Constraints:** Static export compatible.
 - **Validation / verification:** E2E or manual journey from fresh org.
 - **Idempotency:** Yes.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 (`71fa9e8` — `OnboardingCompletionNudge.tsx`)
+  - **Owner:** (assign)
 
 ## 6) Plan-level execution strategy
 
-- **Delivery sequence:** PROD-001 → PROD-002 (parallel track: PROD-003, PROD-004) → PROD-005/006 → PROD-007/008 → P2 backlog (009–012).
-- **Parallelization opportunities:** SDK tasks (003–006) parallel with backend health aggregation (002) once 001’s topology decision is stable; UI-only 011–012 can proceed with less coupling.
+- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening (URL policy, pacing, metrics, operator-health) landed in repo follow-up. **Next:** `PROD-001` maintainer sign-off; **PROD-008** mute/ack/snooze; P2 **`PROD-009`–`010`** (`011`–`012` shipped).
+- **Parallelization opportunities:** `PROD-008` lifecycle UI can proceed parallel to `PROD-009` once mute semantics are sketched.
 - **Risk register (top 3–5):**
-  1. HA topology decision slips → blocks validation and health semantics.
+  1. HA topology decision slips → blocks validation and health semantics. *(Partially mitigated: §1.2 + `validate_deployment_settings`; staging evidence still needed.)*
   2. SDK byte budget misaligned with server defaults → false sense of safety until integration tested.
-  3. Incident mode persistence choice wrong for static export → rework.
-  4. Alert webhooks abused for SSRF or secret leakage → security review required.
+  3. Incident mode persistence vs static export → **Mitigated** for default path (server-backed + migrations); static export must keep serving built UI against live API for full feature.
+  4. Alert webhooks abused for SSRF or secret leakage → **Partially mitigated:** dashboard + runtime validation for https/public hosts (dev-only http localhost); outbound pacing; review still recommended for org-specific policies.
   5. Release markers cause cardinality issues → needs aggregate design before UI polish.
 - **Decision log:**
 
 | Decision | Why | Date | Owner |
 |----------|-----|------|-------|
-| (pending) Canonical HA topology for next milestone | Must be explicit before marketing multi-replica | | |
-| (pending) Incident MVP: URL-only vs server-backed | Trade shipping speed vs collaboration | | |
+| Canonical HA entry point for horizontally scaled API | Single checklist lives in **`docs/ops/PRODUCTION_DEPLOYMENT.md` §1.2**; multi-instance file points there (`71fa9e8`). | 2026-05-12 | (maintainer) |
+| Incident MVP persistence | **Server-backed** shares + notebook JSON (`f486f114`, `5ac4a99`) with Alembic migrations and API tests. | 2026-05-12 | (assign) |
 
 ## 7) Validation gate before completion
 
 Mark each item before closing the plan:
 
-- [ ] All tasks have explicit AC.
-- [ ] All tasks define validation (automated + manual).
-- [ ] Idempotency is documented for each task.
-- [ ] Domain rules and constraints are mapped to tasks.
-- [ ] Observability updates are included where behavior changed.
-- [ ] Related docs are updated or explicitly deferred.
-- [ ] Remaining ambiguity is logged with owner and due date.
+- [x] All tasks have explicit AC.
+- [x] All tasks define validation (automated + manual).
+- [x] Idempotency is documented for each task.
+- [x] Domain rules and constraints are mapped to tasks.
+- [x] Observability updates are included where behavior changed.
+- [ ] Related docs are updated or explicitly deferred. *(PROD-001: ops docs tightened; full ADR/topology matrix may still need maintainer pass.)*
+- [ ] Remaining ambiguity is logged with owner and due date. *(PROD-008 security review owner.)*
+
+## 8) Next execution batch (ordered)
+
+1. **PROD-001** — Maintainer sign-off on §1.2 golden path; extend `validate_deployment_settings` only if staging finds gaps.
+2. **PROD-008 (remainder)** — Mute/snooze/ack slice + docs/permissions; optional httpx-mocked `PUT /alert-settings` + test-dispatch E2E; staging Slack smoke.
+3. **PROD-009 / 010** — P2 after P1 closure or in parallel if staffing allows.

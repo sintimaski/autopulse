@@ -371,3 +371,44 @@ def test_build_operator_health_subsystems_covers_expected_rows() -> None:
     assert isinstance(rows, list)
     ids = {str(row["id"]) for row in rows if isinstance(row, dict)}
     assert ids == {"topology", "scheduler", "ingest", "realtime", "retention_poll", "alerts"}
+
+
+def test_build_operator_health_alerts_degraded_on_webhook_failure_counters() -> None:
+    from lumonox_backend.api.routes.health import build_operator_health_subsystems
+
+    snapshot: dict[str, object] = {
+        "topology_guardrails": {
+            "status": "healthy",
+            "unsafe_count": 0,
+            "risky_count": 0,
+            "non_ideal_count": 0,
+            "findings": [],
+            "scheduler_required": True,
+        },
+        "jobs_enable_scheduler": True,
+        "scheduler_running": True,
+        "ingest_pressure": {},
+        "dashboard_realtime_bus_backend": "none",
+        "dashboard_realtime_bus_subscriber_running": False,
+        "lumonox_env": "development",
+        "retention_pressure_poll_running": True,
+        "jobs": {
+            "alerts": {
+                "status": "succeeded",
+                "started_at": "",
+                "finished_at": "",
+                "duration_ms": 1,
+                "records_processed": 0,
+                "failure_reason": None,
+            }
+        },
+        "counters": {"alerts.webhook.send.failed": 2, "alerts.webhook.validation_rejected": 1},
+    }
+    out = build_operator_health_subsystems(snapshot)
+    alerts_row = next(
+        r for r in out["subsystems"] if isinstance(r, dict) and r.get("id") == "alerts"
+    )
+    assert alerts_row.get("status") == "degraded"
+    summary = str(alerts_row.get("summary") or "")
+    assert "send_failed=2" in summary
+    assert "url_validation_rejected=1" in summary

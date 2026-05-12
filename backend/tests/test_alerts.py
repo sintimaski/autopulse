@@ -381,7 +381,7 @@ def test_slack_webhook_sender_posts_incoming_webhook_text_payload() -> None:
 
     async def run() -> object:
         with patch(client_patch, mock_client_factory):
-            sender = SlackWebhookAlertSender(webhook_url="https://hooks.slack.test/x")
+            sender = SlackWebhookAlertSender(webhook_url="https://1.1.1.1/webhook-test")
             signal = AlertSignal(
                 project_id=uuid4(),
                 alert_type="error_spike",

@@ -2,17 +2,25 @@ from __future__ import annotations
 
 import os
 import tempfile
+import warnings
 from contextlib import suppress
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine, text
 
 # Before importing lumonox (which may load ``backend/.env``), pin defaults when the
 # integration suite uses the implicit per-session SQLite URL. Otherwise a developer
 # ``backend/.env`` that sets ``LUMONOX_EVENT_STORE=duckdb`` makes ingest tests query an
 # empty SQL ``events`` table, and background schedulers race parquet/DuckDB during
 # ``TestClient`` runs.
-_using_default_backend_integration_db = not (os.getenv("BACKEND_TEST_DATABASE_URL") or "").strip()
+_backend_test_db_env = (os.getenv("BACKEND_TEST_DATABASE_URL") or "").strip()
+_backend_test_db_is_isolated_sqlite_memory = (
+    _backend_test_db_env.lower().startswith("sqlite") and ":memory:" in _backend_test_db_env.lower()
+)
+_using_default_backend_integration_db = (
+    not _backend_test_db_env or _backend_test_db_is_isolated_sqlite_memory
+)
 if _using_default_backend_integration_db:
     os.environ["LUMONOX_EVENT_STORE"] = "sqlite"
     os.environ["LUMONOX_EVENT_PLANE_MODE"] = "duckdb_single_writer"
@@ -35,8 +43,6 @@ if (os.getenv("BACKEND_TEST_DATABASE_URL") or "").strip().lower().startswith("po
     os.environ.setdefault("LUMONOX_TEST_PG_ASYNC_NULLPOOL", "true")
 
 from sqlalchemy.engine.url import make_url  # noqa: E402
-
-from lumonox_backend.database import upgrade_to_head  # noqa: E402
 
 
 def _sqlite_file_paths(database_url: str) -> list[Path] | None:
@@ -70,6 +76,41 @@ def _maybe_reset_stale_sqlite_migrations(database_url: str, exc: BaseException) 
     return True
 
 
+def _sqlite_url_uses_isolated_memory(database_url: str) -> bool:
+    """True when each new connection would get a fresh empty DB (breaks Alembic + tests)."""
+    normalized = database_url.replace("+aiosqlite", "").replace("+pysqlite", "").strip().lower()
+    if not normalized.startswith("sqlite"):
+        return False
+    if ":memory:" in normalized:
+        return True
+    url = make_url(normalized)
+    return (url.database or "") in {":memory:", ""}
+
+
+def _assert_sqlite_projects_table_present(database_url: str) -> None:
+    """Catch misconfigured in-memory URLs where migrations and tests use different DBs."""
+    if not database_url.lower().startswith("sqlite"):
+        return
+    if _sqlite_url_uses_isolated_memory(database_url):
+        return
+    sync = database_url.replace("+aiosqlite", "").replace("+pysqlite", "")
+    engine = create_engine(sync)
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='projects' LIMIT 1")
+            ).first()
+    finally:
+        engine.dispose()
+    if row is None:
+        raise RuntimeError(
+            "After Alembic upgrade, SQLite is missing the `projects` table. "
+            "If BACKEND_TEST_DATABASE_URL uses in-memory SQLite (`:memory:`), switch to a "
+            "file-backed URL (see backend/tests/conftest.py) — each engine connection would "
+            "otherwise see an empty database."
+        )
+
+
 @pytest.fixture(scope="session")
 def backend_test_database_url(tmp_path_factory: pytest.TempPathFactory) -> str:
     """Integration test database URL.
@@ -79,25 +120,52 @@ def backend_test_database_url(tmp_path_factory: pytest.TempPathFactory) -> str:
     - Otherwise a **session-scoped** SQLite file under pytest's basetemp so local
       ``uv run pytest`` runs DB-backed tests without touching ``DATABASE_URL`` from
       a developer ``.env`` or the default repo-relative DB path.
+
+    Returns the **canonical** URL from :func:`get_settings().database_url` after pinning
+    ``DATABASE_URL`` (SQLite paths are rewritten by ``normalize_database_url``). Alembic
+    and tests must use the same string or migrations land on a different file than the
+    assertion and async engines open.
     """
     configured = (os.getenv("BACKEND_TEST_DATABASE_URL") or "").strip()
+    if configured and _sqlite_url_uses_isolated_memory(configured):
+        warnings.warn(
+            "BACKEND_TEST_DATABASE_URL points at in-memory SQLite; that breaks this suite "
+            "(Alembic and tests open separate connections). Using a session-scoped temp file "
+            "instead. Unset BACKEND_TEST_DATABASE_URL or use a file path.",
+            stacklevel=2,
+        )
+        configured = ""
     if configured:
-        return configured
-    db_path = tmp_path_factory.mktemp("lumonox_backend_integration") / "integration.sqlite3"
-    # ``sqlite+aiosqlite:///{absolute_path}`` → four slashes after the scheme so
-    # ``normalize_database_url`` keeps a true filesystem path (see ``core.config``).
-    return f"sqlite+aiosqlite:///{db_path.resolve()}"
+        candidate = configured
+    else:
+        db_path = tmp_path_factory.mktemp("lumonox_backend_integration") / "integration.sqlite3"
+        # ``sqlite+aiosqlite:///{absolute_path}`` → four slashes after the scheme so
+        # ``normalize_database_url`` keeps a true filesystem path (see ``core.config``).
+        candidate = f"sqlite+aiosqlite:///{db_path.resolve()}"
 
-
-@pytest.fixture(scope="session", autouse=True)
-def configure_backend_database(backend_test_database_url: str) -> None:
-    """Point ``DATABASE_URL`` at the session test DB and run Alembic migrations once."""
-    os.environ["DATABASE_URL"] = backend_test_database_url
+    os.environ["DATABASE_URL"] = candidate
     os.environ.setdefault("INGEST_REQUIRE_HTTPS", "false")
     os.environ.setdefault("INTERNAL_METRICS_BEARER_TOKEN", "test-internal-metrics-token")
+
+    from lumonox_backend.core.config import get_settings  # noqa: PLC0415
+    from lumonox_backend.database import upgrade_to_head  # noqa: PLC0415
+
+    effective = get_settings().database_url
+    if effective != candidate:
+        os.environ["DATABASE_URL"] = effective
+
     try:
         upgrade_to_head()
     except Exception as exc:
-        if not _maybe_reset_stale_sqlite_migrations(backend_test_database_url, exc):
+        if not _maybe_reset_stale_sqlite_migrations(effective, exc):
             raise
         upgrade_to_head()
+
+    _assert_sqlite_projects_table_present(effective)
+    return effective
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_session_backend_database_migrated(backend_test_database_url: str) -> None:
+    """Ensure session DB migration runs once (dependency on ``backend_test_database_url``)."""
+    _ = backend_test_database_url
