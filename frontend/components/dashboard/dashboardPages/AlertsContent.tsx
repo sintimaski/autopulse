@@ -302,6 +302,83 @@ export function AlertsContent() {
                   />
                 </label>
               </div>
+              <div className="rounded-lg border border-amber-200/70 bg-amber-50/50 p-3 dark:border-amber-900/40 dark:bg-amber-950/25">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-100">
+                  Notification pause
+                </h4>
+                <p className="mt-1 text-xs text-amber-950/80 dark:text-amber-100/80">
+                  Mute or snooze stops automated spike and outage alerts. Test alerts from Settings still
+                  deliver. Snooze uses your browser clock (UTC ISO).
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-2 text-xs text-amber-950 dark:text-amber-50">
+                    <input
+                      type="checkbox"
+                      disabled={!canEditAlertPolicy}
+                      checked={form.notifications_muted}
+                      onChange={(event) =>
+                        d.updateAlertSettingsDraft({
+                          ...form,
+                          notifications_muted: event.target.checked,
+                        })
+                      }
+                    />
+                    Mute notifications
+                  </label>
+                  <span className="text-[10px] text-amber-900/70 dark:text-amber-200/70">Snooze</span>
+                  {([1, 4, 24] as const).map((h) => (
+                    <button
+                      key={h}
+                      type="button"
+                      disabled={!canEditAlertPolicy}
+                      className="rounded border border-amber-300/80 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-50 dark:hover:bg-amber-900/50"
+                      onClick={() =>
+                        d.updateAlertSettingsDraft({
+                          ...form,
+                          notifications_snoozed_until: new Date(
+                            Date.now() + h * 3_600_000,
+                          ).toISOString(),
+                        })
+                      }
+                    >
+                      {h}h
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={!canEditAlertPolicy}
+                    className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                    onClick={() =>
+                      d.updateAlertSettingsDraft({ ...form, notifications_snoozed_until: null })
+                    }
+                  >
+                    Clear snooze
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canEditAlertPolicy || d.alertSettingsSaving}
+                    className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+                    onClick={async () => {
+                      setFormError(null);
+                      await d.saveAlertSettings({ ...form, acknowledge_notifications: true });
+                    }}
+                  >
+                    Acknowledge
+                  </button>
+                </div>
+                {form.notifications_snoozed_until ? (
+                  <p className="mt-2 text-[11px] text-amber-950/80 dark:text-amber-100/80">
+                    Snoozed until{" "}
+                    <span className="font-mono">{form.notifications_snoozed_until}</span>
+                  </p>
+                ) : null}
+                {form.last_notifications_acknowledged_at ? (
+                  <p className="mt-1 text-[11px] text-amber-950/70 dark:text-amber-200/70">
+                    Last acknowledged{" "}
+                    <span className="font-mono">{form.last_notifications_acknowledged_at}</span>
+                  </p>
+                ) : null}
+              </div>
               <div className="mt-3 flex items-center gap-3">
                 <button
                   type="button"

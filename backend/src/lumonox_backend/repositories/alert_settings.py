@@ -34,6 +34,9 @@ async def get_or_create_project_alert_settings(
         outage_min_requests=settings.alert_outage_min_requests,
         outage_window_minutes=settings.alert_outage_window_minutes,
         cooldown_minutes=settings.alert_cooldown_minutes,
+        notifications_muted=False,
+        notifications_snoozed_until=None,
+        last_notifications_acknowledged_at=None,
     )
     session.add(current)
     await session.flush()

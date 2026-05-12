@@ -177,6 +177,9 @@ class DashboardAlertSettings(BaseModel):
     outage_min_requests: int
     outage_window_minutes: int
     cooldown_minutes: int
+    notifications_muted: bool = False
+    notifications_snoozed_until: datetime | None = None
+    last_notifications_acknowledged_at: datetime | None = None
 
 
 class DashboardAlertSettingsUpdate(BaseModel):
@@ -195,6 +198,9 @@ class DashboardAlertSettingsUpdate(BaseModel):
     outage_min_requests: int
     outage_window_minutes: int
     cooldown_minutes: int
+    notifications_muted: bool = False
+    notifications_snoozed_until: datetime | None = None
+    acknowledge_notifications: bool | None = None
 
     @field_validator("destination_email")
     @classmethod

@@ -38,6 +38,9 @@ const baseDraft: AlertSettings = {
   outage_min_requests: 10,
   outage_window_minutes: 5,
   cooldown_minutes: 60,
+  notifications_muted: false,
+  notifications_snoozed_until: null,
+  last_notifications_acknowledged_at: null,
 };
 
 describe("SettingsAlertDeliverySection", () => {

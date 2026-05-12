@@ -47,6 +47,16 @@ def _in_cooldown(last_sent_at: datetime | None, cooldown_minutes: int, now: date
     return now < cooldown_ends
 
 
+def _notifications_suppressed(alert_settings: object, now: datetime) -> bool:
+    """True when automated alert dispatches should be skipped for this project."""
+    if bool(getattr(alert_settings, "notifications_muted", False)):
+        return True
+    until = getattr(alert_settings, "notifications_snoozed_until", None)
+    if until is None:
+        return False
+    return now < _as_utc(until)
+
+
 async def evaluate_alerts_once(
     session: AsyncSession,
     settings: Settings,
@@ -64,6 +74,8 @@ async def evaluate_alerts_once(
     for project_id in project_ids:
         alert_settings = await get_or_create_project_alert_settings(session, project_id, settings)
         if not alert_settings.enabled:
+            continue
+        if _notifications_suppressed(alert_settings, resolved_now):
             continue
         resolved_sender = sender or build_project_alert_sender(settings, alert_settings)
 

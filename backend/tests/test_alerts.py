@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from db_reset import truncate_full_schema
@@ -20,6 +20,7 @@ from lumonox_backend.alerts import (
 )
 from lumonox_backend.core.config import get_settings
 from lumonox_backend.models import Event, Project
+from lumonox_backend.repositories.alert_settings import get_or_create_project_alert_settings
 
 
 @pytest.fixture(autouse=True)
@@ -404,3 +405,81 @@ def test_slack_webhook_sender_posts_incoming_webhook_text_payload() -> None:
     assert isinstance(body, dict)
     assert "text" in body
     assert "error_spike" in body["text"]
+
+
+def _configure_alert_notifications(
+    database_url: str,
+    project_id: str,
+    *,
+    muted: bool = False,
+    snoozed_until: datetime | None = None,
+) -> None:
+    async def run() -> None:
+        engine = create_async_engine(database_url, pool_pre_ping=True)
+        session_maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+        try:
+            async with session_maker() as session:
+                settings = get_settings()
+                row = await get_or_create_project_alert_settings(
+                    session, UUID(project_id), settings
+                )
+                row.notifications_muted = muted
+                row.notifications_snoozed_until = snoozed_until
+                await session.commit()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+def test_evaluate_alerts_skips_when_notifications_muted(backend_test_database_url: str) -> None:
+    truncate_full_schema(backend_test_database_url)
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    project_id = _seed_request_events(
+        backend_test_database_url,
+        request_count=10,
+        error_count=7,
+        base_time=base_time,
+    )
+    _configure_alert_notifications(backend_test_database_url, project_id, muted=True)
+
+    triggered, stored = _run_alert_job(
+        backend_test_database_url,
+        now=base_time + timedelta(minutes=1),
+        error_spike_min_requests=5,
+        error_spike_ratio_threshold=0.5,
+        outage_min_requests=50,
+        cooldown_minutes=30,
+    )
+
+    assert triggered == 0
+    assert stored == 0
+
+
+def test_evaluate_alerts_skips_when_notifications_snoozed(backend_test_database_url: str) -> None:
+    truncate_full_schema(backend_test_database_url)
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=2)
+    project_id = _seed_request_events(
+        backend_test_database_url,
+        request_count=10,
+        error_count=7,
+        base_time=base_time,
+    )
+    eval_time = base_time + timedelta(minutes=1)
+    _configure_alert_notifications(
+        backend_test_database_url,
+        project_id,
+        snoozed_until=eval_time + timedelta(hours=2),
+    )
+
+    triggered, stored = _run_alert_job(
+        backend_test_database_url,
+        now=eval_time,
+        error_spike_min_requests=5,
+        error_spike_ratio_threshold=0.5,
+        outage_min_requests=50,
+        cooldown_minutes=30,
+    )
+
+    assert triggered == 0
+    assert stored == 0

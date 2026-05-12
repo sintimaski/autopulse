@@ -64,3 +64,16 @@ Open the dashboard Alerts page and verify dispatch rows include:
 - `provider_message_id` when available
 
 Use the **Failed only** filter to quickly review actionable delivery failures.
+
+## 4) Notification mute, snooze, and acknowledge (project settings)
+
+These fields live on `GET`/`PUT` `/dashboard/alert-settings` (dashboard session required for `PUT`; API key fallback is read-only for policy changes).
+
+| Field | Behavior |
+|-------|----------|
+| `notifications_muted` | When `true`, the scheduled alert job **does not send** error-spike or outage alerts for this project. Heuristics still appear in the UI. |
+| `notifications_snoozed_until` | UTC timestamp; while `now` is before this instant, sends are skipped (same as mute for delivery). Past timestamps are treated as inactive. |
+| `last_notifications_acknowledged_at` | Read-only marker set when `PUT` includes `"acknowledge_notifications": true`. Does not change thresholds; use for operator bookkeeping. |
+| `acknowledge_notifications` | Optional write-only flag on `PUT` only. |
+
+**Test alerts** (`POST /dashboard/alert-test`) still run when muted/snoozed so channels can be verified without waiting for a real incident.

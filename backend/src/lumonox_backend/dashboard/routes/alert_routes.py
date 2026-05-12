@@ -412,6 +412,10 @@ async def update_dashboard_alert_settings(
     alert_settings.outage_min_requests = payload.outage_min_requests
     alert_settings.outage_window_minutes = payload.outage_window_minutes
     alert_settings.cooldown_minutes = payload.cooldown_minutes
+    alert_settings.notifications_muted = payload.notifications_muted
+    alert_settings.notifications_snoozed_until = payload.notifications_snoozed_until
+    if payload.acknowledge_notifications is True:
+        alert_settings.last_notifications_acknowledged_at = datetime.now(tz=UTC)
     await session.commit()
     await session.refresh(alert_settings)
     return serialize_alert_settings(alert_settings)

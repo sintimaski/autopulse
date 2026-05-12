@@ -47,7 +47,7 @@ Confirmed on `main` (newest first for this initiative):
 | `5ac4a99` | DB-backed incident shares, notebook scope, static UI fixes (companion to above). |
 | `71fa9e8` | Production maturity bulk: `GET /dashboard/operator-health` + `OperatorPipelineHealthSection`, HA doc pointers, SDK (`_sdk_version`, batch byte split, `telemetry_observer`, bounded concurrent sends), incident worksheet + `IncidentNotebook` (initial local persistence), `OnboardingCompletionNudge`, `queryExplorerPresets.ts` templates, `build_operator_health_subsystems` in `health.py`, tests. |
 | *(follow-up commit)* | SDK ingest circuit breaker: `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`, fast-fail telemetry, slow-server overlap test in `sdk/tests/test_monitor.py`. |
-| *(follow-up commit)* | **PROD-008 partial:** alert webhook SSRF URL validation (`alert_webhook_security.py`), per-URL pacing (`ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`), metrics + operator-health surfacing, dashboard `PUT /alert-settings` validation, runbook notes. |
+| *(follow-up commit)* | **PROD-008:** project alert **mute / snooze / acknowledge** fields + evaluation skip + dashboard session `PUT` test + runbook §4 + Alerts UI controls. |
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
 
@@ -270,8 +270,8 @@ Confirmed on `main` (newest first for this initiative):
 - **Idempotency:** Migrations if new tables — document rollback.
 - **State / progress tracking:**
   - **Status:** In progress
-  - **% complete:** ~65
-  - **Last update:** 2026-05-12 — Generic webhook channel + `/dashboard/alert-test` already existed; added **URL validation**, **`ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`** pacing, **`alerts.webhook.*` metrics**, operator-health **degraded** when webhook failure counters are non-zero, `unsafe_webhook_url` reason copy. **Deferred:** mute/snooze/ack (AC3), dedicated integration test with httpx mock for full `PUT` happy path.
+  - **% complete:** ~82
+  - **Last update:** 2026-05-12 — Generic webhook channel + `/dashboard/alert-test` already existed; added **URL validation**, **`ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`** pacing, **`alerts.webhook.*` metrics**, operator-health **degraded** when webhook failure counters are non-zero, `unsafe_webhook_url` reason copy. **Added:** project-level **`notifications_muted`**, **`notifications_snoozed_until`**, **`last_notifications_acknowledged_at`** / `acknowledge_notifications` on `PUT` (dashboard session); evaluation skips sends while muted or snoozed; runbook §4. **Deferred:** richer per-alert ack and org-wide policies.
   - **Owner:** (assign)
 
 ---
@@ -356,7 +356,7 @@ Confirmed on `main` (newest first for this initiative):
 
 ## 6) Plan-level execution strategy
 
-- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening (URL policy, pacing, metrics, operator-health) landed in repo follow-up. **Next:** `PROD-001` maintainer sign-off; **PROD-008** mute/ack/snooze; P2 **`PROD-009`–`010`** (`011`–`012` shipped).
+- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in repo follow-up. **Next:** `PROD-001` maintainer sign-off; **PROD-008** optional per-alert ack / org policies; P2 **`PROD-009`–`010`** (`011`–`012` shipped).
 - **Parallelization opportunities:** `PROD-008` lifecycle UI can proceed parallel to `PROD-009` once mute semantics are sketched.
 - **Risk register (top 3–5):**
   1. HA topology decision slips → blocks validation and health semantics. *(Partially mitigated: §1.2 + `validate_deployment_settings`; staging evidence still needed.)*

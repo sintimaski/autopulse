@@ -229,6 +229,9 @@ describe("parseDashboardBootstrapResponse", () => {
       outage_min_requests: 50,
       outage_window_minutes: 5,
       cooldown_minutes: 30,
+      notifications_muted: false,
+      notifications_snoozed_until: null,
+      last_notifications_acknowledged_at: null,
     };
     const raw = {
       retention_settings: retention,

@@ -446,6 +446,18 @@ export function parseAlertSettings(raw: unknown): AlertSettings | null {
       return null;
     }
   }
+  if (typeof raw.notifications_muted !== "boolean") {
+    return null;
+  }
+  if (raw.notifications_snoozed_until !== null && typeof raw.notifications_snoozed_until !== "string") {
+    return null;
+  }
+  if (
+    raw.last_notifications_acknowledged_at !== null &&
+    typeof raw.last_notifications_acknowledged_at !== "string"
+  ) {
+    return null;
+  }
   return raw as AlertSettings;
 }
 

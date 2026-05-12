@@ -310,6 +310,13 @@ class ProjectAlertSettings(Base):
     last_outage_alert_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    notifications_muted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notifications_snoozed_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_notifications_acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )

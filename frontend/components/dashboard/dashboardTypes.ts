@@ -224,6 +224,11 @@ export type AlertSettings = {
   outage_min_requests: number;
   outage_window_minutes: number;
   cooldown_minutes: number;
+  notifications_muted: boolean;
+  notifications_snoozed_until: string | null;
+  last_notifications_acknowledged_at: string | null;
+  /** Write-only on PUT; stamps ``last_notifications_acknowledged_at`` server-side. */
+  acknowledge_notifications?: boolean;
 };
 
 export type AlertDispatchItem = {

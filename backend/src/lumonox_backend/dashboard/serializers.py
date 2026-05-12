@@ -27,6 +27,9 @@ def serialize_alert_settings(settings: ProjectAlertSettings) -> DashboardAlertSe
         outage_min_requests=int(settings.outage_min_requests),
         outage_window_minutes=int(settings.outage_window_minutes),
         cooldown_minutes=int(settings.cooldown_minutes),
+        notifications_muted=bool(settings.notifications_muted),
+        notifications_snoozed_until=settings.notifications_snoozed_until,
+        last_notifications_acknowledged_at=settings.last_notifications_acknowledged_at,
     )
 
 

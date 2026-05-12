@@ -969,6 +969,9 @@ def test_dashboard_alert_settings_read_and_update(
         assert current["error_spike_min_requests"] == 20
         assert current["outage_min_requests"] == 10
         assert current["cooldown_minutes"] == 15
+        assert current["notifications_muted"] is False
+        assert current["notifications_snoozed_until"] is None
+        assert current["last_notifications_acknowledged_at"] is None
 
         update_payload = {
             "enabled": False,
@@ -1034,6 +1037,8 @@ def test_dashboard_alert_settings_are_scoped_by_project(
                 "outage_min_requests": 12,
                 "outage_window_minutes": 8,
                 "cooldown_minutes": 18,
+                "notifications_muted": False,
+                "notifications_snoozed_until": None,
             },
             headers={"Authorization": f"Bearer {key_one}"},
         )
@@ -1046,6 +1051,64 @@ def test_dashboard_alert_settings_are_scoped_by_project(
         assert other_read.status_code == 200
         payload = other_read.json()
         assert payload == baseline_payload
+
+
+def test_dashboard_alert_notification_controls_with_magic_link_session(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from test_dashboard_auth import _request_magic_link_token
+
+    _truncate_tables(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "ops-notify@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="ops-notify@example.com", tmp_path=tmp_path)
+        verify = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify.status_code == 200
+        bootstrap = client.post(
+            "/dashboard/auth/bootstrap",
+            json={"organization_name": "Notify Org", "project_name": "Notify Project"},
+        )
+        assert bootstrap.status_code == 200, bootstrap.text
+
+        read = client.get("/dashboard/alert-settings")
+        assert read.status_code == 200
+        base = read.json()
+        assert base["notifications_muted"] is False
+        assert base["notifications_snoozed_until"] is None
+        assert base["last_notifications_acknowledged_at"] is None
+
+        put_body = {k: v for k, v in base.items() if k != "last_notifications_acknowledged_at"}
+        put_body["notifications_muted"] = True
+        put_body["acknowledge_notifications"] = True
+        put = client.put("/dashboard/alert-settings", json=put_body)
+        assert put.status_code == 200, put.text
+        after = client.get("/dashboard/alert-settings").json()
+        assert after["notifications_muted"] is True
+        assert after["last_notifications_acknowledged_at"] is not None
+
+        snooze_until = (
+            (datetime.now(tz=UTC) + timedelta(hours=4)).replace(microsecond=0).isoformat()
+        )
+        put_body2 = {k: v for k, v in after.items() if k != "last_notifications_acknowledged_at"}
+        put_body2["notifications_muted"] = False
+        put_body2["notifications_snoozed_until"] = snooze_until
+        put2 = client.put("/dashboard/alert-settings", json=put_body2)
+        assert put2.status_code == 200, put2.text
+        cleared = client.get("/dashboard/alert-settings").json()
+        assert cleared["notifications_muted"] is False
+        assert cleared.get("notifications_snoozed_until") is not None
+
+        put_body3 = {k: v for k, v in cleared.items() if k != "last_notifications_acknowledged_at"}
+        put_body3["notifications_snoozed_until"] = None
+        put3 = client.put("/dashboard/alert-settings", json=put_body3)
+        assert put3.status_code == 200, put3.text
+        final = client.get("/dashboard/alert-settings").json()
+        assert final.get("notifications_snoozed_until") is None
 
 
 def test_dashboard_alert_dispatches_include_delivery_status_fields(
