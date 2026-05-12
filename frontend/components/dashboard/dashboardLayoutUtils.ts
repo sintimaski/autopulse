@@ -27,7 +27,7 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
   "/incident": {
     title: "Incident",
     subtitle:
-      "Notebook-style worksheet: markdown, notes, runnable SQL on scoped_events, and quick links to diagnosis, requests, traces, and more.",
+      "Notebook workspace with scope cells, markdown, notes, runnable SQL, and local snapshot save/load.",
   },
   "/diagnosis": {
     title: "Errors & Diagnosis",

@@ -19,6 +19,7 @@ import {
   buildCurrentScopedState,
   buildIncidentShareQuery,
   buildScopedQuery,
+  mergeIncidentShareIntoScopeQueryString,
   parseScopedQuery,
   scopedQueryStringsEqual,
   type DashboardScopedQueryState,
@@ -341,12 +342,14 @@ function ShellWithData({ children }: { children: ReactNode }) {
     }
 
     const normalized = buildLiveDashboardSearchString(pathname, parsed, logsParsed);
-    if (!scopedQueryStringsEqual(normalized, search)) {
+    const outgoing =
+      pathname === "/incident" ? mergeIncidentShareIntoScopeQueryString(normalized, search) : normalized;
+    if (!scopedQueryStringsEqual(outgoing, search)) {
       const hash = typeof window !== "undefined" ? window.location.hash : "";
-      const logicalHref = normalized ? `${pathname}?${normalized}${hash}` : `${pathname}${hash}`;
+      const logicalHref = outgoing ? `${pathname}?${outgoing}${hash}` : `${pathname}${hash}`;
       replaceScopedUrlInPlace(logicalDashboardLocationHref(logicalHref));
     }
-    lastAppliedQueryRef.current = `${pathname}?${normalized}`;
+    lastAppliedQueryRef.current = `${pathname}?${outgoing}`;
     queueMicrotask(() => {
       applyingScopedQueryFromUrlRef.current = false;
     });
@@ -373,11 +376,15 @@ function ShellWithData({ children }: { children: ReactNode }) {
           }
         : DEFAULT_LOGS_VIEW_CLIENT;
     const nextQuery = buildLiveDashboardSearchString(pathname, scopedServerStateForUrl, logsClientSlice);
-    if (scopedQueryStringsEqual(nextQuery, currentQuery)) {
+    const outgoing =
+      pathname === "/incident"
+        ? mergeIncidentShareIntoScopeQueryString(nextQuery, currentQuery)
+        : nextQuery;
+    if (scopedQueryStringsEqual(outgoing, currentQuery)) {
       return;
     }
     const hash = typeof window !== "undefined" ? window.location.hash : "";
-    const logicalHref = nextQuery ? `${pathname}?${nextQuery}${hash}` : `${pathname}${hash}`;
+    const logicalHref = outgoing ? `${pathname}?${outgoing}${hash}` : `${pathname}${hash}`;
     replaceScopedUrlInPlace(logicalDashboardLocationHref(logicalHref));
   }, [
     scopedServerStateForUrl,
@@ -464,8 +471,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
     pathname === "/diagnosis" ||
     pathname === "/logs" ||
     pathname === "/requests" ||
-    pathname === "/query-explorer" ||
-    pathname === "/incident";
+    pathname === "/query-explorer";
   const latestDispatch = d.recentAlertDispatches[0] ?? null;
   const alertDeliveryHealthy = latestDispatch ? latestDispatch.status !== "failed" : true;
   const subpathStaticUi = isApiSubpathDashboard();
@@ -602,15 +608,13 @@ function ShellWithData({ children }: { children: ReactNode }) {
           ? "Diagnosis scope"
           : pathname === "/query-explorer"
             ? "Time scope"
-            : pathname === "/incident"
-              ? "Incident scope"
-              : pathname === "/logs" || pathname === "/requests"
+            : pathname === "/logs" || pathname === "/requests"
                 ? "Requests scope"
                 : "Server scope"
       }
       onResetServerFilters={
         showServerScope
-          ? pathname === "/diagnosis" || pathname === "/incident"
+          ? pathname === "/diagnosis"
             ? resetDiagnosisScope
             : pathname === "/query-explorer"
               ? () => {
@@ -626,7 +630,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
         showServerScope ? (
           <ServerQueryToolbar
             variant={
-              pathname === "/diagnosis" || pathname === "/incident"
+              pathname === "/diagnosis"
                 ? "diagnosis"
                 : pathname === "/query-explorer"
                   ? "query-explorer"

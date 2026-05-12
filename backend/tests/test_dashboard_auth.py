@@ -127,6 +127,7 @@ def _truncate_tables(database_url: str) -> None:
         tables = (
             "dashboard_sessions",
             "dashboard_magic_links",
+            "dashboard_incident_shares",
             "governance_audit_events",
             "organization_memberships",
             "archived_events",

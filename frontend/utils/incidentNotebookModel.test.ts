@@ -42,6 +42,56 @@ describe("incidentNotebookModel", () => {
     }
   });
 
+  it("parses scope cells", () => {
+    const raw = JSON.stringify({
+      version: 1,
+      cells: [{ id: "scope-1", type: "scope", source: "Scope notes" }],
+    });
+    const parsed = parseIncidentNotebookJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.cells[0]).toEqual({ id: "scope-1", type: "scope", source: "Scope notes", filters: null });
+  });
+
+  it("parses scope with filters and checklist", () => {
+    const filters = {
+      isAbsoluteWindow: false,
+      windowMinutes: 30,
+      windowFromTimestamp: "",
+      windowToTimestamp: "",
+      method: "GET",
+      statusClass: "5",
+      minLatencyMs: "",
+      maxLatencyMs: "",
+      pathQuery: "/api",
+      serverEnvironmentQuery: "",
+      serverServiceQuery: "",
+      requestLimit: 100,
+      requestPage: 0,
+      errorGroupLimit: 25,
+      errorGroupPage: 0,
+      errorGroupSort: "last_seen" as const,
+      correlationRequestId: "",
+      sqlFilterApplied: "",
+      sqlFilterEnabled: false,
+    };
+    const raw = JSON.stringify({
+      version: 1,
+      cells: [
+        { id: "s1", type: "scope", source: "n", filters },
+        {
+          id: "c1",
+          type: "checklist",
+          title: "T",
+          items: [{ id: "i1", text: "one", checked: true }],
+        },
+        { id: "l1", type: "link", label: "L", href: "https://a.example", note: "" },
+      ],
+    });
+    const parsed = parseIncidentNotebookJson(raw);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.cells.map((c) => c.type)).toEqual(["scope", "checklist", "link"]);
+  });
+
   it("moveCell and removeCellAt", () => {
     const doc = defaultIncidentNotebook();
     const [a, b] = doc.cells;

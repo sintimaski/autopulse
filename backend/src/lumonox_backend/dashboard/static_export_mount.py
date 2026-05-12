@@ -68,22 +68,46 @@ def _bundled_dashboard_static_dir() -> Path | None:
     return None
 
 
+def _find_workspace_frontend_out_dir() -> Path | None:
+    """Locate ``frontend/out`` for monorepo / editable installs.
+
+    - Walk ``cwd`` and its parents (covers ``uvicorn`` started from ``backend/``).
+    - Walk parents of this module (covers misleading ``cwd`` when the package lives under the repo).
+    """
+    seen: set[Path] = set()
+    ordered: list[Path] = [
+        Path.cwd().resolve(),
+        *Path.cwd().resolve().parents,
+        *Path(__file__).resolve().parents,
+    ]
+    for base in ordered:
+        b = base.resolve()
+        if b in seen:
+            continue
+        seen.add(b)
+        candidate = (b / "frontend" / "out").resolve()
+        if candidate.is_dir() and (candidate / "index.html").is_file():
+            return candidate
+    return None
+
+
 def _resolve_dashboard_static_dir(_settings: Settings) -> Path | None:
     env = os.getenv("LUMONOX_FRONTEND_STATIC_DIR", "").strip()
     if env:
         p = Path(env).expanduser().resolve()
         if p.is_dir() and (p / "index.html").is_file():
             return p
-        return None
+        logger.warning(
+            "LUMONOX_FRONTEND_STATIC_DIR is set but does not point at a Next export root "
+            "(expected index.html). Ignoring and searching for frontend/out. path=%s",
+            p,
+        )
+    workspace = _find_workspace_frontend_out_dir()
+    if workspace is not None:
+        return workspace
     bundled = _bundled_dashboard_static_dir()
     if bundled is not None:
         return bundled
-    # Prefer the workspace Next export (`npm run build` in `frontend/`).
-    candidates = (Path.cwd() / "frontend" / "out",)
-    for raw in candidates:
-        p = raw.resolve()
-        if p.is_dir() and (p / "index.html").is_file():
-            return p
     return None
 
 

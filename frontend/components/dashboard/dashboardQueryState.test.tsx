@@ -5,6 +5,7 @@ import {
   buildIncidentShareQuery,
   buildRequestsPageHref,
   buildScopedQuery,
+  mergeIncidentShareIntoScopeQueryString,
   parseScopedQuery,
   scopedQueryStringsEqual,
 } from "./dashboardQueryState";
@@ -91,6 +92,15 @@ describe("dashboardQueryState", () => {
   it("scopedQueryStringsEqual ignores parameter order", () => {
     expect(scopedQueryStringsEqual("a=1&b=2", "b=2&a=1")).toBe(true);
     expect(scopedQueryStringsEqual("a=1", "a=2")).toBe(false);
+  });
+
+  it("mergeIncidentShareIntoScopeQueryString preserves handoff token", () => {
+    expect(
+      mergeIncidentShareIntoScopeQueryString("window_minutes=60", "incident_share=abc&window_minutes=60"),
+    ).toBe("window_minutes=60&incident_share=abc");
+    expect(mergeIncidentShareIntoScopeQueryString("window_minutes=60", "window_minutes=60")).toBe(
+      "window_minutes=60",
+    );
   });
 
   it("buildScopedQuery omits sql_filter when disabled or empty", () => {

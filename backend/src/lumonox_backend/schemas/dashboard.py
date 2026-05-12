@@ -796,3 +796,66 @@ class DashboardBookmarkUpdate(BaseModel):
         if len(n) > 8000:
             raise ValueError("notes too long")
         return n
+
+
+class DashboardIncidentShareCreate(BaseModel):
+    """Create a DB-backed incident share link (scoped query + ACL)."""
+
+    scope_state: dict[str, Any] = Field(
+        ...,
+        description="Dashboard scoped state (same shape as frontend ``buildCurrentScopedState``).",
+    )
+    access_mode: Literal["organization", "restricted"]
+    allowed_user_ids: list[UUID] | None = None
+    expires_in_days: int = Field(default=7, ge=1, le=90)
+
+    @model_validator(mode="after")
+    def validate_restricted(self) -> DashboardIncidentShareCreate:
+        if self.access_mode == "restricted":
+            if not self.allowed_user_ids:
+                raise ValueError("allowed_user_ids required when access_mode is restricted")
+            if len(self.allowed_user_ids) > 200:
+                raise ValueError("too many allowed_user_ids")
+        else:
+            self.allowed_user_ids = None
+        return self
+
+
+class DashboardIncidentShareCreateResponse(BaseModel):
+    share_id: UUID
+    token: str
+    expires_at: datetime
+
+
+class DashboardIncidentShareListItem(BaseModel):
+    """Published share metadata (no token — secret is only returned at creation)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    created_at: datetime
+    expires_at: datetime
+    access_mode: str
+    allowed_user_ids: list[str] | None = None
+    revoked_at: datetime | None = None
+
+
+class DashboardIncidentShareRedeemRequest(BaseModel):
+    token: str = Field(..., min_length=8, max_length=512)
+
+    @field_validator("token")
+    @classmethod
+    def strip_token(cls, value: str) -> str:
+        return value.strip()
+
+
+class DashboardIncidentShareRedeemResponse(BaseModel):
+    scoped_query: str
+    project_id: UUID
+
+
+class DashboardIncidentShareWrongProjectResponse(BaseModel):
+    """Returned as JSON body with HTTP 409 when session project does not match share."""
+
+    code: Literal["wrong_project"] = "wrong_project"
+    project_id: UUID
