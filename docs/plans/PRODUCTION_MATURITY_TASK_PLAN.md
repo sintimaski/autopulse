@@ -48,6 +48,7 @@ Confirmed on `main` (newest first for this initiative):
 | `71fa9e8` | Production maturity bulk: `GET /dashboard/operator-health` + `OperatorPipelineHealthSection`, HA doc pointers, SDK (`_sdk_version`, batch byte split, `telemetry_observer`, bounded concurrent sends), incident worksheet + `IncidentNotebook` (initial local persistence), `OnboardingCompletionNudge`, `queryExplorerPresets.ts` templates, `build_operator_health_subsystems` in `health.py`, tests. |
 | *(follow-up commit)* | SDK ingest circuit breaker: `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`, fast-fail telemetry, slow-server overlap test in `sdk/tests/test_monitor.py`. |
 | *(follow-up commit)* | **PROD-008:** project alert **mute / snooze / acknowledge** fields + evaluation skip + dashboard session `PUT` test + runbook §4 + Alerts UI controls. |
+| `2269572` | **PROD-009 (MVP):** overview `release_markers` (DuckDB + SQL), snapshot-cache trim on live deltas, SDK `LUMONOX_RELEASE` / `LUMONOX_GIT_SHA` (+ kwargs) on events, dashboard home release chips, tests. |
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
 
@@ -291,9 +292,9 @@ Confirmed on `main` (newest first for this initiative):
 - **Validation / verification:** Sample dataset test; manual UI check.
 - **Idempotency:** Yes.
 - **State / progress tracking:**
-  - **Status:** In progress
-  - **% complete:** ~85
-  - **Last update:** 2026-05-12 — Backend `release_markers` on overview (DuckDB + SQL paths); snapshot cache trims markers with live deltas; SDK attaches `release` / `git_sha` from env or kwargs to enqueued events; dashboard types/guards + home overview chips when markers exist; `sdk/README.md` env/kwargs docs.
+  - **Status:** In progress (~90% against literal AC)
+  - **% complete:** ~90
+  - **Last update:** 2026-05-12 — **`2269572` on `main`:** backend aggregation + `release_markers` on overview API; DuckDB + SQL paths; snapshot cache trims markers when the sliding window moves; SDK attaches `release` / `git_sha` (env + kwargs); `sdk/README.md`; frontend guards + **home overview release chips** above traffic charts. **Remaining for full AC2 wording:** vertical or in-chart markers on **`VolumeChart`** and diagnosis time-series (optional polish; same task or thin follow-up).
   - **Owner:** (assign)
 
 ---
@@ -360,14 +361,14 @@ Confirmed on `main` (newest first for this initiative):
 
 ## 6) Plan-level execution strategy
 
-- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in repo follow-up. **Next:** `PROD-001` maintainer sign-off; **PROD-008** optional per-alert ack / org policies; P2 **`PROD-009`–`010`** (`011`–`012` shipped).
+- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in repo follow-up; **PROD-009** overview/SDK slice landed in **`2269572`** (chart/diagnosis overlays still open). **Next:** `PROD-001` maintainer sign-off; **PROD-008** remainder (staging smoke, optional per-alert ack); **PROD-009** chart polish or **`PROD-010`** (`011`–`012` shipped).
 - **Parallelization opportunities:** `PROD-008` lifecycle UI can proceed parallel to `PROD-009` once mute semantics are sketched.
 - **Risk register (top 3–5):**
   1. HA topology decision slips → blocks validation and health semantics. *(Partially mitigated: §1.2 + `validate_deployment_settings`; staging evidence still needed.)*
   2. SDK byte budget misaligned with server defaults → false sense of safety until integration tested.
   3. Incident mode persistence vs static export → **Mitigated** for default path (server-backed + migrations); static export must keep serving built UI against live API for full feature.
   4. Alert webhooks abused for SSRF or secret leakage → **Partially mitigated:** dashboard + runtime validation for https/public hosts (dev-only http localhost); outbound pacing; review still recommended for org-specific policies.
-  5. Release markers cause cardinality issues → needs aggregate design before UI polish.
+  5. Release markers cause cardinality issues → **Mitigated for MVP:** backend caps distinct pairs (**40**), snapshot cache trims by window; chart overlays still need UX if enabled everywhere.
 - **Decision log:**
 
 | Decision | Why | Date | Owner |
@@ -390,5 +391,6 @@ Mark each item before closing the plan:
 ## 8) Next execution batch (ordered)
 
 1. **PROD-001** — Maintainer sign-off on §1.2 golden path; extend `validate_deployment_settings` only if staging finds gaps.
-2. **PROD-008 (remainder)** — Mute/snooze/ack slice + docs/permissions; optional httpx-mocked `PUT /alert-settings` + test-dispatch E2E; staging Slack smoke.
-3. **PROD-009 / 010** — P2 after P1 closure or in parallel if staffing allows.
+2. **PROD-008 (remainder)** — Staging Slack / webhook smoke; optional per-alert ack / org policies; close security-review owner item in §7 when done.
+3. **PROD-009 (optional ~10%)** — Pass `release_markers` (or equivalent) into **`VolumeChart`** and diagnosis charts as vertical markers or legend; keep cap and empty-state behavior from `2269572`.
+4. **PROD-010** — Saved team views + bounded scoped export (P2); can start in parallel with (3) if different owners.
