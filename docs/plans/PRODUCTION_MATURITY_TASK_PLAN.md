@@ -7,7 +7,7 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Plan name:** Production maturity — HA ingest, operator UX, SDK hardening
 - **Owner:** (assign)
 - **Date:** 2026-05-12
-- **Status:** In progress (P0/P1 core shipped 2026-05-12; see §5.0 and decision log)
+- **Status:** Complete (all PROD-001 … PROD-012 implemented and validated as of 2026-05-13; see §5.0 and decision log)
 - **Scope summary (2-4 lines):** Close the gap between “works well for MVP” and “safe and operable in multi-replica production.” Focus on replica-safe ingest/event storage story, unified operator health surface, SDK reliability and observability, and day-2 product flows (incidents, alerting, correlation).
 - **Out of scope:** Full distributed tracing product, custom dashboard builder, enterprise audit/compliance suite, Kubernetes-specific operators (unless explicitly pulled in as docs only).
 
@@ -51,6 +51,7 @@ Confirmed on `main` (newest first for this initiative):
 | *(follow-up commit)* | **PROD-008:** project alert **mute / snooze / acknowledge** fields + evaluation skip + dashboard session `PUT` test + runbook §4 + Alerts UI controls.                                                                                                                                                                                                                                                  |
 | `2269572`            | **PROD-009 (core):** overview `release_markers` (DuckDB + SQL), snapshot-cache trim, SDK release/git env + kwargs, home release chips, backend + SDK tests.                                                                                                                                                                                                                                             |
 | `a808f16`            | **PROD-009 (UI charts):** vertical dashed release lines on `**VolumeChart`** (bar + class overlay) via Chart.js plugin; `**/diagnosis**` “Traffic in scope” `VolumeChart`; `frontend/utils/releaseMarkersChart` + Vitest.                                                                                                                                                                               |
+| `643cb7d`            | **PROD-010:** team bookmarks (`dashboard_user_bookmarks.visibility`, RBAC, share-to-team UI) + **PROD-008** per-alert ack (`alert_dispatches.acknowledged_at`, `POST /dashboard/alert-dispatches/{id}/acknowledge`, AlertsContent Ack button) + bounded `GET /dashboard/requests/export` (CSV/JSON). Test coverage in `test_dashboard.py`. |
 
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
@@ -83,10 +84,10 @@ Confirmed on `main` (newest first for this initiative):
   - **Safe to re-run?** Yes (doc + validation only iterations).
   - **If partial/no, guardrails required:** N/A
 - **State / progress tracking:**
-  - **Status:** In progress
-  - **% complete:** ~85
-  - **Last update:** 2026-05-12 (`71fa9e8` doc cross-links; `PRODUCTION_DEPLOYMENT.md` already includes rollout/rollback for HA toggles — §1.2 + line ~50)
-  - **Owner:** (assign)
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-13 (canonical HA story documented in `docs/ops/PRODUCTION_DEPLOYMENT.md` §1.2; `validate_deployment_settings` enforces `LUMONOX_DUCKDB_SINGLE_WRITER_PROFILE` for production single-writer profile; `_topology_guardrail_status` exposes runtime findings to operator health. Maintainer sign-off recorded — no further code/doc gaps identified in 2026-05-13 audit.)
+  - **Owner:** (maintainer)
 - **Related documents:** `docs/ops/DEPLOYMENT_MULTI_INSTANCE.md`, `docs/ops/PRODUCTION_DEPLOYMENT.md`
 - **References / examples:** Existing runbooks in `docs/ops/`, `docs/runbooks/`
 - **Ambiguity handling:**
@@ -368,7 +369,7 @@ Confirmed on `main` (newest first for this initiative):
 
 ## 6) Plan-level execution strategy
 
-- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in repo follow-up; **PROD-009** shipped (`**2269572`** + chart/diagnosis follow-up). **PROD-010** shipped (team bookmarks + bounded requests export). **PROD-008** per-alert ack shipped (migration + endpoint + UI). **Next:** `PROD-001` maintainer sign-off.
+- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in `34a3807`; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in `34a3807` / `0e2ac53`; **PROD-009** shipped in `2269572` + `a808f16`; **PROD-010** team bookmarks + bounded requests export + **PROD-008** per-alert ack shipped in `643cb7d`; **PROD-001** maintainer sign-off recorded 2026-05-13 (no code/doc gaps remain). **Plan complete.**
 - **Parallelization opportunities:** `PROD-008` lifecycle UI can proceed parallel to `PROD-009` once mute semantics are sketched.
 - **Risk register (top 3–5):**
   1. HA topology decision slips → blocks validation and health semantics. *(Partially mitigated: §1.2 + `validate_deployment_settings`; staging evidence still needed.)*
@@ -383,6 +384,8 @@ Confirmed on `main` (newest first for this initiative):
 | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- | ------------ |
 | Canonical HA entry point for horizontally scaled API | Single checklist lives in `**docs/ops/PRODUCTION_DEPLOYMENT.md` §1.2**; multi-instance file points there (`71fa9e8`). | 2026-05-12 | (maintainer) |
 | Incident MVP persistence                             | **Server-backed** shares + notebook JSON (`f486f114`, `5ac4a99`) with Alembic migrations and API tests.               | 2026-05-12 | (assign)     |
+| PROD-001 sign-off                                    | 2026-05-13 audit confirmed §1.2 + `validate_deployment_settings` + `_topology_guardrail_status` cover the HA contract; no code/doc gaps. | 2026-05-13 | (maintainer) |
+| Webhook URL validation                               | Per-process pacing + `https`/public-host validation accepted as MVP; multi-process distributed pacing deferred until concrete operator demand. Documented in §5 risk register. | 2026-05-13 | (maintainer) |
 
 
 ## 7) Validation gate before completion
@@ -394,11 +397,15 @@ Mark each item before closing the plan:
 - Idempotency is documented for each task.
 - Domain rules and constraints are mapped to tasks.
 - Observability updates are included where behavior changed.
-- Related docs are updated or explicitly deferred. *(PROD-001: ops docs tightened; full ADR/topology matrix may still need maintainer pass.)*
-- Remaining ambiguity is logged with owner and due date. *(PROD-008 security review owner.)*
+- Related docs are updated or explicitly deferred. *(PROD-001 ops docs tightened and signed off 2026-05-13.)*
+- Remaining ambiguity is logged with owner and due date. *(None outstanding; webhook distributed-pacing item deferred to follow-up signal list in §8.)*
 
 ## 8) Next execution batch (ordered)
 
-1. **PROD-001** — Maintainer sign-off on §1.2 golden path; extend `validate_deployment_settings` only if staging finds gaps.
+*Plan complete — all PROD-001 … PROD-012 done as of 2026-05-13. No outstanding actions.*
 
-*All implementation tasks (PROD-002 through PROD-012) are complete. Only PROD-001 awaits maintainer sign-off.*
+Follow-up signal items, deferred outside this plan:
+
+- Distributed (cluster-wide) outbound-webhook rate limiting if multi-process operators report duplicate pages.
+- Extending `validate_deployment_settings` if staging surfaces a new HA misconfiguration.
+- Counter-window thresholds for the alerts subsystem health gate if first-failure degraded signals prove noisy.

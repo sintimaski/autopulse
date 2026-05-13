@@ -28,8 +28,7 @@ def upgrade() -> None:
         )
         op.execute(
             text(
-                "ALTER TABLE project_alert_settings ADD COLUMN "
-                "notifications_snoozed_until DATETIME"
+                "ALTER TABLE project_alert_settings ADD COLUMN notifications_snoozed_until DATETIME"
             )
         )
         op.execute(
@@ -72,8 +71,7 @@ def downgrade() -> None:
     if bind.dialect.name == "sqlite":
         op.execute(
             text(
-                "ALTER TABLE project_alert_settings DROP COLUMN "
-                "last_notifications_acknowledged_at"
+                "ALTER TABLE project_alert_settings DROP COLUMN last_notifications_acknowledged_at"
             )
         )
         op.execute(

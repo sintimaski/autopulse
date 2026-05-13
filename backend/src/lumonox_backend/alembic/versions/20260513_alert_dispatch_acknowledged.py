@@ -20,10 +20,8 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
-        op.execute(text("ALTER TABLE alert_dispatches ADD COLUMN " "acknowledged_at TIMESTAMP"))
-        op.execute(
-            text("ALTER TABLE alert_dispatches ADD COLUMN " "acknowledged_by_user_id CHAR(36)")
-        )
+        op.execute(text("ALTER TABLE alert_dispatches ADD COLUMN acknowledged_at TIMESTAMP"))
+        op.execute(text("ALTER TABLE alert_dispatches ADD COLUMN acknowledged_by_user_id CHAR(36)"))
         return
     op.add_column(
         "alert_dispatches",
