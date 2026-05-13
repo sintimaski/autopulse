@@ -93,11 +93,13 @@ def test_dashboard_reads_require_auth(backend_test_database_url: str) -> None:
     with TestClient(app) as client:
         overview_response = client.get("/dashboard/overview")
         requests_response = client.get("/dashboard/requests")
+        export_response = client.get("/dashboard/requests/export", params={"format": "csv"})
         error_groups_response = client.get("/dashboard/error-groups")
         alert_settings_response = client.get("/dashboard/alert-settings")
         system_diagnostics_response = client.get("/dashboard/system-diagnostics")
     assert overview_response.status_code == 401
     assert requests_response.status_code == 401
+    assert export_response.status_code == 401
     assert error_groups_response.status_code == 401
     assert alert_settings_response.status_code == 401
     assert system_diagnostics_response.status_code == 401
@@ -127,7 +129,125 @@ def test_dashboard_bookmarks_require_cookie_session(backend_test_database_url: s
     assert create.status_code == 401
 
 
-def test_dashboard_preflight_returns_cors_headers(backend_test_database_url: str) -> None:
+def test_dashboard_requests_export_rejects_invalid_limit(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "export-limit-test")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/requests/export",
+            params={"format": "csv", "export_limit": 2001},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 422
+
+
+def test_dashboard_requests_export_rejects_offset_window(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "export-window-test")
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get(
+            "/dashboard/requests/export",
+            params={"format": "csv", "export_limit": 2000, "export_offset": 3001},
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 400
+
+
+def test_dashboard_requests_export_csv_contains_header(backend_test_database_url: str) -> None:
+    _truncate_tables(backend_test_database_url)
+    key, _ = _seed_project_and_key(backend_test_database_url, "export-csv-test")
+    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
+    app = create_app()
+    with TestClient(app) as client:
+        _ingest(client, key, base_time, 200, "GET", "/export-me")
+        response = client.get(
+            "/dashboard/requests/export",
+            params={
+                "format": "csv",
+                "export_limit": 50,
+                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
+                "to_timestamp": (base_time + timedelta(minutes=2)).isoformat(),
+            },
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert response.status_code == 200
+    lines = response.text.strip().splitlines()
+    assert lines
+    assert lines[0].startswith("timestamp,")
+
+
+def test_dashboard_bookmarks_project_visibility_member_can_list_and_cannot_create_team(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from test_dashboard_auth import _extract_magic_link_token_from_outbox, _request_magic_link_token
+
+    _truncate_tables(backend_test_database_url)
+    _seed_project_and_key(backend_test_database_url, "bookmark-team-visibility")
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "owner@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+
+    with TestClient(app) as client:
+        owner_token = _request_magic_link_token(
+            client, email="owner@example.com", tmp_path=tmp_path
+        )
+        assert (
+            client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": owner_token}
+            ).status_code
+            == 200
+        )
+        orgs = client.get("/dashboard/organizations").json()["organizations"]
+        organization_id = orgs[0]["organization_id"]
+        assert (
+            client.post(
+                f"/dashboard/organizations/{organization_id}/members/invite",
+                json={"email": "member@example.com", "role": "member"},
+            ).status_code
+            == 200
+        )
+        create = client.post(
+            "/dashboard/bookmarks",
+            json={
+                "title": "Team requests",
+                "pathname": "/requests",
+                "query_string": "window_minutes=60",
+                "visibility": "project",
+            },
+        )
+        assert create.status_code == 200, create.text
+        assert create.json()["visibility"] == "project"
+        assert client.post("/dashboard/auth/logout").status_code == 200
+
+    member_app = create_app()
+    with TestClient(member_app) as member_client:
+        member_client.post(
+            "/dashboard/auth/magic-link/request", json={"email": "member@example.com"}
+        )
+        member_token = _extract_magic_link_token_from_outbox(tmp_path)
+        assert (
+            member_client.post(
+                "/dashboard/auth/magic-link/verify", json={"token": member_token}
+            ).status_code
+            == 200
+        )
+        listed = member_client.get("/dashboard/bookmarks").json()["items"]
+        assert any(
+            i.get("title") == "Team requests" and i.get("visibility") == "project" for i in listed
+        )
+        deny = member_client.post(
+            "/dashboard/bookmarks",
+            json={
+                "title": "Nope",
+                "pathname": "/requests",
+                "visibility": "project",
+            },
+        )
+        assert deny.status_code == 403
     _truncate_tables(backend_test_database_url)
     app = create_app()
     with TestClient(app) as client:
@@ -1826,3 +1946,95 @@ def test_dashboard_requests_correlation_filter_includes_job_events(
     paths = {item["path"] for item in body["items"]}
     assert "/visible-route" in paths
     assert "nightly_job" in paths
+
+
+def test_dashboard_alert_dispatch_per_alert_acknowledge(
+    backend_test_database_url: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """POST /dashboard/alert-dispatches/{id}/acknowledge sets acknowledged_at."""
+    from test_dashboard_auth import _request_magic_link_token
+
+    _truncate_tables(backend_test_database_url)
+    monkeypatch.setenv("DASHBOARD_AUTH_ALLOWED_EMAIL", "ack-test@example.com")
+    monkeypatch.setenv("ALERT_EMAIL_PROVIDER", "file")
+    monkeypatch.setenv("ALERT_EMAIL_FILE_OUTBOX_DIR", str(tmp_path))
+    monkeypatch.setenv("ALERT_EMAIL_FROM", "alerts@example.com")
+    app = create_app()
+    now = datetime.now(tz=UTC).replace(microsecond=0)
+
+    with TestClient(app) as client:
+        token = _request_magic_link_token(client, email="ack-test@example.com", tmp_path=tmp_path)
+        verify = client.post("/dashboard/auth/magic-link/verify", json={"token": token})
+        assert verify.status_code == 200
+        bootstrap = client.post(
+            "/dashboard/auth/bootstrap",
+            json={"organization_name": "Ack Org", "project_name": "Ack Project"},
+        )
+        assert bootstrap.status_code == 200, bootstrap.text
+        session_resp = client.get("/dashboard/auth/session")
+        assert session_resp.status_code == 200
+        project_id = session_resp.json()["project_id"]
+        user_id = session_resp.json()["user_id"]
+
+        async def seed_dispatch() -> int:
+            engine = create_async_engine(backend_test_database_url, pool_pre_ping=True)
+            maker = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+            try:
+                async with maker() as db:
+                    d = AlertDispatch(
+                        project_id=UUID(project_id),
+                        alert_type="error_spike",
+                        destination_email="ops@example.com",
+                        delivered_via="email",
+                        status="sent",
+                        attempt_count=1,
+                        triggered_at=now,
+                        window_start=now - timedelta(minutes=5),
+                        window_end=now,
+                        detail={"test": True},
+                    )
+                    db.add(d)
+                    await db.commit()
+                    await db.refresh(d)
+                    return int(d.id)
+            finally:
+                await engine.dispose()
+
+        dispatch_id = asyncio.run(seed_dispatch())
+
+        ack = client.post(f"/dashboard/alert-dispatches/{dispatch_id}/acknowledge")
+        assert ack.status_code == 200, ack.text
+        ack_body = ack.json()
+        assert ack_body["acknowledged_at"] is not None
+        assert ack_body["acknowledged_by_user_id"] == user_id
+
+        ack2 = client.post(f"/dashboard/alert-dispatches/{dispatch_id}/acknowledge")
+        assert ack2.status_code == 200
+        assert ack2.json()["acknowledged_at"] == ack_body["acknowledged_at"]
+
+        dispatches = client.get(
+            "/dashboard/alert-dispatches",
+            params={
+                "from_timestamp": (now - timedelta(minutes=10)).isoformat(),
+                "to_timestamp": (now + timedelta(minutes=1)).isoformat(),
+            },
+        )
+        assert dispatches.status_code == 200
+        items = dispatches.json()["items"]
+        assert len(items) == 1
+        assert items[0]["acknowledged_at"] is not None
+
+
+def test_dashboard_alert_dispatch_acknowledge_requires_session(
+    backend_test_database_url: str,
+) -> None:
+    """Ack endpoint rejects API-key-only auth (requires cookie session)."""
+    _truncate_tables(backend_test_database_url)
+    key, _project_id = _seed_project_and_key(backend_test_database_url, "ack-noauth")
+    app = create_app()
+    with TestClient(app) as client:
+        resp = client.post(
+            "/dashboard/alert-dispatches/99999/acknowledge",
+            headers={"Authorization": f"Bearer {key}"},
+        )
+    assert resp.status_code == 401

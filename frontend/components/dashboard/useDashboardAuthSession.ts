@@ -27,6 +27,8 @@ export function useDashboardAuthSession(): {
   authSessionResolved: boolean;
   sessionEmail: string | null;
   membershipRole: DashboardSessionResponse["membership_role"];
+  /** Authenticated dashboard user id (UUID string), when present. */
+  sessionUserId: string | null;
   /** Project UUID the cookie session is bound to (same scope as ``/dashboard/query``). */
   sessionProjectId: string | null;
   sessionOrganizationId: string | null;
@@ -39,6 +41,7 @@ export function useDashboardAuthSession(): {
   const [authSessionResolved, setAuthSessionResolved] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
   const [membershipRole, setMembershipRole] = useState<DashboardSessionResponse["membership_role"]>(null);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [sessionProjectId, setSessionProjectId] = useState<string | null>(null);
   const [sessionOrganizationId, setSessionOrganizationId] = useState<string | null>(null);
   const [sessionIssue, setSessionIssue] = useState<DashboardAuthSessionIssue>("none");
@@ -65,6 +68,7 @@ export function useDashboardAuthSession(): {
             setHasSession(false);
             setSessionEmail(null);
             setMembershipRole(null);
+            setSessionUserId(null);
             setSessionProjectId(null);
             setSessionOrganizationId(null);
             setSessionIssue(
@@ -78,6 +82,7 @@ export function useDashboardAuthSession(): {
           setHasSession(Boolean(payload.authenticated));
           setSessionEmail(payload.email ?? null);
           setMembershipRole(payload.membership_role ?? null);
+          setSessionUserId(payload.authenticated ? (payload.user_id ?? null) : null);
           setSessionProjectId(payload.authenticated ? (payload.project_id ?? null) : null);
           setSessionOrganizationId(
             payload.authenticated ? (payload.organization_id ?? null) : null,
@@ -89,6 +94,7 @@ export function useDashboardAuthSession(): {
           setHasSession(false);
           setSessionEmail(null);
           setMembershipRole(null);
+          setSessionUserId(null);
           setSessionProjectId(null);
           setSessionOrganizationId(null);
           setSessionIssue("network");
@@ -110,6 +116,7 @@ export function useDashboardAuthSession(): {
     authSessionResolved,
     sessionEmail,
     membershipRole,
+    sessionUserId,
     sessionProjectId,
     sessionOrganizationId,
     sessionIssue,

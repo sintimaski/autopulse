@@ -3,15 +3,17 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import (
+    DashboardAuthSession,
     ProjectContext,
     authenticate_dashboard_project,
     ensure_dashboard_admin_or_owner,
     ensure_dashboard_not_viewer,
+    require_dashboard_auth_session,
 )
 from lumonox_backend.core.config import get_settings
 from lumonox_backend.dashboard.params import (
@@ -99,8 +101,38 @@ def _reason_message_for_dispatch(reason_code: str | None) -> str | None:
     mapped = _REASON_CODE_MESSAGES.get(normalized)
     if mapped is not None:
         return mapped
-    # Fall back to a human-ish rendering so the UI never surfaces an opaque code.
     return normalized.replace("_", " ").capitalize()
+
+
+def _serialize_dispatch(dispatch: AlertDispatch) -> DashboardAlertDispatchItem:
+    return DashboardAlertDispatchItem(
+        id=dispatch.id,
+        alert_type=dispatch.alert_type,
+        destination_email=dispatch.destination_email,
+        delivered_via=dispatch.delivered_via,
+        status=dispatch.status,
+        reason_code=dispatch.reason_code,
+        reason_message=_reason_message_for_dispatch(dispatch.reason_code),
+        attempt_count=int(dispatch.attempt_count),
+        triggered_at=as_utc_datetime(dispatch.triggered_at),
+        window_start=as_utc_datetime(dispatch.window_start),
+        window_end=as_utc_datetime(dispatch.window_end),
+        delivered_at=(
+            as_utc_datetime(dispatch.delivered_at) if dispatch.delivered_at is not None else None
+        ),
+        provider_message_id=dispatch.provider_message_id,
+        detail=dispatch.detail,
+        acknowledged_at=(
+            as_utc_datetime(dispatch.acknowledged_at)
+            if dispatch.acknowledged_at is not None
+            else None
+        ),
+        acknowledged_by_user_id=(
+            str(dispatch.acknowledged_by_user_id)
+            if dispatch.acknowledged_by_user_id is not None
+            else None
+        ),
+    )
 
 
 @router.get("/alert-settings", response_model=DashboardAlertSettings)
@@ -145,29 +177,7 @@ async def get_dashboard_alert_dispatches(
         .limit(limit)
         .offset(offset)
     )
-    items = [
-        DashboardAlertDispatchItem(
-            id=dispatch.id,
-            alert_type=dispatch.alert_type,
-            destination_email=dispatch.destination_email,
-            delivered_via=dispatch.delivered_via,
-            status=dispatch.status,
-            reason_code=dispatch.reason_code,
-            reason_message=_reason_message_for_dispatch(dispatch.reason_code),
-            attempt_count=int(dispatch.attempt_count),
-            triggered_at=as_utc_datetime(dispatch.triggered_at),
-            window_start=as_utc_datetime(dispatch.window_start),
-            window_end=as_utc_datetime(dispatch.window_end),
-            delivered_at=(
-                as_utc_datetime(dispatch.delivered_at)
-                if dispatch.delivered_at is not None
-                else None
-            ),
-            provider_message_id=dispatch.provider_message_id,
-            detail=dispatch.detail,
-        )
-        for dispatch in rows.scalars().all()
-    ]
+    items = [_serialize_dispatch(dispatch) for dispatch in rows.scalars().all()]
     return DashboardAlertDispatchesResponse(total=total, limit=limit, offset=offset, items=items)
 
 
@@ -419,3 +429,35 @@ async def update_dashboard_alert_settings(
     await session.commit()
     await session.refresh(alert_settings)
     return serialize_alert_settings(alert_settings)
+
+
+@router.post(
+    "/alert-dispatches/{dispatch_id}/acknowledge",
+    response_model=DashboardAlertDispatchItem,
+)
+async def acknowledge_alert_dispatch(
+    dispatch_id: Annotated[int, Path(ge=1)],
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    auth: Annotated[DashboardAuthSession, Depends(require_dashboard_auth_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    _: Annotated[None, Depends(ensure_dashboard_not_viewer)],
+) -> DashboardAlertDispatchItem:
+    """Mark a single alert dispatch as acknowledged by the current user."""
+    dispatch = await session.scalar(
+        select(AlertDispatch).where(
+            AlertDispatch.id == dispatch_id,
+            AlertDispatch.project_id == context.project_id,
+        )
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert dispatch not found.",
+        )
+    if dispatch.acknowledged_at is not None:
+        return _serialize_dispatch(dispatch)
+    dispatch.acknowledged_at = datetime.now(tz=UTC)
+    dispatch.acknowledged_by_user_id = auth.user_id
+    await session.commit()
+    await session.refresh(dispatch)
+    return _serialize_dispatch(dispatch)

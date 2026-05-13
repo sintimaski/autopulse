@@ -11,6 +11,7 @@ import {
   type DashboardBookmarkItem,
 } from "../bookmarkClient";
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
+import { useDashboardAuthSession } from "../useDashboardAuthSession";
 
 function bookmarkHref(b: DashboardBookmarkItem): string {
   const q = b.query_string?.trim() ? `?${b.query_string.trim()}` : "";
@@ -18,12 +19,28 @@ function bookmarkHref(b: DashboardBookmarkItem): string {
   return `${b.pathname}${q}${h}`;
 }
 
+function canMutateBookmark(
+  b: DashboardBookmarkItem,
+  sessionUserId: string | null,
+  role: "owner" | "admin" | "member" | "viewer" | null,
+): boolean {
+  if (sessionUserId && b.created_by_user_id === sessionUserId) {
+    return true;
+  }
+  if (b.visibility === "project" && (role === "owner" || role === "admin")) {
+    return true;
+  }
+  return false;
+}
+
 export function BookmarksContent() {
+  const { sessionUserId, membershipRole } = useDashboardAuthSession();
   const [items, setItems] = useState<DashboardBookmarkItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftNotes, setDraftNotes] = useState("");
+  const [draftVisibility, setDraftVisibility] = useState<"private" | "project">("private");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -58,21 +75,32 @@ export function BookmarksContent() {
     setEditingId(b.id);
     setDraftTitle(b.title);
     setDraftNotes(b.notes ?? "");
+    setDraftVisibility(b.visibility === "project" ? "project" : "private");
   };
 
   const cancelEdit = () => {
     setEditingId(null);
     setDraftTitle("");
     setDraftNotes("");
+    setDraftVisibility("private");
   };
 
   const saveEdit = async (id: string) => {
     setBusyId(id);
     try {
-      const updated = await updateDashboardBookmark(id, {
+      const prev = items?.find((x) => x.id === id);
+      const payload: Parameters<typeof updateDashboardBookmark>[1] = {
         title: draftTitle.trim(),
         notes: draftNotes.trim() || null,
-      });
+      };
+      if (
+        (membershipRole === "owner" || membershipRole === "admin") &&
+        prev &&
+        draftVisibility !== prev.visibility
+      ) {
+        payload.visibility = draftVisibility;
+      }
+      const updated = await updateDashboardBookmark(id, payload);
       setItems((prev) => (prev ? prev.map((x) => (x.id === id ? updated : x)) : prev));
       cancelEdit();
     } catch (e) {
@@ -107,8 +135,9 @@ export function BookmarksContent() {
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-neutral-50">Bookmarks</h2>
             <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-neutral-400">
-              Every saved deep link for your account (all projects). Create one from Requests or Diagnosis via the row
-              menu → <span className="font-medium text-slate-800 dark:text-neutral-200">Save bookmark…</span>.
+              Your bookmarks and team-shared views for the signed-in project (plus your private bookmarks from other
+              projects). Create one from Requests or Diagnosis via the row menu →{" "}
+              <span className="font-medium text-slate-800 dark:text-neutral-200">Save bookmark…</span>.
             </p>
           </div>
         </div>
@@ -127,6 +156,7 @@ export function BookmarksContent() {
             {items.map((b) => {
               const isEditing = editingId === b.id;
               const busy = busyId === b.id;
+              const mutable = canMutateBookmark(b, sessionUserId, membershipRole);
               return (
                 <li
                   key={b.id}
@@ -144,7 +174,14 @@ export function BookmarksContent() {
                           aria-label="Bookmark title"
                         />
                       ) : (
-                        <h3 className="text-sm font-semibold text-slate-900 dark:text-neutral-50">{b.title}</h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-semibold text-slate-900 dark:text-neutral-50">{b.title}</h3>
+                          {b.visibility === "project" ? (
+                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900 dark:bg-sky-950/60 dark:text-sky-100">
+                              Team
+                            </span>
+                          ) : null}
+                        </div>
                       )}
                       {b.project_name?.trim() ? (
                         <p className="mt-1 text-xs font-medium text-slate-500 dark:text-neutral-400">
@@ -155,8 +192,24 @@ export function BookmarksContent() {
                     </div>
                   </div>
                   {isEditing ? (
-                    <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-neutral-400">
-                      Notes
+                    <>
+                      {(membershipRole === "owner" || membershipRole === "admin") ? (
+                        <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-neutral-400">
+                          Visibility
+                          <select
+                            value={draftVisibility}
+                            onChange={(e) =>
+                              setDraftVisibility(e.target.value === "project" ? "project" : "private")
+                            }
+                            className="ap-select mt-1 w-full max-w-xs text-sm"
+                          >
+                            <option value="private">Private (only you)</option>
+                            <option value="project">Team (project members)</option>
+                          </select>
+                        </label>
+                      ) : null}
+                      <label className="mt-3 block text-xs font-medium text-slate-600 dark:text-neutral-400">
+                        Notes
                       <textarea
                         value={draftNotes}
                         onChange={(e) => setDraftNotes(e.target.value)}
@@ -165,6 +218,7 @@ export function BookmarksContent() {
                         maxLength={8000}
                       />
                     </label>
+                    </>
                   ) : b.notes ? (
                     <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">{b.notes}</p>
                   ) : null}
@@ -187,23 +241,27 @@ export function BookmarksContent() {
                       </>
                     ) : (
                       <>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                          onClick={() => startEdit(b)}
-                        >
-                          <Pencil className="size-3.5" aria-hidden />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/70"
-                          disabled={busy}
-                          onClick={() => void remove(b.id)}
-                        >
-                          <Trash2 className="size-3.5" aria-hidden />
-                          Delete
-                        </button>
+                        {mutable ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+                            onClick={() => startEdit(b)}
+                          >
+                            <Pencil className="size-3.5" aria-hidden />
+                            Edit
+                          </button>
+                        ) : null}
+                        {mutable ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-800 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/70"
+                            disabled={busy}
+                            onClick={() => void remove(b.id)}
+                          >
+                            <Trash2 className="size-3.5" aria-hidden />
+                            Delete
+                          </button>
+                        ) : null}
                       </>
                     )}
                   </div>

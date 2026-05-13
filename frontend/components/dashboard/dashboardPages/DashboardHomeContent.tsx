@@ -190,6 +190,9 @@ export function DashboardHomeContent() {
         pathname={routePath}
         queryString={queryStringForBookmarks}
         hashFragment={bookmarkDraft?.hashFragment ?? ""}
+        shareToProjectEligible={
+          d.sessionMembershipRole === "owner" || d.sessionMembershipRole === "admin"
+        }
       />
     </>
   );

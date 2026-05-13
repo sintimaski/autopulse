@@ -236,6 +236,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     membershipRole: sessionMembershipRole,
     sessionProjectId,
     sessionOrganizationId,
+    sessionUserId,
     sessionIssue: dashboardAuthSessionIssue,
     reloadSession: reloadDashboardAuthSession,
   } = useDashboardAuthSession();
@@ -1936,6 +1937,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sessionMembershipRole,
       sessionProjectId,
       sessionOrganizationId,
+      sessionUserId,
       authSessionResolved,
       dashboardAuthSessionIssue,
       windowMinutes,
@@ -2083,6 +2085,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       sessionMembershipRole,
       sessionProjectId,
       sessionOrganizationId,
+      sessionUserId,
       authSessionResolved,
       dashboardAuthSessionIssue,
       windowMinutes,

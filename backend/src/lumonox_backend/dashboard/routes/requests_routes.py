@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import csv
+import json
 from datetime import UTC, datetime
-from typing import Annotated
+from io import StringIO
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +48,27 @@ from lumonox_backend.services.event_store import event_store_enabled
 
 router = APIRouter()
 
+_EXPORT_WINDOW_MAX = 5000
+_EXPORT_LOG_MESSAGE_CSV_MAX = 2000
+
+_CSV_FIELDS: tuple[str, ...] = (
+    "timestamp",
+    "method",
+    "path",
+    "status_code",
+    "latency_ms",
+    "service_name",
+    "environment",
+    "request_id",
+    "event_id",
+    "event_kind",
+    "received_at",
+    "sdk_version",
+    "trace_id",
+    "span_id",
+    "log_message",
+)
+
 
 def _payload_trace_ids(payload: object) -> tuple[str | None, str | None]:
     if not isinstance(payload, dict):
@@ -61,27 +85,27 @@ def _payload_trace_ids(payload: object) -> tuple[str | None, str | None]:
     return trace, span
 
 
-@router.get("/requests", response_model=DashboardRequestsResponse)
-async def get_dashboard_requests(
-    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-    from_timestamp: datetime | None = FROM_TIMESTAMP_QUERY,
-    to_timestamp: datetime | None = TO_TIMESTAMP_QUERY,
-    window_minutes: int = WINDOW_MINUTES_QUERY,
-    method: str | None = METHOD_QUERY,
-    status_class: int | None = STATUS_CLASS_QUERY,
-    focus: DashboardRequestsFocus | None = REQUESTS_FOCUS_QUERY,
-    path_contains: str | None = PATH_QUERY,
-    environments: str | None = ENVIRONMENTS_QUERY,
-    services: str | None = SERVICES_QUERY,
-    min_latency_ms: float | None = LATENCY_MIN_MS_QUERY,
-    max_latency_ms: float | None = LATENCY_MAX_MS_QUERY,
-    limit: int = LIMIT_QUERY,
-    offset: int = OFFSET_QUERY,
-    event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
-    correlation_request_id: str | None = CORRELATION_REQUEST_ID_QUERY,
+async def fetch_dashboard_requests(
+    *,
+    session: AsyncSession,
+    context: ProjectContext,
+    server_now: datetime,
+    from_timestamp: datetime | None,
+    to_timestamp: datetime | None,
+    window_minutes: int,
+    method: str | None,
+    status_class: int | None,
+    focus: DashboardRequestsFocus | None,
+    path_contains: str | None,
+    environments: str | None,
+    services: str | None,
+    min_latency_ms: float | None,
+    max_latency_ms: float | None,
+    limit: int,
+    offset: int,
+    event_sql_filter: str | None,
+    correlation_request_id: str | None,
 ) -> DashboardRequestsResponse:
-    server_now = datetime.now(tz=UTC)
     resolved_from, resolved_to = resolve_time_window(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
@@ -190,7 +214,7 @@ async def get_dashboard_requests(
     items = []
     for (
         event_id,
-        timestamp,
+        ts,
         event_method,
         path,
         status_code,
@@ -206,7 +230,7 @@ async def get_dashboard_requests(
         trace_id, span_id = _payload_trace_ids(payload)
         items.append(
             DashboardRequestItem(
-                timestamp=as_utc_datetime(timestamp),
+                timestamp=as_utc_datetime(ts),
                 method=event_method,
                 path=path,
                 status_code=status_code,
@@ -231,4 +255,142 @@ async def get_dashboard_requests(
         limit=limit,
         offset=offset,
         items=items,
+    )
+
+
+def _csv_cell(value: object | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat()
+    return str(value)
+
+
+@router.get("/requests", response_model=DashboardRequestsResponse)
+async def get_dashboard_requests(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = TO_TIMESTAMP_QUERY,
+    window_minutes: int = WINDOW_MINUTES_QUERY,
+    method: str | None = METHOD_QUERY,
+    status_class: int | None = STATUS_CLASS_QUERY,
+    focus: DashboardRequestsFocus | None = REQUESTS_FOCUS_QUERY,
+    path_contains: str | None = PATH_QUERY,
+    environments: str | None = ENVIRONMENTS_QUERY,
+    services: str | None = SERVICES_QUERY,
+    min_latency_ms: float | None = LATENCY_MIN_MS_QUERY,
+    max_latency_ms: float | None = LATENCY_MAX_MS_QUERY,
+    limit: int = LIMIT_QUERY,
+    offset: int = OFFSET_QUERY,
+    event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
+    correlation_request_id: str | None = CORRELATION_REQUEST_ID_QUERY,
+) -> DashboardRequestsResponse:
+    server_now = datetime.now(tz=UTC)
+    return await fetch_dashboard_requests(
+        session=session,
+        context=context,
+        server_now=server_now,
+        from_timestamp=from_timestamp,
+        to_timestamp=to_timestamp,
+        window_minutes=window_minutes,
+        method=method,
+        status_class=status_class,
+        focus=focus,
+        path_contains=path_contains,
+        environments=environments,
+        services=services,
+        min_latency_ms=min_latency_ms,
+        max_latency_ms=max_latency_ms,
+        limit=limit,
+        offset=offset,
+        event_sql_filter=event_sql_filter,
+        correlation_request_id=correlation_request_id,
+    )
+
+
+@router.get("/requests/export")
+async def export_dashboard_requests(
+    context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    from_timestamp: datetime | None = FROM_TIMESTAMP_QUERY,
+    to_timestamp: datetime | None = TO_TIMESTAMP_QUERY,
+    window_minutes: int = WINDOW_MINUTES_QUERY,
+    method: str | None = METHOD_QUERY,
+    status_class: int | None = STATUS_CLASS_QUERY,
+    focus: DashboardRequestsFocus | None = REQUESTS_FOCUS_QUERY,
+    path_contains: str | None = PATH_QUERY,
+    environments: str | None = ENVIRONMENTS_QUERY,
+    services: str | None = SERVICES_QUERY,
+    min_latency_ms: float | None = LATENCY_MIN_MS_QUERY,
+    max_latency_ms: float | None = LATENCY_MAX_MS_QUERY,
+    event_sql_filter: str | None = EVENT_SQL_FILTER_QUERY,
+    correlation_request_id: str | None = CORRELATION_REQUEST_ID_QUERY,
+    export_format: Literal["csv", "json"] = Query(default="csv", alias="format"),
+    export_limit: int = Query(default=500, ge=1, le=2000, alias="export_limit"),
+    export_offset: int = Query(default=0, ge=0, le=50_000, alias="export_offset"),
+) -> Response:
+    if export_offset + export_limit > _EXPORT_WINDOW_MAX:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"export_offset + export_limit must be <= {_EXPORT_WINDOW_MAX}",
+        )
+    server_now = datetime.now(tz=UTC)
+    data = await fetch_dashboard_requests(
+        session=session,
+        context=context,
+        server_now=server_now,
+        from_timestamp=from_timestamp,
+        to_timestamp=to_timestamp,
+        window_minutes=window_minutes,
+        method=method,
+        status_class=status_class,
+        focus=focus,
+        path_contains=path_contains,
+        environments=environments,
+        services=services,
+        min_latency_ms=min_latency_ms,
+        max_latency_ms=max_latency_ms,
+        limit=export_limit,
+        offset=export_offset,
+        event_sql_filter=event_sql_filter,
+        correlation_request_id=correlation_request_id,
+    )
+    safe_project = str(context.project_id).replace("/", "_")[:40]
+    if export_format == "json":
+        body = {
+            "meta": {
+                "project_id": str(context.project_id),
+                "server_now": data.server_now.isoformat(),
+                "from_timestamp": data.from_timestamp.isoformat(),
+                "to_timestamp": data.to_timestamp.isoformat(),
+                "total_in_scope": data.total,
+                "export_limit": export_limit,
+                "export_offset": export_offset,
+                "returned_rows": len(data.items),
+            },
+            "items": [item.model_dump(mode="json") for item in data.items],
+        }
+        raw = json.dumps(body, separators=(",", ":"), ensure_ascii=False)
+        filename = f"lumonox-requests-{safe_project}.json"
+        return Response(
+            content=raw,
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    buf = StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(_CSV_FIELDS)
+    for item in data.items:
+        row_dict = item.model_dump(mode="python")
+        log_msg = row_dict.get("log_message")
+        if isinstance(log_msg, str) and len(log_msg) > _EXPORT_LOG_MESSAGE_CSV_MAX:
+            row_dict["log_message"] = log_msg[:_EXPORT_LOG_MESSAGE_CSV_MAX] + "…"
+        writer.writerow([_csv_cell(row_dict.get(name)) for name in _CSV_FIELDS])
+    filename = f"lumonox-requests-{safe_project}.csv"
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

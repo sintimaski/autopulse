@@ -9,6 +9,7 @@ import { RequestEvidenceBody } from "../RequestEvidenceBody";
 import { SaveBookmarkModal } from "../SaveBookmarkModal";
 import {
   buildCurrentScopedState,
+  buildDashboardRequestsExportSearchParams,
   buildRequestsPageHref,
   type DashboardScopedQueryState,
 } from "../dashboardQueryState";
@@ -19,6 +20,7 @@ import {
   GROUP_OPTIONS,
   isApiSubpathDashboard,
   statusTone,
+  buildApiUrl,
   type GroupBy,
   type RequestItem,
 } from "../dashboardTypes";
@@ -42,6 +44,8 @@ export function LogsContent() {
   const [rowsPerGroup, setRowsPerGroup] = useState(100);
   const [evidenceModal, setEvidenceModal] = useState<{ rowId: string; item: RequestItem } | null>(null);
   const [bookmarkDraft, setBookmarkDraft] = useState<{ title: string; hashFragment: string } | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
   const scopedState = useMemo(
     (): DashboardScopedQueryState =>
       buildCurrentScopedState({
@@ -151,6 +155,38 @@ export function LogsContent() {
       d.toggleRequestRow(decodedRowId);
     }
   }, [d, requestRowIdSet]);
+
+  const shareBookmarkEligible =
+    d.sessionMembershipRole === "owner" || d.sessionMembershipRole === "admin";
+
+  const downloadRequestsExport = async (fmt: "csv" | "json") => {
+    setExportBusy(true);
+    setExportMessage(null);
+    try {
+      const params = buildDashboardRequestsExportSearchParams(scopedState, {
+        format: fmt,
+        exportLimit: 500,
+        exportOffset: 0,
+      });
+      const url = `${buildApiUrl("/dashboard/requests/export")}?${params.toString()}`;
+      const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text.slice(0, 200) || `Export failed (${response.status})`);
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = fmt === "csv" ? "lumonox-requests.csv" : "lumonox-requests.json";
+      anchor.click();
+      URL.revokeObjectURL(objectUrl);
+    } catch (e) {
+      setExportMessage(e instanceof Error ? e.message : "Export failed.");
+    } finally {
+      setExportBusy(false);
+    }
+  };
 
   const requests = logsSlice.requests;
   if (!requests) {
@@ -315,12 +351,44 @@ export function LogsContent() {
       </section>
 
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Request rows</h2>
-          <p className="text-sm text-slate-500 dark:text-neutral-400">
-            Showing <span className="font-semibold text-slate-800 dark:text-neutral-100">{d.filteredSorted.length}</span> of{" "}
-            {d.rawItems.length} loaded (total in window: {requests.total})
-          </p>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Request rows</h2>
+            <p className="text-sm text-slate-500 dark:text-neutral-400">
+              Showing <span className="font-semibold text-slate-800 dark:text-neutral-100">{d.filteredSorted.length}</span>{" "}
+              of {d.rawItems.length} loaded (total in window: {requests.total})
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={exportBusy}
+                onClick={() => void downloadRequestsExport("csv")}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+              >
+                {exportBusy ? "Exporting…" : "Export CSV"}
+              </button>
+              <button
+                type="button"
+                disabled={exportBusy}
+                onClick={() => void downloadRequestsExport("json")}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800"
+              >
+                Export JSON
+              </button>
+            </div>
+            <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
+              Downloads respect the same server scope as this page (max 500 rows per export;{" "}
+              <span className="font-medium text-slate-700 dark:text-neutral-300">export_offset + export_limit ≤ 5000</span>{" "}
+              on the API).
+            </p>
+          </div>
+          {exportMessage ? (
+            <p className="text-sm text-rose-700 dark:text-rose-300" role="alert">
+              {exportMessage}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-4 min-w-0" data-ap-dashboard-scope-anchor>
@@ -571,6 +639,7 @@ export function LogsContent() {
         pathname={routePath}
         queryString={queryStringForBookmarks}
         hashFragment={bookmarkDraft?.hashFragment ?? ""}
+        shareToProjectEligible={shareBookmarkEligible}
       />
     </>
   );

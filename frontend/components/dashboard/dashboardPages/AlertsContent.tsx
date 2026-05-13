@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import type { AlertSettings } from "../dashboardTypes";
+import type { AlertDispatchItem, AlertSettings } from "../dashboardTypes";
+import { buildApiUrl } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
 import { canManageProjectAlertsAndRetention } from "../dashboardRoleHelpers";
 import { buildScopedQuery } from "../dashboardQueryState";
@@ -34,10 +35,35 @@ export function AlertsContent() {
   const successfulRequests = d.operationalSignals.successfulRequests;
   const errorSpikeCandidate = d.operationalSignals.errorSpikeCandidate;
   const outageCandidate = d.operationalSignals.outageCandidate;
+  const canAckDispatches = d.sessionMembershipRole !== "viewer";
+  const [ackingIds, setAckingIds] = useState<Set<number>>(new Set());
+  const [localAcks, setLocalAcks] = useState<Record<number, AlertDispatchItem>>({});
+
+  const acknowledgeDispatch = useCallback(async (dispatchId: number) => {
+    setAckingIds((prev) => new Set(prev).add(dispatchId));
+    try {
+      const res = await fetch(
+        buildApiUrl(`/dashboard/alert-dispatches/${dispatchId}/acknowledge`),
+        { method: "POST", credentials: "include" },
+      );
+      if (res.ok) {
+        const updated: AlertDispatchItem = await res.json();
+        setLocalAcks((prev) => ({ ...prev, [dispatchId]: updated }));
+      }
+    } finally {
+      setAckingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(dispatchId);
+        return next;
+      });
+    }
+  }, []);
+
   const recentDispatches = alertsSlice.alertDispatches?.items ?? [];
+  const mergedDispatches = recentDispatches.map((d) => localAcks[d.id] ?? d);
   const visibleDispatches = showFailedOnly
-    ? recentDispatches.filter((dispatch) => dispatch.status === "failed")
-    : recentDispatches;
+    ? mergedDispatches.filter((dispatch) => dispatch.status === "failed")
+    : mergedDispatches;
   const diagnosisParams = buildScopedQuery({
     isAbsoluteWindow: d.isAbsoluteWindow,
     windowMinutes: d.windowMinutes,
@@ -457,6 +483,7 @@ export function AlertsContent() {
                     <th className="px-3 py-2 font-semibold">Reason</th>
                     <th className="px-3 py-2 font-semibold">Destination</th>
                     <th className="px-3 py-2 font-semibold">Detail</th>
+                    <th className="px-3 py-2 font-semibold">Ack</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white dark:divide-neutral-800 dark:bg-neutral-900">
@@ -506,6 +533,27 @@ export function AlertsContent() {
                       </td>
                       <td className="max-w-[380px] px-3 py-2 font-mono text-xs text-slate-700 dark:text-neutral-300">
                         {JSON.stringify(dispatch.detail)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {dispatch.acknowledged_at ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                            Acked
+                            <span className="text-[10px] font-normal text-emerald-700/60 dark:text-emerald-400/60">
+                              {new Date(dispatch.acknowledged_at).toLocaleString()}
+                            </span>
+                          </span>
+                        ) : canAckDispatches ? (
+                          <button
+                            type="button"
+                            disabled={ackingIds.has(dispatch.id)}
+                            onClick={() => acknowledgeDispatch(dispatch.id)}
+                            className="rounded-md border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-900 transition-colors hover:bg-sky-100 disabled:opacity-50 dark:border-sky-800 dark:bg-sky-950/50 dark:text-sky-100 dark:hover:bg-sky-900/40"
+                          >
+                            {ackingIds.has(dispatch.id) ? "..." : "Ack"}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400 dark:text-neutral-500">—</span>
+                        )}
                       </td>
                     </tr>
                   ))}

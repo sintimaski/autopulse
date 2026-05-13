@@ -95,6 +95,8 @@ export type DashboardDataContextValue = {
   sessionEmail: string | null;
   /** Role in the organization for the session's active project (from ``/dashboard/auth/session``). */
   sessionMembershipRole: DashboardSessionResponse["membership_role"];
+  /** Dashboard user id (UUID string) when authenticated; used for bookmark ownership UI. */
+  sessionUserId: string | null;
   /** Ingest and dashboard traffic are queried for this project id (cookie session). */
   sessionProjectId: string | null;
   sessionOrganizationId: string | null;

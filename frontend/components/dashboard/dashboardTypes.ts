@@ -254,6 +254,8 @@ export type AlertDispatchItem = {
   delivered_at: string | null;
   provider_message_id: string | null;
   detail: Record<string, number | string>;
+  acknowledged_at: string | null;
+  acknowledged_by_user_id: string | null;
 };
 
 export type AlertChannelCapability = {
@@ -406,6 +408,7 @@ export type DashboardSessionResponse = {
   project_id: string | null;
   organization_id: string | null;
   membership_role: "owner" | "admin" | "member" | "viewer" | null;
+  user_id: string | null;
 };
 
 export type DashboardOnboardingStatusResponse = {

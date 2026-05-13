@@ -9,6 +9,8 @@ export type DashboardBookmarkItem = {
   query_string: string | null;
   hash_fragment: string | null;
   notes: string | null;
+  visibility: "private" | "project";
+  created_by_user_id: string;
   created_at: string;
   updated_at: string;
   project_id: string;
@@ -49,6 +51,7 @@ export async function createDashboardBookmark(payload: {
   query_string?: string | null;
   hash_fragment?: string | null;
   notes?: string | null;
+  visibility?: "private" | "project";
 }): Promise<DashboardBookmarkItem> {
   const response = await fetch(buildApiUrl("/dashboard/bookmarks"), {
     method: "POST",
@@ -67,6 +70,7 @@ export async function updateDashboardBookmark(
     query_string: string | null;
     hash_fragment: string | null;
     notes: string | null;
+    visibility: "private" | "project";
   }>,
 ): Promise<DashboardBookmarkItem> {
   const response = await fetch(buildApiUrl(`/dashboard/bookmarks/${encodeURIComponent(id)}`), {

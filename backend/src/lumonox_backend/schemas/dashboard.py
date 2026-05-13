@@ -273,6 +273,8 @@ class DashboardAlertDispatchItem(BaseModel):
     delivered_at: datetime | None = None
     provider_message_id: str | None = None
     detail: dict[str, Any]
+    acknowledged_at: datetime | None = None
+    acknowledged_by_user_id: str | None = None
 
 
 class DashboardAlertDispatchesResponse(BaseModel):
@@ -528,6 +530,7 @@ class DashboardSessionResponse(BaseModel):
     project_id: str | None = None
     organization_id: str | None = None
     membership_role: Literal["owner", "admin", "member", "viewer"] | None = None
+    user_id: str | None = None
 
 
 class DashboardSetActiveProjectRequest(BaseModel):
@@ -678,6 +681,8 @@ class DashboardBookmarkItem(BaseModel):
     query_string: str | None = None
     hash_fragment: str | None = None
     notes: str | None = None
+    visibility: Literal["private", "project"] = "private"
+    created_by_user_id: UUID
     created_at: datetime
     updated_at: datetime
     project_id: UUID
@@ -694,6 +699,17 @@ class DashboardBookmarkCreate(BaseModel):
     query_string: str | None = None
     hash_fragment: str | None = None
     notes: str | None = None
+    visibility: Literal["private", "project"] = "private"
+
+    @field_validator("visibility", mode="before")
+    @classmethod
+    def normalize_bookmark_visibility_create(cls, value: object) -> str:
+        if value is None:
+            return "private"
+        s = str(value).strip().lower()
+        if s not in ("private", "project"):
+            raise ValueError("visibility must be private or project")
+        return s
 
     @field_validator("title")
     @classmethod
@@ -760,6 +776,17 @@ class DashboardBookmarkUpdate(BaseModel):
     query_string: str | None = None
     hash_fragment: str | None = None
     notes: str | None = None
+    visibility: Literal["private", "project"] | None = None
+
+    @field_validator("visibility", mode="before")
+    @classmethod
+    def normalize_bookmark_visibility_update(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        s = str(value).strip().lower()
+        if s not in ("private", "project"):
+            raise ValueError("visibility must be private or project")
+        return s
 
     @field_validator("title")
     @classmethod

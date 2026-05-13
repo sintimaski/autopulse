@@ -211,6 +211,7 @@ async def verify_dashboard_magic_link(
             str(auth_session.organization_id) if auth_session.organization_id is not None else None
         ),
         membership_role=normalize_membership_role(auth_session.membership_role),
+        user_id=str(auth_session.user_id),
     )
 
 
@@ -419,6 +420,7 @@ async def set_dashboard_active_project(
             str(updated.organization_id) if updated.organization_id is not None else None
         ),
         membership_role=normalize_membership_role(updated.membership_role),
+        user_id=str(updated.user_id),
     )
 
 
@@ -444,6 +446,7 @@ async def get_dashboard_session(
             str(auth_session.organization_id) if auth_session.organization_id is not None else None
         ),
         membership_role=normalize_membership_role(auth_session.membership_role),
+        user_id=str(auth_session.user_id),
     )
 
 

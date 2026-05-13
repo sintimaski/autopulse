@@ -41,15 +41,17 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 
 Confirmed on `main` (newest first for this initiative):
 
-| Commit | Summary |
-|--------|---------|
-| `f486f114` | Server-backed incident notebooks/shares: API + migrations + UI (`SavedIncidentsModalPanel`, PATCH autosave, `incident_saved_id` hydrate). |
-| `5ac4a99` | DB-backed incident shares, notebook scope, static UI fixes (companion to above). |
-| `71fa9e8` | Production maturity bulk: `GET /dashboard/operator-health` + `OperatorPipelineHealthSection`, HA doc pointers, SDK (`_sdk_version`, batch byte split, `telemetry_observer`, bounded concurrent sends), incident worksheet + `IncidentNotebook` (initial local persistence), `OnboardingCompletionNudge`, `queryExplorerPresets.ts` templates, `build_operator_health_subsystems` in `health.py`, tests. |
-| *(follow-up commit)* | SDK ingest circuit breaker: `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`, fast-fail telemetry, slow-server overlap test in `sdk/tests/test_monitor.py`. |
-| *(follow-up commit)* | **PROD-008:** project alert **mute / snooze / acknowledge** fields + evaluation skip + dashboard session `PUT` test + runbook §4 + Alerts UI controls. |
-| `2269572` | **PROD-009 (core):** overview `release_markers` (DuckDB + SQL), snapshot-cache trim, SDK release/git env + kwargs, home release chips, backend + SDK tests. |
-| `a808f16` | **PROD-009 (UI charts):** vertical dashed release lines on **`VolumeChart`** (bar + class overlay) via Chart.js plugin; **`/diagnosis`** “Traffic in scope” `VolumeChart`; `frontend/utils/releaseMarkersChart` + Vitest. |
+
+| Commit               | Summary                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `f486f114`           | Server-backed incident notebooks/shares: API + migrations + UI (`SavedIncidentsModalPanel`, PATCH autosave, `incident_saved_id` hydrate).                                                                                                                                                                                                                                                               |
+| `5ac4a99`            | DB-backed incident shares, notebook scope, static UI fixes (companion to above).                                                                                                                                                                                                                                                                                                                        |
+| `71fa9e8`            | Production maturity bulk: `GET /dashboard/operator-health` + `OperatorPipelineHealthSection`, HA doc pointers, SDK (`_sdk_version`, batch byte split, `telemetry_observer`, bounded concurrent sends), incident worksheet + `IncidentNotebook` (initial local persistence), `OnboardingCompletionNudge`, `queryExplorerPresets.ts` templates, `build_operator_health_subsystems` in `health.py`, tests. |
+| *(follow-up commit)* | SDK ingest circuit breaker: `LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`, fast-fail telemetry, slow-server overlap test in `sdk/tests/test_monitor.py`.                                                                                                                                                                                                                         |
+| *(follow-up commit)* | **PROD-008:** project alert **mute / snooze / acknowledge** fields + evaluation skip + dashboard session `PUT` test + runbook §4 + Alerts UI controls.                                                                                                                                                                                                                                                  |
+| `2269572`            | **PROD-009 (core):** overview `release_markers` (DuckDB + SQL), snapshot-cache trim, SDK release/git env + kwargs, home release chips, backend + SDK tests.                                                                                                                                                                                                                                             |
+| `a808f16`            | **PROD-009 (UI charts):** vertical dashed release lines on `**VolumeChart`** (bar + class overlay) via Chart.js plugin; `**/diagnosis**` “Traffic in scope” `VolumeChart`; `frontend/utils/releaseMarkersChart` + Vitest.                                                                                                                                                                               |
+
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
 
@@ -271,9 +273,9 @@ Confirmed on `main` (newest first for this initiative):
 - **Validation / verification:** Integration test with webhook mock; manual Slack test in staging.
 - **Idempotency:** Migrations if new tables — document rollback.
 - **State / progress tracking:**
-  - **Status:** In progress
-  - **% complete:** ~82
-  - **Last update:** 2026-05-12 — Generic webhook channel + `/dashboard/alert-test` already existed; added **URL validation**, **`ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`** pacing, **`alerts.webhook.*` metrics**, operator-health **degraded** when webhook failure counters are non-zero, `unsafe_webhook_url` reason copy. **Added:** project-level **`notifications_muted`**, **`notifications_snoozed_until`**, **`last_notifications_acknowledged_at`** / `acknowledge_notifications` on `PUT` (dashboard session); evaluation skips sends while muted or snoozed; runbook §4. **Deferred:** richer per-alert ack and org-wide policies.
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-13 — Generic webhook channel + `/dashboard/alert-test` already existed; added **URL validation**, `**ALERT_WEBHOOK_MIN_INTERVAL_SECONDS`** pacing, `**alerts.webhook.*` metrics**, operator-health **degraded** when webhook failure counters are non-zero, `unsafe_webhook_url` reason copy. **Added:** project-level `**notifications_muted`**, `**notifications_snoozed_until**`, `**last_notifications_acknowledged_at**` / `acknowledge_notifications` on `PUT` (dashboard session); evaluation skips sends while muted or snoozed; runbook §4. **Per-alert ack:** `acknowledged_at` + `acknowledged_by_user_id` on `alert_dispatches`; `POST /dashboard/alert-dispatches/{id}/acknowledge` (idempotent); AlertsContent Ack button per row. **Remaining (out of scope):** org-wide policies.
   - **Owner:** (assign)
 
 ---
@@ -295,7 +297,7 @@ Confirmed on `main` (newest first for this initiative):
 - **State / progress tracking:**
   - **Status:** Done
   - **% complete:** 100
-  - **Last update:** 2026-05-12 — **`2269572`:** backend + SDK + overview chips. **`a808f16`:** vertical dashed release lines on **`VolumeChart`** (bars + class overlay) via Chart.js plugin; **`/diagnosis`** “Traffic in scope” reuses `VolumeChart`; `frontend/utils/releaseMarkersChart.ts` + Vitest.
+  - **Last update:** 2026-05-12 — `**2269572`:** backend + SDK + overview chips. `**a808f16`:** vertical dashed release lines on `**VolumeChart`** (bars + class overlay) via Chart.js plugin; `**/diagnosis**` “Traffic in scope” reuses `VolumeChart`; `frontend/utils/releaseMarkersChart.ts` + Vitest.
   - **Owner:** (assign)
 
 ---
@@ -314,7 +316,11 @@ Confirmed on `main` (newest first for this initiative):
 - **Constraints:** Export must not stream unbounded memory; scrub sensitive columns per product defaults.
 - **Validation / verification:** API tests + manual download check.
 - **Idempotency:** Yes for code; migration rollback documented if new tables.
-- **State / progress tracking:** **Status:** Todo | **Owner:**
+- **State / progress tracking:**
+  - **Status:** Done
+  - **% complete:** 100
+  - **Last update:** 2026-05-12 — `dashboard_user_bookmarks.visibility` migration; bookmark list/create/update/delete RBAC; `GET /dashboard/requests/export` (CSV/JSON, bounded limits); dashboard session `user_id`; Requests/Bookmarks UI.
+  - **Owner:** (assign)
 
 ---
 
@@ -362,7 +368,7 @@ Confirmed on `main` (newest first for this initiative):
 
 ## 6) Plan-level execution strategy
 
-- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in repo follow-up; **PROD-009** shipped (**`2269572`** + chart/diagnosis follow-up). **Next:** `PROD-001` maintainer sign-off; **PROD-008** remainder (staging smoke, optional per-alert ack); **`PROD-010`** (`011`–`012` shipped).
+- **Delivery sequence (actual):** P0 doc/SDK/operator-health batch landed in `71fa9e8`; incident server persistence in `5ac4a99` / `f486f114`; **PROD-006** circuit breaker landed in repo follow-up; **PROD-008** webhook hardening + **notification mute/snooze/ack** landed in repo follow-up; **PROD-009** shipped (`**2269572`** + chart/diagnosis follow-up). **PROD-010** shipped (team bookmarks + bounded requests export). **PROD-008** per-alert ack shipped (migration + endpoint + UI). **Next:** `PROD-001` maintainer sign-off.
 - **Parallelization opportunities:** `PROD-008` lifecycle UI can proceed parallel to `PROD-009` once mute semantics are sketched.
 - **Risk register (top 3–5):**
   1. HA topology decision slips → blocks validation and health semantics. *(Partially mitigated: §1.2 + `validate_deployment_settings`; staging evidence still needed.)*
@@ -372,27 +378,27 @@ Confirmed on `main` (newest first for this initiative):
   5. Release markers cause cardinality issues → **Mitigated for MVP:** backend caps distinct pairs (**40**), snapshot cache trims by window; chart overlays still need UX if enabled everywhere.
 - **Decision log:**
 
-| Decision | Why | Date | Owner |
-|----------|-----|------|-------|
-| Canonical HA entry point for horizontally scaled API | Single checklist lives in **`docs/ops/PRODUCTION_DEPLOYMENT.md` §1.2**; multi-instance file points there (`71fa9e8`). | 2026-05-12 | (maintainer) |
-| Incident MVP persistence | **Server-backed** shares + notebook JSON (`f486f114`, `5ac4a99`) with Alembic migrations and API tests. | 2026-05-12 | (assign) |
+
+| Decision                                             | Why                                                                                                                   | Date       | Owner        |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------- | ------------ |
+| Canonical HA entry point for horizontally scaled API | Single checklist lives in `**docs/ops/PRODUCTION_DEPLOYMENT.md` §1.2**; multi-instance file points there (`71fa9e8`). | 2026-05-12 | (maintainer) |
+| Incident MVP persistence                             | **Server-backed** shares + notebook JSON (`f486f114`, `5ac4a99`) with Alembic migrations and API tests.               | 2026-05-12 | (assign)     |
+
 
 ## 7) Validation gate before completion
 
 Mark each item before closing the plan:
 
-- [x] All tasks have explicit AC.
-- [x] All tasks define validation (automated + manual).
-- [x] Idempotency is documented for each task.
-- [x] Domain rules and constraints are mapped to tasks.
-- [x] Observability updates are included where behavior changed.
-- [ ] Related docs are updated or explicitly deferred. *(PROD-001: ops docs tightened; full ADR/topology matrix may still need maintainer pass.)*
-- [ ] Remaining ambiguity is logged with owner and due date. *(PROD-008 security review owner.)*
+- All tasks have explicit AC.
+- All tasks define validation (automated + manual).
+- Idempotency is documented for each task.
+- Domain rules and constraints are mapped to tasks.
+- Observability updates are included where behavior changed.
+- Related docs are updated or explicitly deferred. *(PROD-001: ops docs tightened; full ADR/topology matrix may still need maintainer pass.)*
+- Remaining ambiguity is logged with owner and due date. *(PROD-008 security review owner.)*
 
 ## 8) Next execution batch (ordered)
 
 1. **PROD-001** — Maintainer sign-off on §1.2 golden path; extend `validate_deployment_settings` only if staging finds gaps.
-2. **PROD-008 (remainder)** — Staging Slack / webhook smoke; optional per-alert ack / org policies; close security-review owner item in §7 when done.
-3. **PROD-010** — Saved team views + bounded scoped export (P2).
 
-*Note: **PROD-009** (release markers) is complete on `main`; reopen only for extra chart surfaces or UX polish.*
+*All implementation tasks (PROD-002 through PROD-012) are complete. Only PROD-001 awaits maintainer sign-off.*

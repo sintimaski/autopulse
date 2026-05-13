@@ -193,6 +193,37 @@ export function buildScopedQuery(
   return params;
 }
 
+/** Query string for ``GET /dashboard/requests/export`` (maps URL scope keys to API param names). */
+export function buildDashboardRequestsExportSearchParams(
+  state: DashboardScopedQueryState,
+  opts: { format: "csv" | "json"; exportLimit?: number; exportOffset?: number },
+): URLSearchParams {
+  const p = buildScopedQuery(state);
+  for (const key of [
+    "request_limit",
+    "request_page",
+    "error_group_limit",
+    "error_group_page",
+    "error_group_sort",
+  ]) {
+    p.delete(key);
+  }
+  const corr = p.get("correlation");
+  if (corr) {
+    p.delete("correlation");
+    p.set("correlation_request_id", corr);
+  }
+  const sql = p.get("sql_filter");
+  if (sql) {
+    p.delete("sql_filter");
+    p.set("event_sql_filter", sql);
+  }
+  p.set("format", opts.format);
+  p.set("export_limit", String(opts.exportLimit ?? 500));
+  p.set("export_offset", String(opts.exportOffset ?? 0));
+  return p;
+}
+
 /**
  * Minimal query for `/incident` share links (time window only).
  *

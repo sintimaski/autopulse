@@ -398,6 +398,8 @@ class AlertDispatch(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by_user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
 
 
 class ArchivedEvent(Base):
@@ -581,6 +583,10 @@ class DashboardUserBookmark(Base):
     query_string: Mapped[str | None] = mapped_column(Text, nullable=True)
     hash_fragment: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # private: owner only; project: all project members can list.
+    visibility: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="private", server_default="private"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utc_now, server_default=_TS_DEFAULT
     )
