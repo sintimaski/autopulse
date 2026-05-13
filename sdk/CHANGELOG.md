@@ -37,7 +37,7 @@ for public API and packaging.
   - ``psutil>=6.0.0`` → ``psutil>=5.9.0``
 
   Floors are the lowest releases that still expose the API surface the SDK uses (Starlette ``BaseHTTPMiddleware``, ``httpx.AsyncClient`` + ``HTTPStatusError`` semantics, the psutil counters in ``_infrastructure.py``). Documented in ``sdk/README.md`` Compatibility table.
-- **Install-matrix CI** (``.github/workflows/sdk-install-matrix.yml``): builds the SDK wheel once, installs + smoke-tests it across {3.10, 3.11, 3.12, 3.13} × {amd64, arm64} × {slim, alpine}, plus a ``python:3.10-slim`` cell that pins each dependency at its declared floor. Each cell asserts that ``InfrastructureSampler().sample()`` returns the full psutil-backed counter set (no silent feature loss) and that ``python -c "import lumonox"`` finishes under a 100 ms cold-import budget.
+- **Install-matrix CI** (``.github/workflows/sdk-install-matrix.yml``): builds the SDK wheel once, installs + smoke-tests it across {3.10, 3.11, 3.12, 3.13} × {amd64, arm64} × {slim, alpine}, plus a ``python:3.10-slim`` cell that pins each dependency at its declared floor. Each cell asserts that ``InfrastructureSampler().sample()`` returns the full psutil-backed counter set (no silent feature loss) and that ``python -c "import lumonox"`` finishes under a 300 ms cold-import budget (the budget is wall-clock around a subprocess, so it includes Python interpreter startup; sized for slow CI cells like musl/QEMU while still catching real import-graph regressions).
 
 ### Changed
 
