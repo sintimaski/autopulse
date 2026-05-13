@@ -20,6 +20,14 @@ from lumonox_backend.services.event_store import (
 router = APIRouter(tags=["system"])
 _REPLAY_QUEUE_STALE_PENDING_SECONDS = 600
 
+# Alerts subsystem flips to degraded only once outbound webhook counters cross
+# these per-process thresholds. A single send failure or validation rejection is
+# noted in the summary text but does not degrade the row — many real-world
+# transient failures (DNS blip, single 503) clear themselves before the next
+# alerts tick and would otherwise produce a misleading degraded signal.
+ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD = 5
+ALERTS_WEBHOOK_VALIDATION_REJECTED_DEGRADED_THRESHOLD = 10
+
 
 def _scheduler_running(scheduler: object) -> bool:
     tasks = getattr(scheduler, "tasks", None)
@@ -566,7 +574,10 @@ def build_operator_health_subsystems(snapshot: dict[str, object]) -> dict[str, o
             f" Outbound webhook telemetry on this process: "
             f"send_failed={webhook_send_failed}, url_validation_rejected={webhook_url_rejected}."
         )
-        if alert_status == "healthy" or alert_status == "unknown":
+        if (
+            webhook_send_failed >= ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD
+            or webhook_url_rejected >= ALERTS_WEBHOOK_VALIDATION_REJECTED_DEGRADED_THRESHOLD
+        ) and alert_status in {"healthy", "unknown"}:
             alert_status = "degraded"
         alert_summary = f"{alert_summary.rstrip('.')}.{extra}"
     subsystems.append(

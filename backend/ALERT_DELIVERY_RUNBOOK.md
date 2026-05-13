@@ -43,7 +43,9 @@ Set one of the minimal sender configurations:
 
 - **Staging / production (`LUMONOX_ENV`):** `https` only; host must resolve to **public** unicast addresses (private IPs, loopback, and link-local are rejected). No userinfo in the URL.
 - **Development:** same as above for `https`, or **`http` only to `127.0.0.1` / `localhost`** for local receivers.
-- **Pacing:** set `ALERT_WEBHOOK_MIN_INTERVAL_SECONDS` (default `1`, use `0` to disable per-process spacing) to avoid hammering a destination when multiple channels fire in one evaluation.
+- **Pacing:** set `ALERT_WEBHOOK_MIN_INTERVAL_SECONDS` (default `1`, use `0` to disable spacing) to avoid hammering a destination when multiple channels fire in one evaluation. Pacing is **DB-coordinated** via the `alert_webhook_pacing` table so multi-replica deployments share the same minimum interval per webhook URL; the helper degrades to in-process pacing when the DB is unreachable so a transient DB outage cannot stall alert delivery.
+
+**Operator-health alerts gate:** the `alerts` subsystem row on `GET /dashboard/operator-health` surfaces `alerts.webhook.send.failed` / `alerts.webhook.validation_rejected` counters in its summary on every non-zero value. It flips to `degraded` only when send failures reach `5` or validation rejections reach `10` per process — so a single transient failure (DNS blip, one-off 503, one bad URL pasted into the dashboard) is visible but does not page operators. See `ALERTS_WEBHOOK_*_DEGRADED_THRESHOLD` constants in `backend/src/lumonox_backend/api/routes/health.py`.
 
 ## 2) Trigger one evaluation pass
 

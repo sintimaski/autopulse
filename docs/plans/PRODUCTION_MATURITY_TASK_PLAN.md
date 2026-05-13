@@ -7,7 +7,7 @@ This document follows `docs/DEVELOPMENT_PLAN_TASK_TEMPLATE.md`.
 - **Plan name:** Production maturity — HA ingest, operator UX, SDK hardening
 - **Owner:** (assign)
 - **Date:** 2026-05-12
-- **Status:** Complete (all PROD-001 … PROD-012 implemented and validated as of 2026-05-13; see §5.0 and decision log)
+- **Status:** Complete (all PROD-001 … PROD-012 plus the three §8 follow-up signals implemented and validated as of 2026-05-13; see §5.0 and decision log)
 - **Scope summary (2-4 lines):** Close the gap between “works well for MVP” and “safe and operable in multi-replica production.” Focus on replica-safe ingest/event storage story, unified operator health surface, SDK reliability and observability, and day-2 product flows (incidents, alerting, correlation).
 - **Out of scope:** Full distributed tracing product, custom dashboard builder, enterprise audit/compliance suite, Kubernetes-specific operators (unless explicitly pulled in as docs only).
 
@@ -52,6 +52,7 @@ Confirmed on `main` (newest first for this initiative):
 | `2269572`            | **PROD-009 (core):** overview `release_markers` (DuckDB + SQL), snapshot-cache trim, SDK release/git env + kwargs, home release chips, backend + SDK tests.                                                                                                                                                                                                                                             |
 | `a808f16`            | **PROD-009 (UI charts):** vertical dashed release lines on `**VolumeChart`** (bar + class overlay) via Chart.js plugin; `**/diagnosis**` “Traffic in scope” `VolumeChart`; `frontend/utils/releaseMarkersChart` + Vitest.                                                                                                                                                                               |
 | `643cb7d`            | **PROD-010:** team bookmarks (`dashboard_user_bookmarks.visibility`, RBAC, share-to-team UI) + **PROD-008** per-alert ack (`alert_dispatches.acknowledged_at`, `POST /dashboard/alert-dispatches/{id}/acknowledge`, AlertsContent Ack button) + bounded `GET /dashboard/requests/export` (CSV/JSON). Test coverage in `test_dashboard.py`. |
+| *(follow-up commit)* | **§8 follow-up signals shipped 2026-05-13:** (a) alerts subsystem health gate now waits for **5+ webhook send failures** or **10+ URL validation rejections** before flipping to `degraded` (constants in `backend/src/lumonox_backend/api/routes/health.py`, tests in `test_app_health.py`); (b) incident notebook autosave surfaces a **status badge** (`Unsaved changes` / `Saving…` / `Saved` / `Save failed`) with in-flight deduplication (`IncidentNotebook.tsx`); (c) outbound alert webhook pacing is now **DB-coordinated** via new `alert_webhook_pacing` table + migration so multi-replica deployments share the global minimum interval per URL (`backend/src/lumonox_backend/services/alert_webhook_rate_limit.py` + `test_alert_webhook_pacing.py`; falls back to in-process pacing on DB error).                                                                                                                                              |
 
 
 ### Task `PROD-001`: HA ingest and event-store golden path (architecture + docs)
@@ -402,10 +403,14 @@ Mark each item before closing the plan:
 
 ## 8) Next execution batch (ordered)
 
-*Plan complete — all PROD-001 … PROD-012 done as of 2026-05-13. No outstanding actions.*
+*Plan complete — all PROD-001 … PROD-012 done as of 2026-05-13. All three §8 follow-up signals delivered same day; no outstanding actions.*
 
-Follow-up signal items, deferred outside this plan:
+Delivered:
 
-- Distributed (cluster-wide) outbound-webhook rate limiting if multi-process operators report duplicate pages.
-- Extending `validate_deployment_settings` if staging surfaces a new HA misconfiguration.
-- Counter-window thresholds for the alerts subsystem health gate if first-failure degraded signals prove noisy.
+- ✅ **Distributed outbound-webhook rate limiting.** `alert_webhook_pacing` table coordinates send intervals across replicas; in-process pacing kept as the fail-safe fallback. Documented in `backend/ALERT_DELIVERY_RUNBOOK.md`.
+- ✅ **Counter-window thresholds for the alerts subsystem health gate.** Operator-health now surfaces non-zero webhook counters in the summary every time, but only flips to `degraded` once thresholds are crossed (5 send failures or 10 URL validation rejections). Thresholds live in `backend/src/lumonox_backend/api/routes/health.py`.
+- ✅ **Incident notebook autosave status.** Dashboard shows `Unsaved changes` / `Saving…` / `Saved` / `Save failed` with in-flight deduplication so editors get explicit feedback when the PATCH lands or fails.
+
+Deferred outside this plan (would-be next signals):
+
+- Extending `validate_deployment_settings` only if staging surfaces a new HA misconfiguration not already covered.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from lumonox_backend.models.orm import (
     AlertDispatch,
+    AlertWebhookPacing,
     ApiKey,
     ArchivedEvent,
     Base,
@@ -31,6 +32,7 @@ from lumonox_backend.models.orm import (
 __all__ = [
     "ArchivedEvent",
     "AlertDispatch",
+    "AlertWebhookPacing",
     "ApiKey",
     "Base",
     "DashboardIncidentShare",

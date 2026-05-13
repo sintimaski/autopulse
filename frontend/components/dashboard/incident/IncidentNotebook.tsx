@@ -55,6 +55,36 @@ const FLOW_CHECKLIST_DEFAULT: FlowChecklist = {
   handoffReady: false,
 };
 
+type AutosaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
+
+function AutosaveBadge({ status }: { status: AutosaveStatus }) {
+  if (status === "idle") {
+    return null;
+  }
+  const tone =
+    status === "error"
+      ? "border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200"
+      : status === "saved"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-200"
+        : "border-slate-200 bg-slate-50 text-slate-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300";
+  const label =
+    status === "saving"
+      ? "Saving…"
+      : status === "saved"
+        ? "Saved"
+        : status === "error"
+          ? "Save failed"
+          : "Unsaved changes";
+  return (
+    <span
+      aria-live="polite"
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${tone}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function randomId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -479,6 +509,15 @@ export function IncidentNotebook({
   const [publishedSharesLoad, setPublishedSharesLoad] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const flowChecklistStorageKey = `${storageKey}:flow-checklist.v1`;
   const skipFirstNotebookPersistRef = useRef(false);
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    "idle" | "dirty" | "saving" | "saved" | "error"
+  >("idle");
+  const inFlightPatchRef = useRef(false);
+  const pendingPatchRef = useRef(false);
+  const docRef = useRef<IncidentNotebookDocument>(doc);
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
 
   useEffect(() => {
     if (!sessionOrganizationId) {
@@ -758,16 +797,45 @@ export function IncidentNotebook({
     if (!id) {
       return;
     }
-    const handle = window.setTimeout(() => {
-      let notebook_document: Record<string, unknown>;
-      try {
-        notebook_document = JSON.parse(serializeIncidentNotebook(doc)) as Record<string, unknown>;
-      } catch {
+    setAutosaveStatus((s) => (s === "saving" ? s : "dirty"));
+    const runPatch = async (): Promise<void> => {
+      if (inFlightPatchRef.current) {
+        // Coalesce: another PATCH is mid-flight; mark pending so we re-fire after it lands.
+        pendingPatchRef.current = true;
         return;
       }
-      void dashboardSessionJsonPatch(`/dashboard/incident-shares/${id}`, { notebook_document }).catch(() => {
-        /* ignore */
-      });
+      inFlightPatchRef.current = true;
+      let payloadDoc: Record<string, unknown>;
+      try {
+        payloadDoc = JSON.parse(serializeIncidentNotebook(docRef.current)) as Record<
+          string,
+          unknown
+        >;
+      } catch {
+        inFlightPatchRef.current = false;
+        return;
+      }
+      setAutosaveStatus("saving");
+      try {
+        const res = await dashboardSessionJsonPatch(`/dashboard/incident-shares/${id}`, {
+          notebook_document: payloadDoc,
+        });
+        if (!res.ok) {
+          throw new Error(`status_${res.status}`);
+        }
+        setAutosaveStatus("saved");
+      } catch {
+        setAutosaveStatus("error");
+      } finally {
+        inFlightPatchRef.current = false;
+        if (pendingPatchRef.current) {
+          pendingPatchRef.current = false;
+          void runPatch();
+        }
+      }
+    };
+    const handle = window.setTimeout(() => {
+      void runPatch();
     }, 850);
     return () => window.clearTimeout(handle);
   }, [doc, hydrated, serverSavedIncidentId]);
@@ -994,6 +1062,9 @@ export function IncidentNotebook({
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">Cells</span>
+          {serverSavedIncidentId?.trim() ? (
+            <AutosaveBadge status={autosaveStatus} />
+          ) : null}
           <button
             type="button"
             className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"

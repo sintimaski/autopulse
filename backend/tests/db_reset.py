@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 _FULL_RESET_TABLES = (
+    "alert_webhook_pacing",
     "alert_dispatches",
     "project_alert_settings",
     "ingest_sql_tail_repair_items",

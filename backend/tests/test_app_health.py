@@ -373,10 +373,10 @@ def test_build_operator_health_subsystems_covers_expected_rows() -> None:
     assert ids == {"topology", "scheduler", "ingest", "realtime", "retention_poll", "alerts"}
 
 
-def test_build_operator_health_alerts_degraded_on_webhook_failure_counters() -> None:
-    from lumonox_backend.api.routes.health import build_operator_health_subsystems
-
-    snapshot: dict[str, object] = {
+def _alerts_snapshot_with_webhook_counters(
+    send_failed: int, url_rejected: int
+) -> dict[str, object]:
+    return {
         "topology_guardrails": {
             "status": "healthy",
             "unsafe_count": 0,
@@ -402,13 +402,47 @@ def test_build_operator_health_alerts_degraded_on_webhook_failure_counters() -> 
                 "failure_reason": None,
             }
         },
-        "counters": {"alerts.webhook.send.failed": 2, "alerts.webhook.validation_rejected": 1},
+        "counters": {
+            "alerts.webhook.send.failed": send_failed,
+            "alerts.webhook.validation_rejected": url_rejected,
+        },
     }
+
+
+def test_build_operator_health_alerts_degraded_on_webhook_failure_counters() -> None:
+    from lumonox_backend.api.routes.health import (
+        ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD,
+        build_operator_health_subsystems,
+    )
+
+    snapshot = _alerts_snapshot_with_webhook_counters(
+        send_failed=ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD, url_rejected=0
+    )
     out = build_operator_health_subsystems(snapshot)
     alerts_row = next(
         r for r in out["subsystems"] if isinstance(r, dict) and r.get("id") == "alerts"
     )
     assert alerts_row.get("status") == "degraded"
     summary = str(alerts_row.get("summary") or "")
-    assert "send_failed=2" in summary
-    assert "url_validation_rejected=1" in summary
+    assert f"send_failed={ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD}" in summary
+
+
+def test_build_operator_health_alerts_warns_but_stays_healthy_under_threshold() -> None:
+    from lumonox_backend.api.routes.health import (
+        ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD,
+        ALERTS_WEBHOOK_VALIDATION_REJECTED_DEGRADED_THRESHOLD,
+        build_operator_health_subsystems,
+    )
+
+    snapshot = _alerts_snapshot_with_webhook_counters(
+        send_failed=ALERTS_WEBHOOK_SEND_FAILED_DEGRADED_THRESHOLD - 1,
+        url_rejected=ALERTS_WEBHOOK_VALIDATION_REJECTED_DEGRADED_THRESHOLD - 1,
+    )
+    out = build_operator_health_subsystems(snapshot)
+    alerts_row = next(
+        r for r in out["subsystems"] if isinstance(r, dict) and r.get("id") == "alerts"
+    )
+    assert alerts_row.get("status") == "healthy"
+    summary = str(alerts_row.get("summary") or "")
+    assert "send_failed=" in summary
+    assert "url_validation_rejected=" in summary

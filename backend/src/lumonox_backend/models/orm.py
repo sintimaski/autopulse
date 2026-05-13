@@ -402,6 +402,24 @@ class AlertDispatch(Base):
     acknowledged_by_user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
 
 
+class AlertWebhookPacing(Base):
+    """Row-per-URL coordinator for outbound alert webhook send pacing.
+
+    Each row's ``last_sent_at`` is updated transactionally when a send is
+    reserved; multi-process deployments share this table so a global
+    minimum interval is enforced even when several API replicas dispatch
+    the same alert in parallel.
+
+    ``webhook_key`` is a stable, opaque hash of the normalized URL so
+    credentials embedded in URLs never land in storage in plaintext.
+    """
+
+    __tablename__ = "alert_webhook_pacing"
+
+    webhook_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    last_sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ArchivedEvent(Base):
     __tablename__ = "archived_events"
     __table_args__ = (
