@@ -26,8 +26,11 @@ dev = [
     "bandit[toml]>=1.7.8",
     "pytest>=8.3.0",
     "pytest-cov>=6.2.1",
+    "pytest-asyncio>=0.24.0",
     "pre-commit>=4.0.0",
     "pip-audit>=2.7.0",
+    # Required to exercise the lumonox.django adapter from sdk/tests/.
+    "django>=4.2",
 ]
 
 [tool.ruff]
@@ -42,6 +45,10 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 "backend/src/lumonox_backend/dashboard/routes/traces.py" = ["B008"]
 # Alembic autogenerate emits long single-line DDL.
 "backend/src/lumonox_backend/alembic/versions/*.py" = ["E501"]
+# SDK supports Python >=3.10 so it cannot use ``datetime.UTC`` (3.11+); keep
+# ``timezone.utc`` even though ruff's py311 target-version would prefer the alias.
+# See ``docs/plans/sdk-install-ease.md`` Phase 1.
+"sdk/src/lumonox/**/*.py" = ["UP017"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -79,6 +86,13 @@ namespace_packages = true
 module = "lumonox_backend.alembic.*"
 # Alembic revision modules use dynamic SQLAlchemy typing patterns; keep them out of strict checks.
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Django ships without ``py.typed``; ``django-stubs`` would add ~10 MB of transitive deps to
+# the dev environment for a feature (the lumonox.django adapter) that is intentionally
+# loosely-typed at the Django boundary. Silence missing-imports for ``django.*`` instead.
+module = ["django.*"]
+ignore_missing_imports = true
 
 [tool.bandit]
 targets = ["sdk/src/lumonox", "backend/src/lumonox_backend"]

@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
-from lumonox._jobs import capture_background_job
-from lumonox._monitor import monitor
+from lumonox.core.jobs import capture_background_job
+from lumonox.fastapi.middleware import monitor
 from lumonox.widgets import (
     BarChartWidget,
     BaseDashboardWidget,

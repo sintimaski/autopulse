@@ -8,9 +8,23 @@ Lumonox SDK instruments a FastAPI app and sends request/error events to Lumonox 
 |------|-----------------|------------------|
 | **API + bundled dashboard UI** (ingest, dashboard, static export under `/lumonox/ui/`) | `pip install lumonox` | `from lumonox import mount_on_app` (or `lumonox_backend` / `uvicorn lumonox_backend.main:app`) |
 | **Instrument your FastAPI app** (send-only SDK) | `pip install lumonox-sdk` | `from lumonox import lumonox` |
+| **Instrument your Django app** (async ASGI middleware) | `pip install "lumonox-sdk[django]"` | `from lumonox.django import monitor, wrap_asgi` |
 | **API + UI + SDK in one environment** | `pip install "lumonox-sdk[stack]"` | `from lumonox import lumonox, mount_on_app` |
 
 `uv add` works the same (`uv add lumonox`, `uv add "lumonox-sdk[stack]"`, …).
+
+### Compatibility
+
+`lumonox-sdk` is published as a pure-Python `py3-none-any` wheel. Minimum supported versions:
+
+| Component | Floor | Notes |
+|-----------|-------|-------|
+| **Python** | `>=3.10` | Tested on 3.10 – 3.13 (linux/amd64 + linux/arm64, glibc-slim and musl-alpine). |
+| **fastapi** | `>=0.100.0` | The middleware only needs Starlette's `BaseHTTPMiddleware` and the request/response shapes. No upper cap. |
+| **httpx** | `>=0.24.0` | Uses `AsyncClient`, `HTTPStatusError`, and the `Response` headers/status_code surface. No upper cap. |
+| **psutil** | `>=5.9.0` | Required for the host/process/disk/network metrics shown on the dashboard infrastructure cards. No upper cap. |
+
+Floors are intentionally generous so a host app that pins an older fastapi / httpx / psutil line resolves cleanly. See `docs/plans/sdk-install-ease.md` for the audit that picked these floors.
 
 **From a git checkout** (offline wheels from repo root):
 
@@ -43,6 +57,8 @@ twine upload dist/pypi-sdk/*
 
 ## Integration
 
+### FastAPI
+
 ```python
 from fastapi import FastAPI
 from lumonox import lumonox, monitor
@@ -53,6 +69,30 @@ lumonox(app)  # recommended default
 ```
 
 `lumonox()` defaults **`environment` to `development`** so request events match common dashboard server-scope filters. Use `lumonox(app, environment="production")` when you need production labels.
+
+### Django (async / ASGI)
+
+```python
+# settings.py
+MIDDLEWARE = [
+    "lumonox.django.middleware.LumonoxMiddleware",
+    # ... your other middleware ...
+]
+
+# asgi.py
+from django.core.asgi import get_asgi_application
+from lumonox.django import monitor, wrap_asgi
+
+monitor(
+    api_key="...",
+    ingest_url="https://your-lumonox/ingest",
+    service_name="my-django-app",
+    environment="production",
+)
+application = wrap_asgi(get_asgi_application())
+```
+
+``wrap_asgi`` handles the ASGI lifespan protocol so the SDK dispatcher starts/stops with your server. The same ``LUMONOX_*`` env vars apply (``LUMONOX_API_KEY``, ``LUMONOX_INGEST_URL``, ``LUMONOX_REQUEST_SAMPLE_RATE``, …). The adapter is async-only; classic synchronous WSGI Django is out of scope for v1. See ``sdk/docs/adapters.md`` for the adapter contract.
 
 By default, `lumonox()` (and `monitor()` for existing integrations) target a remote Lumonox project (set `LUMONOX_API_KEY` / `LUMONOX_INGEST_URL`). It uses bounded in-memory buffering, async background sending, and silent failure behavior so host apps stay healthy if Lumonox is unavailable.
 

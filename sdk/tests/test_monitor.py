@@ -12,19 +12,16 @@ import pytest
 from client_lifespan import lifespan_test_client
 from fastapi import FastAPI, Response
 
-from lumonox._infrastructure import InfrastructureSampler
-from lumonox._monitor import (
-    DEFAULT_SCRUB_KEYS,
+from lumonox.core.config import _MonitorConfig
+from lumonox.core.dispatcher import _EventDispatcher, _sdk_version
+from lumonox.core.events import (
     _build_infrastructure_widget_payload,
-    _EventDispatcher,
-    _LumonoxMiddleware,
-    _MonitorConfig,
-    _scrub_value,
-    _sdk_version,
     _split_events_for_ingest_json_budget,
     _stable_error_hash,
-    monitor,
 )
+from lumonox.core.infrastructure import InfrastructureSampler
+from lumonox.core.scrubbing import DEFAULT_SCRUB_KEYS, _scrub_value
+from lumonox.fastapi.middleware import _LumonoxMiddleware, monitor
 
 
 def _resolved_json_payload(
@@ -79,7 +76,7 @@ def test_infrastructure_sampler_permission_error_fails_soft(
         def net_io_counters() -> object:
             raise PermissionError("sysctl denied")
 
-    monkeypatch.setattr("lumonox._infrastructure.psutil", _PsutilPermissionErrorStub)
+    monkeypatch.setattr("lumonox.core.infrastructure.psutil", _PsutilPermissionErrorStub)
     sampler = InfrastructureSampler(ttl_seconds=0.0)
     assert sampler.sample() == {}
     # Repeated failures should remain non-fatal.
@@ -361,7 +358,9 @@ def test_monitor_rolls_back_when_startup_handler_registration_fails(
     startup_before = len(app.router.on_startup)
     shutdown_before = len(app.router.on_shutdown)
 
-    monkeypatch.setattr("lumonox._monitor._add_event_handler", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        "lumonox.fastapi.middleware._add_event_handler", lambda *_args, **_kwargs: False
+    )
     monitor(app, api_key="k", ingest_url="https://example.test/ingest")
 
     assert len(app.user_middleware) == middleware_before
@@ -383,7 +382,9 @@ def test_monitor_rolls_back_when_shutdown_handler_registration_fails(
         calls["n"] += 1
         return calls["n"] == 1
 
-    monkeypatch.setattr("lumonox._monitor._add_event_handler", _add_event_handler_once_then_fail)
+    monkeypatch.setattr(
+        "lumonox.fastapi.middleware._add_event_handler", _add_event_handler_once_then_fail
+    )
     monitor(app, api_key="k", ingest_url="https://example.test/ingest")
 
     assert len(app.user_middleware) == middleware_before

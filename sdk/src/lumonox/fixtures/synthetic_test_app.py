@@ -5,7 +5,7 @@ import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Literal, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
@@ -115,7 +115,7 @@ def _user_has_orders(uid: int) -> bool:
 
 
 def _utc_now() -> str:
-    return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+    return datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _stable_roll(salt: str) -> float:

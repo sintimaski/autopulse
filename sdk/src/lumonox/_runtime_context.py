@@ -1,21 +1,12 @@
-"""Request-scoped context for Lumonox SDK (correlation IDs, etc.)."""
+"""Backward-compatible re-export shim.
 
-from __future__ import annotations
+The canonical implementation lives in ``lumonox.core.runtime_context``.
+"""
 
-from contextvars import ContextVar, Token
+from lumonox.core.runtime_context import (
+    get_correlation_id,
+    reset_correlation_id,
+    set_correlation_id,
+)
 
-# Populated for the duration of each HTTP request handled by Lumonox middleware.
-_lumonox_correlation_id: ContextVar[str | None] = ContextVar("lumonox_correlation_id", default=None)
-
-
-def get_correlation_id() -> str | None:
-    return _lumonox_correlation_id.get()
-
-
-def set_correlation_id(value: str | None) -> Token[str | None]:
-    """Return the ContextVar token for ``reset_correlation_id``."""
-    return _lumonox_correlation_id.set(value)
-
-
-def reset_correlation_id(token: Token[str | None]) -> None:
-    _lumonox_correlation_id.reset(token)
+__all__ = ["get_correlation_id", "reset_correlation_id", "set_correlation_id"]

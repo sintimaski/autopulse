@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 WidgetType = Literal["card", "line", "bar", "donut", "histogram", "scatter", "stacked_area"]
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+    return datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(slots=True)
@@ -97,7 +97,7 @@ class LineChartWidget(BaseDashboardWidget):
         result: list[dict[str, Any]] = []
         for timestamp, value in self.points or []:
             ts = (
-                timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z")
+                timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
                 if isinstance(timestamp, datetime)
                 else str(timestamp)
             )
@@ -240,7 +240,7 @@ class StackedAreaWidget(BaseDashboardWidget):
         rows: list[dict[str, Any]] = []
         for timestamp, series_label, value in self.points or []:
             ts = (
-                timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z")
+                timestamp.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
                 if isinstance(timestamp, datetime)
                 else str(timestamp)
             )

@@ -1,0 +1,168 @@
+# Install-ease guard for ``lumonox-sdk``.
+#
+# Builds the wheel once and verifies it installs + imports cleanly across the
+# Python versions, architectures, and libc flavors we promise to support
+# (see ``docs/plans/sdk-install-ease.md`` Phase 1 and the Compatibility section
+# in ``sdk/README.md``).
+#
+# Each cell:
+#   1. ``pip install`` the freshly built wheel inside a slim/alpine container.
+#   2. Import ``lumonox`` and assert the FastAPI middleware attaches.
+#   3. Call ``InfrastructureSampler().sample()`` so we catch any regression that
+#      silently drops the psutil-backed host/process metrics. This is the
+#      load-bearing "no functional regression" check from the plan.
+#   4. Run the cold-import regression guard (``python -c "import lumonox"`` under
+#      a wall-clock budget).
+#
+# Failure in any cell blocks the workflow; the publish workflow takes the
+# additional step of checking PyPI version drift before uploading.
+
+name: SDK install matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sdk/pyproject.toml"
+      - "sdk/src/**"
+      - "sdk/tests/**"
+      - ".github/workflows/sdk-install-matrix.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "sdk/pyproject.toml"
+      - "sdk/src/**"
+      - "sdk/tests/**"
+      - ".github/workflows/sdk-install-matrix.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sdk-install-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build wheel + sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build lumonox-sdk distributions
+        run: uv build --package lumonox-sdk -o dist
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lumonox-sdk-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  install-glibc:
+    name: install · py${{ matrix.python }} · ${{ matrix.arch }} · slim
+    needs: build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch built wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: lumonox-sdk-dist
+          path: dist
+
+      - name: Set up QEMU
+        if: matrix.arch == 'arm64' && matrix.runner == 'ubuntu-latest'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Smoke ``pip install`` inside python:${{ matrix.python }}-slim
+        run: |
+          docker run --rm \
+            --platform ${{ matrix.platform }} \
+            -v "$PWD/dist:/dist:ro" \
+            -v "$PWD/scripts/sdk_install_smoke.py:/smoke.py:ro" \
+            python:${{ matrix.python }}-slim \
+            bash -lc 'set -euo pipefail; \
+              python -m pip install --quiet --upgrade pip; \
+              python -m pip install --quiet /dist/lumonox_sdk-*.whl; \
+              python /smoke.py'
+
+  install-musl:
+    name: install · py${{ matrix.python }} · amd64 · alpine
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Alpine ``python:*-alpine`` images cover Python 3.10 – 3.13. ``psutil`` ships
+        # ``musllinux_1_2`` wheels for 5.9+ so no compiler toolchain is required.
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch built wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: lumonox-sdk-dist
+          path: dist
+
+      - name: Smoke ``pip install`` inside python:${{ matrix.python }}-alpine
+        run: |
+          docker run --rm \
+            --platform linux/amd64 \
+            -v "$PWD/dist:/dist:ro" \
+            -v "$PWD/scripts/sdk_install_smoke.py:/smoke.py:ro" \
+            python:${{ matrix.python }}-alpine \
+            sh -lc 'set -eu; \
+              python -m pip install --quiet --upgrade pip; \
+              python -m pip install --quiet /dist/lumonox_sdk-*.whl; \
+              python /smoke.py'
+
+  install-floors:
+    name: floors · py3.10 · slim · fastapi=0.100, httpx=0.24, psutil=5.9
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch built wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: lumonox-sdk-dist
+          path: dist
+
+      # Pinning the floors ensures the documented minimums in ``sdk/README.md`` and
+      # ``sdk/pyproject.toml`` keep resolving — and that the SDK still functions
+      # against them (no silent feature loss against older fastapi/httpx/psutil lines).
+      - name: Floors smoke ``pip install`` inside python:3.10-slim
+        run: |
+          docker run --rm \
+            --platform linux/amd64 \
+            -v "$PWD/dist:/dist:ro" \
+            -v "$PWD/scripts/sdk_install_smoke.py:/smoke.py:ro" \
+            python:3.10-slim \
+            bash -lc 'set -euo pipefail; \
+              python -m pip install --quiet --upgrade pip; \
+              python -m pip install --quiet \
+                "fastapi==0.100.0" "httpx==0.24.0" "psutil==5.9.0" \
+                /dist/lumonox_sdk-*.whl; \
+              python /smoke.py'

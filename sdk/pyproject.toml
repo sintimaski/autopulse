@@ -4,7 +4,7 @@ version = "0.2.7"
 description = "FastAPI observability SDK for Lumonox"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 authors = [{ name = "Lumonox maintainers" }]
 keywords = ["fastapi", "observability", "monitoring", "apm", "errors", "telemetry"]
 classifiers = [
@@ -12,21 +12,34 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Framework :: FastAPI",
     "Typing :: Typed",
 ]
+# Floors are the lowest releases that expose the SDK's hot-path API surface
+# (FastAPI/Starlette ``BaseHTTPMiddleware`` + request/response shapes, ``httpx.AsyncClient``
+# behavior, psutil counters in ``_infrastructure.py``). Looser floors reduce resolver
+# conflicts with apps pinned to older lines; no upper caps so future majors are not
+# pre-emptively blocked. See ``docs/plans/sdk-install-ease.md`` Phase 1.
 dependencies = [
-    "fastapi>=0.115.0",
-    "httpx>=0.27.0",
-    "psutil>=6.0.0",
+    "fastapi>=0.100.0",
+    "httpx>=0.24.0",
+    "psutil>=5.9.0",
 ]
 
-# ``pip install "lumonox-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``lumonox``) alongside this SDK.
+# Optional extras. The base ``pip install lumonox-sdk`` already ships every
+# framework adapter under ``lumonox/`` (FastAPI, Django, …); the extras here
+# guarantee the framework dep itself is installed.
 [project.optional-dependencies]
+# ``pip install "lumonox-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``lumonox``).
 stack = ["lumonox>=0.2.10"]
+# ``pip install "lumonox-sdk[django]"`` adds Django so ``lumonox.django`` works
+# without the user installing Django separately. Async middleware (Django 3.1+)
+# is required; 4.2 LTS is the floor.
+django = ["django>=4.2"]
 
 [project.urls]
 Homepage = "https://github.com/sintimaski/lumonox"
