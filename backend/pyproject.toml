@@ -1,6 +1,6 @@
 [project]
 name = "lumonox"
-version = "0.2.10"
+version = "0.2.11"
 description = "Lumonox FastAPI ingest API, dashboard, and static UI (import ``lumonox`` or ``lumonox_backend``)"
 readme = "README.md"
 requires-python = ">=3.11"
