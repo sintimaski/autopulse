@@ -8,6 +8,21 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-05-13
+
+### Added
+
+- **Reliable `sdk_version`:** monitor now resolves the installed distribution version (`importlib.metadata`) so ingest records receive a concrete `sdk_version` instead of `unknown` for standard `lumonox-sdk` installs.
+- **Batch byte budget (`LUMONOX_INGEST_MAX_BATCH_BYTES` / `ingest_max_batch_bytes`):** dispatcher splits serialized batches that exceed the configured client cap to avoid 413s from the server `ingest_max_request_bytes` limit; documented split policy in `sdk/README.md`.
+- **Bounded concurrent sends (`LUMONOX_MAX_CONCURRENT_SENDS` / `max_concurrent_sends`):** asyncio semaphore caps in-flight POSTs, reducing head-of-line blocking on a single slow request; per-POST idempotency keys are preserved.
+- **Opt-in ingest circuit breaker (`LUMONOX_CIRCUIT_FAILURE_THRESHOLD` / `LUMONOX_CIRCUIT_OPEN_SECONDS`):** fail-fast after N consecutive terminal failures for a configured cooldown window; disabled by default; never blocks the host app.
+- **Telemetry observer hook (`telemetry_observer` kwarg):** opt-in callable receives a small read-only dict per ingest batch outcome (`kind`, `ok`, `events`, `attempt`, `duration_ms`, `queue_depth`, …) for export to OpenTelemetry / app logger; no overhead when unset.
+- **Release/git metadata (`LUMONOX_RELEASE` / `LUMONOX_GIT_SHA`):** monitor attaches `release` and `git_sha` to captured events so dashboard overview and diagnosis charts can render release markers.
+
+### Packaging
+
+- **`[stack]`** extra depends on **`lumonox>=0.2.10`** (aligned with the **0.2.10** API wheel that ships the operator-health surface, incident server persistence, alert lifecycle controls, team bookmarks, scoped export, and release markers).
+
 ## [0.2.6] - 2026-05-12
 
 ### Added
