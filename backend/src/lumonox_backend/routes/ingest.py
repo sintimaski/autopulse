@@ -13,7 +13,7 @@ from lumonox_backend.auth import ProjectContext, authenticate_project
 from lumonox_backend.commercial.plan_limits import effective_ingest_rate_limit_max
 from lumonox_backend.core.config import Settings, get_settings
 from lumonox_backend.dashboard.routes.query_bundle import mark_project_dashboard_dirty
-from lumonox_backend.database import get_db_session, get_session_maker
+from lumonox_backend.database import get_db_session, get_session_maker, write_session
 from lumonox_backend.ingestion.exclude_lumonox import is_lumonox_internal_path
 from lumonox_backend.ingestion.limits import ingest_rate_limiter
 from lumonox_backend.ingestion.otlp_traces import convert_otlp_json_to_ingest_batch
@@ -321,8 +321,9 @@ async def ingest_events(
         )
 
     if idem_hash:
-        session_maker = get_session_maker(settings.database_url)
-        async with session_maker() as idem_session:
+        # reserve_idempotency_key reads then inserts — needs the write engine's
+        # BEGIN IMMEDIATE so it never fails on a SHARED -> RESERVED upgrade.
+        async with write_session(settings.database_url) as idem_session:
             completed = await ingest_reliability_repo.get_completed_idempotency_accepted(
                 idem_session,
                 project_id=context.project_id,
@@ -343,7 +344,8 @@ async def ingest_events(
                 detail="Duplicate ingest request in flight for this Idempotency-Key.",
             )
         if reservation == "duplicate":
-            async with session_maker() as idem_session2:
+            read_session_maker = get_session_maker(settings.database_url)
+            async with read_session_maker() as idem_session2:
                 completed_again = await ingest_reliability_repo.get_completed_idempotency_accepted(
                     idem_session2,
                     project_id=context.project_id,
@@ -361,12 +363,15 @@ async def ingest_events(
 
     if settings.ingest_distributed_rate_limit_enabled:
         try:
-            allowed = await allow_distributed_ingest_request(
-                session=session,
-                project_id=context.project_id,
-                max_requests=effective_rate_limit,
-                window_seconds=settings.ingest_rate_limit_window_seconds,
-            )
+            # Distributed limiter does delete + select + insert/update — run it on the
+            # write engine so the window upsert never blocks on a lock upgrade.
+            async with write_session(settings.database_url) as rl_session:
+                allowed = await allow_distributed_ingest_request(
+                    session=rl_session,
+                    project_id=context.project_id,
+                    max_requests=effective_rate_limit,
+                    window_seconds=settings.ingest_rate_limit_window_seconds,
+                )
         except Exception:
             # Fail open to in-memory limiter so ingest stays available when DB limiter is unhealthy.
             service_metrics.increment("ingest.rate_limit.distributed_fallback")
@@ -383,8 +388,7 @@ async def ingest_events(
         )
     if not allowed:
         if idem_reserved and idem_hash:
-            session_maker = get_session_maker(settings.database_url)
-            async with session_maker() as idem_session:
+            async with write_session(settings.database_url) as idem_session:
                 await ingest_reliability_repo.release_idempotency_reservation(
                     idem_session,
                     project_id=context.project_id,
@@ -421,8 +425,7 @@ async def ingest_events(
         )
     except Exception:
         if idem_reserved and idem_hash:
-            session_maker = get_session_maker(settings.database_url)
-            async with session_maker() as idem_session:
+            async with write_session(settings.database_url) as idem_session:
                 await ingest_reliability_repo.release_idempotency_reservation(
                     idem_session,
                     project_id=context.project_id,
@@ -451,8 +454,11 @@ async def ingest_events(
         )
         if not enqueued:
             service_metrics.increment("ingest.aggregate_worker.enqueue_failed")
-            await upsert_metric_buckets(session, persist_result.metric_bucket_deltas)
-            await upsert_error_group_aggregates(session, persist_result.error_group_deltas)
+            async with write_session(settings.database_url) as fallback_session:
+                await upsert_metric_buckets(fallback_session, persist_result.metric_bucket_deltas)
+                await upsert_error_group_aggregates(
+                    fallback_session, persist_result.error_group_deltas
+                )
             service_metrics.increment("ingest.aggregate_worker.sync_fallback")
     if realtime_fanout_enabled:
         _schedule_ingest_fanout_task(
@@ -477,8 +483,7 @@ async def ingest_events(
         },
     )
     if idem_hash:
-        session_maker = get_session_maker(settings.database_url)
-        async with session_maker() as idem_session:
+        async with write_session(settings.database_url) as idem_session:
             await ingest_reliability_repo.complete_idempotency_key(
                 idem_session,
                 project_id=context.project_id,

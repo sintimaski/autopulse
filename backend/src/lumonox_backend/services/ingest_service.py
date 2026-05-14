@@ -18,7 +18,7 @@ from lumonox_backend.dashboard.error_grouping import (
 )
 from lumonox_backend.dashboard.payload_limits import MAX_WIDGET_POINTS_PER_INGEST_BATCH
 from lumonox_backend.dashboard.time_window import minute_bucket
-from lumonox_backend.database import get_session_maker
+from lumonox_backend.database import write_session
 from lumonox_backend.ingestion.exclude_lumonox import is_lumonox_internal_path
 from lumonox_backend.metrics import service_metrics
 from lumonox_backend.models import Event
@@ -243,6 +243,11 @@ async def persist_ingest_batch(
         had_events_before_batch = await project_has_received_any_event(
             session, project_id=project_id, settings=settings
         )
+        # End this read transaction before the DuckDB write and the SQL tail below.
+        # `session` is the request-scoped read session; leaving its SHARED lock open
+        # would force the SQL tail into a SHARED -> RESERVED upgrade (which SQLite
+        # fails immediately under contention). The SQL tail runs on `write_session()`.
+        await session.rollback()
     if event_store_enabled():
         await insert_events_duckdb(duckdb_rows)
         accepted = len(duckdb_rows)
@@ -261,7 +266,10 @@ async def persist_ingest_batch(
                     shadow_rows=shadow_rows,
                 )
     else:
-        accepted = await events_repo.insert_ingest_events(session, rows)
+        # SQLite-backed event store: write on write_session so `session` (the
+        # request-scoped read session) never holds the metadata-DB write lock.
+        async with write_session(settings.database_url) as events_sess:
+            accepted = await events_repo.insert_ingest_events(events_sess, rows)
     if rows and not had_events_before_batch and accepted > 0:
         service_metrics.increment("ingest.first_event_by_project_total")
     metric_bucket_deltas, error_group_deltas = _build_aggregate_deltas(
@@ -320,11 +328,21 @@ async def persist_ingest_batch(
     # Widget payload persistence must not depend on metric aggregate mode.
     # Some deployments disable inline aggregate writes and rely on workers.
     try:
-        await dashboard_widgets_repo.upsert_widget_definitions(session, widget_definitions)
-        await dashboard_widgets_repo.insert_widget_points(session, widget_points)
-        if persist_aggregates:
-            await upsert_metric_buckets(session, metric_bucket_deltas)
-            await upsert_error_group_aggregates(session, error_group_deltas)
+        # SQLite metadata writes run on a short write_session (BEGIN IMMEDIATE) so they
+        # take the write lock up front and never fail on a lock upgrade under
+        # contention. The DuckDB widget-point write stays off that transaction.
+        async with write_session(settings.database_url) as write_sess:
+            await dashboard_widgets_repo.upsert_widget_definitions(write_sess, widget_definitions)
+            if persist_aggregates:
+                await upsert_metric_buckets(write_sess, metric_bucket_deltas)
+                await upsert_error_group_aggregates(write_sess, error_group_deltas)
+            await write_sess.commit()
+        # Widget points land in DuckDB under the event store; the SQLite fallback
+        # gets its own short write transaction (kept off the block above so the
+        # DuckDB write never runs while the metadata-DB write lock is held).
+        async with write_session(settings.database_url) as points_sess:
+            await dashboard_widgets_repo.insert_widget_points(points_sess, widget_points)
+            await points_sess.commit()
     except Exception as exc:
         service_metrics.increment("ingest.persist_sql_tail_failed")
         # Clear the request-bound SQLAlchemy transaction state before continuing with
@@ -347,8 +365,7 @@ async def persist_ingest_batch(
                 error_group_deltas=error_group_deltas,
                 persist_aggregates=persist_aggregates,
             )
-            session_maker = get_session_maker(settings.database_url)
-            async with session_maker() as repair_session:
+            async with write_session(settings.database_url) as repair_session:
                 await ingest_reliability_repo.insert_sql_tail_repair_item(
                     repair_session,
                     project_id=project_id,

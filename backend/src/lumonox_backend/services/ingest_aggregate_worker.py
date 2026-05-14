@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from lumonox_backend.core.config import Settings, get_settings
-from lumonox_backend.database import get_session_maker
+from lumonox_backend.database import write_session
 from lumonox_backend.metrics import service_metrics
 from lumonox_backend.repositories import ingest_reliability as ingest_reliability_repo
 from lumonox_backend.repositories.aggregates import (
@@ -54,7 +54,6 @@ async def _run_worker(
     stop_event: asyncio.Event,
     settings: Settings,
 ) -> None:
-    session_maker = get_session_maker(settings.database_url)
     while not stop_event.is_set():
         payload = await queue.get()
         if stop_event.is_set():
@@ -62,7 +61,9 @@ async def _run_worker(
         metric_bucket_count = len(payload.metric_bucket_deltas)
         error_group_count = len(payload.error_group_deltas)
         try:
-            async with session_maker() as session:
+            # write_session: BEGIN IMMEDIATE so the per-delta SELECT-then-write upserts
+            # never fail on a SHARED -> RESERVED upgrade under writer contention.
+            async with write_session(settings.database_url) as session:
                 await upsert_metric_buckets(session, payload.metric_bucket_deltas)
                 await upsert_error_group_aggregates(session, payload.error_group_deltas)
             service_metrics.increment("ingest.aggregate_worker.succeeded")
@@ -93,7 +94,7 @@ async def _run_worker(
             else:
                 service_metrics.increment("ingest.aggregate_worker.dead_lettered")
                 try:
-                    async with session_maker() as dl_session:
+                    async with write_session(settings.database_url) as dl_session:
                         await ingest_reliability_repo.insert_aggregate_dead_letter(
                             dl_session,
                             metric_bucket_deltas=payload.metric_bucket_deltas,

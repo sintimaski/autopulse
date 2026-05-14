@@ -13,7 +13,12 @@ from pathlib import Path
 
 from lumonox_backend.alerts import AlertSender, build_alert_sender, evaluate_alerts_once
 from lumonox_backend.core.config import Settings, get_settings, redact_database_url_for_log
-from lumonox_backend.database import dispose_engine_for_url, get_engine, get_session_maker
+from lumonox_backend.database import (
+    dispose_engine_for_url,
+    get_engine,
+    get_session_maker,
+    write_session,
+)
 from lumonox_backend.maintenance.retention import (
     _resolve_sqlite_db_path,
     _sqlite_db_disk_footprint_bytes,
@@ -113,24 +118,24 @@ async def run_replay_aggregate_dead_letters_once(
     await _ensure_sqlite_schema_from_models(resolved_settings.database_url)
     session_maker = get_session_maker(resolved_settings.database_url)
     replayed = 0
+    # Fetch on the read engine (SHARED only); replay each row on the write engine so
+    # the SELECT-then-write upserts never block on a SHARED -> RESERVED upgrade.
     async with session_maker() as session:
         rows = await ingest_reliability_repo.fetch_pending_dead_letters(session, limit=limit)
-        for row in rows:
-            try:
-                metrics, errors = decode_aggregate_payload(row.payload)
-                if not metrics and not errors:
-                    await ingest_reliability_repo.mark_dead_letter_replayed(session, row.id)
-                    replayed += 1
-                    continue
-                await upsert_metric_buckets(session, metrics)
-                await upsert_error_group_aggregates(session, errors)
-                await ingest_reliability_repo.mark_dead_letter_replayed(session, row.id)
-                replayed += 1
-            except Exception:
-                logger.exception(
-                    "replay_aggregate_dead_letter_failed",
-                    extra={"dead_letter_id": row.id},
-                )
+    for row in rows:
+        try:
+            metrics, errors = decode_aggregate_payload(row.payload)
+            async with write_session(resolved_settings.database_url) as replay_session:
+                if metrics or errors:
+                    await upsert_metric_buckets(replay_session, metrics)
+                    await upsert_error_group_aggregates(replay_session, errors)
+                await ingest_reliability_repo.mark_dead_letter_replayed(replay_session, row.id)
+            replayed += 1
+        except Exception:
+            logger.exception(
+                "replay_aggregate_dead_letter_failed",
+                extra={"dead_letter_id": row.id},
+            )
     await _refresh_replay_queue_metrics(resolved_settings)
     return replayed
 
@@ -143,6 +148,11 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
     repaired = 0
     max_retries = max(1, int(resolved_settings.ingest_sql_tail_repair_max_retries))
     limit = max(1, int(resolved_settings.ingest_sql_tail_repair_batch_size))
+    # Read-only fetch on the default engine: a deferred BEGIN takes only a SHARED
+    # lock, so this does not block the per-row write sessions below (which run on
+    # the write engine under BEGIN IMMEDIATE). Holding this on the write engine
+    # would self-deadlock — the outer transaction would own the write lock the
+    # inner sessions need.
     async with session_maker() as session:
         rows = await ingest_reliability_repo.fetch_pending_sql_tail_repair_items(
             session, limit=limit
@@ -150,7 +160,7 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
     for row in rows:
         try:
             payload = decode_ingest_sql_tail_payload(row.payload)
-            async with session_maker() as replay_session:
+            async with write_session(resolved_settings.database_url) as replay_session:
                 await dashboard_widgets_repo.upsert_widget_definitions(
                     replay_session, payload.widget_definitions
                 )
@@ -158,7 +168,7 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
                     await upsert_metric_buckets(replay_session, payload.metric_bucket_deltas)
                     await upsert_error_group_aggregates(replay_session, payload.error_group_deltas)
                 await replay_session.commit()
-            async with session_maker() as mark_session:
+            async with write_session(resolved_settings.database_url) as mark_session:
                 await ingest_reliability_repo.mark_sql_tail_repair_resolved(mark_session, row.id)
             repaired += 1
             service_metrics.increment("ingest.sql_tail.repair_succeeded")
@@ -167,7 +177,7 @@ async def run_replay_sql_tail_repairs_once(*, settings: Settings | None = None) 
             dead_lettered = attempt_count >= max_retries
             backoff_seconds = float(min(300, 2 ** min(attempt_count, 8)))
             next_retry_at = datetime.now(tz=UTC) + timedelta(seconds=backoff_seconds)
-            async with session_maker() as mark_session:
+            async with write_session(resolved_settings.database_url) as mark_session:
                 await ingest_reliability_repo.mark_sql_tail_repair_retry(
                     mark_session,
                     row_id=row.id,

@@ -7,7 +7,10 @@ from lumonox_backend.database.session import (
     get_db_session,
     get_engine,
     get_session_maker,
+    get_write_engine,
+    get_write_session_maker,
     warm_database_connections,
+    write_session,
 )
 
 __all__ = [
@@ -16,6 +19,9 @@ __all__ = [
     "get_engine",
     "get_db_session",
     "get_session_maker",
+    "get_write_engine",
+    "get_write_session_maker",
     "warm_database_connections",
+    "write_session",
     "upgrade_to_head",
 ]
