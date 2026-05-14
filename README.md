@@ -1,8 +1,8 @@
 # Lumonox 🚀
 
-> ⚡ FastAPI observability in minutes: know what broke, when, and which requests caused it.
+> ⚡ Observability for FastAPI and Django apps in minutes: know what broke, when, and which requests caused it.
 
-Lumonox gives Python teams a fast path to useful production visibility without observability-infra overhead.
+Lumonox gives Python teams a fast path to useful production visibility without observability-infra overhead. It instruments both **FastAPI** and **Django** apps — and the Lumonox API itself is a FastAPI service under the hood.
 
 ### Highlights
 
@@ -55,7 +55,7 @@ export LUMONOX_API_KEY="<project ingest key from dashboard>"
 
 ### Instrument your Django app 🐍
 
-Lumonox is FastAPI-native, but ships an opt-in async middleware adapter for **Django** (ASGI). Install the `[django]` extra, add the middleware, and wire `monitor()` + `wrap_asgi()` in `asgi.py`:
+Lumonox instruments **Django** apps too, through an async middleware adapter (ASGI). The default install ships the FastAPI adapter; install the `[django]` extra to add Django, then add the middleware and wire `monitor()` + `wrap_asgi()` in `asgi.py`:
 
 ```bash
 pip install "lumonox-sdk[django]"

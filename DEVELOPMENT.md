@@ -1,8 +1,8 @@
 # Lumonox Development Brief
 
-Lumonox is a plug-and-play observability product for FastAPI applications. The core promise is:
+Lumonox is a plug-and-play observability product for FastAPI and Django applications. The Lumonox API itself is a FastAPI service under the hood, but the SDK instruments both frameworks. The core promise is:
 
-> Useful visibility into a FastAPI app in two minutes, without learning observability infrastructure.
+> Useful visibility into a FastAPI or Django app in two minutes, without learning observability infrastructure.
 
 This document is the cleaned development source of truth.
 
@@ -13,14 +13,14 @@ Lumonox is not a general-purpose Grafana, Datadog, or Sentry replacement. It is 
 Primary wedge:
 
 - Zero-config setup.
-- FastAPI-first integration.
+- One-line integration for FastAPI and Django.
 - Useful defaults instead of dashboards and query languages.
 - Logs, request metrics, and errors in one simple view.
 - Designed for small teams that do not want DevOps overhead.
 
 Ideal user:
 
-- Solo developer or indie hacker shipping a FastAPI app.
+- Solo developer or indie hacker shipping a FastAPI or Django app.
 - Small backend team of 1-5 people.
 - Developer who does not want to configure Prometheus, Grafana, agents, log pipelines, or complex Sentry/Datadog settings.
 
@@ -49,7 +49,7 @@ The first version should make it easy to see:
 
 SDK:
 
-- FastAPI middleware.
+- FastAPI middleware (default install) and Django ASGI middleware (`[django]` extra).
 - One-line integration.
 - Automatic request capture:
   - Method.
@@ -113,7 +113,7 @@ Alerts:
 Start as hosted SaaS. Add self-hosting later only if there is clear demand.
 
 ```
-FastAPI App
+FastAPI / Django app
   |
   | Lumonox SDK middleware
   v
@@ -151,8 +151,8 @@ Next.js dashboard
 SDK:
 
 - Python.
-- FastAPI / Starlette middleware (primary; Lumonox is FastAPI-native).
-- Opt-in Django async/ASGI middleware adapter, shipped behind the `[django]` extra; reuses the same `lumonox.core.*` send path so behavior and `LUMONOX_*` knobs are identical. WSGI Django is out of scope for v1. See `sdk/docs/adapters.md`.
+- FastAPI / Starlette middleware (ships in the default install).
+- Django async/ASGI middleware adapter, shipped behind the `[django]` extra; reuses the same `lumonox.core.*` send path so behavior and `LUMONOX_*` knobs are identical. WSGI Django is out of scope for v1. See `sdk/docs/adapters.md`.
 - `asyncio.Queue` for bounded buffering.
 - `httpx.AsyncClient` for background delivery.
 
@@ -217,7 +217,7 @@ The SDK must be safe to install in production apps. It should never make the obs
 Request lifecycle:
 
 1. Middleware starts a timer.
-2. Request is passed to the FastAPI app.
+2. Request is passed to the host app (FastAPI or Django).
 3. Middleware captures response status and latency.
 4. If an exception occurs, middleware captures exception type, message, and stack trace, then re-raises the original exception.
 5. Event is pushed to a bounded async queue.
@@ -531,7 +531,7 @@ Datadog:
 Better Stack / Logtail:
 
 - Cleaner logging experience.
-- Weakness for this niche: not FastAPI-native and still requires users to think about log shipping or pipelines.
+- Weakness for this niche: not tuned to Python web frameworks like FastAPI or Django, and still requires users to think about log shipping or pipelines.
 
 Lumonox assumption:
 
@@ -712,7 +712,7 @@ A **Rust** (or otherwise native) agent is a reasonable implementation choice for
 
 The MVP is ready to launch when:
 
-- A FastAPI developer can integrate Lumonox with one line.
+- A FastAPI or Django developer can integrate Lumonox with one line.
 - Requests appear in the dashboard within a few seconds.
 - Exceptions are grouped and visible with stack traces.
 - Basic request rate, error rate, and latency are visible.

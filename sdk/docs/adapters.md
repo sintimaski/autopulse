@@ -169,17 +169,19 @@ adapter:
   Each adapter exposes its own `monitor(...)` factory under
   `lumonox.<framework>` (the Django adapter's is `monitor(**kwargs)` —
   no `app` argument, since Django middleware has no `app.state`
-  analogue); the top-level `lumonox(app, …)` convenience stays
-  FastAPI-focused until product strategy explicitly broadens it.
+  analogue); the top-level `lumonox(app, …)` convenience is
+  FastAPI-specific because it takes the FastAPI `app` object — Django
+  callers use `lumonox.django.monitor(**kwargs)`.
 
 ## Why this layout
 
-`lumonox-sdk` is FastAPI-native: `fastapi` is a required dependency
-because that is the primary framework it instruments (see
-`.cursor/rules/lumonox-product.mdc`). The Django adapter ships as an
-opt-in `[django]` extra so the default install line and dependency set
-stay unchanged for existing FastAPI users. The core/adapter split is
-what makes that work:
+`lumonox-sdk` instruments both FastAPI and Django (see
+`.cursor/rules/lumonox-product.mdc`). `fastapi` is a required dependency
+because the default install ships the FastAPI adapter ready to use — it
+cannot move to an extra without a default-install regression. The Django
+adapter ships as a `[django]` extra so the default install line and
+dependency set stay unchanged. The core/adapter split is what makes that
+work:
 
 - **Readability.** Framework-independent primitives (queue, transport,
   scrubbing, infrastructure metrics, correlation) are reachable from

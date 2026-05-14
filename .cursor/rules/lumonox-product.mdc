@@ -5,11 +5,11 @@ alwaysApply: true
 
 # Lumonox product context
 
-Lumonox is an opinionated FastAPI-native observability product for solo developers and small backend teams (1-5). It is not a full Grafana/Datadog/Sentry replacement in MVP.
+Lumonox is an opinionated observability product for FastAPI and Django apps, aimed at solo developers and small backend teams (1-5). The Lumonox API itself is built on FastAPI, but the SDK instruments both frameworks. It is not a full Grafana/Datadog/Sentry replacement in MVP.
 
 ## Core promise
 
-Useful visibility into a FastAPI app in about two minutes, without observability-infra learning overhead.
+Useful visibility into a FastAPI or Django app in about two minutes, without observability-infra learning overhead.
 
 ## Product rule
 

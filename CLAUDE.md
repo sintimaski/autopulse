@@ -20,7 +20,7 @@ The Cursor `.mdc` files are the canonical rules: always-on rules apply unconditi
 Detailed text lives in `.cursor/rules/*.mdc`; the rules below are non-negotiable and always apply.
 
 ### Product (`.cursor/rules/lumonox-product.mdc`)
-- Lumonox = opinionated FastAPI-native observability for solo devs / teams of 1–5. **Not** a Grafana/Datadog/Sentry replacement.
+- Lumonox = opinionated observability for **FastAPI and Django** apps, for solo devs / teams of 1–5 (the Lumonox API itself is built on FastAPI). **Not** a Grafana/Datadog/Sentry replacement.
 - MVP must answer: *what broke, when, which requests led to it.*
 - Non-goals: distributed tracing, custom dashboard builder, query language, complex alerting, k8s/multi-cloud, log pipelines, full APM, enterprise RBAC/audit.
 - Dashboard principle: optimize for **fast diagnosis**, not configurability. Five-second understanding on overview.
@@ -78,7 +78,7 @@ When work was substantive **and** one or more `.cursor/rules/*.mdc` files materi
 
 | Path | Purpose |
 |------|---------|
-| `sdk/` | Python SDK (PyPI: `lumonox-sdk`): FastAPI middleware + opt-in Django adapter (`[django]` extra). Core/adapter split — see `sdk/docs/adapters.md` |
+| `sdk/` | Python SDK (PyPI: `lumonox-sdk`): FastAPI + Django middleware (Django via the `[django]` extra). Core/adapter split — see `sdk/docs/adapters.md` |
 | `backend/` | FastAPI ingestion, dashboard API, workers (PyPI: `lumonox`) |
 | `frontend/` | Next.js dashboard; default delivery is the **static export** (`npm run build` → `frontend/out/`) mounted at `/lumonox/ui/` by the backend |
 | `scripts/` | Local stack and ops scripts |

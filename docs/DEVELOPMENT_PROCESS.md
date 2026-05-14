@@ -112,7 +112,7 @@ All checks below must pass in one verification cycle and include evidence links
 
 ### 6.1 Required gate checks
 
-- **One-line integration:** verify a clean FastAPI sample app can enable Lumonox with one line and no extra observability configuration.
+- **One-line integration:** verify a clean FastAPI sample app (and a Django sample app, via the `[django]` extra) can enable Lumonox with one line and no extra observability configuration.
 - **First value speed:** after generating traffic, requests are visible in the dashboard within a few seconds.
 - **Error diagnosis:** induced exceptions are grouped and visible with stack traces.
 - **Core overview signals:** request rate, error rate, and average latency are visible and numerically plausible.

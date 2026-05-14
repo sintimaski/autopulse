@@ -1,6 +1,6 @@
 # Synthetic Test App Fixture
 
-This fixture provides a local FastAPI app and a deterministic traffic driver for manual Lumonox dashboard testing.
+This fixture provides local FastAPI and Django sample apps and deterministic traffic drivers for manual Lumonox dashboard testing.
 
 ## Components
 
