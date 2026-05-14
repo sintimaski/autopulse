@@ -10,7 +10,9 @@ type SettingsRetentionPolicySectionProps = {
   dashboardErrorMessage: string | null;
   retentionMessage: string | null;
   onDraftChange: (next: RetentionSettings) => void;
-  onSave: () => Promise<void>;
+  onSave: () => Promise<void> | void;
+  /** Save request in flight: drives the button loader + blocks double-submit. */
+  saving?: boolean;
 };
 
 export function SettingsRetentionPolicySection({
@@ -21,6 +23,7 @@ export function SettingsRetentionPolicySection({
   retentionMessage,
   onDraftChange,
   onSave,
+  saving = false,
 }: SettingsRetentionPolicySectionProps) {
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -179,13 +182,11 @@ export function SettingsRetentionPolicySection({
           </p>
           <button
             type="button"
-            disabled={!canEditRetention}
-            onClick={async () => {
-              await onSave();
-            }}
-            className="ap-btn-primary mt-3"
+            disabled={!canEditRetention || saving}
+            onClick={() => void onSave()}
+            className="ap-btn-primary mt-3 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save retention policy
+            {saving ? "Saving…" : "Save retention policy"}
           </button>
           {retentionMessage ? (
             <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{retentionMessage}</p>

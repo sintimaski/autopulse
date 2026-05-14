@@ -20,6 +20,10 @@ type SettingsApiKeyLifecycleSectionProps = {
   onApplyBulk: () => void | Promise<void>;
   onToggleSelectAll: () => void;
   onToggleKeySelected: (keyId: string) => void;
+  /** Request-in-flight flags: drive button loaders + block double-submit. */
+  issuingKey?: boolean;
+  refreshingKeys?: boolean;
+  applyingBulk?: boolean;
 };
 
 export function SettingsApiKeyLifecycleSection({
@@ -38,7 +42,11 @@ export function SettingsApiKeyLifecycleSection({
   onApplyBulk,
   onToggleSelectAll,
   onToggleKeySelected,
+  issuingKey = false,
+  refreshingKeys = false,
+  applyingBulk = false,
 }: SettingsApiKeyLifecycleSectionProps) {
+  const keysBusy = issuingKey || refreshingKeys || applyingBulk;
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">API key lifecycle</h2>
@@ -55,11 +63,21 @@ export function SettingsApiKeyLifecycleSection({
         </p>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" disabled={!canMutateApiKeys} onClick={() => void onIssueKey()} className="ap-btn-primary">
-          Issue new key
+        <button
+          type="button"
+          disabled={!canMutateApiKeys || keysBusy}
+          onClick={() => void onIssueKey()}
+          className="ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {issuingKey ? "Issuing…" : "Issue new key"}
         </button>
-        <button type="button" onClick={() => void onRefreshKeys()} className="ap-btn">
-          Refresh
+        <button
+          type="button"
+          disabled={keysBusy}
+          onClick={() => void onRefreshKeys()}
+          className="ap-btn disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {refreshingKeys ? "Refreshing…" : "Refresh"}
         </button>
       </div>
       {lastIssuedApiKey ? (
@@ -85,7 +103,7 @@ export function SettingsApiKeyLifecycleSection({
           </label>
           <button
             type="button"
-            disabled={!keyBulkAction || selectedKeyIds.size === 0}
+            disabled={!keyBulkAction || selectedKeyIds.size === 0 || keysBusy}
             onClick={() => void onApplyBulk()}
             className={
               keyBulkAction === "revoke"
@@ -93,7 +111,7 @@ export function SettingsApiKeyLifecycleSection({
                 : "ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
             }
           >
-            Apply
+            {applyingBulk ? "Applying…" : "Apply"}
           </button>
           <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
             Select active keys, choose an action, Apply, then confirm. With multiple active keys, the oldest active key

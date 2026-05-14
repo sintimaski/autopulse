@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { recordActivationMilestone } from "../../../lib/activationClientMetrics";
+import { useAsyncAction } from "../../../lib/useAsyncAction";
 import { ApCard } from "../../ui/ApCard";
 import { useDashboardData } from "../DashboardDataContext";
 import { isApiSubpathDashboard } from "../dashboardTypes";
@@ -66,6 +67,21 @@ export function OnboardingContent() {
     if (d.apiKeys[0]) return `${d.apiKeys[0].key_id} (existing)`;
     return null;
   }, [d.apiKeys, d.lastIssuedApiKey]);
+
+  // Loader + double-submit guard for the key actions (mirrors Settings).
+  const [issueApiKey, issuingApiKey] = useAsyncAction(
+    useCallback(async () => {
+      const ok = await d.issueApiKey();
+      setMessage(
+        ok
+          ? subpathUi
+            ? "Issued — .env.lumonox synced automatically. Rebuild UI + restart host."
+            : "Issued — copy into host env and restart app."
+          : "Issue failed.",
+      );
+    }, [d, subpathUi]),
+  );
+  const [refreshApiKeys, refreshingApiKeys] = useAsyncAction(d.refreshApiKeys);
 
   useEffect(() => {
     recordActivationMilestone("onboarding_view");
@@ -134,23 +150,19 @@ export function OnboardingContent() {
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={!canIssueKeys}
-              onClick={async () => {
-                const ok = await d.issueApiKey();
-                setMessage(
-                  ok
-                    ? subpathUi
-                      ? "Issued — .env.lumonox synced automatically. Rebuild UI + restart host."
-                      : "Issued — copy into host env and restart app."
-                    : "Issue failed.",
-                );
-              }}
-              className="ap-btn-primary"
+              disabled={!canIssueKeys || issuingApiKey || refreshingApiKeys}
+              onClick={() => void issueApiKey()}
+              className="ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Issue key
+              {issuingApiKey ? "Issuing…" : "Issue key"}
             </button>
-            <button type="button" onClick={() => void d.refreshApiKeys()} className="ap-btn">
-              Refresh
+            <button
+              type="button"
+              disabled={issuingApiKey || refreshingApiKeys}
+              onClick={() => void refreshApiKeys()}
+              className="ap-btn disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {refreshingApiKeys ? "Refreshing…" : "Refresh"}
             </button>
             <span
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${

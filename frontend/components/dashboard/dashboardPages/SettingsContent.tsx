@@ -1,5 +1,6 @@
 "use client";
 
+import { useAsyncAction } from "../../../lib/useAsyncAction";
 import { useDashboardData } from "../DashboardDataContext";
 import { isApiSubpathDashboard } from "../dashboardTypes";
 import {
@@ -68,6 +69,17 @@ export function SettingsContent() {
   );
   const aggregateQueue = useSettingsAggregateQueueStats(diagnostics.internalMetricsSnapshot);
 
+  // Wrap every mutating settings action with a pending flag + concurrent-call
+  // guard so each button shows a loader and a rapid double-click can't fire the
+  // request twice.
+  const [issueApiKey, issuingApiKey] = useAsyncAction(apiKeyBulk.issueKey);
+  const [refreshApiKeys, refreshingApiKeys] = useAsyncAction(apiKeyBulk.refreshKeys);
+  const [applyApiKeyBulk, applyingApiKeyBulk] = useAsyncAction(apiKeyBulk.applyKeyBulk);
+  const [saveRetention, savingRetention] = useAsyncAction(retentionPolicy.saveRetention);
+  const [applyMemberBulk, applyingMemberBulk] = useAsyncAction(orgMembers.applyMemberBulk);
+  const [sendInvite, sendingInvite] = useAsyncAction(orgMembers.sendInvite);
+  const [signOutDashboard, signingOut] = useAsyncAction(d.signOutDashboard);
+
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
       <SettingsSectionNav />
@@ -80,7 +92,8 @@ export function SettingsContent() {
             dashboardErrorMessage={d.errorMessage}
             retentionMessage={retentionPolicy.retentionMessage}
             onDraftChange={(next) => retentionPolicy.setRetentionDraft(next)}
-            onSave={() => retentionPolicy.saveRetention()}
+            onSave={saveRetention}
+            saving={savingRetention}
           />
         </div>
 
@@ -184,12 +197,14 @@ export function SettingsContent() {
             allMembersSelected={orgMembers.allMembersSelected}
             onToggleMemberSelected={orgMembers.toggleMemberSelected}
             onToggleSelectAllMembers={orgMembers.toggleSelectAllMembers}
-            onApplyMemberBulk={() => void orgMembers.applyMemberBulk()}
+            onApplyMemberBulk={applyMemberBulk}
+            applyingMemberBulk={applyingMemberBulk}
             inviteEmail={orgMembers.inviteEmail}
             onInviteEmailChange={orgMembers.setInviteEmail}
             inviteRole={orgMembers.inviteRole}
             onInviteRoleChange={orgMembers.setInviteRole}
-            onSendInvite={() => void orgMembers.sendInvite()}
+            onSendInvite={sendInvite}
+            sendingInvite={sendingInvite}
             orgMessage={orgMembers.orgMessage}
           />
         </div>
@@ -205,12 +220,15 @@ export function SettingsContent() {
             apiKeys={d.apiKeys}
             lastIssuedApiKey={d.lastIssuedApiKey}
             apiKeyMessage={apiKeyBulk.apiKeyMessage}
-            onIssueKey={() => void apiKeyBulk.issueKey()}
-            onRefreshKeys={() => void apiKeyBulk.refreshKeys()}
+            onIssueKey={issueApiKey}
+            onRefreshKeys={refreshApiKeys}
             onKeyBulkActionChange={apiKeyBulk.setKeyBulkAction}
-            onApplyBulk={() => void apiKeyBulk.applyKeyBulk()}
+            onApplyBulk={applyApiKeyBulk}
             onToggleSelectAll={apiKeyBulk.onToggleSelectAll}
             onToggleKeySelected={apiKeyBulk.toggleKeySelected}
+            issuingKey={issuingApiKey}
+            refreshingKeys={refreshingApiKeys}
+            applyingBulk={applyingApiKeyBulk}
           />
         </div>
 
@@ -222,7 +240,8 @@ export function SettingsContent() {
             themePreference={d.themePreference}
             themeSettingsSaving={d.themeSettingsSaving}
             saveThemePreference={d.saveThemePreference}
-            signOutDashboard={d.signOutDashboard}
+            signOutDashboard={signOutDashboard}
+            signingOut={signingOut}
           />
         </div>
       </div>

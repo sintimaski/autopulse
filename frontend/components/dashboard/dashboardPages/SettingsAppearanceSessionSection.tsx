@@ -11,7 +11,9 @@ type Props = {
   themePreference: ThemePreference;
   themeSettingsSaving: boolean;
   saveThemePreference: (theme: ThemePreference) => Promise<boolean>;
-  signOutDashboard: () => Promise<void>;
+  signOutDashboard: () => Promise<void> | void;
+  /** Sign-out request in flight: drives the button loader + blocks double-submit. */
+  signingOut?: boolean;
 };
 
 export function SettingsAppearanceSessionSection({
@@ -22,6 +24,7 @@ export function SettingsAppearanceSessionSection({
   themeSettingsSaving,
   saveThemePreference,
   signOutDashboard,
+  signingOut = false,
 }: Props) {
   return (
     <>
@@ -69,11 +72,12 @@ export function SettingsAppearanceSessionSection({
         <div className="mt-4">
           <button
             type="button"
-            className="ap-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium"
+            disabled={signingOut}
+            className="ap-btn inline-flex items-center gap-2 px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void signOutDashboard()}
           >
             <LogOut className="size-4 shrink-0" aria-hidden />
-            Sign out
+            {signingOut ? "Signing out…" : "Sign out"}
           </button>
         </div>
       </section>

@@ -27,6 +27,9 @@ export type SettingsOrganizationsMembersSectionProps = {
   onInviteRoleChange: (role: "owner" | "member") => void;
   onSendInvite: () => void | Promise<void>;
   orgMessage: string | null;
+  /** Request-in-flight flags: drive button loaders + block double-submit. */
+  applyingMemberBulk?: boolean;
+  sendingInvite?: boolean;
 };
 
 export function SettingsOrganizationsMembersSection({
@@ -52,6 +55,8 @@ export function SettingsOrganizationsMembersSection({
   onInviteRoleChange,
   onSendInvite,
   orgMessage,
+  applyingMemberBulk = false,
+  sendingInvite = false,
 }: SettingsOrganizationsMembersSectionProps) {
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -134,11 +139,11 @@ export function SettingsOrganizationsMembersSection({
                 </label>
                 <button
                   type="button"
-                  disabled={!memberBulkRole || selectedMemberIds.size === 0}
+                  disabled={!memberBulkRole || selectedMemberIds.size === 0 || applyingMemberBulk}
                   onClick={() => void onApplyMemberBulk()}
                   className="ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Apply
+                  {applyingMemberBulk ? "Applying…" : "Apply"}
                 </button>
                 <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
                   Select rows with the checkboxes, pick an action, then Apply (you will confirm). {PROTECTED_OWNER_EMAIL}{" "}
@@ -252,10 +257,11 @@ export function SettingsOrganizationsMembersSection({
                 </label>
                 <button
                   type="button"
+                  disabled={sendingInvite}
                   onClick={() => void onSendInvite()}
-                  className="ap-btn-primary w-full sm:w-auto"
+                  className="ap-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
-                  Send invite
+                  {sendingInvite ? "Sending…" : "Send invite"}
                 </button>
               </div>
             </div>
