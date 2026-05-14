@@ -1,11 +1,35 @@
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import duckdb
 
 from lumonox_backend.services.event_store import DuckDbEventStore, EventStoreFilters
+
+
+def _event_row(
+    project_id: UUID, *, timestamp: datetime, path: str = "/x", **overrides: Any
+) -> dict[str, Any]:
+    row: dict[str, Any] = {
+        "project_id": project_id,
+        "timestamp": timestamp,
+        "received_at": timestamp,
+        "sdk_version": "0.1.0",
+        "type": "request",
+        "service_name": "api",
+        "environment": "test",
+        "method": "GET",
+        "path": path,
+        "status_code": 200,
+        "latency_ms": 1.0,
+        "payload": {},
+        "request_id": None,
+    }
+    row.update(overrides)
+    return row
 
 
 def test_duckdb_event_store_insert_filter_and_delete(tmp_path) -> None:
@@ -513,3 +537,125 @@ def test_query_scoped_events_sql_skip_timestamp_counts_full_project(tmp_path) ->
     )
     assert int(rows_n[0][0]) == 1
     assert int(rows_w[0][0]) == 2
+
+
+def test_duckdb_concurrent_inserts_get_unique_ids(tmp_path) -> None:
+    """Concurrent ``insert_rows`` calls must not collide on the BIGINT PRIMARY KEY.
+
+    Regression: id allocation previously read ``SELECT MAX(id)`` under a lock that
+    was released before the INSERT re-acquired it, so two write-executor threads
+    could compute the same starting id and one batch's INSERT would fail.
+    """
+    store = DuckDbEventStore(str(tmp_path / "events_concurrent.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    batches = 16
+    per_batch = 8
+    errors: list[BaseException] = []
+
+    def _insert(batch: int) -> None:
+        try:
+            store.insert_rows(
+                [
+                    _event_row(
+                        project_id,
+                        timestamp=now - timedelta(seconds=batch * per_batch + j),
+                        path=f"/p{batch}-{j}",
+                    )
+                    for j in range(per_batch)
+                ]
+            )
+        except BaseException as exc:  # noqa: BLE001 - re-raised via assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_insert, args=(b,)) for b in range(batches)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert store.count_events_for_project(project_id) == batches * per_batch
+    rows = store.fetch_events(
+        EventStoreFilters(
+            project_id=project_id,
+            from_timestamp=now - timedelta(hours=1),
+            to_timestamp=now,
+        )
+    )
+    ids = [row[0] for row in rows]
+    assert len(ids) == batches * per_batch
+    assert len(set(ids)) == len(ids)
+
+
+def test_duckdb_concurrent_widget_point_inserts_get_unique_ids(tmp_path) -> None:
+    """``insert_widget_points`` shares the sequence-based id allocation fix."""
+    store = DuckDbEventStore(str(tmp_path / "widget_points_concurrent.duckdb"))
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+    batches = 12
+    per_batch = 6
+    errors: list[BaseException] = []
+
+    def _insert(batch: int) -> None:
+        try:
+            store.insert_widget_points(
+                [
+                    {
+                        "project_id": project_id,
+                        "widget_id": "w1",
+                        "timestamp": now - timedelta(seconds=batch * per_batch + j),
+                        "label": "cpu",
+                        "value": float(batch * per_batch + j),
+                    }
+                    for j in range(per_batch)
+                ]
+            )
+        except BaseException as exc:  # noqa: BLE001 - re-raised via assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_insert, args=(b,)) for b in range(batches)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert store.count_widget_points_for_project(project_id) == batches * per_batch
+
+
+def test_duckdb_id_sequence_recreated_past_existing_rows_on_reopen(tmp_path) -> None:
+    """A database created before id sequences existed must not reuse stored ids."""
+    db_path = tmp_path / "events_seq_reopen.duckdb"
+    project_id = uuid4()
+    now = datetime.now(tz=UTC)
+
+    store = DuckDbEventStore(str(db_path))
+    store.insert_rows(
+        [
+            _event_row(project_id, timestamp=now - timedelta(minutes=m), path=f"/p{m}")
+            for m in range(3)
+        ]
+    )
+    # Simulate a legacy database: rows on disk but no id sequence.
+    store._write_conn.execute("DROP SEQUENCE events_id_seq")
+    store.close()
+
+    reopened = DuckDbEventStore(str(db_path))
+    try:
+        # _ensure_schema must recreate the sequence starting past MAX(id).
+        reopened.insert_rows([_event_row(project_id, timestamp=now, path="/p-new")])
+        rows = reopened.fetch_events(
+            EventStoreFilters(
+                project_id=project_id,
+                from_timestamp=now - timedelta(hours=1),
+                to_timestamp=now,
+            )
+        )
+        ids = [row[0] for row in rows]
+        assert len(ids) == 4
+        assert len(set(ids)) == 4
+        new_id = next(row[0] for row in rows if row[3] == "/p-new")
+        assert new_id > 3
+    finally:
+        reopened.close()

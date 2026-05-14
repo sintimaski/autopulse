@@ -203,13 +203,31 @@ class DuckDbEventStore:
             "CREATE INDEX IF NOT EXISTS ix_widget_points_project_timestamp "
             "ON dashboard_widget_points(project_id, timestamp)"
         )
+        # Atomic id allocation. Sequences hand out unique ids inside DuckDB, so
+        # concurrent writers on the write executor can no longer race between a
+        # ``SELECT MAX(id)`` read and the INSERT and collide on the BIGINT
+        # PRIMARY KEY. For databases created before sequences existed, start
+        # past the current MAX(id) so legacy rows are never reused.
+        self._ensure_id_sequence("events_id_seq", "events")
+        self._ensure_id_sequence("dashboard_widget_points_id_seq", "dashboard_widget_points")
+
+    def _ensure_id_sequence(self, sequence_name: str, table_name: str) -> None:
+        row = self._write_conn.execute(
+            f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_name}"  # nosec B608
+        ).fetchone()
+        start_at = int(row[0] if row else 1)
+        # ``sequence_name`` / ``table_name`` are fixed literals from this module
+        # (never user input); ``start_at`` is a derived integer. ``IF NOT EXISTS``
+        # makes this a no-op once the sequence is persisted in the database file.
+        self._write_conn.execute(
+            f"CREATE SEQUENCE IF NOT EXISTS {sequence_name} START {start_at}"  # nosec B608
+        )
 
     def insert_rows(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
         values = [
             (
-                idx,
                 row["project_id"],
                 as_duckdb_timestamp(row["timestamp"]),
                 as_duckdb_timestamp(row["received_at"]),
@@ -224,7 +242,7 @@ class DuckDbEventStore:
                 json.dumps(row["payload"]),
                 row["request_id"],
             )
-            for idx, row in enumerate(rows, start=self._next_id())
+            for row in rows
         ]
         with self._write_lock:
             self._write_conn.executemany(
@@ -233,28 +251,18 @@ class DuckDbEventStore:
                     id, project_id, timestamp, received_at, sdk_version, type,
                     service_name, environment, method, path, status_code,
                     latency_ms, payload, request_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (
+                    nextval('events_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                )
                 """,
                 values,
             )
-
-    def _next_id(self) -> int:
-        with self._write_lock:
-            row = self._write_conn.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM events").fetchone()
-        return int(row[0] if row else 1)
-
-    def _next_widget_point_id(self) -> int:
-        with self._write_lock:
-            row = self._write_conn.execute(
-                "SELECT COALESCE(MAX(id), 0) + 1 FROM dashboard_widget_points"
-            ).fetchone()
-        return int(row[0] if row else 1)
 
     def insert_widget_points(self, points: list[dict[str, object]]) -> None:
         if not points:
             return
         values = []
-        for idx, point in enumerate(points, start=self._next_widget_point_id()):
+        for point in points:
             widget_id = point.get("widget_id")
             timestamp = point.get("timestamp")
             value = point.get("value")
@@ -269,7 +277,6 @@ class DuckDbEventStore:
             label = point.get("label")
             values.append(
                 (
-                    idx,
                     str(project_id),
                     widget_id,
                     as_duckdb_timestamp(timestamp),
@@ -284,7 +291,7 @@ class DuckDbEventStore:
                 """
                 INSERT INTO dashboard_widget_points (
                     id, project_id, widget_id, timestamp, label, value
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (nextval('dashboard_widget_points_id_seq'), ?, ?, ?, ?, ?)
                 """,
                 values,
             )
