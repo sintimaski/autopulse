@@ -1,12 +1,13 @@
 ---
 description: Keep synthetic stack launch path DuckDB-first
-globs: scripts/run_synthetic_stack.sh,scripts/run_remote_stack.sh
+globs: scripts/run_synthetic_stack.sh,scripts/run_synthetic_django_stack.sh,scripts/run_remote_stack.sh
 alwaysApply: false
 ---
 
 # Synthetic Stack Storage Rule
 
 - Treat `scripts/run_synthetic_stack.sh` (backend :8000 + synthetic app :8001 + default Next **sidecar** on :3000) and `scripts/run_remote_stack.sh` (split stack hints) as DuckDB-first local integration paths. **`run_synthetic_stack.sh` always runs `npm --prefix frontend run build`** (static export); `LUMONOX_FRONTEND_MODE=static` vs sidecar only affects how you run or mount the UI afterward, not whether the export is built.
+- `scripts/run_synthetic_django_stack.sh` is the Django-fixture variant: it only overrides the synthetic-app slot (`LUMONOX_SYNTHETIC_APP_*` env vars) and `exec`s `run_synthetic_stack.sh`, so it inherits the same DuckDB-first storage defaults. Keep it a thin delegating wrapper — do not fork the backend/storage launch logic into it.
 - Keep `LUMONOX_EVENT_STORE=duckdb` explicit in script defaults.
 - Export **`LUMONOX_DATA_DIR`** (repo root) plus an absolute **`LUMONOX_DUCKDB_PATH`** (see scripts). The backend also normalizes relative `LUMONOX_DUCKDB_PATH` against that data root via `resolve_lumonox_data_root` / `normalize_event_store_duckdb_path` in `core/config.py`.
 - Do not silently switch these scripts to SQLite for raw event storage.

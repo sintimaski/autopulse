@@ -10,10 +10,18 @@ first call, wires the middleware, and returns the ASGI callable. The
 dispatcher is built by ``lumonox.django.monitor(...)``; callers can wrap
 the ASGI app with ``lumonox.django.wrap_asgi`` to drive start/stop via
 ASGI lifespan, or manage the dispatcher lifecycle themselves.
+
+``create_monitored_asgi_app()`` is the runnable entry point for the
+synthetic stack: it calls ``monitor()`` from ``LUMONOX_*`` env vars and
+wraps the app with ``wrap_asgi`` so uvicorn's lifespan drives the
+dispatcher. It is a factory (no import-time side effects) — serve it with
+``uvicorn lumonox.fixtures.synthetic_django_app:create_monitored_asgi_app --factory``
+(see ``scripts/run_synthetic_django_stack.sh``).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 # Importing ``django`` here is intentional: this fixture only makes sense if
@@ -23,6 +31,10 @@ import django
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.urls import path
+
+from lumonox.fixtures.synthetic_lumonox_config import SyntheticLumonoxFixture
+
+logger = logging.getLogger("lumonox.synthetic_django_app")
 
 _SECRET_KEY = "lumonox-synthetic-django-secret-not-for-prod"  # noqa: S105  # nosec B105 — test-only constant
 
@@ -78,3 +90,48 @@ def create_asgi_app() -> Any:
 
     _configure_settings_once()
     return get_asgi_application()
+
+
+def create_monitored_asgi_app(
+    *,
+    enable_monitor: bool = True,
+    lumonox_fixture: SyntheticLumonoxFixture | None = None,
+) -> Any:
+    """Runnable ASGI app for the synthetic stack: wires ``monitor()`` + lifespan.
+
+    Mirrors ``synthetic_test_app.create_app`` for the Django adapter. Use as a
+    uvicorn factory so importing this module stays side-effect-free for the
+    unit tests::
+
+        uvicorn lumonox.fixtures.synthetic_django_app:create_monitored_asgi_app --factory
+
+    With ``enable_monitor`` (the default) the lumonox dispatcher is built from
+    ``LUMONOX_*`` env vars and the app is wrapped with ``wrap_asgi`` so
+    uvicorn's lifespan startup/shutdown drives ``dispatcher.start()`` /
+    ``.stop()``. With ``enable_monitor=False`` the plain ASGI app is returned
+    (the middleware then passes through — never breaks the host app).
+    """
+    from lumonox.django import monitor, wrap_asgi
+
+    asgi_app = create_asgi_app()
+    if not enable_monitor:
+        return asgi_app
+
+    fixture = lumonox_fixture or SyntheticLumonoxFixture.from_env()
+    monitor(**fixture.monitor_kwargs(dashboard_widgets=[]))
+
+    dep = fixture.deployment
+    if dep.api_key and (dep.ingest_url or "").strip():
+        logger.info(
+            "synthetic_django_app: Lumonox active (remote), service=%s environment=%s",
+            fixture.common.service_name,
+            fixture.common.environment,
+        )
+    else:
+        logger.warning(
+            "synthetic_django_app: Lumonox is not sending events "
+            "(missing api_key or ingest_url). Set LUMONOX_INGEST_URL and LUMONOX_API_KEY "
+            "(see scripts/run_synthetic_django_stack.sh)."
+        )
+
+    return wrap_asgi(asgi_app)

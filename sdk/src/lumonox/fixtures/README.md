@@ -7,6 +7,7 @@ This fixture provides a local FastAPI app and a deterministic traffic driver for
 - `synthetic_lumonox_config.py`: typed presets for how Lumonox attaches (`SyntheticLumonoxFixture.separate_backend()`, `.from_env()`).
 - `synthetic_test_app.py`: FastAPI app with 10 endpoints and controlled failure modes.
 - `synthetic_load.py`: weighted request generator with periodic spikes and error bursts.
+- `synthetic_django_app.py`: minimum-viable Django app (`/health/`, `/users/<id>/`, `/boom/`) exercising the `lumonox.django` adapter. `create_monitored_asgi_app()` is the runnable uvicorn factory.
 
 ## Run
 
@@ -33,6 +34,33 @@ uv run python -m lumonox.fixtures.synthetic_load \
   --target-requests 200 \
   --role-mode mixed \
   --scenario realistic
+```
+
+### Django variant
+
+`./scripts/run_synthetic_django_stack.sh` runs the same stack with the Django
+fixture (`synthetic_django_app.py`) as the :8001 sample app instead of the
+FastAPI one. It is a thin wrapper that points the synthetic-app slot at the
+Django ASGI factory and delegates to `run_synthetic_stack.sh`, so the backend,
+DuckDB defaults, and frontend build are unchanged. Requires Django to be
+importable under `uv run` (workspace dev group, or `lumonox-sdk[django]`).
+
+The Django fixture is intentionally minimal (3 routes), so the FastAPI-tuned
+`synthetic_load` generator does not apply — use the curl-loop driver instead:
+
+```bash
+./scripts/examples/synthetic_django_load_demo.sh
+```
+
+Manual two-process setup (Django):
+
+```bash
+# Terminal A — backend (see FastAPI setup above)
+# Terminal B — synthetic Django app
+export LUMONOX_INGEST_URL="http://127.0.0.1:8000/ingest"
+export LUMONOX_API_KEY="<project API key>"
+uv run uvicorn lumonox.fixtures.synthetic_django_app:create_monitored_asgi_app \
+  --factory --host 0.0.0.0 --port 8001
 ```
 
 ## Environment Variables

@@ -6,6 +6,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# Synthetic sample app served on :8001. The Django wrapper
+# (scripts/run_synthetic_django_stack.sh) overrides these via the environment
+# to swap the FastAPI fixture for the Django one — everything else is identical.
+SYNTHETIC_APP_TARGET="${LUMONOX_SYNTHETIC_APP_TARGET:-lumonox.fixtures.synthetic_test_app:app}"
+SYNTHETIC_APP_LABEL="${LUMONOX_SYNTHETIC_APP_LABEL:-synthetic FastAPI app}"
+SYNTHETIC_APP_HEALTH_PATH="${LUMONOX_SYNTHETIC_APP_HEALTH_PATH:-/health}"
+# Extra uvicorn args (the Django fixture entry point is a factory → needs --factory).
+SYNTHETIC_APP_UVICORN_ARGS="${LUMONOX_SYNTHETIC_APP_UVICORN_ARGS:-}"
+
 echo "Loading backend/.env…"
 set -a
 # shellcheck disable=SC1091
@@ -48,7 +57,7 @@ else
   _ui_mount="${LUMONOX_MOUNT_PREFIX:-/lumonox}"
   echo "  Dashboard UI (Next):  http://localhost:3000/"
   echo "  API (backend):        http://127.0.0.1:8000 (JSON under /dashboard and /lumonox/dashboard; ingest at /ingest and /lumonox/ingest; static UI at http://127.0.0.1:8000${_ui_mount}/ui/ when mounted)"
-  echo "  Synthetic sample app: http://127.0.0.1:8001/health"
+  echo "  Synthetic sample app: http://127.0.0.1:8001${SYNTHETIC_APP_HEALTH_PATH}"
   echo "  Tip: UI on port 8000 only → LUMONOX_FRONTEND_MODE=static and open …/ui/ (export is already built at script start)."
   echo "  For Next dev: run \`npm --prefix frontend run dev\` in another shell (this script already exported NEXT_PUBLIC_* for sidecar)."
   if [[ -z "${LUMONOX_NEXT_ALLOWED_DEV_ORIGINS:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
@@ -141,5 +150,6 @@ else
   echo "Dashboard UI (backend static): not mounted (expected in sidecar-only setups)."
   echo "  If you open /lumonox/ui/ on :8000 in this state, backend access logs will show 404."
 fi
-echo "Starting synthetic app: uv run uvicorn lumonox.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info"
-uv run uvicorn lumonox.fixtures.synthetic_test_app:app --host 0.0.0.0 --port 8001 --log-level info
+echo "Starting ${SYNTHETIC_APP_LABEL}: uv run uvicorn ${SYNTHETIC_APP_TARGET} ${SYNTHETIC_APP_UVICORN_ARGS} --host 0.0.0.0 --port 8001 --log-level info"
+# shellcheck disable=SC2086  # SYNTHETIC_APP_UVICORN_ARGS must word-split (e.g. "--factory").
+uv run uvicorn "${SYNTHETIC_APP_TARGET}" ${SYNTHETIC_APP_UVICORN_ARGS} --host 0.0.0.0 --port 8001 --log-level info
