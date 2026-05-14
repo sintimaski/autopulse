@@ -35,6 +35,7 @@ from lumonox.core.events import (
 from lumonox.core.paths import _normalize_mount_prefix, _path_is_ignored
 from lumonox.core.runtime_context import reset_correlation_id, set_correlation_id
 from lumonox.core.sampling import _should_sample_request
+from lumonox.core.tracing import build_trace_context
 from lumonox.widgets import serialize_dashboard_widgets
 
 logger = logging.getLogger("lumonox.monitor")
@@ -131,6 +132,15 @@ class _LumonoxMiddleware(BaseHTTPMiddleware):
         correlation_id = (header_rid or header_cid or str(uuid4()))[:128]
         correlation_token = set_correlation_id(correlation_id)
 
+        # Lightweight per-request tracing: this request becomes one span. Continue
+        # an inbound W3C ``traceparent`` when present so a multi-service request
+        # stays one trace; otherwise start a fresh trace. Stamped onto the
+        # ``request`` event only — the span *is* the request.
+        trace_id, span_id, parent_span_id = build_trace_context(request.headers.get("traceparent"))
+        trace_fields: dict[str, Any] = {"trace_id": trace_id, "span_id": span_id}
+        if parent_span_id:
+            trace_fields["parent_span_id"] = parent_span_id
+
         def _stamp_response(resp: Response) -> Response:
             if correlation_id:
                 resp.headers.setdefault("X-Request-ID", correlation_id)
@@ -167,7 +177,9 @@ class _LumonoxMiddleware(BaseHTTPMiddleware):
                 self._dispatcher.enqueue(
                     {
                         **common,
+                        **trace_fields,
                         "path": resolved_path,
+                        "span_name": f"{request.method} {resolved_path}",
                         "type": "request",
                         "status_code": 500,
                         "latency_ms": round(latency_ms, 3),
@@ -207,7 +219,9 @@ class _LumonoxMiddleware(BaseHTTPMiddleware):
             self._dispatcher.enqueue(
                 {
                     **common,
+                    **trace_fields,
                     "path": resolved_path,
+                    "span_name": f"{request.method} {resolved_path}",
                     "type": "request",
                     "status_code": response.status_code,
                     "latency_ms": round(latency_ms, 3),
@@ -245,7 +259,8 @@ def monitor(app: Any, **kwargs: Any) -> None:
         logger.warning(
             "lumonox.monitor: remote ingest is disabled because LUMONOX_INGEST_URL and "
             "LUMONOX_API_KEY are not both set; middleware is attached but events will not "
-            "be sent."
+            "be sent. Set them in the environment, in a .env file next to your app, or "
+            "pass api_key=/ingest_url= to lumonox()."
         )
     if not _add_event_handler(app, "startup", dispatcher.start):
         return

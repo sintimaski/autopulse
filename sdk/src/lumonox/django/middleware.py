@@ -39,6 +39,7 @@ from lumonox.core.events import (
 from lumonox.core.paths import _path_is_ignored
 from lumonox.core.runtime_context import reset_correlation_id, set_correlation_id
 from lumonox.core.sampling import _should_sample_request
+from lumonox.core.tracing import build_trace_context
 from lumonox.widgets import serialize_dashboard_widgets
 
 # Django's exception middleware catches view exceptions BEFORE outer middleware
@@ -242,6 +243,16 @@ class LumonoxMiddleware:
         correlation_id = (header_rid or header_cid or uuid.uuid4().hex)[:128]
         correlation_token = set_correlation_id(correlation_id)
 
+        # Lightweight per-request tracing: this request becomes one span. Continue
+        # an inbound W3C ``traceparent`` when present so a multi-service request
+        # stays one trace; otherwise start a fresh trace. Stamped onto the
+        # ``request`` event only — the span *is* the request. Mirrors the FastAPI
+        # adapter via the shared ``lumonox.core.tracing`` helper.
+        trace_id, span_id, parent_span_id = build_trace_context(headers.get("traceparent"))
+        trace_fields: dict[str, Any] = {"trace_id": trace_id, "span_id": span_id}
+        if parent_span_id:
+            trace_fields["parent_span_id"] = parent_span_id
+
         common: dict[str, Any] = {
             "timestamp": _utc_now_iso(),
             "service_name": config.service_name,
@@ -276,7 +287,9 @@ class LumonoxMiddleware:
                 dispatcher.enqueue(
                     {
                         **common,
+                        **trace_fields,
                         "path": resolved_path,
+                        "span_name": f"{request.method} {resolved_path}",
                         "type": "request",
                         "status_code": 500,
                         "latency_ms": round(latency_ms, 3),
@@ -319,7 +332,9 @@ class LumonoxMiddleware:
             dispatcher.enqueue(
                 {
                     **common,
+                    **trace_fields,
                     "path": resolved_path,
+                    "span_name": f"{request.method} {resolved_path}",
                     "type": "request",
                     "status_code": response.status_code,
                     "latency_ms": round(latency_ms, 3),

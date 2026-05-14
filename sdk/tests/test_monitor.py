@@ -458,6 +458,76 @@ def test_middleware_captures_request_event_with_route_template() -> None:
     assert isinstance(event["latency_ms"], float)
 
 
+def test_middleware_stamps_per_request_trace_span() -> None:
+    """Every captured request becomes a root span: trace_id + span_id + span_name."""
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config()
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/items/{item_id}")
+    async def read_item(item_id: int) -> dict[str, int]:
+        return {"item_id": item_id}
+
+    with lifespan_test_client(app) as client:
+        response = client.get("/items/7")
+
+    assert response.status_code == 200
+    event = dispatcher.events[0]
+    assert len(event["trace_id"]) == 32 and set(event["trace_id"]) <= set("0123456789abcdef")
+    assert len(event["span_id"]) == 16 and set(event["span_id"]) <= set("0123456789abcdef")
+    assert event["span_name"] == "GET /items/{item_id}"
+    # A root request has no parent span.
+    assert "parent_span_id" not in event
+
+
+def test_middleware_continues_inbound_w3c_traceparent() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config()
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/ping")
+    async def ping() -> dict[str, str]:
+        return {"ok": "1"}
+
+    with lifespan_test_client(app) as client:
+        response = client.get(
+            "/ping",
+            headers={"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"},
+        )
+
+    assert response.status_code == 200
+    event = dispatcher.events[0]
+    assert event["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert event["parent_span_id"] == "00f067aa0ba902b7"
+    assert event["span_id"] != "00f067aa0ba902b7"
+
+
+def test_middleware_trace_span_only_on_request_event_not_error_event() -> None:
+    app = FastAPI()
+    dispatcher = _CapturingDispatcher()
+    config = _make_config()
+    app.add_middleware(_LumonoxMiddleware, dispatcher=dispatcher, config=config)
+
+    @app.get("/boom")
+    async def boom() -> dict[str, str]:
+        raise RuntimeError("kaboom")
+
+    with lifespan_test_client(app) as client, pytest.raises(RuntimeError):
+        client.get("/boom")
+
+    request_events = [e for e in dispatcher.events if e["type"] == "request"]
+    error_events = [e for e in dispatcher.events if e["type"] == "error"]
+    assert len(request_events) == 1 and len(error_events) == 1
+    # The request event is the span; the error event carries the stack trace and
+    # correlates via request_id — it is not a duplicate span row.
+    assert request_events[0]["trace_id"] and request_events[0]["span_id"]
+    assert request_events[0]["span_name"] == "GET /boom"
+    assert "trace_id" not in error_events[0]
+    assert "span_id" not in error_events[0]
+
+
 def test_middleware_sets_x_request_id_response_header_when_missing() -> None:
     app = FastAPI()
     dispatcher = _CapturingDispatcher()

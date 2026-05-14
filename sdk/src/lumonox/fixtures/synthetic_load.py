@@ -10,6 +10,8 @@ from typing import Any, Literal
 
 import httpx
 
+from lumonox.core.tracing import format_traceparent
+
 _KEEP_RUNNING = True
 RoleMode = Literal["viewer", "editor", "admin", "mixed"]
 Scenario = Literal["steady", "realistic"]
@@ -142,6 +144,33 @@ def _auth_headers(role: str, *, request_id: str) -> dict[str, str]:
         "x-request-id": request_id,
         "x-auth-token": f"demo:{role}:{role}-bot",
     }
+
+
+def _advance_shared_trace(
+    headers: dict[str, str],
+    shared_trace: tuple[str, str, int] | None,
+    *,
+    rng: random.Random,
+) -> tuple[str, str, int] | None:
+    """Group a short run of requests under one W3C trace.
+
+    The SDK middleware continues an inbound ``traceparent``, so reusing one
+    header across a few consecutive requests makes the demo's traces explorer
+    show genuine multi-span traces instead of one span per trace. Deterministic
+    (seeded ``rng``); returns the updated rolling state.
+    """
+    if shared_trace is None:
+        if rng.random() >= 0.22:
+            return None
+        shared_trace = (
+            f"{rng.getrandbits(128):032x}",
+            f"{rng.getrandbits(64):016x}",
+            rng.randint(2, 4),
+        )
+    trace_id, parent_span_id, remaining = shared_trace
+    headers["traceparent"] = format_traceparent(trace_id, parent_span_id)
+    remaining -= 1
+    return (trace_id, parent_span_id, remaining) if remaining > 0 else None
 
 
 def _pick_sku(rng: random.Random) -> str:
@@ -380,6 +409,7 @@ def main() -> int:
     total_requests = 0
     start_time = time.monotonic()
     tick = 0
+    shared_trace: tuple[str, str, int] | None = None
     burst_targets = _generated_burst_targets(weighted, rng=rng)
 
     print("synthetic_load: starting")
@@ -434,6 +464,7 @@ def main() -> int:
                     error_burst=in_error_burst,
                     role_mode=args.role_mode,
                 )
+                shared_trace = _advance_shared_trace(headers, shared_trace, rng=rng)
                 route_counts[spec.name] = route_counts.get(spec.name, 0) + 1
                 try:
                     response = client.request(

@@ -96,6 +96,19 @@ application = wrap_asgi(get_asgi_application())
 
 By default, `lumonox()` (and `monitor()` for existing integrations) target a remote Lumonox project (set `LUMONOX_API_KEY` / `LUMONOX_INGEST_URL`). It uses bounded in-memory buffering, async background sending, and silent failure behavior so host apps stay healthy if Lumonox is unavailable.
 
+**`.env` auto-discovery.** To keep config a one-line affair, `lumonox()` / `monitor()` look for a `.env` file next to your app (current working directory, then a few parent directories) and load any **`LUMONOX_*`** keys from it before reading the environment. Only `LUMONOX_*` keys are touched, and **real environment variables always win** (the `.env` only fills in what is unset) — so a `.env` for local dev and shell exports in production coexist cleanly. Opt out with `lumonox(app, load_dotenv=False)`, or point at a specific file with `lumonox(app, dotenv_path="…/.env")`. So the minimal pip-installed setup is:
+
+```dotenv
+# .env  (next to your app)
+LUMONOX_API_KEY=ap_...
+LUMONOX_INGEST_URL=https://your-lumonox/ingest
+```
+
+```python
+from lumonox import lumonox
+lumonox(app)   # picks up the .env above — no shell exports needed
+```
+
 If **either** variable is missing, the sender stays off: middleware still runs, but **no events are enqueued** (minimal overhead). A **one-time `WARNING`** is emitted on process startup so misconfiguration is obvious without breaking the host app.
 
 ## Key runtime controls

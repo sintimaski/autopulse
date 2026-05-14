@@ -102,6 +102,8 @@ async def test_django_adapter_captures_ok_and_error_paths(
             headers={
                 "Authorization": "Bearer super-secret-token",
                 "X-Request-ID": "rid-django-ok",
+                # Inbound W3C trace context — the adapter must continue this trace.
+                "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
             },
         )
         assert ok.status_code == 200, ok.text
@@ -128,6 +130,11 @@ async def test_django_adapter_captures_ok_and_error_paths(
     )
     assert ok_event is not None, captured_events
     assert ok_event["request_id"] == "rid-django-ok"
+    # Per-request span, continuing the inbound W3C traceparent.
+    assert ok_event["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert ok_event["parent_span_id"] == "00f067aa0ba902b7"
+    assert len(ok_event["span_id"]) == 16 and ok_event["span_id"] != "00f067aa0ba902b7"
+    assert str(ok_event["span_name"]).startswith("GET ")
     # Header scrubbing must have happened before send.
     auth_value = (ok_event.get("headers") or {}).get("authorization") or (
         ok_event.get("headers") or {}
@@ -144,6 +151,8 @@ async def test_django_adapter_captures_ok_and_error_paths(
     assert err_event["request_id"] == "rid-django-err"
     assert err_event["error_hash"]
     assert err_event["stack_trace"]
+    # The request event is the span; the error event is not a duplicate span row.
+    assert "trace_id" not in err_event and "span_id" not in err_event
 
 
 def test_django_middleware_passthrough_when_monitor_not_called() -> None:

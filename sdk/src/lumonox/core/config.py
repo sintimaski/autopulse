@@ -90,6 +90,16 @@ def build_monitor_config(**kwargs: Any) -> _MonitorConfig:
     from lumonox.widgets import BaseDashboardWidget
 
     resolved_kwargs = dict(kwargs)
+
+    # Pip-installed "drop a .env, add one line" config: populate LUMONOX_* keys
+    # from a nearby .env before reading them. Never overrides real env vars;
+    # opt out with ``load_dotenv=False`` or target a file with ``dotenv_path``.
+    if bool(resolved_kwargs.get("load_dotenv", True)):
+        from lumonox.core.dotenv import load_lumonox_dotenv
+
+        dotenv_path_arg = resolved_kwargs.get("dotenv_path")
+        load_lumonox_dotenv(dotenv_path_arg if isinstance(dotenv_path_arg, str) else None)
+
     env_api_key = os.getenv("LUMONOX_API_KEY")
     env_ingest_url = os.getenv("LUMONOX_INGEST_URL") or os.getenv("LUMONOX_ENDPOINT")
 
