@@ -312,14 +312,14 @@ export function DiagnosisContent() {
           Once your app sends events, this view will populate automatically. You can also{" "}
           <Link
             href="/onboarding"
-            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+            className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
           >
             resume onboarding
           </Link>{" "}
           or{" "}
           <Link
             href={buildRequestsPageHref(scopedState)}
-            className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+            className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
           >
             open Requests
           </Link>{" "}
@@ -344,7 +344,7 @@ export function DiagnosisContent() {
       ) : null}
       {diagnosisScopeIsPartial ? (
         <section
-          className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-100"
+          className="rounded-xl border border-orange-200 bg-orange-50/80 px-4 py-3 text-sm text-orange-900 dark:border-orange-900/60 dark:bg-orange-950/25 dark:text-orange-100"
           role="status"
         >
           <p className="font-medium">Diagnosis confidence: scope is partial.</p>

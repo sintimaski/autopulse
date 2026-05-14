@@ -11,6 +11,14 @@ import {
   type ScatterPlotPoint,
   type StackedAreaSeries,
 } from "../charts/lazyCharts";
+import {
+  ChartArea,
+  ChartColumn,
+  ChartLine,
+  ChartPie,
+  ChartScatter,
+  Hourglass,
+} from "lucide-react";
 
 export type DashboardChartShowcaseGridProps = {
   lineLabels: string[];
@@ -46,8 +54,8 @@ export function DashboardChartShowcaseGrid({
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">{title}</h2>
       <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">{description}</p>
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
-        <ChartPanel title="Line chart">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <ChartPanel title="Line chart" description="Time-series line" icon={ChartLine}>
           <TimeSeriesLineChart
             title="Error trend"
             labels={lineLabels}
@@ -56,10 +64,10 @@ export function DashboardChartShowcaseGrid({
             formatValue={(value) => value.toFixed(0)}
           />
         </ChartPanel>
-        <ChartPanel title="Bar chart">
+        <ChartPanel title="Bar chart" description="Breakdown bars" icon={ChartColumn}>
           <BreakdownBarChart items={barItems} valueLabel="req" />
         </ChartPanel>
-        <ChartPanel title="Donut chart">
+        <ChartPanel title="Donut chart" description="Composition" icon={ChartPie}>
           <DonutChart
             title="Status classes"
             items={donutItems}
@@ -67,13 +75,13 @@ export function DashboardChartShowcaseGrid({
             centerValue={donutCenterValue}
           />
         </ChartPanel>
-        <ChartPanel title="Histogram">
+        <ChartPanel title="Histogram" description="Distribution" icon={Hourglass}>
           <HistogramChart buckets={histogramBuckets} />
         </ChartPanel>
-        <ChartPanel title="Scatter plot">
+        <ChartPanel title="Scatter plot" description="Correlation" icon={ChartScatter}>
           <ScatterPlotChart points={scatterPoints} xLabel="Request volume" yLabel="Error rate %" />
         </ChartPanel>
-        <ChartPanel title="Stacked area">
+        <ChartPanel title="Stacked area" description="Composition over time" icon={ChartArea}>
           <StackedAreaChart labels={stackedLabels} series={stackedSeries} />
         </ChartPanel>
       </div>

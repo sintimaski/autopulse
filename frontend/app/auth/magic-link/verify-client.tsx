@@ -87,7 +87,7 @@ export function MagicLinkVerifyClient() {
         <div className="mt-5">
           {status === "verifying" ? (
             <div
-              className="h-9 w-9 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400 motion-reduce:animate-none motion-reduce:border-t-transparent"
+              className="h-9 w-9 animate-spin rounded-full border-2 border-slate-600 border-t-orange-400 motion-reduce:animate-none motion-reduce:border-t-transparent"
               role="status"
               aria-live="polite"
               aria-label="Verifying magic link"
@@ -103,7 +103,7 @@ export function MagicLinkVerifyClient() {
             <button
               type="button"
               onClick={() => router.replace("/dashboard")}
-              className="rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-slate-950"
+              className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-slate-950"
             >
               Back to dashboard
             </button>

@@ -671,7 +671,7 @@ export function DashboardInfrastructureSection({
     (widgetPointsById.has(widgetId) ? infraLineStub(widgetId) : undefined);
 
   const INFRA_COMPOSE = {
-    cpu: { label: "CPU", color: "#0ea5e9" },
+    cpu: { label: "CPU", color: "#f97316" },
     memory: { label: "Memory", color: "#8b5cf6" },
     disk: { label: "Disk / I/O", color: "#f59e0b" },
     network: { label: "Network", color: "#14b8a6" },

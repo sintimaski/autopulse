@@ -102,7 +102,7 @@ export function SettingsOrganizationsMembersSection({
               <span
                 className={`inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${
                   selectedOrganization.role === "owner"
-                    ? "bg-sky-100 text-sky-900 dark:bg-sky-950/60 dark:text-sky-100"
+                    ? "bg-orange-100 text-orange-900 dark:bg-orange-950/60 dark:text-orange-100"
                     : "bg-slate-100 text-slate-700 dark:bg-neutral-800 dark:text-neutral-200"
                 }`}
               >
@@ -159,7 +159,7 @@ export function SettingsOrganizationsMembersSection({
                         <th className="w-12 px-3 py-3">
                           <input
                             type="checkbox"
-                            className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                            className="size-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 dark:border-neutral-600"
                             checked={allMembersSelected}
                             onChange={onToggleSelectAllMembers}
                             aria-label="Select all members"
@@ -188,7 +188,7 @@ export function SettingsOrganizationsMembersSection({
                             <td className="px-3 py-3 align-middle">
                               <input
                                 type="checkbox"
-                                className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                                className="size-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 dark:border-neutral-600"
                                 checked={selectedMemberIds.has(member.user_id)}
                                 onChange={() => onToggleMemberSelected(member.user_id)}
                                 aria-label={`Select ${member.email}`}

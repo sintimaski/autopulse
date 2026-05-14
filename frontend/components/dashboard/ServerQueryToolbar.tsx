@@ -349,7 +349,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
               onChange={(event) => setScopePresetNameDraft(event.target.value)}
               placeholder="Saved view name (e.g. Prod 5xx spikes)"
               aria-label="Name for saved scope view"
-              className="min-w-[200px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+              className="min-w-[200px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-orange-500/25 focus:ring-2"
             />
             <button
               type="button"
@@ -385,7 +385,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             <select
               value={selectedScopePresetId}
               onChange={(event) => setSelectedScopePresetId(event.target.value)}
-              className="min-w-[240px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+              className="min-w-[240px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-orange-500/25 focus:ring-2"
             >
               <option value="">Choose a saved view…</option>
               {d.savedScopePresets.map((preset) => (
@@ -426,7 +426,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
             Saved views are scoped to your active project and signed-in user.
           </p>
           {scopePresetFeedback ? (
-            <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">{scopePresetFeedback}</p>
+            <p className="mt-1 text-xs text-orange-700 dark:text-orange-300">{scopePresetFeedback}</p>
           ) : null}
         </div>
       </details>
@@ -636,7 +636,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 d.setErrorGroupLimit(Number(e.target.value));
                 d.setErrorGroupPage(0);
               }}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm shadow-sm outline-none ring-orange-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
               {d.ERROR_GROUP_LIMIT_OPTIONS.map((value) => (
                 <option key={value} value={value}>
@@ -668,7 +668,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           }}
           emptyText="No environment tags available for this loaded slice."
           helperText="Use these options to scope server-side fetches."
-          accent="sky"
+          accent="orange"
         />
         <TagSelector
           id="server-service-tags"
@@ -712,7 +712,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                 onChange={(event) => d.setSqlFilterDraft(event.target.value)}
                 placeholder="e.g. status_code >= 500 AND method = 'GET'"
                 aria-label="SQL WHERE fragment for scoped requests"
-                className="h-16 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                className="h-16 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-100 shadow-sm outline-none ring-orange-500/25 focus:ring-2"
               />
               <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-neutral-700 dark:bg-neutral-900/60">
                 <div className="flex flex-wrap items-center gap-2">
@@ -721,7 +721,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                     onChange={(event) => setPresetNameDraft(event.target.value)}
                     placeholder="Preset name (e.g. Critical 5xx routes)"
                     aria-label="Name for SQL filter preset"
-                    className="min-w-[190px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                    className="min-w-[190px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-orange-500/25 focus:ring-2"
                   />
                   <button
                     type="button"
@@ -744,7 +744,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                     value={selectedPresetId}
                     onChange={(event) => setSelectedPresetId(event.target.value)}
                     aria-label="Choose saved SQL filter preset"
-                    className="min-w-[230px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2"
+                    className="min-w-[230px] flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-100 shadow-sm outline-none ring-orange-500/25 focus:ring-2"
                   >
                     <option value="">Saved presets ({d.savedSqlFilterPresets.length})</option>
                     {d.savedSqlFilterPresets.map((preset) => (
@@ -781,7 +781,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
                   Presets are stored per signed-in user ({d.sessionEmail ?? "anonymous"}).
                 </p>
                 {presetFeedback ? (
-                  <p className="mt-1 text-xs text-sky-700 dark:text-sky-300">{presetFeedback}</p>
+                  <p className="mt-1 text-xs text-orange-700 dark:text-orange-300">{presetFeedback}</p>
                 ) : null}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -831,7 +831,7 @@ export function ServerQueryToolbar({ variant }: { variant: ServerScopeToolbarVar
           )}
           </div>
           {d.sqlFilterEnabled ? (
-            <p className="mt-2 text-xs font-medium text-sky-800 dark:text-sky-200">SQL filter enabled for current scope.</p>
+            <p className="mt-2 text-xs font-medium text-orange-800 dark:text-orange-200">SQL filter enabled for current scope.</p>
           ) : null}
         </div>
       ) : (

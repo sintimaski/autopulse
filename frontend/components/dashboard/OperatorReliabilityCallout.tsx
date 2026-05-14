@@ -20,13 +20,13 @@ export function OperatorReliabilityCallout() {
         <div className="flex shrink-0 flex-col gap-1 sm:flex-row sm:items-center">
           <Link
             href="/settings#lx-settings-internal-metrics"
-            className="rounded-md border border-slate-300/80 bg-white px-2 py-1 text-[11px] font-medium text-sky-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-sky-200 dark:hover:bg-neutral-800/80"
+            className="rounded-md border border-slate-300/80 bg-white px-2 py-1 text-[11px] font-medium text-orange-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-orange-200 dark:hover:bg-neutral-800/80"
           >
             Internal metrics
           </Link>
           <Link
             href="/settings#lx-settings-system-diagnostics"
-            className="rounded-md border border-slate-300/80 bg-white px-2 py-1 text-[11px] font-medium text-sky-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-sky-200 dark:hover:bg-neutral-800/80"
+            className="rounded-md border border-slate-300/80 bg-white px-2 py-1 text-[11px] font-medium text-orange-800 hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-orange-200 dark:hover:bg-neutral-800/80"
           >
             System diagnostics
           </Link>

@@ -28,7 +28,7 @@ export function MetricCard({
       ? "ring-rose-500/25 dark:ring-rose-700/40"
       : tone === "warning"
         ? "ring-amber-500/25 dark:ring-amber-700/40"
-        : "ring-sky-500/20 dark:ring-sky-800/30";
+        : "ring-orange-500/20 dark:ring-orange-800/30";
   const clickable = Boolean(onClick);
   const interactiveProps = clickable
     ? {
@@ -53,7 +53,7 @@ export function MetricCard({
       {...interactiveProps}
       className={`rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ${toneRing} dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-md dark:shadow-black/30 ${
         clickable
-          ? "cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/60 dark:focus-visible:ring-sky-400/60"
+          ? "cursor-pointer transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60 dark:focus-visible:ring-orange-400/60"
           : ""
       }`}
     >

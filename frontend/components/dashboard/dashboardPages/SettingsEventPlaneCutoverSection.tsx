@@ -46,7 +46,7 @@ export function SettingsEventPlaneCutoverSection({
           <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200/80 bg-slate-50/60 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
             <input
               type="checkbox"
-              className="mt-1 size-4 shrink-0 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+              className="mt-1 size-4 shrink-0 rounded border-slate-300 text-orange-600 focus:ring-orange-500 dark:border-neutral-600"
               checked={eventPlaneUseSnapshotRead}
               disabled={eventPlaneCutoverSaving}
               onChange={(event) => setEventPlaneUseSnapshotRead(event.target.checked)}

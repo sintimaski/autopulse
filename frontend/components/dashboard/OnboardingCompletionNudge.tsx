@@ -60,11 +60,11 @@ export function OnboardingCompletionNudge() {
   };
 
   return (
-    <div className="rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-sm text-sky-950 ring-1 ring-sky-900/5 dark:border-sky-900/50 dark:bg-sky-950/35 dark:text-sky-100">
+    <div className="rounded-lg border border-orange-200/80 bg-orange-50/90 px-3 py-2 text-sm text-orange-950 ring-1 ring-orange-900/5 dark:border-orange-900/50 dark:bg-orange-950/35 dark:text-orange-100">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-semibold">Finish onboarding</p>
-          <p className="mt-0.5 text-xs text-sky-900/80 dark:text-sky-100/80">
+          <p className="mt-0.5 text-xs text-orange-900/80 dark:text-orange-100/80">
             Issue a key, send your first event, then mark onboarding complete. This banner hides after ingest
             succeeds or when you dismiss it for this project in this browser.
           </p>
@@ -72,14 +72,14 @@ export function OnboardingCompletionNudge() {
         <div className="flex gap-2">
           <Link
             href="/onboarding"
-            className="rounded-md bg-sky-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-sky-800"
+            className="rounded-md bg-orange-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-orange-800"
           >
             Open onboarding
           </Link>
           <button
             type="button"
             onClick={dismiss}
-            className="rounded-md border border-sky-300 px-2.5 py-1 text-xs font-medium text-sky-900 hover:bg-sky-100 dark:border-sky-800 dark:text-sky-100 dark:hover:bg-sky-900/40"
+            className="rounded-md border border-orange-300 px-2.5 py-1 text-xs font-medium text-orange-900 hover:bg-orange-100 dark:border-orange-800 dark:text-orange-100 dark:hover:bg-orange-900/40"
           >
             Dismiss
           </button>

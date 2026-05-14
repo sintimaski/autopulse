@@ -1,12 +1,24 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { Activity, PanelLeft, PanelLeftClose, RotateCw } from "../../lib/icons";
+import { Activity, Bell, PanelLeft, PanelLeftClose, RotateCw, UserRound } from "lucide-react";
 import { AutoCollapsibleHeaderPanel } from "./AutoCollapsibleHeaderPanel";
 import { DASHBOARD_NAV_SECTIONS } from "./dashboardNavConfig";
 import type { DashboardStudioNavPage } from "./dashboardTypes";
+
+/** Header command search is interaction-only — keep it off the first-load JS of every route. */
+const HeaderCommandSearch = dynamic(
+  () => import("./HeaderCommandSearch").then((mod) => mod.HeaderCommandSearch),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-8 w-full max-w-[20rem] rounded-lg border border-slate-200 bg-slate-50 dark:border-neutral-700 dark:bg-neutral-950" />
+    ),
+  },
+);
 import { isApiSubpathDashboard } from "./dashboardTypes";
 import { NavIaMigrationBanner } from "./NavIaMigrationBanner";
 import { resolveStudioNavIcon } from "./studioNavSidebarIcons";
@@ -110,7 +122,7 @@ export function DashboardAppShell({
     <div suppressHydrationWarning className={isDark ? "dark" : ""}>
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-sky-600 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:outline-none focus:ring-2 focus:ring-sky-400/80"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-orange-600 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:outline-none focus:ring-2 focus:ring-orange-400/80"
       >
         Skip to main content
       </a>
@@ -126,14 +138,14 @@ export function DashboardAppShell({
             {sidebarCollapsed ? (
               <div className="flex flex-col items-center gap-2">
                 <Activity
-                  className="size-7 text-sky-400/90 dark:text-sky-400/80"
+                  className="size-7 text-orange-400/90 dark:text-orange-400/80"
                   aria-hidden
                 />
                 <button
                   type="button"
                   onClick={toggleSidebar}
                   aria-label="Expand sidebar"
-                  className="rounded-lg p-2 text-neutral-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+                  className="rounded-lg p-2 text-neutral-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:focus-visible:ring-neutral-500/50"
                 >
                   <PanelLeft className="size-4" aria-hidden />
                 </button>
@@ -141,8 +153,8 @@ export function DashboardAppShell({
             ) : (
               <div className="flex items-start gap-2">
                 <div className="min-w-0 flex-1 px-1">
-                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-sky-400/90 dark:text-neutral-400">
-                    <Activity className="size-3.5 shrink-0 text-sky-400/90 dark:text-sky-400/70" aria-hidden />
+                  <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-orange-400/90 dark:text-neutral-400">
+                    <Activity className="size-3.5 shrink-0 text-orange-400/90 dark:text-orange-400/70" aria-hidden />
                     Lumonox
                   </p>
                   <p className="mt-1 text-sm font-semibold tracking-tight">Console</p>
@@ -151,7 +163,7 @@ export function DashboardAppShell({
                   type="button"
                   onClick={toggleSidebar}
                   aria-label="Collapse sidebar to icons"
-                  className="shrink-0 rounded-lg p-2 text-neutral-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50"
+                  className="shrink-0 rounded-lg p-2 text-neutral-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:focus-visible:ring-neutral-500/50"
                 >
                   <PanelLeftClose className="size-4" aria-hidden />
                 </button>
@@ -200,7 +212,7 @@ export function DashboardAppShell({
                         title={sidebarCollapsed ? item.label : undefined}
                         aria-current={active ? "page" : undefined}
                         aria-label={sidebarCollapsed ? item.label : undefined}
-                        className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                        className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:focus-visible:ring-neutral-500/50 ${
                           sidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
                         } ${
                           active
@@ -241,7 +253,7 @@ export function DashboardAppShell({
                             title={sidebarCollapsed ? item.sidebar_label : undefined}
                             aria-current={active ? "page" : undefined}
                             aria-label={sidebarCollapsed ? item.sidebar_label : undefined}
-                            className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                            className={`flex items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:focus-visible:ring-neutral-500/50 ${
                               sidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3 py-2"
                             } ${
                               active
@@ -272,14 +284,24 @@ export function DashboardAppShell({
           <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/85">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="min-w-0 flex-1">
-                <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-neutral-100 sm:text-2xl">
-                  {title}
-                </h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-neutral-100 sm:text-2xl">
+                    {title}
+                  </h1>
+                  <span
+                    className="size-2 shrink-0 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_0_3px] shadow-emerald-500/20"
+                    title="Live data"
+                    aria-hidden
+                  />
+                </div>
                 <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">{subtitle}</p>
                 {topBanner ? <div className="mt-3">{topBanner}</div> : null}
               </div>
-              {onRefresh ? (
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <div className="hidden md:block">
+                  <HeaderCommandSearch studioNavPages={studioNav} />
+                </div>
+                {onRefresh ? (
                   <button
                     type="button"
                     onClick={onRefresh}
@@ -289,8 +311,24 @@ export function DashboardAppShell({
                   >
                     <RotateCw className="size-4" aria-hidden />
                   </button>
-                </div>
-              ) : null}
+                ) : null}
+                <Link
+                  href="/alerts"
+                  title="Alerts"
+                  aria-label="Alerts"
+                  className="ap-btn shrink-0 p-2"
+                >
+                  <Bell className="size-4" aria-hidden />
+                </Link>
+                <Link
+                  href="/settings"
+                  title="Account & settings"
+                  aria-label="Account and settings"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-gradient-to-br from-orange-400 to-violet-400 text-white transition-opacity hover:opacity-90 dark:border-neutral-700"
+                >
+                  <UserRound className="size-4" aria-hidden />
+                </Link>
+              </div>
             </div>
             {statusStrip ? <div className="border-t border-slate-200/80 px-4 py-2.5 dark:border-neutral-800 sm:px-6">{statusStrip}</div> : null}
             {filterToolbar ? (

@@ -8,7 +8,7 @@ import { useDashboardData } from "./DashboardDataContext";
 import { METHOD_OPTIONS, STATUS_CLASS_OPTIONS, WINDOW_OPTIONS } from "./dashboardTypes";
 
 const selectClass =
-  "rounded-md border border-slate-200 bg-white py-2 pl-2 pr-8 text-sm text-slate-900 shadow-sm outline-none focus:ring-1 focus:ring-sky-500/50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:focus:ring-neutral-500/40";
+  "rounded-md border border-slate-200 bg-white py-2 pl-2 pr-8 text-sm text-slate-900 shadow-sm outline-none focus:ring-1 focus:ring-orange-500/50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:focus:ring-neutral-500/40";
 
 const labelClass = "text-sm text-slate-600 dark:text-neutral-400";
 

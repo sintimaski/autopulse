@@ -15,6 +15,8 @@ import {
   QUERY_EXPLORER_JOB_FAILURES_PRESET,
   QUERY_EXPLORER_TEMPLATES,
 } from "../queryExplorerPresets";
+import { ChartColumn, Layers, Play, Terminal } from "lucide-react";
+import { Banner, Chip, ConsoleButton, Kbd, Panel, Toggle } from "../../ui/console";
 
 const DEFAULT_QUERY = [
   "SELECT",
@@ -43,6 +45,7 @@ export function QueryExplorerContent() {
     () => QUERY_EXPLORER_TEMPLATES.find((item) => item.id === templateId),
     [templateId],
   );
+  const lineCount = useMemo(() => query.split("\n").length, [query]);
 
   useEffect(() => {
     const preset = (searchParams.get("preset") ?? "").trim().toLowerCase();
@@ -105,118 +108,217 @@ export function QueryExplorerContent() {
     }
   };
 
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const picked = QUERY_EXPLORER_TEMPLATES.find((item) => item.id === id);
+    if (picked) {
+      setQuery(picked.sql);
+    }
+  };
+
   return (
-    <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
-      <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Query Explorer</h2>
-      <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-        Read-only DuckDB <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-neutral-800">SELECT</code> / CTE
-        against <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-neutral-800">scoped_events</code>. Use the
-        header <span className="text-slate-600 dark:text-neutral-300">Time scope</span> panel for the rolling or custom
-        window only. Add any other filters in your SQL. Turn off the time limit to scan the full live project table
-        (same as <code className="rounded bg-slate-100 px-1 py-0.5 dark:bg-neutral-800">project_wide</code> on the
-        server).
-      </p>
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-        <label className="flex min-w-[220px] flex-col gap-1 text-xs font-medium text-slate-700 dark:text-neutral-200">
-          Curated template
-          <select
-            value={templateId}
-            onChange={(event) => {
-              const id = event.target.value;
-              setTemplateId(id);
-              const picked = QUERY_EXPLORER_TEMPLATES.find((item) => item.id === id);
-              if (picked) {
-                setQuery(picked.sql);
-              }
-            }}
-            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-900"
+    <div className="flex flex-col gap-4">
+      <Banner tone="warning" icon={Terminal} title="Power-user surface">
+        Read-only DuckDB <span className="font-mono">SELECT</span> / CTE over{" "}
+        <span className="font-mono">scoped_events</span> — the same view every panel uses. Use the header
+        time-scope panel for the rolling or custom window; add other filters in SQL. If routine work brings
+        you here, the scope bar can probably express it.
+      </Banner>
+
+      <div className="grid items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        {/* Templates */}
+        <Panel icon={Layers} title="Templates" subtitle="Curated read-only queries">
+          <ul className="divide-y divide-slate-100 dark:divide-neutral-800">
+            <li>
+              <button
+                type="button"
+                onClick={() => setTemplateId("")}
+                className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors ${
+                  templateId === ""
+                    ? "bg-orange-50 dark:bg-orange-950/30"
+                    : "hover:bg-slate-50/70 dark:hover:bg-neutral-800/40"
+                }`}
+              >
+                <span className="text-[12px] font-medium text-slate-700 dark:text-neutral-200">
+                  Custom SQL
+                </span>
+                <span className="text-[11px] text-slate-400 dark:text-neutral-500">
+                  Start from the current editor
+                </span>
+              </button>
+            </li>
+            {QUERY_EXPLORER_TEMPLATES.map((item) => {
+              const active = templateId === item.id;
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate(item.id)}
+                    className={`flex w-full flex-col gap-0.5 px-3 py-2 text-left transition-colors ${
+                      active
+                        ? "bg-orange-50 dark:bg-orange-950/30"
+                        : "hover:bg-slate-50/70 dark:hover:bg-neutral-800/40"
+                    }`}
+                  >
+                    <span className="text-[12px] font-medium text-slate-700 dark:text-neutral-200">
+                      {item.title}
+                    </span>
+                    <span className="truncate font-mono text-[11px] text-slate-400 dark:text-neutral-500">
+                      {item.sql.split("\n")[0]}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Panel>
+
+        <div className="flex min-w-0 flex-col gap-4">
+          {/* SQL editor */}
+          <Panel
+            icon={Terminal}
+            title="SQL editor"
+            subtitle={activeTemplate ? activeTemplate.description : "scoped_events"}
+            actions={
+              <>
+                <Toggle
+                  checked={applyTimeWindow}
+                  onChange={setApplyTimeWindow}
+                  label="Apply time window"
+                />
+                <label className="flex items-center gap-1.5 text-[12px] text-slate-500 dark:text-neutral-400">
+                  Limit
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={rowLimit}
+                    onChange={(event) =>
+                      setRowLimit(Math.max(1, Math.min(500, Number(event.target.value) || 1)))
+                    }
+                    className="ap-input w-20 px-2 py-1 text-[12px]"
+                  />
+                </label>
+                <ConsoleButton
+                  variant="primary"
+                  size="sm"
+                  icon={Play}
+                  disabled={loading}
+                  onClick={() => void execute()}
+                >
+                  {loading ? "Running…" : "Run"}
+                </ConsoleButton>
+              </>
+            }
+            footer={
+              <>
+                <span>
+                  Row limit {rowLimit} · {applyTimeWindow ? "header time window applied" : "full project scan"}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Kbd>⌘</Kbd>
+                  <Kbd>⏎</Kbd>
+                  to run
+                </span>
+              </>
+            }
           >
-            <option value="">Custom SQL</option>
-            {QUERY_EXPLORER_TEMPLATES.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        {activeTemplate ? (
-          <p className="text-xs text-slate-500 dark:text-neutral-400 sm:flex-1">{activeTemplate.description}</p>
-        ) : null}
-      </div>
-      <div className="mt-4 grid gap-3">
-        <textarea
-          id="query-explorer-sql"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="SQL query for Query Explorer"
-          className="min-h-[220px] w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
-          spellCheck={false}
-        />
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-neutral-200">
-            <input
-              type="checkbox"
-              className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600 dark:bg-neutral-900"
-              checked={applyTimeWindow}
-              onChange={(event) => setApplyTimeWindow(event.target.checked)}
-            />
-            Limit to header time window
-          </label>
-          <label className="text-sm text-slate-600 dark:text-neutral-300">
-            Row limit{" "}
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={rowLimit}
-              onChange={(event) => setRowLimit(Math.max(1, Math.min(500, Number(event.target.value) || 1)))}
-              className="ml-2 w-24 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-            />
-          </label>
-          <button type="button" onClick={() => void execute()} disabled={loading} className="ap-btn">
-            {loading ? "Running…" : "Run query"}
-          </button>
-        </div>
-      </div>
-      {error ? (
-        <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
-          {error}
-        </p>
-      ) : null}
-      {loading ? (
-        <CardSpinner className="mt-5" label="Running query…" description="Waiting for DuckDB results." />
-      ) : null}
-      {data ? (
-        <div className="mt-5">
-          <p className="mb-2 text-xs text-slate-500 dark:text-neutral-400">
-            Returned {data.rows.length} row(s){data.truncated ? " (truncated)." : "."}
-          </p>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-            <table className="min-w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-neutral-800">
-                <tr>
-                  {data.columns.map((column) => (
-                    <th key={column} className="px-3 py-2 font-semibold text-slate-700 dark:text-neutral-200">
-                      {column}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
-                {data.rows.map((row, idx) => (
-                  <tr key={`${idx}-${row.length}`}>
-                    {row.map((cell, cellIdx) => (
-                      <td key={`${idx}-${cellIdx}`} className="px-3 py-2 text-slate-700 dark:text-neutral-300">
-                        {cell === null ? "null" : String(cell)}
-                      </td>
-                    ))}
-                  </tr>
+            <div className="relative font-mono text-[13px] leading-[1.7]">
+              <pre
+                aria-hidden
+                className="pointer-events-none absolute left-0 top-0 select-none border-r border-slate-200/80 bg-slate-50/70 py-3 text-right text-slate-400 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-neutral-600"
+                style={{ width: "3rem" }}
+              >
+                {Array.from({ length: lineCount }, (_, index) => (
+                  <div key={index} className="px-2">
+                    {index + 1}
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </pre>
+              <textarea
+                id="query-explorer-sql"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void execute();
+                  }
+                }}
+                aria-label="SQL query for Query Explorer"
+                spellCheck={false}
+                className="block min-h-[13rem] w-full resize-y bg-transparent py-3 pl-14 pr-3 text-slate-900 outline-none dark:text-neutral-100"
+              />
+            </div>
+          </Panel>
+
+          {error ? (
+            <Banner tone="danger" icon={Terminal} title="Query failed">
+              {error}
+            </Banner>
+          ) : null}
+
+          {/* Results */}
+          <Panel
+            icon={ChartColumn}
+            title="Results"
+            subtitle={
+              loading
+                ? "Querying…"
+                : data
+                  ? `${data.rows.length} row${data.rows.length === 1 ? "" : "s"}${data.truncated ? " (truncated)" : ""}`
+                  : "Run a query to see results"
+            }
+            actions={data && data.truncated ? <Chip tone="accent">truncated</Chip> : undefined}
+          >
+            {loading ? (
+              <CardSpinner className="m-3.5" label="Running query…" description="Waiting for DuckDB results." />
+            ) : data ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-[12px]">
+                  <thead className="border-b border-slate-200/80 bg-slate-50/70 text-[10px] uppercase tracking-wide text-slate-400 dark:border-neutral-800 dark:bg-neutral-950/40 dark:text-neutral-500">
+                    <tr>
+                      {data.columns.map((column) => (
+                        <th key={column} className="px-3 py-1.5 font-semibold">
+                          {column}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                    {data.rows.map((row, rowIdx) => (
+                      <tr key={`${rowIdx}-${row.length}`} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40">
+                        {row.map((cell, cellIdx) => (
+                          <td
+                            key={`${rowIdx}-${cellIdx}`}
+                            className="px-3 py-1.5 font-mono text-slate-600 dark:text-neutral-300"
+                          >
+                            {cell === null ? (
+                              <span className="text-slate-300 dark:text-neutral-600">null</span>
+                            ) : (
+                              String(cell)
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                <span className="flex size-11 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-neutral-800 dark:text-neutral-500">
+                  <ChartColumn className="size-5" aria-hidden />
+                </span>
+                <p className="text-[13px] font-medium text-slate-700 dark:text-neutral-200">No results yet</p>
+                <p className="max-w-xs text-[12px] text-slate-400 dark:text-neutral-500">
+                  Pick a template or write SQL above, then run the query.
+                </p>
+              </div>
+            )}
+          </Panel>
         </div>
-      ) : null}
-    </section>
+      </div>
+    </div>
   );
 }

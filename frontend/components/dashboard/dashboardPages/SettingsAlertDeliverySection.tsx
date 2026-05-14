@@ -55,7 +55,7 @@ export function SettingsAlertDeliverySection({
             webhooks), then save. Heuristic thresholds (error spikes, cooldown) stay on the{" "}
             <Link
               href="/alerts"
-              className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+              className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
             >
               Alerts
             </Link>{" "}

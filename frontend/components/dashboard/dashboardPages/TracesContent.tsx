@@ -8,6 +8,16 @@ import { parseTraceDetailResponse, parseTraceSearchResponse } from "../../../uti
 import { useDashboardData } from "../DashboardDataContext";
 import { dashboardSessionFetch } from "../dashboardSessionFetch";
 import { METHOD_OPTIONS, formatTimestamp, type TraceDetailResponse, type TraceSearchResponse } from "../dashboardTypes";
+import { ChevronLeft, ChevronRight, Crosshair, Globe, Network, Search, Server } from "lucide-react";
+import {
+  Banner,
+  Chip,
+  ConsoleButton,
+  Panel,
+  SeverityDot,
+  StatusCode,
+  Toggle,
+} from "../../ui/console";
 
 const TRACE_WINDOW_PRESETS: { label: string; minutes: number }[] = [
   { label: "Last 1 hour", minutes: 60 },
@@ -229,225 +239,309 @@ export function TracesContent() {
 
   const timeModeLabel =
     absoluteFrom && absoluteTo ? "Custom time range (UTC)" : `Rolling window (${windowMinutes} min)`;
+  const detailMaxLatency = detailData
+    ? Math.max(1, ...detailData.items.map((item) => item.latency_ms))
+    : 1;
 
   return (
-    <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
-      <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Full tracing (OTLP)</h2>
-      <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-        Search correlated traces ingested from OTLP spans. The list uses span <span className="font-mono text-[0.7rem]">timestamp</span>{" "}
-        or ingest <span className="font-mono text-[0.7rem]">received_at</span> within the window below. Use presets or shift the window to
-        browse history (OTLP has no built-in &quot;session&quot; — you choose the time range on each query).
-      </p>
+    <div className="flex flex-col gap-4">
+      <Banner tone="info" icon={Network}>
+        Full tracing searches correlated OTLP spans by span <span className="font-mono">timestamp</span> or
+        ingest <span className="font-mono">received_at</span> within the window. OTLP has no built-in
+        &quot;session&quot; — pick a preset or shift the window to browse history.
+      </Banner>
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-neutral-700 dark:bg-neutral-950/40">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-500">Time range</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {TRACE_WINDOW_PRESETS.map((preset) => (
-            <button
-              key={preset.minutes}
-              type="button"
-              onClick={() => applyPreset(preset.minutes)}
-              disabled={searchLoading}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                !absoluteFrom && !absoluteTo && windowMinutes === preset.minutes
-                  ? "border-sky-500 bg-sky-50 text-sky-900 dark:border-sky-500/60 dark:bg-sky-950/40 dark:text-sky-100"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={() => shiftWindowEarlier()} disabled={searchLoading || !searchData} className="ap-btn text-xs">
-            ← Older window
-          </button>
-          <button type="button" onClick={() => shiftWindowLater()} disabled={searchLoading || !searchData} className="ap-btn text-xs">
-            Newer window →
-          </button>
-          <span className="text-xs text-slate-500 dark:text-neutral-500">{timeModeLabel}</span>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="block text-xs text-slate-600 dark:text-neutral-400">
-          Service names (comma-separated)
-          <input
-            value={servicesFilter}
-            onChange={(e) => setServicesFilter(e.target.value)}
-            placeholder="api, worker"
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-          />
-        </label>
-        <label className="block text-xs text-slate-600 dark:text-neutral-400">
-          Environments (comma-separated)
-          <input
-            value={environmentsFilter}
-            onChange={(e) => setEnvironmentsFilter(e.target.value)}
-            placeholder="prod, staging"
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-          />
-        </label>
-        <label className="block text-xs text-slate-600 dark:text-neutral-400">
-          Path contains
-          <input
-            value={pathContains}
-            onChange={(e) => setPathContains(e.target.value)}
-            placeholder="/checkout"
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-          />
-        </label>
-        <label className="block text-xs text-slate-600 dark:text-neutral-400">
-          HTTP method
-          <select
-            value={methodFilter || "ALL"}
-            onChange={(e) => setMethodFilter(e.target.value === "ALL" ? "" : e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-          >
-            {METHOD_OPTIONS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-neutral-300">
-        <input
-          type="checkbox"
-          checked={errorsOnly}
-          onChange={(e) => setErrorsOnly(e.target.checked)}
-          className="rounded border-slate-300 dark:border-neutral-600"
-        />
-        5xx spans only (status class 5xx)
-      </label>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by trace id, service, path, span name..."
-          aria-label="Search traces by id, service, path, or span name"
-          className="min-w-[280px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-        />
-        <button type="button" onClick={() => void searchTraces()} disabled={searchLoading} className="ap-btn">
-          {searchLoading ? "Searching…" : "Search traces"}
-        </button>
-      </div>
       {error ? (
-        <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+        <Banner tone="danger" icon={Crosshair} title="Trace request failed">
           {error}
-        </p>
+        </Banner>
       ) : null}
-      {searchLoading && !searchData ? (
-        <CardSpinner className="mt-5" label="Searching traces…" description="Applying filters and time window." />
-      ) : null}
-      {searchLoading && searchData ? (
-        <CardSpinner className="mt-5" size="compact" label="Refreshing trace list…" />
-      ) : null}
-      {searchData ? (
-        <div className="mt-5 grid gap-3">
-          <p className="text-xs text-slate-500 dark:text-neutral-500">
-            Window (UTC): {formatTimestamp(searchData.from_timestamp)} {"->"} {formatTimestamp(searchData.to_timestamp)}
-          </p>
-          {searchData.items.map((item) => (
-            <button
-              type="button"
-              key={item.trace_id}
-              onClick={() => void openTrace(item.trace_id)}
-              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-                selectedTraceId === item.trace_id
-                  ? "border-sky-400 bg-sky-50 dark:border-sky-500/70 dark:bg-sky-950/30"
-                  : "border-slate-200 bg-slate-50/70 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800/60 dark:hover:bg-neutral-800"
-              }`}
-            >
-              <p className="font-mono text-xs text-slate-700 dark:text-neutral-200">{item.trace_id}</p>
-              <p className="mt-1 text-sm text-slate-700 dark:text-neutral-300">
-                spans: {item.span_count} · errors: {item.error_count} · services: {item.services.join(", ") || "—"}
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+        {/* Trace search */}
+        <Panel
+          icon={Search}
+          title="Trace search"
+          subtitle={timeModeLabel}
+          bodyClassName="flex flex-col"
+        >
+          <div className="flex flex-col gap-3 border-b border-slate-200/80 p-3.5 dark:border-neutral-800">
+            <div>
+              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-neutral-500">
+                Time range
               </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-                {formatTimestamp(item.first_seen)} {"->"} {formatTimestamp(item.last_seen)}
-              </p>
-            </button>
-          ))}
-          {searchData.items.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-700 dark:border-neutral-700 dark:bg-neutral-900/50 dark:text-neutral-200">
-              <p className="font-medium text-slate-900 dark:text-neutral-100">No traces found in this window.</p>
-              <p className="mt-2 text-xs text-slate-600 dark:text-neutral-400">
-                Server window (UTC): {formatTimestamp(searchData.from_timestamp)} {"->"} {formatTimestamp(searchData.to_timestamp)}
-              </p>
-              {searchData.project_id ? (
-                <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
-                  This search is scoped to project{" "}
-                  <code className="rounded bg-white px-1 py-0.5 font-mono text-[0.7rem] dark:bg-neutral-950">
-                    {searchData.project_id}
-                  </code>
-                  {sessionProjectId && sessionProjectId !== searchData.project_id ? (
-                    <span className="block pt-1 text-amber-800 dark:text-amber-200">
-                      Session active project ({sessionProjectId}) differs from API — reload or switch project in Settings.
-                    </span>
-                  ) : null}
-                </p>
-              ) : null}
-              <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600 dark:text-neutral-400">
-                <li>
-                  Try a longer preset (e.g. Last 7 days) or <strong>Older window</strong> to move back in time.
-                </li>
-                <li>
-                  The <code className="font-mono text-[0.7rem]">Authorization: Bearer</code> key on{" "}
-                  <code className="font-mono text-[0.7rem]">POST /otlp/v1/traces</code> must belong to{" "}
-                  <strong>this same project</strong> (Settings → Active project / API keys).
-                </li>
-                <li>
-                  <code className="font-mono text-[0.7rem]">curl</code> and this dashboard must hit the{" "}
-                  <strong>same backend</strong> and DuckDB file (same <code className="font-mono text-[0.7rem]">LUMONOX_DATA_DIR</code>{" "}
-                  / event store path).
-                </li>
-                <li>
-                  Tracing explorer needs <code className="font-mono text-[0.7rem]">LUMONOX_EVENT_STORE=duckdb</code>
-                  . If search returns 400 mentioning DuckDB, the store is off.
-                </li>
-              </ul>
+              <div className="flex flex-wrap gap-1.5">
+                {TRACE_WINDOW_PRESETS.map((preset) => {
+                  const active = !absoluteFrom && !absoluteTo && windowMinutes === preset.minutes;
+                  return (
+                    <ConsoleButton
+                      key={preset.minutes}
+                      size="xs"
+                      variant={active ? "primary" : "secondary"}
+                      disabled={searchLoading}
+                      onClick={() => applyPreset(preset.minutes)}
+                    >
+                      {preset.label}
+                    </ConsoleButton>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <ConsoleButton
+                  size="xs"
+                  icon={ChevronLeft}
+                  disabled={searchLoading || !searchData}
+                  onClick={shiftWindowEarlier}
+                >
+                  Older
+                </ConsoleButton>
+                <ConsoleButton
+                  size="xs"
+                  iconRight={ChevronRight}
+                  disabled={searchLoading || !searchData}
+                  onClick={shiftWindowLater}
+                >
+                  Newer
+                </ConsoleButton>
+              </div>
             </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-neutral-500">
+                Services
+                <input
+                  value={servicesFilter}
+                  onChange={(event) => setServicesFilter(event.target.value)}
+                  placeholder="api, worker"
+                  className="ap-input px-2 py-1 text-[13px] font-normal normal-case tracking-normal text-slate-700 dark:text-neutral-200"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-neutral-500">
+                Environments
+                <input
+                  value={environmentsFilter}
+                  onChange={(event) => setEnvironmentsFilter(event.target.value)}
+                  placeholder="prod, staging"
+                  className="ap-input px-2 py-1 text-[13px] font-normal normal-case tracking-normal text-slate-700 dark:text-neutral-200"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-neutral-500">
+                Path contains
+                <input
+                  value={pathContains}
+                  onChange={(event) => setPathContains(event.target.value)}
+                  placeholder="/checkout"
+                  className="ap-input px-2 py-1 text-[13px] font-normal normal-case tracking-normal text-slate-700 dark:text-neutral-200"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-neutral-500">
+                HTTP method
+                <select
+                  value={methodFilter || "ALL"}
+                  onChange={(event) => setMethodFilter(event.target.value === "ALL" ? "" : event.target.value)}
+                  className="ap-select px-2 py-1 text-[13px] font-normal normal-case tracking-normal text-slate-700 dark:text-neutral-200"
+                >
+                  {METHOD_OPTIONS.map((method) => (
+                    <option key={method} value={method}>
+                      {method}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Toggle
+                checked={errorsOnly}
+                onChange={setErrorsOnly}
+                label="5xx spans only"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search trace id, service, path, span…"
+                aria-label="Search traces by id, service, path, or span name"
+                className="ap-input min-w-0 flex-1 px-2.5 py-1.5 text-[13px]"
+              />
+              <ConsoleButton
+                variant="primary"
+                icon={Search}
+                disabled={searchLoading}
+                onClick={() => void searchTraces()}
+              >
+                {searchLoading ? "Searching…" : "Search"}
+              </ConsoleButton>
+            </div>
+          </div>
+
+          {searchLoading && !searchData ? (
+            <CardSpinner className="m-3.5" label="Searching traces…" description="Applying filters and time window." />
+          ) : null}
+          {searchData ? (
+            <div className="flex flex-col">
+              {searchLoading ? (
+                <div className="border-b border-slate-200/80 px-3.5 py-1.5 dark:border-neutral-800">
+                  <CardSpinner size="compact" label="Refreshing trace list…" />
+                </div>
+              ) : null}
+              {searchData.items.length === 0 ? (
+                <div className="p-3.5 text-[12px] text-slate-600 dark:text-neutral-300">
+                  <p className="font-medium text-slate-900 dark:text-neutral-100">No traces in this window.</p>
+                  <p className="mt-1 text-slate-500 dark:text-neutral-400">
+                    Window (UTC): {formatTimestamp(searchData.from_timestamp)} → {formatTimestamp(searchData.to_timestamp)}
+                  </p>
+                  {searchData.project_id ? (
+                    <p className="mt-1 text-slate-500 dark:text-neutral-400">
+                      Scoped to project{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono dark:bg-neutral-800">
+                        {searchData.project_id}
+                      </code>
+                      {sessionProjectId && sessionProjectId !== searchData.project_id ? (
+                        <span className="mt-1 block text-amber-700 dark:text-amber-300">
+                          Session active project ({sessionProjectId}) differs from API — reload or switch project
+                          in Settings.
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
+                  <ul className="mt-2 list-disc space-y-1 pl-4 text-[11px] text-slate-500 dark:text-neutral-400">
+                    <li>Try a longer preset or the Older button to move back in time.</li>
+                    <li>
+                      The OTLP ingest key must belong to <strong>this same project</strong> and hit the same backend
+                      / event store.
+                    </li>
+                    <li>
+                      Tracing needs <code className="font-mono">LUMONOX_EVENT_STORE=duckdb</code>.
+                    </li>
+                  </ul>
+                </div>
+              ) : (
+                <ul className="divide-y divide-slate-100 dark:divide-neutral-800">
+                  {searchData.items.map((item) => {
+                    const selected = selectedTraceId === item.trace_id;
+                    return (
+                      <li key={item.trace_id}>
+                        <button
+                          type="button"
+                          onClick={() => void openTrace(item.trace_id)}
+                          className={`flex w-full items-center gap-3 px-3.5 py-2 text-left transition-colors ${
+                            selected
+                              ? "bg-orange-50 dark:bg-orange-950/30"
+                              : "hover:bg-slate-50/70 dark:hover:bg-neutral-800/40"
+                          }`}
+                        >
+                          <SeverityDot tone={item.error_count > 0 ? "danger" : "healthy"} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-mono text-[12px] text-slate-700 dark:text-neutral-200">
+                              {item.trace_id}
+                            </p>
+                            <p className="truncate text-[11px] text-slate-400 dark:text-neutral-500">
+                              {item.span_count} spans · {item.error_count} errors ·{" "}
+                              {item.services.join(", ") || "—"}
+                            </p>
+                          </div>
+                          <ChevronRight className="size-3.5 shrink-0 text-slate-300 dark:text-neutral-600" aria-hidden />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          ) : null}
+        </Panel>
+
+        {/* Trace detail */}
+        <Panel
+          icon={Network}
+          title={selectedTraceId ? `Trace · ${selectedTraceId}` : "Trace detail"}
+          subtitle={
+            detailData
+              ? `${detailData.items.length} spans`
+              : "Select a trace to inspect its span waterfall"
+          }
+          bodyClassName="p-3.5"
+        >
+          {detailLoading ? (
+            <CardSpinner
+              label="Loading span details…"
+              description={selectedTraceId ? `Trace ${selectedTraceId}` : undefined}
+            />
+          ) : detailData && detailData.items.length > 0 ? (
+            <div className="flex flex-col gap-1">
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_4.5rem] gap-2 px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-neutral-500">
+                <span>Span</span>
+                <span>Duration</span>
+                <span className="text-right">Latency</span>
+              </div>
+              {detailData.items.map((item) => {
+                const widthPct = Math.max(1.5, (item.latency_ms / detailMaxLatency) * 100);
+                const isError = item.status_code >= 500;
+                return (
+                  <div
+                    key={`${item.trace_id}-${item.span_id ?? item.timestamp}`}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_4.5rem] items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50/70 dark:hover:bg-neutral-800/40"
+                  >
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 truncate font-mono text-[12px] text-slate-700 dark:text-neutral-200">
+                        {isError ? <SeverityDot tone="danger" size={6} /> : null}
+                        {item.span_name}
+                      </p>
+                      <p className="truncate text-[10px] text-slate-400 dark:text-neutral-500">
+                        {item.service_name} · {item.path}
+                      </p>
+                    </div>
+                    <div className="h-4 rounded bg-slate-100 dark:bg-neutral-800">
+                      <div
+                        className={`h-full rounded ${
+                          isError
+                            ? "bg-rose-500"
+                            : item.status_code >= 400
+                              ? "bg-amber-500"
+                              : "bg-orange-400"
+                        }`}
+                        style={{ width: `${widthPct}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <StatusCode code={item.status_code} />
+                      <span className="font-mono text-[11px] tabular-nums text-slate-500 dark:text-neutral-400">
+                        {item.latency_ms.toFixed(0)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+              <span className="flex size-11 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-neutral-800 dark:text-neutral-500">
+                <Network className="size-5" aria-hidden />
+              </span>
+              <p className="text-[13px] font-medium text-slate-700 dark:text-neutral-200">
+                {selectedTraceId ? "No spans for this trace" : "No trace selected"}
+              </p>
+              <p className="max-w-xs text-[12px] text-slate-400 dark:text-neutral-500">
+                Pick a trace from the search results to see its span-by-span latency waterfall.
+              </p>
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      {searchData ? (
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 dark:text-neutral-500">
+          <Chip tone="muted" icon={Server}>
+            Window {formatTimestamp(searchData.from_timestamp)} → {formatTimestamp(searchData.to_timestamp)}
+          </Chip>
+          {searchData.project_id ? (
+            <Chip tone="muted" icon={Globe}>
+              {searchData.project_id}
+            </Chip>
           ) : null}
         </div>
       ) : null}
-      {detailLoading ? (
-        <CardSpinner
-          className="mt-6"
-          label="Loading span details…"
-          description={selectedTraceId ? `Trace ${selectedTraceId}` : undefined}
-        />
-      ) : null}
-      {detailData && !detailLoading ? (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-slate-50 dark:bg-neutral-800">
-              <tr>
-                <th className="px-3 py-2">Time</th>
-                <th className="px-3 py-2">Span</th>
-                <th className="px-3 py-2">Service</th>
-                <th className="px-3 py-2">Path</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Latency</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
-              {detailData.items.map((item) => (
-                <tr key={`${item.trace_id}-${item.span_id ?? item.timestamp}`}>
-                  <td className="px-3 py-2 text-slate-700 dark:text-neutral-300">{formatTimestamp(item.timestamp)}</td>
-                  <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-300">{item.span_name}</td>
-                  <td className="px-3 py-2 text-slate-700 dark:text-neutral-300">{item.service_name}</td>
-                  <td className="px-3 py-2 font-mono text-slate-700 dark:text-neutral-300">{item.path}</td>
-                  <td className="px-3 py-2 text-slate-700 dark:text-neutral-300">{item.status_code}</td>
-                  <td className="px-3 py-2 text-slate-700 dark:text-neutral-300">{item.latency_ms.toFixed(1)} ms</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </section>
+    </div>
   );
 }

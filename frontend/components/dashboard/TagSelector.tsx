@@ -1,11 +1,11 @@
 "use client";
 
-type Accent = "sky" | "violet" | "slate";
+type Accent = "orange" | "violet" | "slate";
 
 const accentStyles: Record<Accent, { on: string; off: string }> = {
-  sky: {
-    on: "border-sky-500 bg-sky-600 text-white shadow-sm dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-100",
-    off: "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-sky-700 dark:hover:bg-sky-950/30",
+  orange: {
+    on: "border-orange-500 bg-orange-600 text-white shadow-sm dark:border-orange-700 dark:bg-orange-950/60 dark:text-orange-100",
+    off: "border-slate-200 bg-white text-slate-700 hover:border-orange-300 hover:bg-orange-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:border-orange-700 dark:hover:bg-orange-950/30",
   },
   violet: {
     on: "border-violet-500 bg-violet-600 text-white shadow-sm dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-100",
@@ -62,7 +62,7 @@ export function TagSelector({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => onToggle(option)}
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:focus-visible:ring-neutral-500/50 ${
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:focus-visible:ring-neutral-500/50 ${
                   isSelected ? style.on : style.off
                 }`}
               >

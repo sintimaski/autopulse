@@ -29,6 +29,19 @@ import {
   type StackedAreaSeries,
 } from "../charts/lazyCharts";
 import { CardSpinner } from "../../ui/CardSpinner";
+import {
+  Activity,
+  Bell,
+  ChartArea,
+  ChartColumn,
+  ChartLine,
+  ChartPie,
+  ChartScatter,
+  Crosshair,
+  Gauge,
+  Hourglass,
+  ShieldCheck,
+} from "lucide-react";
 import { ChartScopeTintOverlay } from "../charts/ChartScopeTintOverlay";
 import { DashboardInfrastructureSection } from "./DashboardInfrastructureSection";
 import { OperatorPipelineHealthSection } from "../OperatorPipelineHealthSection";
@@ -384,7 +397,7 @@ export function DashboardHomeContent() {
                   key={`lat-${chartAppliedWindowKey}`}
                   interactive={false}
                   values={sparklineLatency}
-                  svgClassName="h-6 w-full text-sky-600 dark:text-sky-400"
+                  svgClassName="h-6 w-full text-orange-600 dark:text-orange-400"
                 />
               </div>
             </div>
@@ -413,7 +426,7 @@ export function DashboardHomeContent() {
                 serviceBreakdownTop.map((service) => (
                   <div key={service.key} className="flex items-center justify-between text-sm">
                     <span className="truncate pr-3 text-slate-700 dark:text-neutral-200">{service.key}</span>
-                    <span className="text-sky-700 dark:text-sky-300">{service.request_count} req</span>
+                    <span className="text-orange-700 dark:text-orange-300">{service.request_count} req</span>
                   </div>
                 ))
               ) : (
@@ -428,7 +441,7 @@ export function DashboardHomeContent() {
               </h3>
               <Link
                 href={diagnosisGroupedHref}
-                className="shrink-0 text-[11px] font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                className="shrink-0 text-[11px] font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
               >
                 Open diagnosis
               </Link>
@@ -534,7 +547,7 @@ export function DashboardHomeContent() {
     {
       id: "3xx",
       label: "3xx",
-      color: "#0ea5e9",
+      color: "#38bdf8",
       values: d.sparklineSeries.map((bucket) => Number(bucket.count_3xx || 0)),
     },
     {
@@ -572,7 +585,7 @@ export function DashboardHomeContent() {
       id: method,
       label: method,
       value: count,
-      color: ["#38bdf8", "#818cf8", "#f59e0b", "#f43f5e", "#34d399", "#a78bfa"][idx % 6],
+      color: ["#38bdf8", "#fb923c", "#f59e0b", "#f43f5e", "#34d399", "#a78bfa"][idx % 6],
     }));
   const statusDonutItems = [
     { id: "2xx", label: "2xx", value: total2xx, color: "#34d399" },
@@ -989,7 +1002,7 @@ export function DashboardHomeContent() {
             )}
             <Link
               href={diagnosisGroupedHref}
-              className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300"
+              className="text-xs font-medium text-orange-700 underline-offset-2 hover:underline dark:text-neutral-300"
             >
               Grouped errors
             </Link>
@@ -1004,7 +1017,7 @@ export function DashboardHomeContent() {
         <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
           Requests (bars) plus a full-width class trend overlay. Hover for values or click a bar to open Errors
           &amp; Diagnosis for that bucket.{" "}
-          <Link href={diagnosisBaseHref} className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-neutral-300">
+          <Link href={diagnosisBaseHref} className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-neutral-300">
             Errors &amp; Diagnosis
           </Link>
           .
@@ -1053,7 +1066,7 @@ export function DashboardHomeContent() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">
-        <ChartPanel title="Error trend" description="Minute-level error counts in current scope.">
+        <ChartPanel icon={ChartLine} title="Error trend" description="Minute-level error counts in current scope.">
           <div className="relative min-h-[3rem] overflow-hidden rounded-lg">
             {d.chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
             <div className="relative z-0">
@@ -1065,7 +1078,7 @@ export function DashboardHomeContent() {
             </div>
           </div>
         </ChartPanel>
-        <ChartPanel title="Latency trend" description="Average minute latency in milliseconds.">
+        <ChartPanel icon={ChartLine} title="Latency trend" description="Average minute latency in milliseconds.">
           <div className="relative min-h-[3rem] overflow-hidden rounded-lg">
             {d.chartsScopePending ? <ChartScopeTintOverlay className="rounded-lg" /> : null}
             <div className="relative z-0">
@@ -1078,6 +1091,7 @@ export function DashboardHomeContent() {
           </div>
         </ChartPanel>
         <ChartPanel
+          icon={Gauge}
           title="Latency shape"
           description={`Window average ${displayAvgLatencyMs.toFixed(1)} ms`}
         >
@@ -1097,6 +1111,7 @@ export function DashboardHomeContent() {
 
       <section className="grid gap-4 xl:grid-cols-3">
         <ChartPanel
+          icon={Activity}
           title="Apdex trend"
           description={`Current score ${overviewExtended.apdex_score.toFixed(3)} (satisfied <=${APDEX_THRESHOLDS_MS.satisfied}ms)`}
         >
@@ -1116,6 +1131,7 @@ export function DashboardHomeContent() {
           )}
         </ChartPanel>
         <ChartPanel
+          icon={ChartColumn}
           title="Error breakdown"
           description="Error classes grouped by type (timeout, database, validation, network, auth, server)."
         >
@@ -1128,6 +1144,7 @@ export function DashboardHomeContent() {
           />
         </ChartPanel>
         <ChartPanel
+          icon={Bell}
           title="Alerts timeline"
           description="When alerts fired during the selected time window."
         >
@@ -1152,6 +1169,7 @@ export function DashboardHomeContent() {
 
       <section className="grid gap-4 xl:grid-cols-3">
         <ChartPanel
+          icon={ChartPie}
           title="Response class split"
           description="Donut share of 2xx/3xx/4xx/5xx across the active scope."
         >
@@ -1167,6 +1185,7 @@ export function DashboardHomeContent() {
           />
         </ChartPanel>
         <ChartPanel
+          icon={ChartPie}
           title="HTTP method mix"
           description="How request volume is distributed by method."
         >
@@ -1181,6 +1200,7 @@ export function DashboardHomeContent() {
           />
         </ChartPanel>
         <ChartPanel
+          icon={Hourglass}
           title="Latency distribution"
           description="Histogram of request latency buckets in current loaded sample."
         >
@@ -1207,6 +1227,7 @@ export function DashboardHomeContent() {
 
       <section className="grid gap-4 xl:grid-cols-2">
         <ChartPanel
+          icon={ChartArea}
           title="Outcome stack over time"
           description="How success, 4xx, and 5xx compose traffic minute-by-minute."
         >
@@ -1239,6 +1260,7 @@ export function DashboardHomeContent() {
           />
         </ChartPanel>
         <ChartPanel
+          icon={ChartScatter}
           title="Route risk map"
           description="Each dot is a route: x=request volume, y=error rate (%)."
         >
@@ -1255,6 +1277,7 @@ export function DashboardHomeContent() {
 
       <section className="grid gap-4 xl:grid-cols-2">
         <ChartPanel
+          icon={Crosshair}
           title="Route x status heatmap"
           description="Top routes crossed with response classes to spot concentrated failures."
           actionHref={diagnosisGroupedHref}
@@ -1274,6 +1297,7 @@ export function DashboardHomeContent() {
           />
         </ChartPanel>
         <ChartPanel
+          icon={ShieldCheck}
           title="Reliability scorecard"
           description="Quick reliability split derived from status classes."
         >
@@ -1352,7 +1376,7 @@ export function DashboardHomeContent() {
       ) : null}
 
       <section className={`grid gap-4 ${denseInsightLayout ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
-        <ChartPanel title="Top failing routes" actionHref={diagnosisBaseHref} actionLabel="Full diagnosis">
+        <ChartPanel icon={ChartColumn} title="Top failing routes" actionHref={diagnosisBaseHref} actionLabel="Full diagnosis">
           {d.topFailingRoutes.length === 0 ? (
             <p className="text-sm text-slate-600 dark:text-neutral-300">
               No 5xx failures in the current request sample.

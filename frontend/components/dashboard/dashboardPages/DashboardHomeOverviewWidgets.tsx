@@ -292,7 +292,7 @@ export function DashboardHomeOverviewWidgets({ dashboardWidgets, chartsScopePend
         "#38bdf8",
         "#f59e0b",
         "#f43f5e",
-        "#818cf8",
+        "#fb923c",
         "#a78bfa",
         "#2dd4bf",
         "#fb7185",
@@ -316,7 +316,7 @@ export function DashboardHomeOverviewWidgets({ dashboardWidgets, chartsScopePend
       id: `${widgetId}-${index}`,
       label: item.key,
       value: item.value,
-      color: ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#818cf8"][index % 5],
+      color: ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#fb923c"][index % 5],
     }));
     return (
       <ChartPanel key={widgetId} title={widget.title} description={widget.description ?? undefined}>
@@ -353,7 +353,7 @@ export function DashboardHomeOverviewWidgets({ dashboardWidgets, chartsScopePend
                 onClick={() => setPickedPageId(page.page_id)}
                 className={`rounded-md border px-2 py-1 text-xs ${
                   page.page_id === activePage.page_id
-                    ? "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                    ? "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 }`}
               >

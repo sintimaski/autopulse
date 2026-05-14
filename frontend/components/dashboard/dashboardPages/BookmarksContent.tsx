@@ -177,7 +177,7 @@ export function BookmarksContent() {
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-semibold text-slate-900 dark:text-neutral-50">{b.title}</h3>
                           {b.visibility === "project" ? (
-                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900 dark:bg-sky-950/60 dark:text-sky-100">
+                            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-900 dark:bg-orange-950/60 dark:text-orange-100">
                               Team
                             </span>
                           ) : null}

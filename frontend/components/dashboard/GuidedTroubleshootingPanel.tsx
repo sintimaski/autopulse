@@ -123,7 +123,7 @@ export function GuidedTroubleshootingPanel() {
             <p className="text-sm font-semibold text-slate-900 dark:text-neutral-100">{hint.title}</p>
             <p className="mt-1 text-xs text-slate-600 dark:text-neutral-300">{hint.reason}</p>
             <p className="mt-1 text-xs text-slate-700 dark:text-neutral-200">{hint.next_step}</p>
-            <Link href={hint.href} className="mt-1 inline-block text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300">
+            <Link href={hint.href} className="mt-1 inline-block text-xs font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300">
               Open
             </Link>
           </li>

@@ -61,7 +61,7 @@ export function SparklineMini({
           stroke="currentColor"
           strokeWidth="3"
           points={points}
-          className={colorClass ?? "text-sky-600 dark:text-sky-300"}
+          className={colorClass ?? "text-orange-600 dark:text-orange-300"}
         />
       </svg>
       {interactive && hoverIndex !== null ? (

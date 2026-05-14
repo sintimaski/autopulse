@@ -5,6 +5,24 @@
   color-scheme: light;
 
   /*
+   * Lumonox accent — orange hero (design tokens v1).
+   * Orange replaces the legacy sky/indigo accent; purple is reserved for
+   * gradient rims only. Keep these in sync with the design bundle's tokens.css.
+   */
+  --ap-accent-50: #fff3e8;
+  --ap-accent-100: #ffe1c8;
+  --ap-accent-200: #fdc090;
+  --ap-accent-300: #fb923c; /* hover */
+  --ap-accent-400: #f97316; /* DEFAULT */
+  --ap-accent-500: #ea580c; /* pressed */
+  --ap-accent-600: #c2410c;
+  --ap-accent-700: #9a3412;
+  --ap-accent-soft: rgb(249 115 22 / 0.1);
+  --ap-accent-soft-hi: rgb(249 115 22 / 0.18);
+  --ap-accent-ring: rgb(249 115 22 / 0.35);
+  --ap-rim-purple: #a78bfa;
+
+  /*
    * Dashboard scope facet bar (`DashboardScopeFacetShell`):
    * rim = 1px padding + linear-gradient on outer; inner is solid fill.
    */
@@ -21,6 +39,10 @@
 
 .dark {
   color-scheme: dark;
+
+  /* Dark canvas lifts the accent one stop brighter for contrast. */
+  --ap-accent-400: #fb923c;
+  --ap-accent-300: #fdba74;
 
   --ap-scope-rim-orange: #fdba74;
   --ap-scope-rim-purple: #c4b5fd;
@@ -65,15 +87,15 @@ body {
 }
 
 .ap-surface {
-  @apply rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/80 to-sky-50/60 shadow-sm ring-1 ring-slate-900/[0.05] dark:border-neutral-800 dark:bg-gradient-to-br dark:from-neutral-900 dark:via-neutral-900 dark:to-sky-950/20 dark:ring-white/[0.06];
+  @apply rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white via-slate-50/80 to-orange-50/60 shadow-sm ring-1 ring-slate-900/[0.05] dark:border-neutral-800 dark:bg-gradient-to-br dark:from-neutral-900 dark:via-neutral-900 dark:to-orange-950/20 dark:ring-white/[0.06];
 }
 
 .ap-btn {
-  @apply inline-flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-1.5 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .ap-btn-primary {
-  @apply inline-flex items-center justify-center rounded-lg border border-sky-600 bg-gradient-to-r from-sky-800 to-indigo-800 px-3 py-1.5 text-sm font-semibold text-sky-100 transition-colors hover:from-sky-700 hover:to-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center rounded-lg border border-orange-600 bg-gradient-to-r from-orange-800 to-amber-800 px-3 py-1.5 text-sm font-semibold text-orange-100 transition-colors hover:from-orange-700 hover:to-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50;
 }
 
 .ap-btn-danger {
@@ -81,11 +103,11 @@ body {
 }
 
 .ap-input {
-  @apply w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 shadow-sm outline-none ring-sky-500/25 placeholder:text-neutral-500 focus:ring-2;
+  @apply w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 shadow-sm outline-none ring-orange-500/25 placeholder:text-neutral-500 focus:ring-2;
 }
 
 .ap-select {
-  @apply w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 shadow-sm outline-none ring-sky-500/25 focus:ring-2;
+  @apply w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 shadow-sm outline-none ring-orange-500/25 focus:ring-2;
 }
 
 /* Design tokens (Tailwind v4 @theme) — surfaces reference Lumonox console chrome */

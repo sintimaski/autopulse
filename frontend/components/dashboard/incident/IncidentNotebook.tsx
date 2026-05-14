@@ -220,7 +220,7 @@ function IncidentScopeCellBody({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 text-xs text-slate-700 dark:border-sky-950/50 dark:bg-sky-950/20 dark:text-neutral-200">
+      <div className="rounded-lg border border-orange-100 bg-orange-50/70 px-3 py-2 text-xs text-slate-700 dark:border-orange-950/50 dark:bg-orange-950/20 dark:text-neutral-200">
         <p className="font-semibold text-slate-900 dark:text-neutral-100">Live session scope</p>
         <p className="mt-1">{scopeSummary}</p>
         <ul className="mt-2 list-disc space-y-1 pl-4 text-slate-600 dark:text-neutral-300">
@@ -267,7 +267,7 @@ function IncidentScopeCellBody({
           <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-neutral-300 sm:col-span-2">
             <input
               type="checkbox"
-              className="size-3.5 rounded border-slate-300 text-sky-600 dark:border-neutral-600"
+              className="size-3.5 rounded border-slate-300 text-orange-600 dark:border-neutral-600"
               checked={f.isAbsoluteWindow}
               onChange={(e) => patch({ isAbsoluteWindow: e.target.checked })}
             />
@@ -368,7 +368,7 @@ function IncidentScopeCellBody({
           <label className="flex items-center gap-2 text-[11px] text-slate-700 dark:text-neutral-300 sm:col-span-2">
             <input
               type="checkbox"
-              className="size-3.5 rounded border-slate-300 text-sky-600 dark:border-neutral-600"
+              className="size-3.5 rounded border-slate-300 text-orange-600 dark:border-neutral-600"
               checked={f.sqlFilterEnabled}
               onChange={(e) => patch({ sqlFilterEnabled: e.target.checked })}
             />
@@ -1038,7 +1038,7 @@ export function IncidentNotebook({
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">Templates</span>
             <button
               type="button"
-              className="inline-flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-800 shadow-sm hover:bg-sky-100 dark:border-sky-900/40 dark:bg-sky-950/40 dark:text-sky-200 dark:hover:bg-sky-950/60"
+              className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-800 shadow-sm hover:bg-orange-100 dark:border-orange-900/40 dark:bg-orange-950/40 dark:text-orange-200 dark:hover:bg-orange-950/60"
               onClick={applyStarterTemplate}
             >
               Apply starter template
@@ -1301,7 +1301,7 @@ export function IncidentNotebook({
                             <li key={it.id} className="flex items-start gap-2">
                               <input
                                 type="checkbox"
-                                className="mt-1 size-3.5 rounded border-slate-300 text-sky-600 dark:border-neutral-600"
+                                className="mt-1 size-3.5 rounded border-slate-300 text-orange-600 dark:border-neutral-600"
                                 checked={it.checked}
                                 onChange={(e) => {
                                   const items = cell.items.map((row, j) =>
@@ -1339,7 +1339,7 @@ export function IncidentNotebook({
                         </ul>
                         <button
                           type="button"
-                          className="text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
+                          className="text-xs font-medium text-orange-700 hover:underline dark:text-orange-300"
                           onClick={() =>
                             updateCell(index, {
                               ...cell,
@@ -1380,7 +1380,7 @@ export function IncidentNotebook({
                             href={cell.href.trim()}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 hover:underline dark:text-orange-300"
                           >
                             Open link <ExternalLink className="size-3" aria-hidden />
                           </Link>
@@ -1402,7 +1402,7 @@ export function IncidentNotebook({
                           <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600 dark:text-neutral-300">
                             <input
                               type="checkbox"
-                              className="size-3.5 rounded border-slate-300 text-sky-600 dark:border-neutral-600"
+                              className="size-3.5 rounded border-slate-300 text-orange-600 dark:border-neutral-600"
                               checked={cell.applyTimeWindow}
                               onChange={(e) =>
                                 updateCell(index, {
@@ -1528,10 +1528,10 @@ export function IncidentNotebook({
               <Link
                 key={item.label}
                 href={item.href}
-                className="group flex items-center justify-between rounded-lg border border-slate-200/90 px-2 py-1.5 text-xs text-slate-700 hover:border-sky-300 hover:bg-sky-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-sky-600/60 dark:hover:bg-sky-950/30"
+                className="group flex items-center justify-between rounded-lg border border-slate-200/90 px-2 py-1.5 text-xs text-slate-700 hover:border-orange-300 hover:bg-orange-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-orange-600/60 dark:hover:bg-orange-950/30"
               >
                 <span>{item.label}</span>
-                <ExternalLink className="size-3.5 text-slate-400 group-hover:text-sky-600 dark:text-neutral-500 dark:group-hover:text-sky-300" />
+                <ExternalLink className="size-3.5 text-slate-400 group-hover:text-orange-600 dark:text-neutral-500 dark:group-hover:text-orange-300" />
               </Link>
             ))}
           </div>
@@ -1612,7 +1612,7 @@ export function IncidentNotebook({
               </code>
               <button
                 type="button"
-                className="mt-1 text-xs font-medium text-sky-700 hover:underline dark:text-sky-300"
+                className="mt-1 text-xs font-medium text-orange-700 hover:underline dark:text-orange-300"
                 onClick={async () => {
                   const full =
                     typeof window !== "undefined"
@@ -1638,7 +1638,7 @@ export function IncidentNotebook({
             </p>
             <button
               type="button"
-              className="text-[11px] font-medium text-sky-700 hover:underline dark:text-sky-300"
+              className="text-[11px] font-medium text-orange-700 hover:underline dark:text-orange-300"
               onClick={() => void loadPublishedShares()}
             >
               Refresh

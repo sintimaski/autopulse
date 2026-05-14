@@ -25,7 +25,7 @@ export function NavIaMigrationBanner() {
   return (
     <div
       role="status"
-      className="mx-2 mb-2 rounded-lg border border-sky-500/35 bg-sky-950/40 px-2.5 py-2 text-[11px] leading-snug text-sky-100 shadow-sm dark:border-sky-400/25 dark:bg-sky-950/60"
+      className="mx-2 mb-2 rounded-lg border border-orange-500/35 bg-orange-950/40 px-2.5 py-2 text-[11px] leading-snug text-orange-100 shadow-sm dark:border-orange-400/25 dark:bg-orange-950/60"
     >
       <div className="flex items-start justify-between gap-2">
         <p>

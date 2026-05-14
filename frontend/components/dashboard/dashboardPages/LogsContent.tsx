@@ -222,7 +222,7 @@ export function LogsContent() {
               Adjust the scope filters, refresh, or finish{" "}
               <Link
                 href="/onboarding"
-                className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
               >
                 Onboarding
               </Link>
@@ -335,7 +335,7 @@ export function LogsContent() {
               selected={d.envTags}
               onToggle={d.toggleEnv}
               emptyText="No environment tags in this slice."
-              accent="sky"
+              accent="orange"
             />
             <TagSelector
               id="logs-service-tags"

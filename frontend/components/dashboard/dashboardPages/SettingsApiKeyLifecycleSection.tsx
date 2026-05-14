@@ -109,7 +109,7 @@ export function SettingsApiKeyLifecycleSection({
                 {activeKeyIds.length > 0 && canMutateApiKeys ? (
                   <input
                     type="checkbox"
-                    className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                    className="size-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 dark:border-neutral-600"
                     checked={allKeysSelected}
                     onChange={onToggleSelectAll}
                     aria-label="Select all active API keys"
@@ -128,7 +128,7 @@ export function SettingsApiKeyLifecycleSection({
                   {!item.revoked_at && canMutateApiKeys ? (
                     <input
                       type="checkbox"
-                      className="size-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 dark:border-neutral-600"
+                      className="size-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 dark:border-neutral-600"
                       checked={selectedKeyIds.has(item.key_id)}
                       onChange={() => onToggleKeySelected(item.key_id)}
                       aria-label={`Select key ${item.key_id}`}

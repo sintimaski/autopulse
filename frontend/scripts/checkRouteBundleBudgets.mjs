@@ -5,8 +5,12 @@ const diagnosticsPath = path.resolve(".next/diagnostics/route-bundle-stats.json"
 const stats = JSON.parse(readFileSync(diagnosticsPath, "utf8"));
 
 const routeBudgets = {
-  /** Uncompressed first-load JS (`firstLoadUncompressedJsBytes`); keep a small slack above current dashboard chunk. */
-  "/dashboard": 1_024_000,
+  /**
+   * Uncompressed first-load JS (`firstLoadUncompressedJsBytes`); keep a small slack above current dashboard chunk.
+   * Raised 1_024_000 -> 1_060_000 for the console design-system refresh: shared `Panel` chrome on every overview
+   * chart + panel-vocabulary icons. Header command search is `next/dynamic` so it stays off first-load JS.
+   */
+  "/dashboard": 1_060_000,
   "/w/[pageId]": 925_000,
 };
 

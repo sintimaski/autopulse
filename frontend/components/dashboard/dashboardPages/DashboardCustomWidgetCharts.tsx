@@ -20,7 +20,7 @@ const widgetSeriesPalette = [
   "#38bdf8",
   "#f59e0b",
   "#f43f5e",
-  "#818cf8",
+  "#fb923c",
   "#a78bfa",
   "#2dd4bf",
   "#fb7185",
@@ -216,7 +216,7 @@ export function DashboardCustomWidgetCharts({
               id: `${widget.widget_id}-${index}`,
               label,
               value: point.value,
-              color: ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#818cf8"][index % 5],
+              color: ["#34d399", "#38bdf8", "#f59e0b", "#f43f5e", "#fb923c"][index % 5],
             }))
             .sort((a, b) => b.value - a.value);
           return (

@@ -356,7 +356,7 @@ export function VolumeChart({
   }, [responseClassStack]);
 
   const trendCardShell =
-    "relative rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-indigo-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-indigo-950/20";
+    "relative rounded-xl border border-slate-200/80 bg-gradient-to-br from-white/90 via-slate-50/80 to-amber-50/50 p-3 dark:border-neutral-700 dark:from-neutral-900/90 dark:via-neutral-900/80 dark:to-amber-950/20";
 
   return (
     <div>
@@ -371,7 +371,7 @@ export function VolumeChart({
               value={effectiveChartSpanMinutes}
               disabled={chartsScopePending}
               onChange={(e) => setChartSpanMinutes(Number(e.target.value))}
-              className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="min-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none ring-orange-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
               {chartSpanOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -386,7 +386,7 @@ export function VolumeChart({
               value={effectiveStepMinutes}
               disabled={chartsScopePending}
               onChange={(e) => setStepMinutesUser(Number(e.target.value))}
-              className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
+              className="min-w-[120px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-orange-500/30 focus:ring-2 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/40 dark:focus:ring-neutral-500/50"
             >
               {allowedStepMinutes.map((m) => (
                 <option key={m} value={m}>

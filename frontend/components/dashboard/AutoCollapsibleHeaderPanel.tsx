@@ -100,7 +100,7 @@ export function AutoCollapsibleHeaderPanel({
               aria-controls={compactPanelId}
               aria-label={compactLabel}
               title={compactLabel}
-              className="flex h-full min-w-0 flex-1 items-center justify-between text-left text-sm font-semibold text-slate-700 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:text-neutral-200 dark:hover:text-neutral-100 dark:focus-visible:ring-neutral-500/50"
+              className="flex h-full min-w-0 flex-1 items-center justify-between text-left text-sm font-semibold text-slate-700 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:text-neutral-200 dark:hover:text-neutral-100 dark:focus-visible:ring-neutral-500/50"
             >
               <span className="flex items-center gap-2">
                 <SlidersHorizontal className="size-5 shrink-0 text-slate-600 dark:text-neutral-300" aria-hidden />
@@ -118,7 +118,7 @@ export function AutoCollapsibleHeaderPanel({
                 onClick={onResetFilters}
                 title="Reset filters"
                 aria-label="Reset filters"
-                className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
+                className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus-visible:ring-neutral-500/50"
               >
                 <FilterX className="size-4" aria-hidden />
               </button>

@@ -2,7 +2,7 @@
 
 /** Shared ring used by dashboard loading surfaces (charts, cards, session). */
 export const dashboardSpinnerRingClassName =
-  "shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-sky-600 motion-reduce:animate-none motion-reduce:border-t-transparent dark:border-neutral-600 dark:border-t-sky-400";
+  "shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-orange-600 motion-reduce:animate-none motion-reduce:border-t-transparent dark:border-neutral-600 dark:border-t-orange-400";
 
 type CardSpinnerSize = "embed" | "compact" | "section";
 

@@ -3,42 +3,77 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ChevronRight, type LucideIcon } from "lucide-react";
+// Direct file import (not the `console` barrel) keeps the hot /dashboard chunk
+// from pulling every primitive — see scripts/checkRouteBundleBudgets.mjs.
+import { Panel } from "../../ui/console/Panel";
+
 type ChartPanelProps = {
   title: string;
   description?: string;
+  /** Leading icon in the panel header. */
+  icon?: LucideIcon;
+  /** Legacy convenience action — renders a header link. Prefer `actions` for richer controls. */
   actionHref?: string;
   actionLabel?: string;
+  /** Arbitrary header controls (tabs, buttons) rendered after the legacy action link. */
+  actions?: ReactNode;
+  /** Optional footer row (legends, hints). */
+  footer?: ReactNode;
+  /** Tighter chrome for compact panels. */
+  dense?: boolean;
   children: ReactNode;
   className?: string;
+  /** Override body padding (defaults to comfortable panel padding). */
+  bodyClassName?: string;
 };
 
+/**
+ * Chart/section panel — wraps the shared console `Panel` chrome so every chart
+ * surface shares one title row, action slot and footer treatment.
+ */
 export function ChartPanel({
   title,
   description,
+  icon,
   actionHref,
   actionLabel,
+  actions,
+  footer,
+  dense = false,
   children,
   className,
+  bodyClassName,
 }: ChartPanelProps) {
+  const legacyAction =
+    actionHref && actionLabel ? (
+      <Link
+        href={actionHref}
+        className="inline-flex items-center gap-0.5 text-[12px] font-medium text-orange-700 hover:underline dark:text-orange-300"
+      >
+        {actionLabel}
+        <ChevronRight className="size-3.5" aria-hidden />
+      </Link>
+    ) : null;
+  const headerActions =
+    legacyAction || actions ? (
+      <>
+        {legacyAction}
+        {actions}
+      </>
+    ) : undefined;
   return (
-    <article
-      className={`rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm ring-1 ring-slate-900/[0.05] dark:border-neutral-700 dark:bg-neutral-900 dark:shadow-md dark:shadow-black/30 dark:ring-white/[0.06] ${
-        className ?? ""
-      }`}
+    <Panel
+      title={title}
+      subtitle={description}
+      icon={icon}
+      actions={headerActions}
+      footer={footer}
+      dense={dense}
+      className={className}
+      bodyClassName={bodyClassName ?? "p-3.5"}
     >
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-slate-800 dark:text-neutral-100">{title}</h2>
-        {actionHref && actionLabel ? (
-          <Link
-            href={actionHref}
-            className="text-xs font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
-          >
-            {actionLabel}
-          </Link>
-        ) : null}
-      </div>
-      {description ? <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">{description}</p> : null}
-      <div className={description ? "mt-3" : "mt-2"}>{children}</div>
-    </article>
+      {children}
+    </Panel>
   );
 }

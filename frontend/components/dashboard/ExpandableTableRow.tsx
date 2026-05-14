@@ -35,7 +35,7 @@ export function ExpandableTableRow({
   return (
     <>
       <tr
-        className={`cursor-pointer outline-none transition-colors focus-within:ring-2 focus-within:ring-sky-400/50 active:brightness-95 dark:focus-within:ring-neutral-500/50 ${summaryClassName ?? ""}`}
+        className={`cursor-pointer outline-none transition-colors focus-within:ring-2 focus-within:ring-orange-400/50 active:brightness-95 dark:focus-within:ring-neutral-500/50 ${summaryClassName ?? ""}`}
         onClick={() => onToggle(rowId)}
       >
         <td className="px-2 py-2 align-middle" onClick={(e) => e.stopPropagation()}>

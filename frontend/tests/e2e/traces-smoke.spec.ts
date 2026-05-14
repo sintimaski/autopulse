@@ -8,5 +8,6 @@ test("traces page loads after sign-in", async ({ page }) => {
 
   await page.goto("/lumonox/ui/traces");
   await expect(page).toHaveURL(/\/lumonox\/ui\/traces/);
-  await expect(page.getByRole("heading", { name: "Full tracing (OTLP)" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Trace search" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Trace detail" })).toBeVisible();
 });

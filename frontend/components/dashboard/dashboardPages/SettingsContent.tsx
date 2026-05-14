@@ -28,6 +28,7 @@ import { useSettingsRetentionPolicy } from "./useSettingsRetentionPolicy";
 import { useSettingsActiveProject } from "./useSettingsActiveProject";
 import { useSettingsAggregateQueueStats } from "./useSettingsAggregateQueueStats";
 import { useSettingsAppearanceTrafficFeedback } from "./useSettingsAppearanceTrafficFeedback";
+import { SettingsSectionNav, settingsSectionAnchorId } from "./SettingsSectionNav";
 
 export function SettingsContent() {
   const d = useDashboardData();
@@ -68,138 +69,163 @@ export function SettingsContent() {
   const aggregateQueue = useSettingsAggregateQueueStats(diagnostics.internalMetricsSnapshot);
 
   return (
-    <div className="space-y-6">
-      <SettingsRetentionPolicySection
-        effectiveDraft={retentionPolicy.effectiveRetentionDraft}
-        canEditRetention={canEditRetention}
-        dashboardLoading={d.loading}
-        dashboardErrorMessage={d.errorMessage}
-        retentionMessage={retentionPolicy.retentionMessage}
-        onDraftChange={(next) => retentionPolicy.setRetentionDraft(next)}
-        onSave={() => retentionPolicy.saveRetention()}
-      />
+    <div className="grid items-start gap-4 lg:grid-cols-[14rem_minmax(0,1fr)]">
+      <SettingsSectionNav />
+      <div className="flex min-w-0 flex-col gap-5">
+        <div id={settingsSectionAnchorId("retention")} className="scroll-mt-24">
+          <SettingsRetentionPolicySection
+            effectiveDraft={retentionPolicy.effectiveRetentionDraft}
+            canEditRetention={canEditRetention}
+            dashboardLoading={d.loading}
+            dashboardErrorMessage={d.errorMessage}
+            retentionMessage={retentionPolicy.retentionMessage}
+            onDraftChange={(next) => retentionPolicy.setRetentionDraft(next)}
+            onSave={() => retentionPolicy.saveRetention()}
+          />
+        </div>
 
-      <SettingsSdkNoiseSection />
+        <div id={settingsSectionAnchorId("sdk")} className="scroll-mt-24">
+          <SettingsSdkNoiseSection />
+        </div>
 
-      <SettingsInternalMetricsSection
-        canViewInternalMetrics={canViewInternalMetrics}
-        internalMetricsLoadState={diagnostics.internalMetricsLoadState}
-        internalMetricsEnabled={diagnostics.internalMetricsEnabled}
-        internalMetricsReason={diagnostics.internalMetricsReason}
-        internalMetricsSnapshot={diagnostics.internalMetricsSnapshot}
-        metricStatusClass={settingsMetricStatusClass}
-        aggregateQueueHealthy={aggregateQueue.aggregateQueueHealthy}
-        aggregateWorkerHealthy={aggregateQueue.aggregateWorkerHealthy}
-        queueUsageRatio={aggregateQueue.queueUsageRatio}
-      />
+        <div id={settingsSectionAnchorId("internal-metrics")} className="scroll-mt-24">
+          <SettingsInternalMetricsSection
+            canViewInternalMetrics={canViewInternalMetrics}
+            internalMetricsLoadState={diagnostics.internalMetricsLoadState}
+            internalMetricsEnabled={diagnostics.internalMetricsEnabled}
+            internalMetricsReason={diagnostics.internalMetricsReason}
+            internalMetricsSnapshot={diagnostics.internalMetricsSnapshot}
+            metricStatusClass={settingsMetricStatusClass}
+            aggregateQueueHealthy={aggregateQueue.aggregateQueueHealthy}
+            aggregateWorkerHealthy={aggregateQueue.aggregateWorkerHealthy}
+            queueUsageRatio={aggregateQueue.queueUsageRatio}
+          />
+        </div>
 
-      <SettingsSystemDiagnosticsSection
-        canViewSystemDiagnostics={canViewSystemDiagnostics}
-        systemDiagnosticsLoadState={diagnostics.systemDiagnosticsLoadState}
-        systemDiagnosticsSnapshot={diagnostics.systemDiagnosticsSnapshot}
-        systemDiagnosticsSummary={diagnostics.systemDiagnosticsSummary}
-        schedulerJobs={diagnostics.schedulerJobs}
-        metricStatusClass={settingsMetricStatusClass}
-        systemDiagnosticsMessage={diagnostics.systemDiagnosticsMessage}
-        setSystemDiagnosticsMessage={diagnostics.setSystemDiagnosticsMessage}
-      />
+        <div id={settingsSectionAnchorId("system-diagnostics")} className="scroll-mt-24">
+          <SettingsSystemDiagnosticsSection
+            canViewSystemDiagnostics={canViewSystemDiagnostics}
+            systemDiagnosticsLoadState={diagnostics.systemDiagnosticsLoadState}
+            systemDiagnosticsSnapshot={diagnostics.systemDiagnosticsSnapshot}
+            systemDiagnosticsSummary={diagnostics.systemDiagnosticsSummary}
+            schedulerJobs={diagnostics.schedulerJobs}
+            metricStatusClass={settingsMetricStatusClass}
+            systemDiagnosticsMessage={diagnostics.systemDiagnosticsMessage}
+            setSystemDiagnosticsMessage={diagnostics.setSystemDiagnosticsMessage}
+          />
+        </div>
 
-      <SettingsEventPlaneCutoverSection
-        canManageEventPlaneCutover={canManageEventPlaneCutover}
-        eventPlaneCutoverLoadState={diagnostics.eventPlaneCutoverLoadState}
-        eventPlaneCutoverMessage={diagnostics.eventPlaneCutoverMessage}
-        eventPlaneUseSnapshotRead={diagnostics.eventPlaneUseSnapshotRead}
-        setEventPlaneUseSnapshotRead={diagnostics.setEventPlaneUseSnapshotRead}
-        eventPlaneCutoverSaving={eventPlaneCutoverSave.eventPlaneCutoverSaving}
-        onSaveCutover={() => eventPlaneCutoverSave.saveEventPlaneCutover()}
-      />
+        <div id={settingsSectionAnchorId("event-plane")} className="scroll-mt-24">
+          <SettingsEventPlaneCutoverSection
+            canManageEventPlaneCutover={canManageEventPlaneCutover}
+            eventPlaneCutoverLoadState={diagnostics.eventPlaneCutoverLoadState}
+            eventPlaneCutoverMessage={diagnostics.eventPlaneCutoverMessage}
+            eventPlaneUseSnapshotRead={diagnostics.eventPlaneUseSnapshotRead}
+            setEventPlaneUseSnapshotRead={diagnostics.setEventPlaneUseSnapshotRead}
+            eventPlaneCutoverSaving={eventPlaneCutoverSave.eventPlaneCutoverSaving}
+            onSaveCutover={() => eventPlaneCutoverSave.saveEventPlaneCutover()}
+          />
+        </div>
 
-      <SettingsExcludeLumonoxTrafficSection
-        canEditRetention={canEditRetention}
-        excludeLumonoxTraffic={d.excludeLumonoxTraffic}
-        themeSettingsSaving={d.themeSettingsSaving}
-        onToggleExclude={appearanceTraffic.onToggleExcludeLumonoxTraffic}
-      />
+        <div id={settingsSectionAnchorId("exclude-traffic")} className="scroll-mt-24">
+          <SettingsExcludeLumonoxTrafficSection
+            canEditRetention={canEditRetention}
+            excludeLumonoxTraffic={d.excludeLumonoxTraffic}
+            themeSettingsSaving={d.themeSettingsSaving}
+            onToggleExclude={appearanceTraffic.onToggleExcludeLumonoxTraffic}
+          />
+        </div>
 
-      <SettingsAlertDeliverySection
-        alertDeliveryDraft={d.alertSettings}
-        dashboardLoading={d.loading}
-        dashboardErrorMessage={d.errorMessage}
-        canEditAlertDelivery={canEditAlertDelivery}
-        viewerSession={viewerSession}
-        alertCapabilities={d.alertCapabilities}
-        alertSettingsSaving={d.alertSettingsSaving}
-        updateAlertSettingsDraft={d.updateAlertSettingsDraft}
-        onSave={() => void alertDelivery.saveDeliveryChannels()}
-        onSendTestAlert={() => void alertDelivery.sendTestAlert()}
-        channelMessage={alertDelivery.channelMessage}
-        testAlertSending={alertDelivery.testAlertSending}
-        testAlertResult={alertDelivery.testAlertResult}
-        testAlertError={alertDelivery.testAlertError}
-      />
+        <div id={settingsSectionAnchorId("alert-delivery")} className="scroll-mt-24">
+          <SettingsAlertDeliverySection
+            alertDeliveryDraft={d.alertSettings}
+            dashboardLoading={d.loading}
+            dashboardErrorMessage={d.errorMessage}
+            canEditAlertDelivery={canEditAlertDelivery}
+            viewerSession={viewerSession}
+            alertCapabilities={d.alertCapabilities}
+            alertSettingsSaving={d.alertSettingsSaving}
+            updateAlertSettingsDraft={d.updateAlertSettingsDraft}
+            onSave={() => void alertDelivery.saveDeliveryChannels()}
+            onSendTestAlert={() => void alertDelivery.sendTestAlert()}
+            channelMessage={alertDelivery.channelMessage}
+            testAlertSending={alertDelivery.testAlertSending}
+            testAlertResult={alertDelivery.testAlertResult}
+            testAlertError={alertDelivery.testAlertError}
+          />
+        </div>
 
-      <SettingsActiveProjectSection
-        organizationsLoadState={orgMembers.organizationsLoadState}
-        accessibleProjects={orgMembers.accessibleProjects}
-        currentProjectLabel={orgMembers.currentProjectLabel}
-        sessionProjectId={d.sessionProjectId}
-        activeProjectBusy={activeProject.activeProjectBusy}
-        activeProjectMessage={activeProject.activeProjectMessage}
-        onActiveProjectChange={activeProject.onActiveProjectChange}
-      />
+        <div id={settingsSectionAnchorId("active-project")} className="scroll-mt-24">
+          <SettingsActiveProjectSection
+            organizationsLoadState={orgMembers.organizationsLoadState}
+            accessibleProjects={orgMembers.accessibleProjects}
+            currentProjectLabel={orgMembers.currentProjectLabel}
+            sessionProjectId={d.sessionProjectId}
+            activeProjectBusy={activeProject.activeProjectBusy}
+            activeProjectMessage={activeProject.activeProjectMessage}
+            onActiveProjectChange={activeProject.onActiveProjectChange}
+          />
+        </div>
 
-      <SettingsOrganizationsMembersSection
-        organizationsLoadState={orgMembers.organizationsLoadState}
-        organizations={orgMembers.organizations}
-        selectedOrganizationId={orgMembers.selectedOrganizationId}
-        onSelectedOrganizationIdChange={orgMembers.onSelectedOrganizationIdChange}
-        selectedOrganization={orgMembers.selectedOrganization}
-        members={orgMembers.members}
-        membersLoadState={orgMembers.membersLoadState}
-        orgOwnerAccess={orgOwnerAccess}
-        canInviteMembers={canInviteMembers}
-        memberBulkRole={orgMembers.memberBulkRole}
-        onMemberBulkRoleChange={orgMembers.setMemberBulkRole}
-        selectedMemberIds={orgMembers.selectedMemberIds}
-        allMembersSelected={orgMembers.allMembersSelected}
-        onToggleMemberSelected={orgMembers.toggleMemberSelected}
-        onToggleSelectAllMembers={orgMembers.toggleSelectAllMembers}
-        onApplyMemberBulk={() => void orgMembers.applyMemberBulk()}
-        inviteEmail={orgMembers.inviteEmail}
-        onInviteEmailChange={orgMembers.setInviteEmail}
-        inviteRole={orgMembers.inviteRole}
-        onInviteRoleChange={orgMembers.setInviteRole}
-        onSendInvite={() => void orgMembers.sendInvite()}
-        orgMessage={orgMembers.orgMessage}
-      />
+        <div id={settingsSectionAnchorId("members")} className="scroll-mt-24">
+          <SettingsOrganizationsMembersSection
+            organizationsLoadState={orgMembers.organizationsLoadState}
+            organizations={orgMembers.organizations}
+            selectedOrganizationId={orgMembers.selectedOrganizationId}
+            onSelectedOrganizationIdChange={orgMembers.onSelectedOrganizationIdChange}
+            selectedOrganization={orgMembers.selectedOrganization}
+            members={orgMembers.members}
+            membersLoadState={orgMembers.membersLoadState}
+            orgOwnerAccess={orgOwnerAccess}
+            canInviteMembers={canInviteMembers}
+            memberBulkRole={orgMembers.memberBulkRole}
+            onMemberBulkRoleChange={orgMembers.setMemberBulkRole}
+            selectedMemberIds={orgMembers.selectedMemberIds}
+            allMembersSelected={orgMembers.allMembersSelected}
+            onToggleMemberSelected={orgMembers.toggleMemberSelected}
+            onToggleSelectAllMembers={orgMembers.toggleSelectAllMembers}
+            onApplyMemberBulk={() => void orgMembers.applyMemberBulk()}
+            inviteEmail={orgMembers.inviteEmail}
+            onInviteEmailChange={orgMembers.setInviteEmail}
+            inviteRole={orgMembers.inviteRole}
+            onInviteRoleChange={orgMembers.setInviteRole}
+            onSendInvite={() => void orgMembers.sendInvite()}
+            orgMessage={orgMembers.orgMessage}
+          />
+        </div>
 
-      <SettingsApiKeyLifecycleSection
-        canMutateApiKeys={canMutateApiKeys}
-        isApiSubpathDashboard={isApiSubpathDashboard()}
-        activeKeyIds={apiKeyBulk.activeKeyIds}
-        keyBulkAction={apiKeyBulk.keyBulkAction}
-        selectedKeyIds={apiKeyBulk.selectedKeyIds}
-        allKeysSelected={apiKeyBulk.allKeysSelected}
-        apiKeys={d.apiKeys}
-        lastIssuedApiKey={d.lastIssuedApiKey}
-        apiKeyMessage={apiKeyBulk.apiKeyMessage}
-        onIssueKey={() => void apiKeyBulk.issueKey()}
-        onRefreshKeys={() => void apiKeyBulk.refreshKeys()}
-        onKeyBulkActionChange={apiKeyBulk.setKeyBulkAction}
-        onApplyBulk={() => void apiKeyBulk.applyKeyBulk()}
-        onToggleSelectAll={apiKeyBulk.onToggleSelectAll}
-        onToggleKeySelected={apiKeyBulk.toggleKeySelected}
-      />
+        <div id={settingsSectionAnchorId("api-keys")} className="scroll-mt-24">
+          <SettingsApiKeyLifecycleSection
+            canMutateApiKeys={canMutateApiKeys}
+            isApiSubpathDashboard={isApiSubpathDashboard()}
+            activeKeyIds={apiKeyBulk.activeKeyIds}
+            keyBulkAction={apiKeyBulk.keyBulkAction}
+            selectedKeyIds={apiKeyBulk.selectedKeyIds}
+            allKeysSelected={apiKeyBulk.allKeysSelected}
+            apiKeys={d.apiKeys}
+            lastIssuedApiKey={d.lastIssuedApiKey}
+            apiKeyMessage={apiKeyBulk.apiKeyMessage}
+            onIssueKey={() => void apiKeyBulk.issueKey()}
+            onRefreshKeys={() => void apiKeyBulk.refreshKeys()}
+            onKeyBulkActionChange={apiKeyBulk.setKeyBulkAction}
+            onApplyBulk={() => void apiKeyBulk.applyKeyBulk()}
+            onToggleSelectAll={apiKeyBulk.onToggleSelectAll}
+            onToggleKeySelected={apiKeyBulk.toggleKeySelected}
+          />
+        </div>
 
-      <SettingsAppearanceSessionSection
-        viewerSession={viewerSession}
-        themeMessage={appearanceTraffic.themeMessage}
-        setThemeMessage={appearanceTraffic.setThemeMessage}
-        themePreference={d.themePreference}
-        themeSettingsSaving={d.themeSettingsSaving}
-        saveThemePreference={d.saveThemePreference}
-        signOutDashboard={d.signOutDashboard}
-      />
+        <div id={settingsSectionAnchorId("appearance")} className="scroll-mt-24">
+          <SettingsAppearanceSessionSection
+            viewerSession={viewerSession}
+            themeMessage={appearanceTraffic.themeMessage}
+            setThemeMessage={appearanceTraffic.setThemeMessage}
+            themePreference={d.themePreference}
+            themeSettingsSaving={d.themeSettingsSaving}
+            saveThemePreference={d.saveThemePreference}
+            signOutDashboard={d.signOutDashboard}
+          />
+        </div>
+      </div>
     </div>
   );
 }

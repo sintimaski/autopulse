@@ -158,7 +158,7 @@ export function ApiKeyMissing() {
           </label>
           <button
             type="button"
-            className="w-full rounded-lg bg-sky-500 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
+            className="w-full rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-slate-950 disabled:opacity-60"
             onClick={() => void requestMagicLink()}
             disabled={loading || !email.trim()}
           >
@@ -304,7 +304,7 @@ export function DashboardPageBoundary({
               No project ingest key is ready yet. Issue a key in{" "}
               <Link
                 href="/onboarding"
-                className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
               >
                 Onboarding
               </Link>{" "}
@@ -321,7 +321,7 @@ export function DashboardPageBoundary({
               This view requires recent traffic data that has not arrived yet. If you are onboarding, open{" "}
               <Link
                 href="/onboarding"
-                className="font-medium text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
+                className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
               >
                 Onboarding
               </Link>
