@@ -111,6 +111,6 @@ def test_db_pacing_clock_skew_capped_at_max_sleep(
     # bound the sleep so callers don't stall on a stale row.
     asyncio.run(throttle_alert_webhook_url(url, min_interval_seconds=0.1))
     elapsed = time.monotonic() - started
-    assert (
-        elapsed <= 65.0
-    ), f"throttle stalled {elapsed:.1f}s on a far-future reservation (cap should bound it)"
+    assert elapsed <= 65.0, (
+        f"throttle stalled {elapsed:.1f}s on a far-future reservation (cap should bound it)"
+    )

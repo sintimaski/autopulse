@@ -955,9 +955,9 @@ def test_ingest_circuit_opens_and_skips_posts_while_cooldown() -> None:
         await dispatcher._send_batch([{"type": "request", "a": 1}])
         await dispatcher._send_batch([{"type": "request", "a": 2}])
         calls_after_open = err.calls
-        assert any(
-            isinstance(p, dict) and p.get("circuit_opened") is True for p in payloads
-        ), payloads
+        assert any(isinstance(p, dict) and p.get("circuit_opened") is True for p in payloads), (
+            payloads
+        )
         await dispatcher._send_batch([{"type": "request", "a": 3}])
         assert err.calls == calls_after_open
         skip_payloads = [
