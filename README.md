@@ -6,6 +6,8 @@ Lumonox gives Python teams a fast path to useful production visibility without o
 
 > **Status — open-source portfolio project.** Lumonox is a complete, working observability product built solo, end to end: Python SDK, FastAPI ingest API, and Next.js dashboard. It is not operated as a hosted commercial service — you self-host it (one wheel ships the API with the dashboard baked in). Issues, forks, and contributions are welcome.
 
+> **▶️ Try it live:** a seeded, self-refreshing demo runs at **[sintimaski-lumonox-demo.hf.space](https://sintimaski-lumonox-demo.hf.space)** — sign in with `demo@lumonox.dev` (the magic link is shown inline, no email needed). Setup notes: [`docs/ops/HUGGINGFACE_SPACE.md`](./docs/ops/HUGGINGFACE_SPACE.md).
+
 ### Highlights
 
 - **Instant visibility:** add one middleware call to capture requests and errors without blocking app traffic.
@@ -20,6 +22,7 @@ Lumonox gives Python teams a fast path to useful production visibility without o
 
 ## Contents
 
+- ▶️ [Live demo](https://sintimaski-lumonox-demo.hf.space)
 - ✨ [Quickstart](#quickstart)
 - 🧱 [Under the hood](#under-the-hood)
 - 📊 [Custom dashboard widgets](#custom-dashboard-widgets)
