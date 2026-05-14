@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { ChevronRight } from "../../lib/icons";
 import { parseDashboardOperatorHealthResponse } from "../../utils/dashboardResponseGuards";
 import type { DashboardOperatorHealthResponse, OperatorHealthStatus } from "./dashboardTypes";
 import { useDashboardData } from "./DashboardDataContext";
@@ -23,6 +24,19 @@ function statusTone(status: OperatorHealthStatus): string {
     default:
       return "border-slate-200/80 bg-slate-50/90 text-slate-700 dark:border-neutral-600 dark:bg-neutral-800/60 dark:text-neutral-200";
   }
+}
+
+/** Worst-first so the most urgent count reads first in the collapsed summary. */
+const STATUS_BADGE_ORDER: OperatorHealthStatus[] = [
+  "critical",
+  "degraded",
+  "unknown",
+  "not_configured",
+  "healthy",
+];
+
+function statusLabel(status: OperatorHealthStatus): string {
+  return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function HealthMetricsBody({ payload }: { payload: DashboardOperatorHealthResponse }) {
@@ -106,17 +120,17 @@ export function OperatorPipelineHealthSection() {
     };
   }, [canView]);
 
-  const allChecksOk = useMemo(() => {
-    if (!payload?.enabled || loadState !== "ready") {
-      return false;
+  /** Per-status subsystem counts for the collapsed summary badges. */
+  const statusSummary = useMemo(() => {
+    const counts = new Map<OperatorHealthStatus, number>();
+    for (const row of payload?.subsystems ?? []) {
+      counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
     }
-    if (payload.overall_status !== "healthy") {
-      return false;
-    }
-    return payload.subsystems.every(
-      (s) => s.status === "healthy" || s.status === "not_configured",
-    );
-  }, [payload, loadState]);
+    return STATUS_BADGE_ORDER.flatMap((status) => {
+      const count = counts.get(status) ?? 0;
+      return count > 0 ? [{ status, count }] : [];
+    });
+  }, [payload]);
 
   if (!canView) {
     return <OperatorReliabilityCallout />;
@@ -159,19 +173,27 @@ export function OperatorPipelineHealthSection() {
         <p className="mt-2 text-[11px] text-slate-600 dark:text-neutral-400">
           {payload.reason ?? "Internal metrics are disabled on this server."}
         </p>
-      ) : allChecksOk ? (
-        <details className="mt-2 rounded-md border border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-900/45 dark:bg-emerald-950/20">
-          <summary className="cursor-pointer list-none px-2 py-1.5 text-[11px] font-medium text-emerald-900 marker:content-none dark:text-emerald-100 [&::-webkit-details-marker]:hidden">
-            <span className="select-none">All operator checks passed — expand for subsystem details</span>
+      ) : (
+        <details className="group mt-2 rounded-md border border-slate-200/70 bg-white/70 dark:border-neutral-700 dark:bg-neutral-950/40">
+          <summary className="flex cursor-pointer list-none flex-wrap items-center gap-1.5 px-2 py-1.5 marker:content-none [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300">
+              <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
+              Subsystems
+            </span>
+            {statusSummary.map(({ status, count }) => (
+              <span
+                key={status}
+                className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusTone(status)}`}
+              >
+                <span className="tabular-nums">{count}</span>
+                {statusLabel(status)}
+              </span>
+            ))}
           </summary>
-          <div className="border-t border-emerald-200/60 px-2 pb-2 pt-2 dark:border-emerald-900/40">
+          <div className="border-t border-slate-200/60 px-2 pb-2 pt-2 dark:border-neutral-800">
             <HealthMetricsBody payload={payload} />
           </div>
         </details>
-      ) : (
-        <div className="mt-2">
-          <HealthMetricsBody payload={payload} />
-        </div>
       )}
     </section>
   );

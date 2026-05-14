@@ -86,10 +86,13 @@ export function AutoCollapsibleHeaderPanel({
       <div
         className={`fixed inset-x-0 top-0 z-40 pl-[var(--dashboard-sidebar-width,14rem)] ${showCompact ? "block" : "hidden"}`}
       >
+        {/* Expand only via the disclosure button — no hover-to-open. This bar is
+            position:fixed at the top of the viewport, so a hover trigger fires
+            whenever the pointer merely crosses it on the way to other header
+            controls (e.g. the "Jump to anything" search), uncollapsing the scope
+            panel unintentionally. Click-to-toggle keeps it predictable. */}
         <div
           ref={compactRef}
-          onMouseEnter={() => setCompactOpen(true)}
-          onMouseLeave={() => setCompactOpen(false)}
           className="border-y border-slate-200/90 bg-white/95 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95"
         >
           <div className="flex h-20 w-full items-center gap-3 px-4 sm:px-6">
@@ -130,8 +133,6 @@ export function AutoCollapsibleHeaderPanel({
             id={compactPanelId}
             role="region"
             aria-label={`${compactLabel} controls`}
-            onMouseEnter={() => setCompactOpen(true)}
-            onMouseLeave={() => setCompactOpen(false)}
             className="border-b border-slate-200/90 bg-white/95 px-4 pb-3 pt-2 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95 sm:px-6"
           >
             {children}
