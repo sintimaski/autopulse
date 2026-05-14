@@ -4,6 +4,8 @@
 
 Lumonox gives Python teams a fast path to useful production visibility without observability-infra overhead. It instruments both **FastAPI** and **Django** apps — and the Lumonox API itself is a FastAPI service under the hood.
 
+> **Status — open-source portfolio project.** Lumonox is a complete, working observability product built solo, end to end: Python SDK, FastAPI ingest API, and Next.js dashboard. It is not operated as a hosted commercial service — you self-host it (one wheel ships the API with the dashboard baked in). Issues, forks, and contributions are welcome.
+
 ### Highlights
 
 - **Instant visibility:** add one middleware call to capture requests and errors without blocking app traffic.
@@ -19,12 +21,14 @@ Lumonox gives Python teams a fast path to useful production visibility without o
 ## Contents
 
 - ✨ [Quickstart](#quickstart)
+- 🧱 [Under the hood](#under-the-hood)
 - 📊 [Custom dashboard widgets](#custom-dashboard-widgets)
 - ⚙️ [Runtime modes](#runtime-modes)
 - 🔐 [Auth and options](#auth-and-options)
 - 🌍 [Environment reference](#environment-reference)
 - 🛠️ [Develop Lumonox from this repo](#develop-lumonox-from-this-repo)
 - 📦 [PyPI publishing & install links](./docs/ops/PYPI_PUBLISHING.md)
+- 📄 [License](#license)
 
 ---
 
@@ -131,6 +135,27 @@ First-ingest smoke checklist (contract-aligned):
 ---
 
 **🏭 Running in production?** Start with the **[Production deployment guide](./docs/ops/PRODUCTION_DEPLOYMENT.md)**.
+
+---
+
+## Under the hood 🧱
+
+A monorepo with three real surfaces, each independently buildable:
+
+| Surface | What it is |
+| --- | --- |
+| **`sdk/`** | Python SDK (PyPI: `lumonox-sdk`) — FastAPI + Django (ASGI) middleware over one shared core/adapter send path. |
+| **`backend/`** | FastAPI ingest + dashboard API + background workers (PyPI: `lumonox`). One wheel also bundles the built dashboard. |
+| **`frontend/`** | Next.js dashboard; default delivery is a static export mounted by the backend at `/lumonox/ui/`. |
+
+Engineering highlights worth a look:
+
+- **An SDK that can't take your app down.** Bounded async queue, drop-when-full backpressure, background batch sender, bounded retries plus an opt-in circuit breaker, byte-budgeted batches, and silent-failure-by-default. Sensitive headers and secret-like fields are scrubbed before anything leaves the process; the hot path targets sub-millisecond overhead.
+- **Ingest kept fast.** `POST /ingest` authenticates per-project API keys (stored hashed), validates and normalizes events, and pushes heavy work off the request path. Relational metadata lives in SQL; high-volume events go to a DuckDB event store with optional Parquet cold storage and S3-compatible sync.
+- **Diagnosis-first dashboard.** Opinionated Overview → Diagnosis → Requests flow with shared request-correlation scope, grouped error stack traces, incident notebooks, an operator-health surface, release markers, and multi-channel alerts (email / Slack / Discord / webhook). Auth via magic-link or OIDC.
+- **Built like production software.** Fully typed (mypy), linted (Ruff) and security-scanned (Bandit); pytest across SDK + backend on both SQLite and Postgres; frontend Vitest + Playwright smoke with a bundle-size budget. `make ci` mirrors the GitHub Actions pipeline locally.
+
+Scope and boundaries — what Lumonox deliberately does *not* try to be — are documented in **[DEVELOPMENT.md](./DEVELOPMENT.md)**.
 
 ---
 
@@ -321,3 +346,9 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 | Browser smoke (Playwright) | Optional (`LUMONOX_RELEASE_GATES_E2E=1`) | `browser-smoke` job |
 
 **Production rollout** stays documented in **[Production deployment →](./docs/ops/PRODUCTION_DEPLOYMENT.md)** and the focused docs index **[docs/README.md](./docs/README.md)**. Frontend layout and contributor conventions: **[frontend/README.md](./frontend/README.md)**.
+
+---
+
+## License 📄
+
+Lumonox is released under the [MIT License](./LICENSE) — use it, fork it, learn from it.

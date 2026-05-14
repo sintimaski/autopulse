@@ -3,6 +3,7 @@ name = "lumonox-workspace"
 version = "0.0.0"
 description = "Monorepo root for Lumonox tooling"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "lumonox-sdk",
