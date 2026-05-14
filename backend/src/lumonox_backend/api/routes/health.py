@@ -259,6 +259,11 @@ async def _build_replay_queue_readiness(database_url: str) -> dict[str, object]:
 
 
 def _build_metrics_snapshot(request: Request) -> dict[str, object]:
+    # Local import: ``lumonox_backend.jobs`` pulls in the maintenance + dashboard
+    # graph, which imports this route module — a module-level import here is a
+    # circular import. By call time (per request) every module is initialized.
+    from lumonox_backend.jobs import retention_pressure_poll_should_run
+
     settings = get_settings()
     scheduler = getattr(request.app.state, "_lumonox_scheduler", None)
     pressure = getattr(request.app.state, "_lumonox_retention_pressure_poll", None)
@@ -329,6 +334,10 @@ def _build_metrics_snapshot(request: Request) -> dict[str, object]:
         "dashboard_realtime_bus_subscriber_running": realtime_bus_subscriber_running,
         "scheduler_running": scheduler_running,
         "retention_pressure_poll_running": retention_pressure_poll_running,
+        # Whether the in-process pressure poll is *expected* on this topology at all
+        # (file-backed SQLite metadata DB + RETENTION_PRESSURE_POLL_SECONDS > 0).
+        # When false, "not running" is correct, not a fault — see the health matrix.
+        "retention_pressure_poll_should_run": retention_pressure_poll_should_run(settings),
         "jobs_enable_scheduler": settings.jobs_enable_scheduler,
         "jobs_external_cron_ownership": settings.jobs_external_cron_ownership,
         "retention_pressure_poll_seconds": settings.retention_pressure_poll_seconds,
@@ -459,17 +468,26 @@ def build_operator_health_subsystems(snapshot: dict[str, object]) -> dict[str, o
     payload_large = int(pressure.get("payload_too_large_total") or 0)
     rate_limited = int(pressure.get("rate_limited_total") or 0)
     sync_fb = int(pressure.get("aggregate_worker_sync_fallback_total") or 0)
-    if worker_failed or dead_letter or plane_failed:
+    # `critical` is reserved for signals that mean events were actually lost or a
+    # store rejected writes: dead-lettered SQL-tail repairs and event-plane append
+    # failures. `aggregate_worker_failed` counts upsert *attempts* that threw — the
+    # worker retries with backoff, so unless those retries also exhausted (which
+    # shows up as `dead_letter`), the work still landed. A handful of transient
+    # `database is locked` blips under load should read as `degraded`, not pin the
+    # dashboard to `critical` forever on a monotonic counter (cf. the alerts
+    # webhook thresholds above, same reasoning).
+    if dead_letter or plane_failed:
         ingest_status = "critical"
         ingest_summary = (
-            f"Ingest pipeline errors: worker_failed={worker_failed}, "
-            f"sql_tail_dead_lettered={dead_letter}, event_plane_failed={plane_failed}."
+            f"Ingest pipeline lost or rejected events: sql_tail_dead_lettered={dead_letter}, "
+            f"event_plane_failed={plane_failed}. Inspect the replay queue and event-plane logs."
         )
-    elif persist_failed or sync_fb:
+    elif worker_failed or persist_failed or sync_fb:
         ingest_status = "degraded"
         ingest_summary = (
-            f"Pressure signals: persist_sql_tail_failed={persist_failed}, "
-            f"aggregate_sync_fallback={sync_fb}, rate_limited={rate_limited}."
+            f"Transient ingest pressure (retried, no events dead-lettered): "
+            f"aggregate_worker_failed={worker_failed}, persist_sql_tail_failed={persist_failed}, "
+            f"aggregate_sync_fallback={sync_fb}."
         )
     elif payload_large or rate_limited > 0:
         ingest_status = "degraded"
@@ -523,17 +541,27 @@ def build_operator_health_subsystems(snapshot: dict[str, object]) -> dict[str, o
     )
     overall = _pick_worse(overall, rt_status)
 
+    # The pressure poll is gated by `retention_pressure_poll_should_run`, not by
+    # `JOBS_ENABLE_SCHEDULER`: lifespan starts it only on a file-backed SQLite
+    # metadata DB with RETENTION_PRESSURE_POLL_SECONDS > 0. Keying the health row
+    # off `jobs_enable` reported a false "degraded" whenever the scheduler was on
+    # but the poll was intentionally off (e.g. POLL_SECONDS=0, or a Postgres
+    # metadata DB). Only flag "degraded" when the poll *should* be running here.
     retention_running = bool(snapshot.get("retention_pressure_poll_running"))
-    if jobs_enable:
-        ret_status = "healthy" if retention_running else "degraded"
-        ret_summary = (
-            "Retention pressure poll task is running."
-            if retention_running
-            else "Scheduler enabled but retention pressure poll is not running on this worker."
-        )
-    else:
+    retention_should_run = bool(snapshot.get("retention_pressure_poll_should_run"))
+    if not retention_should_run:
         ret_status = "not_configured"
-        ret_summary = "Scheduler off; retention poll not expected on this process."
+        ret_summary = (
+            "Retention pressure poll not active on this topology (needs a file-backed "
+            "SQLite metadata DB and RETENTION_PRESSURE_POLL_SECONDS > 0); scheduled "
+            "retention is unaffected."
+        )
+    elif retention_running:
+        ret_status = "healthy"
+        ret_summary = "Retention pressure poll task is running."
+    else:
+        ret_status = "degraded"
+        ret_summary = "Retention pressure poll should be running on this worker but is not."
     subsystems.append(
         {
             "id": "retention_poll",

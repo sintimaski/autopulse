@@ -135,6 +135,10 @@ def test_internal_metrics_includes_ingest_pressure_view(
     assert "enabled" in body["ingest_aggregate_queue"]
     assert "ingest_realtime_fanout" in body
     assert "pending_tasks" in body["ingest_realtime_fanout"]
+    # The operator-health matrix keys the retention-poll row off whether the poll
+    # is *expected* on this topology, not off JOBS_ENABLE_SCHEDULER.
+    assert "retention_pressure_poll_should_run" in body
+    assert isinstance(body["retention_pressure_poll_should_run"], bool)
     assert "parquet_export" in body
     assert "enabled" in body["parquet_export"]
     assert "query_enabled" in body["parquet_export"]
@@ -354,6 +358,7 @@ def test_build_operator_health_subsystems_covers_expected_rows() -> None:
         "dashboard_realtime_bus_subscriber_running": False,
         "lumonox_env": "development",
         "retention_pressure_poll_running": True,
+        "retention_pressure_poll_should_run": True,
         "jobs": {
             "alerts": {
                 "status": "succeeded",
@@ -392,6 +397,7 @@ def _alerts_snapshot_with_webhook_counters(
         "dashboard_realtime_bus_subscriber_running": False,
         "lumonox_env": "development",
         "retention_pressure_poll_running": True,
+        "retention_pressure_poll_should_run": True,
         "jobs": {
             "alerts": {
                 "status": "succeeded",
@@ -446,3 +452,107 @@ def test_build_operator_health_alerts_warns_but_stays_healthy_under_threshold() 
     summary = str(alerts_row.get("summary") or "")
     assert "send_failed=" in summary
     assert "url_validation_rejected=" in summary
+
+
+def _operator_health_snapshot(**overrides: object) -> dict[str, object]:
+    """All-healthy operator-health snapshot; override single keys per assertion."""
+    snapshot: dict[str, object] = {
+        "topology_guardrails": {
+            "status": "healthy",
+            "unsafe_count": 0,
+            "risky_count": 0,
+            "non_ideal_count": 0,
+            "findings": [],
+            "scheduler_required": True,
+        },
+        "jobs_enable_scheduler": True,
+        "scheduler_running": True,
+        "ingest_pressure": {},
+        "dashboard_realtime_bus_backend": "none",
+        "dashboard_realtime_bus_subscriber_running": False,
+        "lumonox_env": "development",
+        "retention_pressure_poll_running": True,
+        "retention_pressure_poll_should_run": True,
+        "jobs": {
+            "alerts": {
+                "status": "succeeded",
+                "started_at": "",
+                "finished_at": "",
+                "duration_ms": 1,
+                "records_processed": 0,
+                "failure_reason": None,
+            }
+        },
+    }
+    snapshot.update(overrides)
+    return snapshot
+
+
+def _operator_health_row(snapshot: dict[str, object], row_id: str) -> dict[str, object]:
+    from lumonox_backend.api.routes.health import build_operator_health_subsystems
+
+    out = build_operator_health_subsystems(snapshot)
+    return next(r for r in out["subsystems"] if isinstance(r, dict) and r.get("id") == row_id)
+
+
+def test_build_operator_health_retention_poll_not_configured_when_poll_should_not_run() -> None:
+    """Regression: scheduler on + poll intentionally off (POLL_SECONDS=0 or non-SQLite
+
+    metadata DB) must read as ``not_configured``, not a false ``degraded``.
+    """
+    snapshot = _operator_health_snapshot(
+        jobs_enable_scheduler=True,
+        retention_pressure_poll_running=False,
+        retention_pressure_poll_should_run=False,
+    )
+    row = _operator_health_row(snapshot, "retention_poll")
+    assert row.get("status") == "not_configured"
+    assert "not active on this topology" in str(row.get("summary") or "")
+
+
+def test_build_operator_health_retention_poll_degraded_only_when_expected_but_absent() -> None:
+    snapshot = _operator_health_snapshot(
+        retention_pressure_poll_running=False,
+        retention_pressure_poll_should_run=True,
+    )
+    row = _operator_health_row(snapshot, "retention_poll")
+    assert row.get("status") == "degraded"
+    assert "should be running" in str(row.get("summary") or "")
+
+
+def test_build_operator_health_retention_poll_healthy_when_running() -> None:
+    snapshot = _operator_health_snapshot(
+        retention_pressure_poll_running=True,
+        retention_pressure_poll_should_run=True,
+    )
+    row = _operator_health_row(snapshot, "retention_poll")
+    assert row.get("status") == "healthy"
+
+
+def test_build_operator_health_ingest_degraded_on_transient_worker_failures() -> None:
+    """Regression: retried-and-recovered aggregate-worker failures (no dead-letter)
+
+    are transient pressure — ``degraded`` — not a permanent ``critical`` pin.
+    """
+    snapshot = _operator_health_snapshot(
+        ingest_pressure={
+            "aggregate_worker_failed_total": 5,
+            "sql_tail_repair_dead_lettered_total": 0,
+            "event_plane_append_failed_total": 0,
+        }
+    )
+    row = _operator_health_row(snapshot, "ingest")
+    assert row.get("status") == "degraded"
+    summary = str(row.get("summary") or "")
+    assert "aggregate_worker_failed=5" in summary
+    assert "no events dead-lettered" in summary
+
+
+def test_build_operator_health_ingest_critical_only_on_data_loss() -> None:
+    for pressure in (
+        {"sql_tail_repair_dead_lettered_total": 1},
+        {"event_plane_append_failed_total": 1},
+    ):
+        snapshot = _operator_health_snapshot(ingest_pressure=pressure)
+        row = _operator_health_row(snapshot, "ingest")
+        assert row.get("status") == "critical", pressure
