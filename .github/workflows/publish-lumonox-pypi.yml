@@ -91,8 +91,11 @@ jobs:
         run: |
           set -euo pipefail
           whl="$(ls dist/lumonox-*-py3-none-any.whl | head -1)"
-          unzip -l "$whl" | grep -Fq "lumonox_backend/dashboard_static/index.html"
-          unzip -l "$whl" | grep -Fq "lumonox/__init__.py"
+          # Capture the listing first: ``unzip -l | grep -q`` lets grep close the
+          # pipe on first match, so unzip takes SIGPIPE and pipefail false-fails.
+          listing="$(unzip -l "$whl")"
+          grep -Fq "lumonox_backend/dashboard_static/index.html" <<<"$listing"
+          grep -Fq "lumonox/__init__.py" <<<"$listing"
 
       - name: Upload to PyPI
         if: steps.decide.outputs.publish == 'true'

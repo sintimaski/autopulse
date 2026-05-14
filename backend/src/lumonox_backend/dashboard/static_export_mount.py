@@ -61,8 +61,15 @@ class _DashboardStaticExportFiles(StaticFiles):
 
 
 def _bundled_dashboard_static_dir() -> Path | None:
-    """Bundled dashboard export next to this module when shipped in the wheel."""
-    bundled = Path(__file__).resolve().parent / "dashboard_static"
+    """Bundled dashboard export shipped inside the ``lumonox_backend`` wheel.
+
+    The wheel places the Next export at ``lumonox_backend/dashboard_static/`` — a
+    sibling of this ``dashboard`` subpackage, *not* nested under it (see the sdist
+    ``force-include`` in ``backend/pyproject.toml`` and the publish workflow's
+    wheel-contents check). ``parents[1]`` is the ``lumonox_backend`` package root;
+    ``__file__`` lives at ``lumonox_backend/dashboard/static_export_mount.py``.
+    """
+    bundled = Path(__file__).resolve().parents[1] / "dashboard_static"
     if bundled.is_dir() and (bundled / "index.html").is_file():
         return bundled
     return None

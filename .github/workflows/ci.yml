@@ -190,11 +190,11 @@ jobs:
       - name: Install uv (backend wheel smoke)
         uses: astral-sh/setup-uv@v5
 
-      - name: Backend wheel bundles dashboard export
+      - name: Backend wheel bundles + serves dashboard export
         working-directory: ${{ github.workspace }}
-        run: |
-          uv build backend -o /tmp/ap-wheel-smoke
-          unzip -l /tmp/ap-wheel-smoke/lumonox-*-py3-none-any.whl | grep -Fq "lumonox_backend/dashboard_static/index.html"
+        # Builds the full wheel, installs it, and asserts the bundled dashboard UI
+        # actually mounts (regression guard for the wheel UI-discovery bug).
+        run: bash scripts/lumonox_wheel_ui_smoke.sh
 
   browser-smoke:
     runs-on: ubuntu-latest
