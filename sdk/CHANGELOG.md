@@ -8,6 +8,16 @@ for public API and packaging.
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-05-14
+
+### Added — per-request tracing
+
+- **Lightweight per-request trace context.** The FastAPI and Django middlewares now stamp ``trace_id`` / ``span_id`` / ``parent_span_id`` / ``span_name`` onto every captured request span via the shared ``lumonox.core.tracing`` helper. An inbound W3C ``traceparent`` header is continued (so a multi-service request stays one trace); otherwise a fresh trace is started. This is what makes the dashboard's traces explorer populate for SDK-instrumented apps — it has no outbound propagation and no span exporter, so it is per-request tracing, not full distributed tracing. The synthetic load fixture groups short request runs under one ``traceparent`` so the demo shows real multi-span traces.
+
+### Added — `.env` auto-discovery
+
+- **``build_monitor_config`` auto-discovers a ``.env``.** ``lumonox()`` / ``monitor()`` look for a ``.env`` next to the app (current working directory, then a few parent directories) and load any ``LUMONOX_*`` keys before reading config — no shell exports or ``python-dotenv`` wiring of your own. Only ``LUMONOX_*`` keys are touched, real environment variables are never overridden (shell / prod config always wins), and it never raises. Opt out with ``load_dotenv=False``, or target a file with ``dotenv_path="…/.env"``. Zero new dependencies.
+
 ### Added — Django adapter
 
 - **``lumonox.django`` async middleware adapter.** Install via ``pip install "lumonox-sdk[django]"``. Single-line wire-up:

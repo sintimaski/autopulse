@@ -1,6 +1,6 @@
 [project]
 name = "lumonox-sdk"
-version = "0.2.7"
+version = "0.2.8"
 description = "FastAPI observability SDK for Lumonox"
 readme = "README.md"
 license = "MIT"
@@ -35,7 +35,7 @@ dependencies = [
 # guarantee the framework dep itself is installed.
 [project.optional-dependencies]
 # ``pip install "lumonox-sdk[stack]"`` pulls the API + bundled dashboard (PyPI: ``lumonox``).
-stack = ["lumonox>=0.2.10"]
+stack = ["lumonox>=0.2.12"]
 # ``pip install "lumonox-sdk[django]"`` adds Django so ``lumonox.django`` works
 # without the user installing Django separately. Async middleware (Django 3.1+)
 # is required; 4.2 LTS is the floor.
