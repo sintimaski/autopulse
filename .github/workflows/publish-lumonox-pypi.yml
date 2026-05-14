@@ -69,8 +69,14 @@ jobs:
       - name: Build dashboard static export
         if: steps.decide.outputs.publish == 'true'
         env:
-          NEXT_PUBLIC_LUMONOX_API_BASE_URL: "http://127.0.0.1:8000"
-          NEXT_PUBLIC_LUMONOX_DEV_API_ORIGIN: "http://127.0.0.1:8000"
+          # The wheel ships the dashboard mounted on the API itself (served at …/lumonox/ui/),
+          # so the UI must call the API on the SAME ORIGIN. NEXT_PUBLIC_* values are inlined
+          # into the static JS at build time — baking an absolute origin here hardcodes it into
+          # the shipped bundle and breaks sign-in for every self-host not served at exactly
+          # http://127.0.0.1:8000 (the browser blocks the cross-origin / mixed-content fetch).
+          # Empty = buildApiUrl() emits same-origin /dashboard/... paths (DEFAULT_MOUNTED_API_BASE).
+          NEXT_PUBLIC_LUMONOX_API_BASE_URL: ""
+          NEXT_PUBLIC_LUMONOX_DEV_API_ORIGIN: ""
         run: |
           npm ci
           npm run build

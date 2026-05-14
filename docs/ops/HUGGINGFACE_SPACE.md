@@ -5,13 +5,14 @@ sign in to a shared demo project that is pre-seeded with synthetic request/error
 and kept moving by a light live traffic trickle.
 
 Everything the Space needs lives in [`deploy/huggingface/`](../../deploy/huggingface/) —
-three files, no monorepo checkout required on the Space side.
+a few files, no monorepo checkout required on the Space side.
 
 ## How it works
 
 | File | Role |
 |------|------|
-| `deploy/huggingface/Dockerfile` | `pip install lumonox==<pinned>` — the wheel bundles the FastAPI ingest + dashboard API, the Next.js dashboard static export, and the Alembic migrations. Sets demo runtime env and runs as UID 1000 (Spaces requirement). |
+| `deploy/huggingface/Dockerfile` | `pip install lumonox==<pinned>` — the wheel bundles the FastAPI ingest + dashboard API, the Next.js dashboard static export, and the Alembic migrations. Runs `patch_dashboard.py`, sets demo runtime env, runs as UID 1000 (Spaces requirement). |
+| `deploy/huggingface/patch_dashboard.py` | build-time patches to the wheel's bundled dashboard: rewrite the baked-in API origin to same-origin, and inject auto sign-in. See "Why the dashboard is patched" below. |
 | `deploy/huggingface/entrypoint.sh` | bootstrap demo tenant + migrations → start the API (`uvicorn`, `--proxy-headers`) → backfill history → run the live trickle. `wait`s on the API so the container lifecycle follows it. |
 | `deploy/huggingface/seed_demo.py` | `--bootstrap` (org / project / dashboard user + owner membership / ingest key, idempotent), `--backfill` (POSTs recent synthetic history to `/ingest`), `--live` (loops POSTing fresh batches). Depends only on the installed `lumonox` package. |
 
@@ -23,9 +24,9 @@ Key runtime choices (set as `ENV` in the Dockerfile):
   in-process and POSTs to `/ingest`), but enabled so the `/dev/scenarios/*` routes are
   available for manual poking.
 - **Sign-in:** `DASHBOARD_AUTH_ENABLED=true` + `DASHBOARD_AUTH_ALLOWED_EMAIL=demo@lumonox.dev`
-  + `DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN=true`. Only the demo email can sign in, and
-  the magic link is shown inline in the UI (no email delivery needed). Every visitor logs
-  in as the same pre-seeded user and lands on the same seeded project.
+  + `DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN=true`. Only the demo email can sign in. The
+  injected auto sign-in script (see below) completes the magic-link flow for every visitor,
+  so they land straight on the shared pre-seeded project — no form to fill in.
 - **`INGEST_REQUIRE_HTTPS=false`** — the seed POSTs to `http://127.0.0.1:8000/ingest`
   inside the container; the public origin is still HTTPS via the Spaces TLS proxy.
 - **Storage** is SQLite + DuckDB under `LUMONOX_DATA_DIR=/home/user/data`. The Spaces
@@ -42,41 +43,59 @@ Key runtime choices (set as `ENV` in the Dockerfile):
    - Hardware: **CPU basic** (free) is enough
    - Visibility: **Public**
 
-2. **Push the three files to the Space repo root.** The Space is its own git repo, and a
+2. **Push the files to the Space repo root.** The Space is its own git repo, and a
    Docker Space requires `Dockerfile` at the repo root — so push the *contents* of
-   `deploy/huggingface/`, not the directory itself:
+   `deploy/huggingface/`, not the directory itself. Easiest is the `hf` CLI:
 
    ```bash
-   # from a clean checkout location
-   git clone https://huggingface.co/spaces/<owner>/lumonox-demo
-   cd lumonox-demo
-   cp /path/to/lumonox/deploy/huggingface/{Dockerfile,entrypoint.sh,seed_demo.py,README.md} .
-   git add Dockerfile entrypoint.sh seed_demo.py README.md
-   git commit -m "Lumonox demo Space"
-   git push
+   hf upload <owner>/lumonox-demo deploy/huggingface/ . --type space
    ```
 
-   > HF authentication: use an access token with **write** scope as the git password,
-   > or `huggingface-cli login` first. Large files aren't involved — this is a tiny repo.
+   …or with plain git (`git clone https://huggingface.co/spaces/<owner>/lumonox-demo`,
+   copy the four files in, commit, push).
+
+   > HF authentication: `hf auth login` with an access token that has **write** scope
+   > (or use the token as the git password). This is a tiny repo — no large files.
 
 3. The Space builds the image and starts the container. First build takes a few minutes
    (pip install + image layers); subsequent restarts are fast.
+
+## Why the dashboard is patched
+
+`patch_dashboard.py` runs at image build time and makes two changes to the wheel's
+bundled dashboard. Both exist because the demo serves the wheel's *production* dashboard
+build from a public HTTPS origin — a case that build is not configured for:
+
+1. **API origin → same-origin.** `lumonox` wheels through 0.3.1 inline
+   `NEXT_PUBLIC_LUMONOX_API_BASE_URL=http://127.0.0.1:8000` into the static JS (the
+   publish workflow set it; that's since been fixed to build same-origin). Served over
+   HTTPS from any non-localhost origin, the browser blocks the cross-origin/mixed-content
+   `fetch` and sign-in fails with *"Could not reach the server to verify your session"*.
+   The patch rewrites the baked-in origin to empty → same-origin `/dashboard/...` paths.
+2. **Auto sign-in.** The demo uses `DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN=true`, but
+   a production-built UI only surfaces the dev magic link when `NODE_ENV=development`
+   (correct behaviour — production UIs must not leak tokens). The patch injects a small
+   script into the dashboard HTML that completes the documented magic-link flow
+   automatically, so visitors land straight on the dashboard.
+
+Once a wheel built same-origin is pinned, step 1 becomes a no-op; step 1 is only fully
+retired when the demo no longer needs the auto sign-in shim.
 
 ## Verifying
 
 Once the Space shows **Running**:
 
-- The app URL redirects `/` → `/lumonox/ui/` (the dashboard sign-in screen).
-- Sign in with `demo@lumonox.dev`; the UI shows the magic link inline — click it.
+- The app URL redirects `/` → `/lumonox/ui/`; a brief *"Signing you into the Lumonox
+  demo…"* overlay shows while auto sign-in runs, then the dashboard loads.
 - The **Overview** should already show a few hours of traffic, and new data should
   appear every ~25s from the live trickle.
-- Build/runtime logs are under the Space's **Logs** tab — look for the `[entrypoint]`
-  and `[seed]` lines.
+- Build/runtime logs are under the Space's **Logs** tab — look for the `[patch_dashboard]`,
+  `[entrypoint]`, and `[seed]` lines.
 
 ## Updating
 
 - **New Lumonox release:** bump `ARG LUMONOX_VERSION` in `deploy/huggingface/Dockerfile`,
-  re-copy the files to the Space repo, commit, push. **Verify the new wheel still bundles
+  re-upload (`hf upload …`). **Verify the new wheel still bundles
   `lumonox_backend/dashboard_static/` and `lumonox_backend/alembic/`** before pinning:
 
   ```bash
@@ -84,7 +103,12 @@ Once the Space shows **Running**:
   unzip -l /tmp/lxwheel/lumonox-*.whl | grep -E 'dashboard_static/index.html|alembic/env.py'
   ```
 
-- **Demo behavior changes:** edit `entrypoint.sh` / `seed_demo.py` here, re-copy, push.
+  Also check whether the wheel still inlines `http://127.0.0.1:8000` in its JS
+  (`unzip -p … | grep -c '127.0.0.1:8000'`) — `patch_dashboard.py` handles it either way,
+  but it tells you whether the same-origin publish fix has shipped yet.
+
+- **Demo behavior changes:** edit `entrypoint.sh` / `seed_demo.py` / `patch_dashboard.py`
+  here, re-upload.
 - **Tuning knobs** (override as Space *Variables*, no rebuild needed for some):
   `LUMONOX_DEMO_BACKFILL_HOURS` (default `4`), `LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS`
   (default `0.3` — pause between backfill `POST /ingest` chunks so the seed burst never

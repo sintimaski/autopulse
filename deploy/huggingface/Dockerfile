@@ -13,6 +13,12 @@ ARG LUMONOX_VERSION=0.3.1
 
 RUN pip install --no-cache-dir "lumonox==${LUMONOX_VERSION}"
 
+# Patch the wheel's bundled dashboard for the demo: rewrite the baked-in API origin to
+# same-origin, and inject auto sign-in for the shared demo account. See patch_dashboard.py
+# for the full rationale; both steps are idempotent no-ops once unnecessary.
+COPY patch_dashboard.py /tmp/patch_dashboard.py
+RUN python /tmp/patch_dashboard.py && rm /tmp/patch_dashboard.py
+
 # Hugging Face Spaces run the container as UID 1000. Create that user and keep every
 # writable path under its home. The Spaces free-tier filesystem is ephemeral, which
 # suits this demo: each cold start re-seeds from scratch (the demo self-cleans).

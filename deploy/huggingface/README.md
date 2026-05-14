@@ -18,29 +18,25 @@ It boots the FastAPI ingest API + dashboard from the published `lumonox` wheel, 
 
 ## Try it
 
-1. Open the Space — you'll land on the Lumonox sign-in screen.
-2. Sign in with the demo email:
+1. Open the Space — you're **signed in automatically** (a brief "Signing you into the Lumonox demo…" screen) and land straight on the dashboard.
+2. Explore: **Overview** (five-second health read), **Diagnosis** (grouped errors), **Requests** (recent traffic with correlation pivots), plus custom widgets.
 
-   ```
-   demo@lumonox.dev
-   ```
-
-3. This demo runs in **dev sign-in mode**, so instead of emailing a magic link the UI shows the link inline — click it to enter. (Everyone shares the same demo project.)
-4. Explore: **Overview** (five-second health read), **Diagnosis** (grouped errors), **Requests** (recent traffic with correlation pivots), plus custom widgets.
+Everyone shares one demo account (`demo@lumonox.dev`) and one pre-seeded project.
 
 ## Good to know
 
 - **Data resets on restart.** The Space's free-tier filesystem is ephemeral; every cold start re-seeds from scratch. That's intentional — the demo self-cleans.
-- **It's a shared demo account.** Everyone signs in as `demo@lumonox.dev`, so settings changes are visible to other visitors until the next restart.
+- **It's a shared demo account.** Everyone is signed in as `demo@lumonox.dev`, so settings changes are visible to other visitors until the next restart.
 - **Not the product.** Lumonox is an open-source portfolio project you self-host — see the [GitHub repo](https://github.com/sintimaski/lumonox) for the SDK, backend, and dashboard, and `docs/ops/` for real deployment guides.
 
 ## How this Space is built
 
-Three files, no monorepo checkout required:
+A few files, no monorepo checkout required:
 
 | File | Role |
 |------|------|
 | `Dockerfile` | `pip install lumonox` (the wheel bundles the API, dashboard UI, and migrations) + demo runtime config |
+| `patch_dashboard.py` | build-time: point the bundled UI at the same origin + inject auto sign-in for the shared demo account |
 | `entrypoint.sh` | bootstrap tenant → start API → backfill history → run live trickle |
 | `seed_demo.py` | `--bootstrap` (org/project/user/key), `--backfill` (recent history), `--live` (ongoing traffic) |
 
