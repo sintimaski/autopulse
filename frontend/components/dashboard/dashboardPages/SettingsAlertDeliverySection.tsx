@@ -292,7 +292,9 @@ export function SettingsAlertDeliverySection({
             </p>
           ) : null}
           {testAlertError ? (
-            <p className="mt-2 text-xs text-rose-700 dark:text-rose-400">{testAlertError}</p>
+            <p className="mt-2 text-xs text-rose-700 dark:text-rose-400" role="alert">
+              {testAlertError}
+            </p>
           ) : null}
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -305,7 +307,13 @@ export function SettingsAlertDeliverySection({
               {alertSettingsSaving ? "Saving..." : "Save alert delivery"}
             </button>
             {channelMessage ? (
-              <p className="text-sm text-slate-600 dark:text-neutral-300">{channelMessage}</p>
+              <p
+                className="text-sm text-slate-600 dark:text-neutral-300"
+                role="status"
+                aria-live="polite"
+              >
+                {channelMessage}
+              </p>
             ) : null}
           </div>
         </>

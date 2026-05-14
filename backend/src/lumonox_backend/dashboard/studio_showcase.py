@@ -314,8 +314,18 @@ def merge_studio_showcase_widgets(
     points: list[DashboardWidgetPoint],
     resolved_from: datetime,
     resolved_to: datetime,
+    *,
+    demo_enabled: bool,
 ) -> tuple[list[DashboardWidgetDefinition], list[DashboardWidgetPoint]]:
+    """Strip any stale showcase rows; only re-inject synthetic rows in demo mode.
+
+    The bundled ``lx_showcase`` page is fabricated data — gated behind
+    ``LUMONOX_STUDIO_SHOWCASE_DEMO`` so production projects never see fake routes
+    or metrics. The strip always runs so a flag flip leaves no orphaned rows.
+    """
     defs, pts = strip_studio_showcase_rows(definitions, points)
+    if not demo_enabled:
+        return defs, pts
     extra_defs = build_studio_showcase_definitions()
     extra_pts = build_studio_showcase_points(resolved_from, resolved_to)
     return defs + extra_defs, pts + extra_pts

@@ -16,6 +16,7 @@ import {
   type DashboardScopedQueryState,
 } from "../dashboardQueryState";
 import { logicalDashboardLocationHref } from "../dashboardRoutePath";
+import { CardSpinner } from "../../ui/CardSpinner";
 import { Library } from "../../../lib/icons";
 import {
   defaultIncidentNotebook,
@@ -71,6 +72,13 @@ export function IncidentWorkspaceContent() {
   const [handoffNotebook, setHandoffNotebook] = useState<IncidentNotebookDocument | null>(null);
   const [savedIncidentsModalOpen, setSavedIncidentsModalOpen] = useState(false);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
+  // Inline error surface — replaces blocking window.alert() so failures match the
+  // console's banner UX and screen readers announce them.
+  const [incidentError, setIncidentError] = useState<string | null>(null);
+  // True while an `incident_share_id` / `incident_saved_id` URL param is being
+  // resolved into a notebook document. Drives an explicit hydration spinner so
+  // the default notebook does not flash before the async load swaps it in.
+  const [hydratingFromUrl, setHydratingFromUrl] = useState(false);
 
   const shareIdInUrl = useMemo(() => searchParams.get("incident_share_id")?.trim() ?? "", [searchParams]);
   const savedIdInUrl = useMemo(() => searchParams.get("incident_saved_id")?.trim() ?? "", [searchParams]);
@@ -311,6 +319,7 @@ export function IncidentWorkspaceContent() {
     setSavedIncidentsModalOpen(false);
     setCreatingNotebook(true);
     setHandoffNotebook(null);
+    setIncidentError(null);
     try {
       const scope_state = getLiveScopeState();
       const notebook_document = JSON.parse(serializeIncidentNotebook(defaultIncidentNotebook())) as Record<
@@ -321,7 +330,9 @@ export function IncidentWorkspaceContent() {
         scope_state,
         notebook_document,
         title: null,
-        access_mode: "organization",
+        // Fresh notebooks start as a creator-only draft. Publishing from the
+        // notebook's share panel promotes them to organization/restricted.
+        access_mode: "private",
         expires_in_days: 90,
       });
       const createRaw: unknown = await createRes.json();
@@ -333,7 +344,7 @@ export function IncidentWorkspaceContent() {
           typeof (createRaw as { detail: unknown }).detail === "string"
             ? (createRaw as { detail: string }).detail
             : `Could not create notebook (${createRes.status})`;
-        window.alert(detail);
+        setIncidentError(detail);
         return;
       }
       const savedRowIdRaw =
@@ -345,7 +356,7 @@ export function IncidentWorkspaceContent() {
           : "";
       const savedRowId = savedRowIdRaw.trim();
       if (!savedRowId) {
-        window.alert("Server did not return a notebook id.");
+        setIncidentError("Server did not return a notebook id.");
         return;
       }
       const getRes = await dashboardSessionFetch(`/dashboard/incident-shares/${savedRowId}`);
@@ -355,7 +366,7 @@ export function IncidentWorkspaceContent() {
           typeof getRaw === "object" && getRaw && "detail" in getRaw && typeof (getRaw as { detail: unknown }).detail === "string"
             ? (getRaw as { detail: string }).detail
             : `Could not load new notebook (${getRes.status})`;
-        window.alert(detail);
+        setIncidentError(detail);
         return;
       }
       const scopedQuery =
@@ -378,7 +389,7 @@ export function IncidentWorkspaceContent() {
       qs.set("incident_saved_id", savedRowId);
       router.replace(`/incident/?${qs.toString()}`);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : "Could not create notebook.");
+      setIncidentError(e instanceof Error ? e.message : "Could not create notebook.");
     } finally {
       setCreatingNotebook(false);
     }
@@ -389,6 +400,7 @@ export function IncidentWorkspaceContent() {
     if (!shareId || searchParams.get("incident_saved_id")?.trim() || redeemedShareIdsRef.current.has(shareId)) {
       return;
     }
+    setHydratingFromUrl(true);
     void (async () => {
       try {
         const res = await dashboardSessionJsonPost("/dashboard/incident-shares/redeem", {
@@ -397,7 +409,7 @@ export function IncidentWorkspaceContent() {
         const raw: unknown = await res.json();
         if (res.status === 409 && typeof raw === "object" && raw && "code" in raw && (raw as { code?: string }).code === "wrong_project") {
           const pid = (raw as { project_id?: string }).project_id ?? "";
-          window.alert(
+          setIncidentError(
             `This incident link targets another project. Switch the dashboard to project ${pid} and open the link again.`,
           );
           return;
@@ -407,7 +419,7 @@ export function IncidentWorkspaceContent() {
             typeof raw === "object" && raw && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
               ? (raw as { detail: string }).detail
               : `Could not open share link (${res.status})`;
-          window.alert(detail);
+          setIncidentError(detail);
           return;
         }
         const scopedQuery =
@@ -427,7 +439,9 @@ export function IncidentWorkspaceContent() {
         router.replace(`/incident/?${qs.toString()}`);
         redeemedShareIdsRef.current.add(shareId);
       } catch {
-        /* allow retry */
+        setIncidentError("Could not open the incident link — network error. Reload to retry.");
+      } finally {
+        setHydratingFromUrl(false);
       }
     })();
   }, [applyTargets, router, searchParams]);
@@ -437,6 +451,7 @@ export function IncidentWorkspaceContent() {
     if (!savedId || loadedSavedIdsRef.current.has(savedId)) {
       return;
     }
+    setHydratingFromUrl(true);
     void (async () => {
       try {
         const res = await dashboardSessionFetch(`/dashboard/incident-shares/${savedId}`);
@@ -446,7 +461,7 @@ export function IncidentWorkspaceContent() {
             typeof raw === "object" && raw && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
               ? (raw as { detail: string }).detail
               : `Could not open saved incident (${res.status})`;
-          window.alert(detail);
+          setIncidentError(detail);
           return;
         }
         const scopedQuery =
@@ -466,13 +481,31 @@ export function IncidentWorkspaceContent() {
         router.replace(`/incident/?${qs.toString()}`);
         loadedSavedIdsRef.current.add(savedId);
       } catch {
-        /* allow retry */
+        setIncidentError("Could not open the saved incident — network error. Reload to retry.");
+      } finally {
+        setHydratingFromUrl(false);
       }
     })();
   }, [applyTargets, router, searchParams]);
 
   return (
     <section className="space-y-4">
+      {incidentError ? (
+        <div
+          role="alert"
+          className="flex items-start justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200"
+        >
+          <span className="min-w-0">{incidentError}</span>
+          <button
+            type="button"
+            onClick={() => setIncidentError(null)}
+            className="shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 dark:text-rose-300 dark:hover:bg-rose-900/50"
+            aria-label="Dismiss error"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
       <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
@@ -504,27 +537,34 @@ export function IncidentWorkspaceContent() {
           </div>
         </div>
         <div className="mt-4">
-          <IncidentNotebook
-            key={notebookKey}
-            storageKey={notebookKey}
-            legacyPlaintextStorageKey={legacyNotesKey}
-            scopeSummary={formatWindowSummary(d)}
-            scopeDetailRows={scopeDetailRows}
-            incidentPagePath={incidentPagePath}
-            quickLinks={[
-              { label: "Errors & diagnosis", href: diagnosisHref },
-              { label: "Requests", href: requestsHref },
-              { label: "Query Explorer", href: queryExplorerHref },
-              { label: "Overview", href: overviewHref },
-              { label: "Traces", href: tracesHref },
-              { label: "Bookmarks", href: bookmarksHref },
-            ]}
-            onApplyDashboardScope={onApplyDashboardScope}
-            getLiveScopeState={getLiveScopeState}
-            sessionOrganizationId={d.sessionOrganizationId}
-            handoffNotebookDocument={handoffNotebook}
-            serverSavedIncidentId={savedIdInUrl || null}
-          />
+          {hydratingFromUrl ? (
+            <CardSpinner
+              label={shareIdInUrl ? "Opening shared incident…" : "Opening saved incident…"}
+              description="Loading scope and notebook from the server."
+            />
+          ) : (
+            <IncidentNotebook
+              key={notebookKey}
+              storageKey={notebookKey}
+              legacyPlaintextStorageKey={legacyNotesKey}
+              scopeSummary={formatWindowSummary(d)}
+              scopeDetailRows={scopeDetailRows}
+              incidentPagePath={incidentPagePath}
+              quickLinks={[
+                { label: "Errors & diagnosis", href: diagnosisHref },
+                { label: "Requests", href: requestsHref },
+                { label: "Query Explorer", href: queryExplorerHref },
+                { label: "Overview", href: overviewHref },
+                { label: "Traces", href: tracesHref },
+                { label: "Bookmarks", href: bookmarksHref },
+              ]}
+              onApplyDashboardScope={onApplyDashboardScope}
+              getLiveScopeState={getLiveScopeState}
+              sessionOrganizationId={d.sessionOrganizationId}
+              handoffNotebookDocument={handoffNotebook}
+              serverSavedIncidentId={savedIdInUrl || null}
+            />
+          )}
         </div>
       </div>
       <DashboardDetailModal

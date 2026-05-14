@@ -18,14 +18,11 @@ export default function MainError({
       <div className="ap-surface max-w-md border-rose-200/80 p-6 dark:border-rose-900/50">
         <h1 className="text-lg font-semibold text-rose-800 dark:text-rose-200">Something went wrong</h1>
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-          The dashboard hit an unexpected error. Try again or reload the page. If it persists, check the
-          browser console and backend logs.
+          Something went wrong rendering this view. Try again or reload the page. If it persists, check
+          the browser console and backend logs.
         </p>
-        {error?.message ? (
-          <p className="mt-3 rounded-lg border border-slate-200/80 bg-slate-50/80 p-2 font-mono text-xs text-slate-700 dark:border-neutral-700 dark:bg-neutral-950/60 dark:text-neutral-200">
-            {error.message}
-          </p>
-        ) : null}
+        {/* The raw `error.message` is logged via `console.error` above, not rendered — it can leak
+            internal detail (file paths, query fragments) to end users. */}
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" className="ap-btn-primary px-4 py-2" onClick={() => reset()}>
             Try again

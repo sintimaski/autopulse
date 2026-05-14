@@ -69,6 +69,9 @@ async def search_dashboard_traces(
     if (resolved_to - resolved_from) > timedelta(minutes=max_minutes):
         resolved_from = resolved_to - timedelta(minutes=max_minutes)
 
+    # status_class is applied as a post-group HAVING filter (see having_clause below) so a
+    # trace's span_count / error_count reflect the *whole* trace, not just matching spans.
+    # "errors only" then just decides which traces appear, keeping list/detail counts aligned.
     filters = build_filters(
         project_id=context.project_id,
         from_timestamp=resolved_from,
@@ -79,7 +82,6 @@ async def search_dashboard_traces(
         environments=environments,
         services=services,
         method=_optional_upper_method(method),
-        status_class=status_class,
         path_contains=path_contains,
     )
     store = await resolve_dashboard_read_store(
@@ -97,6 +99,15 @@ async def search_dashboard_traces(
         )
         like = f"%{safe_q}%"
         params.extend([like, like, like, like])
+    having_clause = ""
+    if status_class is not None:
+        lower_bound = status_class * 100
+        upper_bound = lower_bound + 100
+        having_clause = (
+            "HAVING sum("
+            f"CASE WHEN status_code >= {lower_bound} AND status_code < {upper_bound} "
+            "THEN 1 ELSE 0 END) > 0"
+        )
     query = f"""
         WITH spans AS (
             SELECT
@@ -122,6 +133,7 @@ async def search_dashboard_traces(
             WHERE trace_id IS NOT NULL
             {search_where}
             GROUP BY trace_id
+            {having_clause}
         )
         SELECT trace_id, first_seen, last_seen, span_count, error_count, services, root_span_name
         FROM grouped

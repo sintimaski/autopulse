@@ -72,6 +72,9 @@ fi
 export LUMONOX_EVENT_STORE="duckdb"
 export LUMONOX_DATA_DIR="${LUMONOX_DATA_DIR:-$ROOT_DIR}"
 export LUMONOX_DUCKDB_PATH="${LUMONOX_DUCKDB_PATH:-$LUMONOX_DATA_DIR/.lumonox/events.duckdb}"
+# Local synthetic stack is a dev/demo surface — show the bundled widget showcase
+# page. Production deployments leave this OFF (see core/config.py).
+export LUMONOX_STUDIO_SHOWCASE_DEMO="${LUMONOX_STUDIO_SHOWCASE_DEMO:-true}"
 
 if [[ -z "${LUMONOX_API_KEY:-}" ]]; then
   if [[ -n "${NEXT_PUBLIC_LUMONOX_API_KEY:-}" ]]; then

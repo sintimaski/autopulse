@@ -10,13 +10,34 @@ from lumonox_backend.dashboard.studio_showcase import (
 from lumonox_backend.dashboard.widget_layout import build_widget_layout
 
 
-def test_list_studio_nav_pages_includes_showcase() -> None:
-    pages = list_studio_nav_pages()
-    ids = {p.page_id for p in pages}
+def test_list_studio_nav_pages_includes_showcase_only_in_demo_mode() -> None:
+    # Production default: the synthetic `lx_showcase` page is hidden from the sidebar.
+    prod_pages = list_studio_nav_pages()
+    assert "lx_showcase" not in {p.page_id for p in prod_pages}
+
+    # Demo mode (LUMONOX_STUDIO_SHOWCASE_DEMO): the showcase page is registered.
+    demo_pages = list_studio_nav_pages(include_demo=True)
+    ids = {p.page_id for p in demo_pages}
     assert "lx_showcase" in ids
-    showcase = next(p for p in pages if p.page_id == "lx_showcase")
+    showcase = next(p for p in demo_pages if p.page_id == "lx_showcase")
     assert showcase.pathname == "/w/lx_showcase"
     assert showcase.sidebar_label
+
+
+def test_merge_studio_showcase_widgets_respects_demo_flag() -> None:
+    from lumonox_backend.dashboard.studio_showcase import merge_studio_showcase_widgets
+
+    now = datetime.now(tz=UTC)
+    start = now - timedelta(hours=2)
+
+    prod_defs, prod_pts = merge_studio_showcase_widgets([], [], start, now, demo_enabled=False)
+    assert prod_defs == []
+    assert prod_pts == []
+
+    demo_defs, demo_pts = merge_studio_showcase_widgets([], [], start, now, demo_enabled=True)
+    assert demo_defs
+    assert demo_pts
+    assert all(d.widget_id.startswith(LX_STUDIO_PREFIX) for d in demo_defs)
 
 
 def test_showcase_definitions_cover_all_widget_types() -> None:

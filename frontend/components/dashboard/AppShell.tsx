@@ -54,6 +54,8 @@ export function DashboardAppShell({
   /** Non-blocking alert (e.g. bootstrap retry) shown under the page title. */
   topBanner,
   isDark,
+  /** True only when workspace bootstrap succeeded and live refresh is not paused. */
+  liveDataActive = false,
   diagnosisNavQuery = "",
   logsNavQuery = "",
   incidentNavQuery = "",
@@ -72,6 +74,8 @@ export function DashboardAppShell({
   statusStrip?: ReactNode;
   topBanner?: ReactNode;
   isDark: boolean;
+  /** Drives the header live-data dot — green/pulsing only when data is genuinely flowing. */
+  liveDataActive?: boolean;
   /** Last persisted or live `/diagnosis` server-scope query string (without `?`). */
   diagnosisNavQuery?: string;
   /** Last persisted or live `/logs` server-scope query string (without `?`). */
@@ -281,7 +285,10 @@ export function DashboardAppShell({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col transition-[margin] duration-200">
-          <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/85">
+          {/* `relative z-40` lifts the header's stacking context above the in-content
+              sticky scope bar (z-30) so the "jump to anything" dropdown isn't clipped
+              behind it. `backdrop-blur` already makes this its own stacking context. */}
+          <header className="relative z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/85">
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -289,8 +296,12 @@ export function DashboardAppShell({
                     {title}
                   </h1>
                   <span
-                    className="size-2 shrink-0 animate-pulse rounded-full bg-emerald-500 shadow-[0_0_0_3px] shadow-emerald-500/20"
-                    title="Live data"
+                    className={`size-2 shrink-0 rounded-full shadow-[0_0_0_3px] ${
+                      liveDataActive
+                        ? "animate-pulse bg-emerald-500 shadow-emerald-500/20"
+                        : "bg-amber-500 shadow-amber-500/20"
+                    }`}
+                    title={liveDataActive ? "Live data" : "Live data paused or unavailable"}
                     aria-hidden
                   />
                 </div>

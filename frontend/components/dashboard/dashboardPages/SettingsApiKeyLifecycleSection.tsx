@@ -14,6 +14,9 @@ type SettingsApiKeyLifecycleSectionProps = {
   apiKeys: DashboardApiKeyItem[];
   lastIssuedApiKey: string | null;
   apiKeyMessage: string | null;
+  /** Non-null while the inline two-click confirm is armed (count = target keys). */
+  keyBulkConfirmCount?: number | null;
+  onCancelKeyBulkConfirm?: () => void;
   onIssueKey: () => void | Promise<void>;
   onRefreshKeys: () => void | Promise<void>;
   onKeyBulkActionChange: (next: KeyBulkAction) => void;
@@ -36,6 +39,8 @@ export function SettingsApiKeyLifecycleSection({
   apiKeys,
   lastIssuedApiKey,
   apiKeyMessage,
+  keyBulkConfirmCount = null,
+  onCancelKeyBulkConfirm = () => {},
   onIssueKey,
   onRefreshKeys,
   onKeyBulkActionChange,
@@ -47,6 +52,7 @@ export function SettingsApiKeyLifecycleSection({
   applyingBulk = false,
 }: SettingsApiKeyLifecycleSectionProps) {
   const keysBusy = issuingKey || refreshingKeys || applyingBulk;
+  const bulkConfirmArmed = keyBulkConfirmCount !== null;
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">API key lifecycle</h2>
@@ -101,21 +107,37 @@ export function SettingsApiKeyLifecycleSection({
               <option value="revoke">Revoke selected</option>
             </select>
           </label>
-          <button
-            type="button"
-            disabled={!keyBulkAction || selectedKeyIds.size === 0 || keysBusy}
-            onClick={() => void onApplyBulk()}
-            className={
-              keyBulkAction === "revoke"
-                ? "ap-btn-danger disabled:cursor-not-allowed disabled:opacity-50"
-                : "ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
-            }
-          >
-            {applyingBulk ? "Applying…" : "Apply"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={!keyBulkAction || selectedKeyIds.size === 0 || keysBusy}
+              onClick={() => void onApplyBulk()}
+              className={
+                keyBulkAction === "revoke"
+                  ? "ap-btn-danger disabled:cursor-not-allowed disabled:opacity-50"
+                  : "ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+              }
+            >
+              {applyingBulk
+                ? "Applying…"
+                : bulkConfirmArmed
+                  ? `Confirm — ${keyBulkAction === "rotate" ? "rotate" : "revoke"} ${keyBulkConfirmCount} key(s)`
+                  : "Apply"}
+            </button>
+            {bulkConfirmArmed ? (
+              <button
+                type="button"
+                onClick={onCancelKeyBulkConfirm}
+                disabled={keysBusy}
+                className="ap-btn disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
           <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
-            Select active keys, choose an action, Apply, then confirm. With multiple active keys, the oldest active key
-            cannot be bulk-revoked.
+            Select active keys, choose an action, then Apply twice to confirm. With multiple active keys, the oldest
+            active key cannot be bulk-revoked.
           </p>
         </div>
       ) : null}
@@ -167,7 +189,15 @@ export function SettingsApiKeyLifecycleSection({
           </tbody>
         </table>
       </div>
-      {apiKeyMessage ? <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{apiKeyMessage}</p> : null}
+      {apiKeyMessage ? (
+        <p
+          className="mt-2 text-sm text-slate-600 dark:text-neutral-300"
+          role="status"
+          aria-live="polite"
+        >
+          {apiKeyMessage}
+        </p>
+      ) : null}
     </section>
   );
 }

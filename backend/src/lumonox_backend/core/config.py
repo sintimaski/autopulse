@@ -131,6 +131,9 @@ class Settings:
     dev_scenarios_enabled: bool = False
     dev_scenarios_max_duration_seconds: int = 180
     dev_scenarios_max_events: int = 5000
+    # Bundled `lx_showcase` studio page renders synthetic widget data — dev/demo only.
+    # Off in production so real projects never see fabricated routes/metrics.
+    studio_showcase_demo_enabled: bool = False
     dashboard_auth_enabled: bool = True
     dashboard_auth_allowed_email: str | None = None
     dashboard_auth_session_cookie_name: str = "lumonox_dashboard_session"
@@ -929,6 +932,7 @@ def get_settings() -> Settings:
             minimum=5,
         ),
         dev_scenarios_max_events=_env_int("DEV_SCENARIOS_MAX_EVENTS", 5000, minimum=1),
+        studio_showcase_demo_enabled=_env_bool("LUMONOX_STUDIO_SHOWCASE_DEMO", False),
         dashboard_auth_enabled=_env_bool("DASHBOARD_AUTH_ENABLED", True),
         dashboard_auth_allowed_email=getenv("DASHBOARD_AUTH_ALLOWED_EMAIL"),
         dashboard_auth_session_cookie_name=(

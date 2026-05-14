@@ -9,7 +9,7 @@ This document defines how the dashboard balances **low latency**, **stability**,
 | Interactive  | `POST /dashboard/query` (light bundle)        | ≤ 800 ms                  | Primary overview + requests path         |
 | Heavy        | `POST /dashboard/query` (extended/diagnosis)  | ≤ 2500 ms                 | More slices; may queue under load          |
 | Explorer     | `POST /dashboard/query-explorer/execute`      | User-initiated            | Bounded by `row_limit` + server caps       |
-| Logs         | `POST /dashboard/log-query/execute`           | ≤ 1500 ms                 | Keyset pagination; bounded window            |
+| Logs         | `POST /dashboard/query` (logs slice)          | ≤ 1500 ms                 | Validated via `POST /dashboard/log-query/validate`; bounded window |
 
 ## Frontend behavior
 

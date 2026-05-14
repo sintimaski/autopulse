@@ -41,7 +41,8 @@ export function LogsContent() {
   const routePath = useMemo(() => toDashboardRoutePath(pathname), [pathname]);
   const searchParams = useSearchParams();
   const queryStringForBookmarks = searchParams.toString();
-  const [rowsPerGroup, setRowsPerGroup] = useState(100);
+  const GROUP_ROWS_STEP = 100;
+  const [rowsPerGroup, setRowsPerGroup] = useState<Record<string, number>>({});
   const [evidenceModal, setEvidenceModal] = useState<{ rowId: string; item: RequestItem } | null>(null);
   const [bookmarkDraft, setBookmarkDraft] = useState<{ title: string; hashFragment: string } | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
@@ -165,7 +166,7 @@ export function LogsContent() {
     try {
       const params = buildDashboardRequestsExportSearchParams(scopedState, {
         format: fmt,
-        exportLimit: 500,
+        exportLimit: 2000,
         exportOffset: 0,
       });
       const url = `${buildApiUrl("/dashboard/requests/export")}?${params.toString()}`;
@@ -281,7 +282,7 @@ export function LogsContent() {
               Errors (5xx)
             </p>
             <p className="mt-1 text-2xl font-semibold tracking-tight text-red-700 dark:text-red-200">{errorRows}</p>
-            <p className="mt-1 text-xs text-red-600/80 dark:text-red-300/80">Prioritize these first</p>
+            <p className="mt-1 text-xs text-red-600/80 dark:text-red-300/80">In the currently loaded rows</p>
           </div>
           <div className="rounded-xl bg-orange-50/70 p-3 ring-1 ring-orange-500/12 dark:bg-orange-950/25 dark:ring-orange-400/20">
             <p className="text-xs font-medium uppercase tracking-wide text-orange-800 dark:text-orange-200">
@@ -290,7 +291,7 @@ export function LogsContent() {
             <p className="mt-1 text-2xl font-semibold tracking-tight text-orange-900 dark:text-orange-100">
               {slowRows}
             </p>
-            <p className="mt-1 text-xs text-orange-800/85 dark:text-orange-200/85">Worth a quick look</p>
+            <p className="mt-1 text-xs text-orange-800/85 dark:text-orange-200/85">In the currently loaded rows</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-neutral-700 dark:bg-neutral-800/70">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">
@@ -299,7 +300,7 @@ export function LogsContent() {
             <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-neutral-100">
               {p95LatencyMs.toFixed(1)} ms
             </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">On the currently visible set</p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">Across the currently loaded rows</p>
           </div>
         </div>
 
@@ -379,7 +380,7 @@ export function LogsContent() {
               </button>
             </div>
             <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
-              Downloads respect the same server scope as this page (max 500 rows per export;{" "}
+              Downloads respect the same server scope as this page (max 2000 rows per export;{" "}
               <span className="font-medium text-slate-700 dark:text-neutral-300">export_offset + export_limit ≤ 5000</span>{" "}
               on the API).
             </p>
@@ -394,11 +395,14 @@ export function LogsContent() {
         <div className="mt-4 min-w-0" data-ap-dashboard-scope-anchor>
         {d.rawItems.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            No requests in this time window yet. Send traffic to{" "}
-            <code className="rounded bg-slate-100 px-1 dark:bg-neutral-800 dark:text-neutral-200">
-              POST /ingest
-            </code> or run the manual test script,
-            then refresh.
+            No requests in this time window yet. Send a request from your app, or finish{" "}
+            <Link
+              href="/onboarding"
+              className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+            >
+              Onboarding
+            </Link>{" "}
+            to connect the SDK, then refresh.
           </p>
         ) : d.filteredSorted.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
@@ -406,7 +410,10 @@ export function LogsContent() {
           </p>
         ) : (
           <div className="space-y-6">
-            {d.grouped.map((group) => (
+            {d.grouped.map((group) => {
+              const groupVisibleRows = rowsPerGroup[group.key] ?? GROUP_ROWS_STEP;
+              const hiddenLoadedRows = group.items.length - groupVisibleRows;
+              return (
               <div key={group.key}>
                 {d.groupBy !== "none" && (
                   <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-neutral-200">
@@ -421,7 +428,15 @@ export function LogsContent() {
                 )}
                 <div className="max-w-full min-w-0 overflow-x-auto rounded-xl border border-slate-200 dark:border-neutral-700">
                   <table className="w-full min-w-[960px] border-collapse text-left text-sm">
-                    <thead className="sticky top-0 z-[1] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400">
+                    <thead
+                      className={`z-[1] bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-neutral-800 dark:text-neutral-400${
+                        // Pin the sort header only when the table is NOT live-refreshing
+                        // (an absolute window is selected). A sticky header over rows that
+                        // keep changing under it is disorienting — and at top-0 it would
+                        // collide with the sticky scope bar.
+                        d.isAbsoluteWindow ? " sticky top-0" : ""
+                      }`}
+                    >
                       <tr>
                         <th className="w-10 px-2 py-2" aria-label="Expand row" />
                         {(
@@ -440,21 +455,37 @@ export function LogsContent() {
                             key={key}
                             className={`px-2 py-2 ${key === "path" ? "min-w-[12rem] max-w-md" : key === "log_message" ? "min-w-[10rem] max-w-sm" : key === "timestamp" ? "w-[9.5rem] shrink-0 whitespace-nowrap" : key === "service_name" ? "min-w-[7rem] max-w-[10rem]" : ""}`}
                             aria-sort={
-                              d.sortKey === key ? (d.sortDir === "asc" ? "ascending" : "descending") : "none"
+                              d.isAbsoluteWindow && d.sortKey === key && d.sortDir !== "none"
+                                ? d.sortDir === "asc"
+                                  ? "ascending"
+                                  : "descending"
+                                : "none"
                             }
                           >
-                            <button
-                              type="button"
-                              onClick={() => d.onSortHeader(key)}
-                              className="inline-flex min-h-8 w-full max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
-                            >
-                              <span className="min-w-0 truncate">{label}</span>
-                              {d.sortKey === key && (
-                                <span className="shrink-0 text-orange-600 dark:text-orange-400" aria-hidden>
-                                  {d.sortDir === "asc" ? "↑" : "↓"}
-                                </span>
-                              )}
-                            </button>
+                            {/* Column sorting only applies to a frozen absolute window — see
+                                filteredSorted in DashboardDataContext. While the feed is rolling,
+                                show plain labels so we don't offer a control that does nothing. */}
+                            {d.isAbsoluteWindow ? (
+                              <button
+                                type="button"
+                                onClick={() => d.onSortHeader(key)}
+                                className="inline-flex min-h-8 w-full max-w-full items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-slate-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/40 dark:hover:bg-neutral-700/80 dark:focus-visible:ring-neutral-500/50"
+                              >
+                                <span className="min-w-0 truncate">{label}</span>
+                                {d.sortKey === key && d.sortDir !== "none" && (
+                                  <span className="shrink-0 text-orange-600 dark:text-orange-400" aria-hidden>
+                                    {d.sortDir === "asc" ? "↑" : "↓"}
+                                  </span>
+                                )}
+                              </button>
+                            ) : (
+                              <span
+                                className="inline-flex min-h-8 w-full max-w-full items-center px-1 py-1"
+                                title="Select a fixed time window to sort"
+                              >
+                                <span className="min-w-0 truncate">{label}</span>
+                              </span>
+                            )}
                           </th>
                         ))}
                         <th className="w-12 px-1 py-2 text-right font-normal normal-case tracking-normal" aria-label="Row actions">
@@ -463,7 +494,7 @@ export function LogsContent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white dark:divide-neutral-800 dark:bg-neutral-950">
-                      {group.items.slice(0, rowsPerGroup).map((item, rowIndex) => {
+                      {group.items.slice(0, groupVisibleRows).map((item, rowIndex) => {
                         const rowId = [
                           group.key,
                           String(rowIndex),
@@ -558,19 +589,29 @@ export function LogsContent() {
                     </tbody>
                   </table>
                 </div>
-                {group.items.length > rowsPerGroup ? (
+                {hiddenLoadedRows > 0 ? (
                   <div className="mt-2">
                     <button
                       type="button"
-                      onClick={() => setRowsPerGroup((prev) => prev + 100)}
+                      onClick={() =>
+                        setRowsPerGroup((prev) => ({
+                          ...prev,
+                          [group.key]: groupVisibleRows + GROUP_ROWS_STEP,
+                        }))
+                      }
                       className="rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
                     >
-                      Load 100 more rows in this group
+                      Show {Math.min(GROUP_ROWS_STEP, hiddenLoadedRows)} more in this group
+                      {" "}
+                      <span className="font-normal text-slate-500 dark:text-neutral-400">
+                        (already loaded · {hiddenLoadedRows} hidden — use Next for more from the server)
+                      </span>
                     </button>
                   </div>
                 ) : null}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         </div>

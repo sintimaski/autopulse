@@ -637,11 +637,11 @@ def test_dashboard_requests_support_filters_and_pagination(backend_test_database
     assert payload["items"][0]["status_code"] >= 500
 
 
-def test_dashboard_requests_focus_errors_matches_status_class_five(
+def test_dashboard_requests_status_class_five_filters_errors(
     backend_test_database_url: str,
 ) -> None:
     _truncate_tables(backend_test_database_url)
-    key, _ = _seed_project_and_key(backend_test_database_url, "Project Focus")
+    key, _ = _seed_project_and_key(backend_test_database_url, "Project Status Class")
     base_time = datetime.now(tz=UTC) - timedelta(minutes=20)
     app = create_app()
 
@@ -650,15 +650,6 @@ def test_dashboard_requests_focus_errors_matches_status_class_five(
         _ingest(client, key, base_time + timedelta(minutes=1), 502, "POST", "/b")
         _ingest(client, key, base_time + timedelta(minutes=2), 404, "GET", "/c")
 
-        via_focus = client.get(
-            "/dashboard/requests",
-            params={
-                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
-                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
-                "focus": "errors",
-            },
-            headers={"Authorization": f"Bearer {key}"},
-        )
         via_class = client.get(
             "/dashboard/requests",
             params={
@@ -669,39 +660,9 @@ def test_dashboard_requests_focus_errors_matches_status_class_five(
             headers={"Authorization": f"Bearer {key}"},
         )
 
-    assert via_focus.status_code == 200
     assert via_class.status_code == 200
-    assert via_focus.json()["total"] == via_class.json()["total"] == 1
-    assert via_focus.json()["items"][0]["path"] == "/b"
-
-
-def test_dashboard_requests_explicit_status_class_beats_focus_errors(
-    backend_test_database_url: str,
-) -> None:
-    _truncate_tables(backend_test_database_url)
-    key, _ = _seed_project_and_key(backend_test_database_url, "Project Focus Override")
-    base_time = datetime.now(tz=UTC) - timedelta(minutes=20)
-    app = create_app()
-
-    with TestClient(app) as client:
-        _ingest(client, key, base_time, 404, "GET", "/nf")
-        _ingest(client, key, base_time + timedelta(minutes=1), 502, "POST", "/err")
-
-        response = client.get(
-            "/dashboard/requests",
-            params={
-                "from_timestamp": (base_time - timedelta(minutes=1)).isoformat(),
-                "to_timestamp": (base_time + timedelta(minutes=10)).isoformat(),
-                "focus": "errors",
-                "status_class": 4,
-            },
-            headers={"Authorization": f"Bearer {key}"},
-        )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["total"] == 1
-    assert payload["items"][0]["path"] == "/nf"
+    assert via_class.json()["total"] == 1
+    assert via_class.json()["items"][0]["path"] == "/b"
 
 
 def test_dashboard_requests_event_sql_filter_scopes_results(backend_test_database_url: str) -> None:
@@ -1719,7 +1680,7 @@ def test_dashboard_diagnosis_timeline_fills_empty_minute_buckets(
     assert by_minute[gap_minute]["error_count"] == 0
 
 
-def test_dashboard_log_query_validate_execute_and_retention_settings(
+def test_dashboard_log_query_validate_and_retention_settings(
     backend_test_database_url: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1728,14 +1689,10 @@ def test_dashboard_log_query_validate_execute_and_retention_settings(
     monkeypatch.delenv("DASHBOARD_AUTH_ALLOWED_EMAIL", raising=False)
     monkeypatch.delenv("DASHBOARD_ALLOWED_EMAIL_DOMAINS", raising=False)
     monkeypatch.setenv("DASHBOARD_AUTH_ALLOW_API_KEY_FALLBACK", "1")
-    base_time = datetime.now(tz=UTC) - timedelta(minutes=5)
     app = create_app()
     headers = {"Authorization": f"Bearer {key}"}
     query = "SELECT * FROM events WHERE status_code >= 500 ORDER BY timestamp DESC LIMIT 2"
     with TestClient(app) as client:
-        _ingest(client, key, base_time, 200, "GET", "/ok")
-        _ingest(client, key, base_time + timedelta(minutes=1), 500, "POST", "/boom")
-        _ingest(client, key, base_time + timedelta(minutes=2), 503, "POST", "/boom")
         validate = client.post(
             "/dashboard/log-query/validate",
             json={"query": query},
@@ -1743,16 +1700,6 @@ def test_dashboard_log_query_validate_execute_and_retention_settings(
         )
         assert validate.status_code == 200
         assert validate.json()["valid"] is True
-
-        execute = client.post(
-            "/dashboard/log-query/execute",
-            json={"query": query},
-            headers=headers,
-        )
-        assert execute.status_code == 200
-        execute_payload = execute.json()
-        assert len(execute_payload["items"]) == 2
-        assert "next_cursor" in execute_payload
 
         retention_read = client.get("/dashboard/retention-settings", headers=headers)
         assert retention_read.status_code == 200

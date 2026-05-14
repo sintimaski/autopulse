@@ -38,7 +38,7 @@ export function SettingsEventPlaneCutoverSection({
           <InlineDataSpinner label="Loading cutover setting…" />
         </div>
       ) : eventPlaneCutoverLoadState === "error" ? (
-        <p className="mt-2 text-sm text-rose-700 dark:text-rose-300">
+        <p className="mt-2 text-sm text-rose-700 dark:text-rose-300" role="alert">
           {eventPlaneCutoverMessage ?? "Could not load cutover setting."}
         </p>
       ) : (
@@ -71,7 +71,13 @@ export function SettingsEventPlaneCutoverSection({
               {eventPlaneCutoverSaving ? "Saving..." : "Save cutover setting"}
             </button>
             {eventPlaneCutoverMessage ? (
-              <p className="text-sm text-slate-600 dark:text-neutral-300">{eventPlaneCutoverMessage}</p>
+              <p
+                className="text-sm text-slate-600 dark:text-neutral-300"
+                role="status"
+                aria-live="polite"
+              >
+                {eventPlaneCutoverMessage}
+              </p>
             ) : null}
           </div>
         </>

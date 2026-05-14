@@ -11,7 +11,6 @@ import {
   buildAlignedRollupBucketOptions,
 } from "../../../utils/dashboardChartWindows";
 import {
-  BreakdownBarChart,
   ChartPanel,
   MultiSeriesLineChart,
   type MultiSeriesLineChartSeries,
@@ -532,24 +531,11 @@ export function DashboardInfrastructureSection({
   ]);
 
   const ix = chartsScopePending ? committedInfraRef.current : null;
-  const ixSparkline = ix?.sparklineSeries ?? sparklineSeries;
   const ixOverview = ix?.overviewExtended ?? overviewExtended;
   const ixWidgets = ix?.dashboardWidgets ?? dashboardWidgets;
   const ixGlobalWin = ix?.globalWindowMinutes ?? globalWindowMinutes;
   const ixHostWin = ix?.hostChartWindowMinutes ?? hostChartWindowMinutes;
   const ixHostBucket = ix?.hostChartBucketMinutes ?? hostChartBucketMinutes;
-
-  const routeBreakdownByVolume = [...ixOverview.route_breakdown]
-    .sort((a, b) => b.request_count - a.request_count)
-    .slice(0, 10);
-  const serviceBreakdownByVolume = [...ixOverview.service_breakdown]
-    .sort((a, b) => b.request_count - a.request_count)
-    .slice(0, 10);
-
-  const total2xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_2xx || 0), 0);
-  const total3xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_3xx || 0), 0);
-  const total4xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_4xx || 0), 0);
-  const total5xx = ixSparkline.reduce((sum, bucket) => sum + Number(bucket.count_5xx || 0), 0);
 
   const widgetDefinitions = normalizeIncomingWidgetDefinitions(ixWidgets?.definitions);
   const widgetPointsById = new Map<string, DashboardWidgetPoint[]>();
@@ -743,52 +729,6 @@ export function DashboardInfrastructureSection({
     };
   };
 
-  const latestLabeledBars = (widget: DashboardWidgetDefinition | undefined) => {
-    if (!widget) {
-      return [] as Array<{ key: string; value: number }>;
-    }
-    const points = widgetPointsById.get(widget.widget_id) ?? [];
-    const latestByLabel = new Map<string, DashboardWidgetPoint>();
-    for (const point of points) {
-      const label = point.label ?? "value";
-      const existing = latestByLabel.get(label);
-      if (!existing || existing.timestamp < point.timestamp) {
-        latestByLabel.set(label, point);
-      }
-    }
-    return [...latestByLabel.entries()]
-      .map(([label, point]) => ({ key: label, value: Number(point.value) }))
-      .sort((a, b) => b.value - a.value);
-  };
-
-  const dependencyWidget = findWidgetByKeywords(["dependency", "service map", "upstream", "downstream"]);
-  const dependencyEdges = (() => {
-    if (!dependencyWidget) {
-      return [] as Array<{ from: string; to: string; weight: number }>;
-    }
-    const points = widgetPointsById.get(dependencyWidget.widget_id) ?? [];
-    const edgeMap = new Map<string, { from: string; to: string; weight: number }>();
-    for (const point of points) {
-      const label = String(point.label ?? "").trim();
-      if (!label || !label.includes("->")) {
-        continue;
-      }
-      const [fromRaw, toRaw] = label.split("->", 2);
-      const from = fromRaw.trim();
-      const to = toRaw.trim();
-      if (!from || !to) {
-        continue;
-      }
-      const key = `${from}->${to}`;
-      const existing = edgeMap.get(key);
-      const weight = Number(point.value || 0);
-      if (!existing || weight > existing.weight) {
-        edgeMap.set(key, { from, to, weight });
-      }
-    }
-    return [...edgeMap.values()].sort((a, b) => b.weight - a.weight).slice(0, 10);
-  })();
-
   const cpuWidget =
     definitionOrStubIfPoints("infra_host_cpu_percent") ??
     definitionOrStubIfPoints("infra_process_cpu_percent") ??
@@ -805,9 +745,6 @@ export function DashboardInfrastructureSection({
     definitionOrStubIfPoints("infra_process_cpu_percent") ?? findWidgetByKeywords(["app cpu"]);
   const diskIoReadWidget =
     definitionOrStubIfPoints("infra_disk_io_read_mb") ?? findWidgetByKeywords(["disk i/o read", "disk io read"]);
-  const dbWidget = findWidgetByKeywords(["db", "database", "query", "sql"]);
-  const cacheWidget = findWidgetByKeywords(["cache", "hit", "miss", "redis"]);
-
   const infraCpuTimeline = widgetPointsToTotalsTimelineFromMap(cpuWidget, hostChartPointsByWidget);
   const infraMemoryTimeline = widgetPointsToTotalsTimelineFromMap(memoryWidget, hostChartPointsByWidget);
   const infraDiskTimeline = widgetPointsToTotalsTimelineFromMap(diskWidget, hostChartPointsByWidget);
@@ -937,22 +874,6 @@ export function DashboardInfrastructureSection({
   })();
 
   const infraChartHasSeries = infrastructureCompositionChart.series.length > 0;
-
-  const dbBars = latestLabeledBars(dbWidget);
-  const cacheBars = latestLabeledBars(cacheWidget);
-  const dbFallbackBars = routeBreakdownByVolume.map((item) => ({
-    key: item.key,
-    value: Number(item.avg_latency_ms || 0),
-  }));
-  const cacheFallbackBars = [
-    { key: "estimated_hit", value: Number(total2xx + total3xx) },
-    { key: "estimated_miss", value: Number(total4xx + total5xx) },
-  ];
-  const dependencyFallbackEdges = serviceBreakdownByVolume.slice(0, 8).map((item) => ({
-    from: "edge",
-    to: item.key,
-    weight: Number(item.request_count || 0),
-  }));
 
   const infrastructureConcreteCards = [
     toInfrastructureCard({
@@ -1158,65 +1079,6 @@ export function DashboardInfrastructureSection({
             </div>
           </ChartPanel>
         </div>
-      </section>
-
-      <section className="grid w-full gap-4 xl:grid-cols-3">
-        <ChartPanel title="Database query performance" description="Query durations/frequency from DB widgets.">
-          <BreakdownBarChart
-            items={dbBars.length ? dbBars : dbFallbackBars}
-            valueLabel="value"
-            emptyMessage="No DB query widget data yet."
-            live
-            chartsScopePending={chartsScopePending}
-          />
-          {!dbBars.length ? (
-            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using slow-route latency proxy until DB widget data is available.
-            </p>
-          ) : null}
-        </ChartPanel>
-        <ChartPanel title="Cache hit/miss ratio" description="Cache effectiveness from cache widgets.">
-          <BreakdownBarChart
-            items={cacheBars.length ? cacheBars : cacheFallbackBars}
-            valueLabel="value"
-            emptyMessage="No cache widget data yet."
-            live
-            chartsScopePending={chartsScopePending}
-          />
-          {!cacheBars.length ? (
-            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using success/error split proxy until cache widget data is available.
-            </p>
-          ) : null}
-        </ChartPanel>
-        <ChartPanel title="Service dependency map" description="Observed service-to-service edges from dependency widgets.">
-          {dependencyEdges.length || dependencyFallbackEdges.length ? (
-            <ul className="space-y-2">
-              {(dependencyEdges.length ? dependencyEdges : dependencyFallbackEdges).map((edge) => (
-                <li
-                  key={`${edge.from}->${edge.to}`}
-                  className="flex items-center justify-between rounded-md border border-slate-200 px-2.5 py-1.5 text-sm dark:border-neutral-700"
-                >
-                  <span className="font-mono text-xs text-slate-700 dark:text-neutral-200">
-                    {edge.from} -&gt; {edge.to}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-neutral-800 dark:text-neutral-200">
-                    {edge.weight.toFixed(1)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-slate-600 dark:text-neutral-300">
-              No dependency-map widget edges yet (use labels like `serviceA-&gt;serviceB`).
-            </p>
-          )}
-          {!dependencyEdges.length ? (
-            <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-              Using service-volume fallback edges until dependency widget data is available.
-            </p>
-          ) : null}
-        </ChartPanel>
       </section>
     </div>
   );

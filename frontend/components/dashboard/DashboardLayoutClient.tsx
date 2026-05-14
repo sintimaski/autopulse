@@ -599,6 +599,7 @@ function ShellWithData({ children }: { children: ReactNode }) {
       statusStrip={statusStrip ?? undefined}
       topBanner={workspaceBootstrapBanner}
       isDark={isDark}
+      liveDataActive={d.workspaceBootstrapError === null && !d.liveDataPaused}
       diagnosisNavQuery={diagnosisNavQueryComputed}
       logsNavQuery={logsNavQueryComputed}
       incidentNavQuery={incidentNavQueryComputed}

@@ -2,6 +2,12 @@
 
 import { InlineDataSpinner } from "../../ui/InlineDataSpinner";
 import type { DashboardMembershipItem, DashboardOrganizationSummary } from "../dashboardTypes";
+import {
+  MEMBERSHIP_ROLES,
+  type MembershipRole,
+  assignableMemberRoles,
+  membershipRoleLabel,
+} from "../dashboardRoleHelpers";
 import { PROTECTED_OWNER_EMAIL } from "./settingsContentUtils";
 
 export type SettingsOrganizationsMembersSectionProps = {
@@ -11,20 +17,25 @@ export type SettingsOrganizationsMembersSectionProps = {
   onSelectedOrganizationIdChange: (organizationId: string) => void;
   selectedOrganization: DashboardOrganizationSummary | undefined;
   members: DashboardMembershipItem[];
-  membersLoadState: "idle" | "loading" | "ready";
+  membersLoadState: "idle" | "loading" | "ready" | "error";
+  /** Retry affordance for a failed members fetch. */
+  onReloadMembers?: () => void;
   orgOwnerAccess: boolean;
   canInviteMembers: boolean;
-  memberBulkRole: "" | "owner" | "member";
-  onMemberBulkRoleChange: (role: "" | "owner" | "member") => void;
+  memberBulkRole: "" | MembershipRole;
+  onMemberBulkRoleChange: (role: "" | MembershipRole) => void;
   selectedMemberIds: Set<string>;
   allMembersSelected: boolean;
   onToggleMemberSelected: (userId: string) => void;
   onToggleSelectAllMembers: () => void;
   onApplyMemberBulk: () => void | Promise<void>;
+  /** Non-null while the inline two-click confirm is armed (count = target members). */
+  memberBulkConfirmCount?: number | null;
+  onCancelMemberBulkConfirm?: () => void;
   inviteEmail: string;
   onInviteEmailChange: (email: string) => void;
-  inviteRole: "owner" | "member";
-  onInviteRoleChange: (role: "owner" | "member") => void;
+  inviteRole: MembershipRole;
+  onInviteRoleChange: (role: MembershipRole) => void;
   onSendInvite: () => void | Promise<void>;
   orgMessage: string | null;
   /** Request-in-flight flags: drive button loaders + block double-submit. */
@@ -40,6 +51,7 @@ export function SettingsOrganizationsMembersSection({
   selectedOrganization,
   members,
   membersLoadState,
+  onReloadMembers = () => {},
   orgOwnerAccess,
   canInviteMembers,
   memberBulkRole,
@@ -49,6 +61,8 @@ export function SettingsOrganizationsMembersSection({
   onToggleMemberSelected,
   onToggleSelectAllMembers,
   onApplyMemberBulk,
+  memberBulkConfirmCount = null,
+  onCancelMemberBulkConfirm = () => {},
   inviteEmail,
   onInviteEmailChange,
   inviteRole,
@@ -58,6 +72,7 @@ export function SettingsOrganizationsMembersSection({
   applyingMemberBulk = false,
   sendingInvite = false,
 }: SettingsOrganizationsMembersSectionProps) {
+  const bulkConfirmArmed = memberBulkConfirmCount !== null;
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <div className="flex flex-col gap-1 border-b border-slate-200/80 pb-4 dark:border-neutral-800 sm:flex-row sm:items-end sm:justify-between">
@@ -128,32 +143,61 @@ export function SettingsOrganizationsMembersSection({
                   Action
                   <select
                     value={memberBulkRole}
-                    onChange={(event) => onMemberBulkRoleChange(event.target.value as "" | "owner" | "member")}
+                    onChange={(event) => onMemberBulkRoleChange(event.target.value as "" | MembershipRole)}
                     className="ap-select mt-1 w-full"
-                    aria-label="Bulk member action"
+                    aria-label="Bulk member role"
                   >
-                    <option value="">Choose action…</option>
-                    <option value="owner">Promote to owner</option>
-                    <option value="member">Demote to member</option>
+                    <option value="">Choose role…</option>
+                    {MEMBERSHIP_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        Set role: {membershipRoleLabel(role)}
+                      </option>
+                    ))}
                   </select>
                 </label>
-                <button
-                  type="button"
-                  disabled={!memberBulkRole || selectedMemberIds.size === 0 || applyingMemberBulk}
-                  onClick={() => void onApplyMemberBulk()}
-                  className="ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {applyingMemberBulk ? "Applying…" : "Apply"}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={!memberBulkRole || selectedMemberIds.size === 0 || applyingMemberBulk}
+                    onClick={() => void onApplyMemberBulk()}
+                    className="ap-btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {applyingMemberBulk
+                      ? "Applying…"
+                      : bulkConfirmArmed
+                        ? `Confirm — apply to ${memberBulkConfirmCount} member(s)`
+                        : "Apply"}
+                  </button>
+                  {bulkConfirmArmed ? (
+                    <button
+                      type="button"
+                      onClick={onCancelMemberBulkConfirm}
+                      disabled={applyingMemberBulk}
+                      className="ap-btn disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  ) : null}
+                </div>
                 <p className="max-w-md text-xs text-slate-500 dark:text-neutral-400">
-                  Select rows with the checkboxes, pick an action, then Apply (you will confirm). {PROTECTED_OWNER_EMAIL}{" "}
-                  is never demoted to member.
+                  Select rows with the checkboxes, pick a role, then Apply twice to confirm. {PROTECTED_OWNER_EMAIL}{" "}
+                  can only ever hold the owner role.
                 </p>
               </div>
             ) : null}
             {membersLoadState === "loading" ? (
               <div className="p-6">
                 <InlineDataSpinner label="Loading members…" />
+              </div>
+            ) : membersLoadState === "error" ? (
+              <div className="flex flex-col items-start gap-3 p-6">
+                <p className="text-sm text-rose-700 dark:text-rose-300">
+                  Could not load members for this organization. Check your connection and dashboard API
+                  availability, then retry.
+                </p>
+                <button type="button" onClick={onReloadMembers} className="ap-btn">
+                  Retry
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -247,12 +291,15 @@ export function SettingsOrganizationsMembersSection({
                   Role
                   <select
                     value={inviteRole}
-                    onChange={(event) => onInviteRoleChange(event.target.value as "owner" | "member")}
+                    onChange={(event) => onInviteRoleChange(event.target.value as MembershipRole)}
                     className="ap-select mt-1 w-full"
                     aria-label="Invite role"
                   >
-                    <option value="member">Member</option>
-                    {selectedOrganization?.role === "owner" ? <option value="owner">Owner</option> : null}
+                    {assignableMemberRoles(selectedOrganization?.role).map((role) => (
+                      <option key={role} value={role}>
+                        {membershipRoleLabel(role)}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <button
@@ -267,7 +314,11 @@ export function SettingsOrganizationsMembersSection({
             </div>
           ) : null}
           {orgMessage ? (
-            <p className="text-sm text-slate-600 dark:text-neutral-300" role="status">
+            <p
+              className="text-sm text-slate-600 dark:text-neutral-300"
+              role="status"
+              aria-live="polite"
+            >
               {orgMessage}
             </p>
           ) : null}

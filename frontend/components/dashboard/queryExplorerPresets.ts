@@ -8,6 +8,16 @@ export type QueryExplorerTemplate = {
   sql: string;
 };
 
+/**
+ * `type='job'` rows only exist when an app uses background-job instrumentation,
+ * which most real users have not wired up yet. A query that filters on job rows
+ * legitimately returns zero rows on a request-only project, so the results panel
+ * shows an explanatory hint rather than a bare empty state.
+ */
+export function isJobTypedQuery(sql: string): boolean {
+  return /\btype\b\s*[)]*\s*(=|like|in)[^\n]*'job'/i.test(sql.toLowerCase());
+}
+
 /** Curated read-only templates (time scope still comes from the header panel). */
 export const QUERY_EXPLORER_TEMPLATES: QueryExplorerTemplate[] = [
   {

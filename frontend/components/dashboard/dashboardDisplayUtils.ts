@@ -1,4 +1,4 @@
-export type SortDir = "asc" | "desc";
+export type SortDir = "asc" | "desc" | "none";
 
 export function formatTimestamp(value: string): string {
   return new Date(value).toLocaleString();
@@ -30,7 +30,11 @@ export function statusTone(code: number): string {
   return "bg-neutral-200/90 text-neutral-900 ring-neutral-300/70 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-neutral-600/50";
 }
 
-export function compareValues(a: string | number, b: string | number, dir: SortDir): number {
+export function compareValues(
+  a: string | number,
+  b: string | number,
+  dir: "asc" | "desc",
+): number {
   const mul = dir === "asc" ? 1 : -1;
   if (typeof a === "number" && typeof b === "number") {
     return (a - b) * mul;

@@ -86,6 +86,14 @@ Alerts:
 
 **Layered capabilities:** The shipped codebase may expose organization governance, OIDC sign-in, extended retention presets, SQL-scoped filters, or multi-channel alerts. Treat these as **progressive disclosure** on the default diagnosis path; they extend the MVP goal above rather than replacing it, unless maintainers explicitly widen scope.
 
+**Maintainer scope decision (2026-05-14).** Following the frontend page audit (`docs/plans/fe-page-audit-user-stories-and-gaps.md`), the following surfaces — which touch the non-goals list below — are **explicitly retained as widened scope**, kept under the "Advanced" navigation group and off the default diagnosis path:
+
+- **Errors & Diagnosis OTLP trace correlation (`/traces`)** — read-only correlated-span search for users who already emit OTLP spans. This is *trace correlation*, not a distributed-tracing product (no sampling control, no agent, no service-graph topology).
+- **Query Explorer (`/query-explorer`)** — a read-only DuckDB `SELECT`/CTE surface over the `scoped_events` view, rate-limited and keyword-restricted. It is a power-user escape hatch, not a query-language product.
+- **SDK-defined widget gallery pages (`/w/<pageId>`)** — SDK-emitted custom widgets render on backend-registered gallery pages. The multi-page + layout-grid data model is retained, but the bundled `lx_showcase` demo page and its synthetic series are **dev/demo only**, gated behind a config flag (`LUMONOX_STUDIO_SHOWCASE_DEMO`) and **off in production**.
+
+These remain progressive disclosure: the default Overview → Errors → Requests loop never routes through them.
+
 ### Build Soon After MVP
 
 - Background job tracking.

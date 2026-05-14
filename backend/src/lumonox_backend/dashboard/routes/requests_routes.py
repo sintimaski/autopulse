@@ -26,12 +26,10 @@ from lumonox_backend.dashboard.params import (
     METHOD_QUERY,
     OFFSET_QUERY,
     PATH_QUERY,
-    REQUESTS_FOCUS_QUERY,
     SERVICES_QUERY,
     STATUS_CLASS_QUERY,
     TO_TIMESTAMP_QUERY,
     WINDOW_MINUTES_QUERY,
-    DashboardRequestsFocus,
 )
 from lumonox_backend.dashboard.parsing import split_csv_values
 from lumonox_backend.dashboard.time_window import as_utc_datetime, resolve_time_window
@@ -95,7 +93,6 @@ async def fetch_dashboard_requests(
     window_minutes: int,
     method: str | None,
     status_class: int | None,
-    focus: DashboardRequestsFocus | None,
     path_contains: str | None,
     environments: str | None,
     services: str | None,
@@ -110,8 +107,6 @@ async def fetch_dashboard_requests(
         from_timestamp, to_timestamp, window_minutes, now_utc=server_now
     )
     effective_status_class = status_class
-    if effective_status_class is None and focus == DashboardRequestsFocus.errors:
-        effective_status_class = 5
     exclude_lumonox_traffic = await resolve_exclude_lumonox_traffic(session, context.project_id)
     correlation_norm = str(correlation_request_id or "").strip()[:128] or None
     type_clause = (
@@ -275,7 +270,6 @@ async def get_dashboard_requests(
     window_minutes: int = WINDOW_MINUTES_QUERY,
     method: str | None = METHOD_QUERY,
     status_class: int | None = STATUS_CLASS_QUERY,
-    focus: DashboardRequestsFocus | None = REQUESTS_FOCUS_QUERY,
     path_contains: str | None = PATH_QUERY,
     environments: str | None = ENVIRONMENTS_QUERY,
     services: str | None = SERVICES_QUERY,
@@ -296,7 +290,6 @@ async def get_dashboard_requests(
         window_minutes=window_minutes,
         method=method,
         status_class=status_class,
-        focus=focus,
         path_contains=path_contains,
         environments=environments,
         services=services,
@@ -318,7 +311,6 @@ async def export_dashboard_requests(
     window_minutes: int = WINDOW_MINUTES_QUERY,
     method: str | None = METHOD_QUERY,
     status_class: int | None = STATUS_CLASS_QUERY,
-    focus: DashboardRequestsFocus | None = REQUESTS_FOCUS_QUERY,
     path_contains: str | None = PATH_QUERY,
     environments: str | None = ENVIRONMENTS_QUERY,
     services: str | None = SERVICES_QUERY,
@@ -345,7 +337,6 @@ async def export_dashboard_requests(
         window_minutes=window_minutes,
         method=method,
         status_class=status_class,
-        focus=focus,
         path_contains=path_contains,
         environments=environments,
         services=services,

@@ -126,10 +126,8 @@ export function SettingsRetentionPolicySection({
             <label className="block w-full max-w-xs text-sm text-slate-700 dark:text-neutral-200">
               Retention tier
               <span className="mt-0.5 block text-xs font-normal text-slate-500 dark:text-neutral-400">
-                Preset labels for rotation policy in this build — not a billing plan or paid upgrade. The{" "}
-                <span className="font-medium">starter</span> tier also applies a lower ingest rate multiplier server-side
-                (see <code className="rounded bg-slate-100 px-1 dark:bg-neutral-800">plan_limits.py</code>) so noisy
-                tenants stay within single-node budgets.
+                Preset rotation policy — not a billing plan. Starter also caps the ingest rate to stay within
+                single-node budgets.
               </span>
               <select
                 value={effectiveDraft.retention_plan}
@@ -163,15 +161,7 @@ export function SettingsRetentionPolicySection({
             </label>
           </div>
           <p className="mt-2 text-xs text-slate-500 dark:text-neutral-400">
-            Optional rotation caps apply to the active log store (DuckDB or SQLite). The backend also honors{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
-              LUMONOX_SQLITE_MAX_DB_FILE_MB
-            </code>{" "}
-            (deprecated alias{" "}
-            <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px] dark:bg-neutral-800">
-              LUMONOX_EMBEDDED_MAX_DB_SIZE_MB
-            </code>
-            ) as a whole-file ceiling (default 512 on dev SQLite filenames unless overridden).
+            Optional rotation caps apply to the active log store (DuckDB or SQLite).
           </p>
           <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
             Archive status: {effectiveDraft.archival_status}
@@ -189,7 +179,13 @@ export function SettingsRetentionPolicySection({
             {saving ? "Saving…" : "Save retention policy"}
           </button>
           {retentionMessage ? (
-            <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{retentionMessage}</p>
+            <p
+              className="mt-2 text-sm text-slate-600 dark:text-neutral-300"
+              role="status"
+              aria-live="polite"
+            >
+              {retentionMessage}
+            </p>
           ) : null}
         </>
       ) : dashboardLoading && !dashboardErrorMessage ? (

@@ -2,9 +2,9 @@
 
 Live overview/metrics use ``/dashboard/updates`` when realtime is enabled.
 
-Structured log exploration uses **HTTP only**: ``POST /dashboard/log-query/validate`` and
-``POST /dashboard/log-query/execute`` (poll or refetch as needed). There is no WebSocket
-stream for log queries.
+Structured log exploration uses **HTTP only**: ``POST /dashboard/log-query/validate``
+plus the shared ``POST /dashboard/query`` batch path. There is no WebSocket stream for
+log queries.
 """
 
 from __future__ import annotations

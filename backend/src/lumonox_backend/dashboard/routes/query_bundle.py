@@ -290,7 +290,9 @@ async def get_dashboard_bootstrap(
         api_keys=api_keys,
         alert_capabilities=alert_capabilities,
         onboarding_status=onboarding_status,
-        studio_nav_pages=list_studio_nav_pages(),
+        studio_nav_pages=list_studio_nav_pages(
+            include_demo=get_settings().studio_showcase_demo_enabled,
+        ),
     )
 
 

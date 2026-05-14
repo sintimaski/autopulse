@@ -26,6 +26,7 @@ import { DiagnosisRequestsStickyScopeBar } from "../DiagnosisRequestsStickyScope
 import { CorrelationClearBar } from "../CorrelationClearBar";
 import { MetricCard } from "../MetricCard";
 import { VolumeChart } from "../VolumeChart";
+import { ChartPanel, MultiSeriesLineChart, type MultiSeriesLineChartSeries } from "../charts";
 import { buildErrorGroupEvidenceMenuItems } from "../errorGroupEvidenceMenu";
 import {
   isDiagnosisScopePartial,
@@ -143,6 +144,61 @@ export function DiagnosisContent() {
   const failures = diagnosisSlice.diagnosisFailures;
   const groupEvents = diagnosisSlice.diagnosisErrorGroupEvents;
   const zeroResultEmittedKeyRef = useRef<string | null>(null);
+
+  // "When it broke": per-minute requests vs errors from the server-side timeline slice.
+  const errorTimelineChart = useMemo(() => {
+    const buckets = timeline?.buckets ?? [];
+    if (buckets.length === 0) {
+      return { labels: [] as string[], series: [] as MultiSeriesLineChartSeries[] };
+    }
+    const labels = buckets.map((bucket) => {
+      const parsed = new Date(bucket.minute);
+      return Number.isNaN(parsed.getTime())
+        ? bucket.minute
+        : parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    });
+    return {
+      labels,
+      series: [
+        {
+          id: "requests",
+          label: "Requests",
+          color: "#94a3b8",
+          values: buckets.map((bucket) => Number(bucket.request_count || 0)),
+        },
+        {
+          id: "errors",
+          label: "Errors",
+          color: "#e11d48",
+          values: buckets.map((bucket) => Number(bucket.error_count || 0)),
+        },
+      ],
+    };
+  }, [timeline]);
+
+  // Keep the "Recent errors" preview ordering consistent with the grouped-errors
+  // table: when the table is sorted by count, sort the preview by count too.
+  // Sort a copy — never mutate the context-owned recentErrorsPreview array.
+  const recentErrorsPreview = useMemo(() => {
+    if (d.errorGroupSort !== "count") {
+      return d.recentErrorsPreview;
+    }
+    return [...d.recentErrorsPreview].sort((a, b) => b.count - a.count);
+  }, [d.recentErrorsPreview, d.errorGroupSort]);
+
+  // Which error group the "event evidence" panel is showing (explicit selection,
+  // else the most-recent group — mirrors the context's fetch key).
+  const evidenceGroup = useMemo(() => {
+    const key = diagnosisSlice.diagnosisEvidenceGroupKey ?? d.recentErrorsPreview[0]?.group_key ?? null;
+    if (!key) {
+      return null;
+    }
+    return (
+      d.displayedErrorGroups.find((group) => group.group_key === key) ??
+      d.recentErrorsPreview.find((group) => group.group_key === key) ??
+      null
+    );
+  }, [diagnosisSlice.diagnosisEvidenceGroupKey, d.displayedErrorGroups, d.recentErrorsPreview]);
 
   useEffect(() => {
     if (routePath !== "/diagnosis") {
@@ -469,13 +525,66 @@ export function DiagnosisContent() {
         <MetricCard label="Error groups" value={String(errorGroups.total)} helper="Grouped anchors" />
       </section>
 
+      <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
+        <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-neutral-50">When it broke</h2>
+        <p className="mt-1.5 text-sm text-slate-600 dark:text-neutral-400">
+          Requests and errors per minute across the selected window, and the routes driving failures
+          (server-side aggregates over the full window — not just the loaded request sample).
+        </p>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <ChartPanel title="Error timeline" description="Requests vs errors per minute in this window.">
+            <MultiSeriesLineChart
+              height={188}
+              labels={errorTimelineChart.labels}
+              series={errorTimelineChart.series}
+              emptyMessage="No traffic in this window yet."
+              live
+              chartsScopePending={d.chartsScopePending}
+            />
+          </ChartPanel>
+          <div className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-900/[0.04] dark:bg-neutral-800/40 dark:ring-white/[0.05]">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Failures by route</h3>
+            <p className="mt-1 text-xs text-slate-600 dark:text-neutral-400">
+              Routes returning 5xx in this window, ranked by failure count.
+            </p>
+            {failures.items.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
+                No failing routes in this window.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {failures.items.slice(0, 10).map((item) => (
+                  <li
+                    key={item.path}
+                    className="flex items-start justify-between gap-2 text-sm text-slate-800 dark:text-neutral-200"
+                  >
+                    <Link
+                      href={buildRequestsPageHref(scopedState, { pathQuery: item.path, statusClass: "5" })}
+                      className="min-w-0 truncate font-mono text-xs text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+                    >
+                      {item.path}
+                    </Link>
+                    <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
+                      <span className="font-semibold text-rose-700">{item.failure_count}</span>
+                      <span className="text-xs text-slate-500 dark:text-neutral-400">
+                        {(item.error_rate * 100).toFixed(1)}% · {Math.round(item.avg_latency_ms)}ms
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
+
       <GuidedTroubleshootingPanel />
 
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-neutral-50">Quick diagnosis</h2>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-neutral-400">
-          Recent grouped errors and top failing routes from the loaded request sample ({requests.limit} rows).
-          Full request rows live on{" "}
+          Recent grouped errors from the loaded request sample ({requests.limit} rows). For
+          window-wide failing routes see “Failures by route” above. Full request rows live on{" "}
           <Link
             href={buildRequestsPageHref(scopedState)}
             className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
@@ -484,18 +593,18 @@ export function DiagnosisContent() {
           </Link>{" "}
           (same time window and filters).
         </p>
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4">
           <div className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-900/[0.04] dark:bg-neutral-800/40 dark:ring-white/[0.05]">
             <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Recent errors</h3>
-            {d.recentErrorsPreview.length === 0 ? (
+            {recentErrorsPreview.length === 0 ? (
               <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">None in this window.</p>
             ) : (
               <ul className="mt-2 space-y-2">
-                {d.recentErrorsPreview.map((item) => (
+                {recentErrorsPreview.map((item) => (
                   <li key={item.group_key}>
                     <div className="rounded-lg border border-transparent px-1 py-1 text-sm transition-colors hover:border-slate-200 hover:bg-white dark:hover:border-neutral-700 dark:hover:bg-neutral-900">
                       <a
-                        href="#grouped-errors"
+                        href={`#error-group:${encodeURIComponent(item.group_key)}`}
                         className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/45 dark:focus-visible:ring-orange-400/35"
                       >
                         <span className="font-medium text-slate-900 dark:text-neutral-100">
@@ -513,38 +622,12 @@ export function DiagnosisContent() {
                         </span>
                       </a>
                       <Link
-                        href={buildRequestsPageHref(scopedState, {
-                          pathQuery: item.path,
-                          statusClass: "ALL",
-                        })}
+                        href={buildRequestsPageHref(scopedState, { pathQuery: item.path })}
                         className="mt-1 inline-block text-xs font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
                       >
                         Request logs for this route
                       </Link>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-900/[0.04] dark:bg-neutral-800/40 dark:ring-white/[0.05]">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-neutral-100">Top failing routes</h3>
-            {d.topFailingRoutes.length === 0 ? (
-              <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">No 5xx in loaded requests.</p>
-            ) : (
-              <ul className="mt-2 space-y-2">
-                {d.topFailingRoutes.map(([path, count]) => (
-                  <li
-                    key={path}
-                    className="flex items-start justify-between gap-2 text-sm text-slate-800 dark:text-neutral-200"
-                  >
-                    <Link
-                      href={buildRequestsPageHref(scopedState, { pathQuery: path, statusClass: "5" })}
-                      className="min-w-0 truncate font-mono text-xs text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
-                    >
-                      {path}
-                    </Link>
-                    <span className="shrink-0 tabular-nums font-semibold text-rose-700">{count}</span>
                   </li>
                 ))}
               </ul>
@@ -642,7 +725,11 @@ export function DiagnosisContent() {
                       key={item.group_key}
                       rowId={rowId}
                       open={open}
-                      onToggle={d.toggleRequestRow}
+                      onToggle={(id) => {
+                        d.toggleRequestRow(id);
+                        // Point the event-evidence panel at whichever group the user opens.
+                        diagnosisSlice.setDiagnosisEvidenceGroupKey(item.group_key);
+                      }}
                       colSpan={8}
                       summaryClassName="cursor-pointer border-l-2 border-transparent align-middle hover:border-orange-500/70 hover:bg-slate-50/90 dark:hover:border-orange-400/50 dark:hover:bg-neutral-800/90"
                       detailsRowClassName="bg-slate-50/95 dark:bg-neutral-900/95"
@@ -689,7 +776,9 @@ export function DiagnosisContent() {
         </div>
         <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-sm text-slate-600 dark:border-neutral-800 dark:text-neutral-300">
           <p>
-            Page {d.errorGroupPage + 1} · Offset {d.errorGroupPage * d.errorGroupLimit}
+            Page {d.errorGroupPage + 1} of{" "}
+            {Math.max(1, Math.ceil(errorGroups.total / d.errorGroupLimit))} · Offset{" "}
+            {d.errorGroupPage * d.errorGroupLimit}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -714,6 +803,11 @@ export function DiagnosisContent() {
 
       <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="text-base font-semibold text-slate-800 dark:text-neutral-100">Error-group event evidence</h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+          {evidenceGroup
+            ? `Events for ${evidenceGroup.exception_type ?? "Error"} · ${evidenceGroup.path} — expand any grouped-errors row above to switch groups.`
+            : "Expand a grouped-errors row above to load that group's raw events."}
+        </p>
         {groupEvents && groupEvents.items.length > 0 ? (
           <ul className="mt-3 space-y-2">
             {groupEvents.items.slice(0, 8).map((event) => (
@@ -735,7 +829,10 @@ export function DiagnosisContent() {
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">Select a busier window to load event evidence.</p>
+          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">
+            No raw events for this group in the current scope. Expand a grouped-errors row above, or
+            widen the time window.
+          </p>
         )}
       </section>
       <DashboardDetailModal

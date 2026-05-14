@@ -7,8 +7,14 @@ import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors"
 import { parseTraceDetailResponse, parseTraceSearchResponse } from "../../../utils/dashboardResponseGuards";
 import { useDashboardData } from "../DashboardDataContext";
 import { dashboardSessionFetch } from "../dashboardSessionFetch";
-import { METHOD_OPTIONS, formatTimestamp, type TraceDetailResponse, type TraceSearchResponse } from "../dashboardTypes";
-import { ChevronLeft, ChevronRight, Crosshair, Globe, Network, Search, Server } from "lucide-react";
+import {
+  METHOD_OPTIONS,
+  formatTimestamp,
+  type TraceDetailResponse,
+  type TraceSearchResponse,
+  type TraceSpanItem,
+} from "../dashboardTypes";
+import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Crosshair, Database, Globe, Network, Search, Server } from "lucide-react";
 import {
   Banner,
   Chip,
@@ -30,6 +36,93 @@ type TraceTimeScope =
   | { kind: "rolling"; windowMinutes: number }
   | { kind: "absolute"; from: string; to: string };
 
+/**
+ * A span positioned within the trace's overall time span: `offsetPct` is the bar's
+ * left edge (relative to trace start), `widthPct` its duration, `depth` its nesting
+ * level derived from the `parent_span_id` chain.
+ */
+type WaterfallSpan = {
+  item: TraceSpanItem;
+  depth: number;
+  offsetPct: number;
+  widthPct: number;
+};
+
+/** The detail endpoint returns this exact `detail` string when the event store is SQLite. */
+const DUCKDB_REQUIRED_DETAIL = "Tracing explorer requires DuckDB event store.";
+
+function isDuckdbRequiredError(status: number, detail: string): boolean {
+  return status === 400 && detail.toLowerCase().includes("duckdb event store");
+}
+
+/**
+ * Compute a real waterfall layout from the span list.
+ *
+ * Bars are positioned by each span's start timestamp within the trace's total
+ * start..end span, with width proportional to the span's duration (`latency_ms`).
+ * Depth is derived from the `parent_span_id` chain so child spans are indented
+ * under their parents. If timestamps collapse to a single instant (or are missing),
+ * bars fall back to duration-proportional widths anchored at the trace start.
+ */
+function computeWaterfall(items: TraceSpanItem[]): WaterfallSpan[] {
+  if (items.length === 0) {
+    return [];
+  }
+  const spanById = new Map<string, TraceSpanItem>();
+  for (const item of items) {
+    if (item.span_id) {
+      spanById.set(item.span_id, item);
+    }
+  }
+  // Depth = length of the parent chain, capped to avoid runaway indentation on cycles.
+  const depthCache = new Map<TraceSpanItem, number>();
+  const depthOf = (item: TraceSpanItem): number => {
+    const cached = depthCache.get(item);
+    if (cached !== undefined) {
+      return cached;
+    }
+    let depth = 0;
+    const seen = new Set<string>();
+    let current: TraceSpanItem | undefined = item;
+    while (current?.parent_span_id && !seen.has(current.parent_span_id) && depth < 8) {
+      seen.add(current.parent_span_id);
+      const parent = spanById.get(current.parent_span_id);
+      if (!parent) {
+        break;
+      }
+      depth += 1;
+      current = parent;
+    }
+    depthCache.set(item, depth);
+    return depth;
+  };
+
+  const starts = items.map((item) => new Date(item.timestamp).getTime());
+  const ends = items.map(
+    (item, index) => starts[index] + Math.max(0, item.latency_ms),
+  );
+  const traceStart = Math.min(...starts);
+  const traceEnd = Math.max(...ends);
+  const totalMs = traceEnd - traceStart;
+
+  return items.map((item, index) => {
+    const durationMs = Math.max(0, item.latency_ms);
+    let offsetPct = 0;
+    let widthPct: number;
+    if (totalMs > 0 && Number.isFinite(starts[index])) {
+      offsetPct = ((starts[index] - traceStart) / totalMs) * 100;
+      widthPct = (durationMs / totalMs) * 100;
+    } else {
+      // Degenerate case: no usable time span — keep duration-proportional bars.
+      const maxDuration = Math.max(1, ...items.map((s) => Math.max(0, s.latency_ms)));
+      widthPct = (durationMs / maxDuration) * 100;
+    }
+    offsetPct = Math.min(Math.max(offsetPct, 0), 99);
+    widthPct = Math.min(Math.max(widthPct, 1.5), 100 - offsetPct);
+    return { item, depth: depthOf(item), offsetPct, widthPct };
+  });
+}
+
 export function TracesContent() {
   const { sessionProjectId } = useDashboardData();
   const [query, setQuery] = useState("");
@@ -45,8 +138,26 @@ export function TracesContent() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsDuckdbStore, setNeedsDuckdbStore] = useState(false);
   const [searchData, setSearchData] = useState<TraceSearchResponse | null>(null);
   const [detailData, setDetailData] = useState<TraceDetailResponse | null>(null);
+  // Snapshot of the filter/query inputs that produced the currently displayed
+  // results — used to flag when the form drifts and a re-run is needed.
+  const [lastRunFilters, setLastRunFilters] = useState<string | null>(null);
+
+  const buildFilterSignature = useCallback(
+    () =>
+      JSON.stringify([
+        query.trim(),
+        servicesFilter.trim(),
+        environmentsFilter.trim(),
+        pathContains.trim(),
+        methodFilter.trim() === "ALL" ? "" : methodFilter.trim(),
+        errorsOnly,
+      ]),
+    [query, servicesFilter, environmentsFilter, pathContains, methodFilter, errorsOnly],
+  );
+  const filtersChanged = lastRunFilters !== null && lastRunFilters !== buildFilterSignature();
 
   const resolveTimeScope = useCallback(
     (override?: TraceTimeScope): TraceTimeScope => {
@@ -97,6 +208,7 @@ export function TracesContent() {
     async (timeOverride?: TraceTimeScope) => {
       setSearchLoading(true);
       setError(null);
+      setNeedsDuckdbStore(false);
       const scope = resolveTimeScope(timeOverride);
       try {
         const params = new URLSearchParams();
@@ -118,6 +230,11 @@ export function TracesContent() {
             typeof raw === "object" && raw !== null && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
               ? (raw as { detail: string }).detail
               : `Trace search failed (${response.status})`;
+          if (isDuckdbRequiredError(response.status, detail)) {
+            setNeedsDuckdbStore(true);
+            setSearchData(null);
+            return;
+          }
           setError(detail);
           setSearchData(null);
           return;
@@ -129,6 +246,7 @@ export function TracesContent() {
           return;
         }
         setSearchData(parsedSearch);
+        setLastRunFilters(buildFilterSignature());
         if (timeOverride?.kind === "absolute") {
           setAbsoluteFrom(timeOverride.from);
           setAbsoluteTo(timeOverride.to);
@@ -144,7 +262,7 @@ export function TracesContent() {
         setSearchLoading(false);
       }
     },
-    [appendFilterParams, query, resolveTimeScope],
+    [appendFilterParams, buildFilterSignature, query, resolveTimeScope],
   );
 
   useEffect(() => {
@@ -205,6 +323,7 @@ export function TracesContent() {
     setDetailData(null);
     setDetailLoading(true);
     setError(null);
+    setNeedsDuckdbStore(false);
     const scope = resolveTimeScope();
     const timeParams = buildDetailTimeParams(scope);
     const qs = timeParams.toString();
@@ -218,6 +337,11 @@ export function TracesContent() {
           typeof raw === "object" && raw !== null && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
             ? (raw as { detail: string }).detail
             : `Trace load failed (${response.status})`;
+        if (isDuckdbRequiredError(response.status, detail)) {
+          setNeedsDuckdbStore(true);
+          setDetailData(null);
+          return;
+        }
         setError(detail);
         setDetailData(null);
         return;
@@ -239,9 +363,7 @@ export function TracesContent() {
 
   const timeModeLabel =
     absoluteFrom && absoluteTo ? "Custom time range (UTC)" : `Rolling window (${windowMinutes} min)`;
-  const detailMaxLatency = detailData
-    ? Math.max(1, ...detailData.items.map((item) => item.latency_ms))
-    : 1;
+  const waterfall = detailData ? computeWaterfall(detailData.items) : [];
 
   return (
     <div className="flex flex-col gap-4">
@@ -250,6 +372,25 @@ export function TracesContent() {
         ingest <span className="font-mono">received_at</span> within the window. OTLP has no built-in
         &quot;session&quot; — pick a preset or shift the window to browse history.
       </Banner>
+
+      <Banner tone="warning" icon={Clock}>
+        Traces keeps its <strong>own time scope</strong> — the time range, filters, and search below are
+        independent of the dashboard scope bar used by Overview and other pages.
+      </Banner>
+
+      {needsDuckdbStore ? (
+        <Banner tone="info" icon={Database} title="Traces needs the DuckDB event store">
+          <p>
+            The Tracing explorer reads correlated OTLP spans from the DuckDB event store, which isn&apos;t
+            enabled on this backend (it&apos;s currently using SQLite). Trace search and span waterfalls stay
+            unavailable until it&apos;s turned on.
+          </p>
+          <p className="mt-1.5">
+            Set <code className="font-mono">LUMONOX_EVENT_STORE=duckdb</code> on the backend and restart, then
+            reload this page. Other dashboard pages keep working on SQLite.
+          </p>
+        </Banner>
+      ) : null}
 
       {error ? (
         <Banner tone="danger" icon={Crosshair} title="Trace request failed">
@@ -373,6 +514,15 @@ export function TracesContent() {
                 {searchLoading ? "Searching…" : "Search"}
               </ConsoleButton>
             </div>
+            {filtersChanged && !searchLoading ? (
+              <p
+                role="status"
+                className="flex items-center gap-1.5 text-[11px] font-normal normal-case tracking-normal text-amber-700 dark:text-amber-300"
+              >
+                <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+                Filters changed — results below are stale. Re-run the search to apply them.
+              </p>
+            ) : null}
           </div>
 
           {searchLoading && !searchData ? (
@@ -468,23 +618,33 @@ export function TracesContent() {
               label="Loading span details…"
               description={selectedTraceId ? `Trace ${selectedTraceId}` : undefined}
             />
-          ) : detailData && detailData.items.length > 0 ? (
+          ) : detailData && waterfall.length > 0 ? (
             <div className="flex flex-col gap-1">
               <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_4.5rem] gap-2 px-1 pb-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-neutral-500">
                 <span>Span</span>
-                <span>Duration</span>
+                <span>Waterfall (start offset · duration)</span>
                 <span className="text-right">Latency</span>
               </div>
-              {detailData.items.map((item) => {
-                const widthPct = Math.max(1.5, (item.latency_ms / detailMaxLatency) * 100);
+              {waterfall.map(({ item, depth, offsetPct, widthPct }) => {
                 const isError = item.status_code >= 500;
+                const statusClass =
+                  isError ? "5xx error" : item.status_code >= 400 ? "4xx" : "2xx/3xx";
                 return (
                   <div
                     key={`${item.trace_id}-${item.span_id ?? item.timestamp}`}
+                    aria-label={`Span ${item.span_name} — status ${statusClass} (HTTP ${item.status_code}), ${item.latency_ms.toFixed(0)} ms, starts +${offsetPct.toFixed(0)}% into trace`}
                     className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_4.5rem] items-center gap-2 rounded-md px-1 py-1 hover:bg-slate-50/70 dark:hover:bg-neutral-800/40"
                   >
-                    <div className="min-w-0">
+                    <div className="min-w-0" style={{ paddingLeft: `${depth * 12}px` }}>
                       <p className="flex items-center gap-1.5 truncate font-mono text-[12px] text-slate-700 dark:text-neutral-200">
+                        {depth > 0 ? (
+                          <span
+                            aria-hidden
+                            className="shrink-0 text-slate-300 dark:text-neutral-600"
+                          >
+                            └
+                          </span>
+                        ) : null}
                         {isError ? <SeverityDot tone="danger" size={6} /> : null}
                         {item.span_name}
                       </p>
@@ -492,16 +652,19 @@ export function TracesContent() {
                         {item.service_name} · {item.path}
                       </p>
                     </div>
-                    <div className="h-4 rounded bg-slate-100 dark:bg-neutral-800">
+                    <div
+                      className="relative h-4 rounded bg-slate-100 dark:bg-neutral-800"
+                      title={`${statusClass} · starts +${offsetPct.toFixed(0)}% into trace · ${item.latency_ms.toFixed(0)} ms`}
+                    >
                       <div
-                        className={`h-full rounded ${
+                        className={`absolute h-full rounded ${
                           isError
                             ? "bg-rose-500"
                             : item.status_code >= 400
                               ? "bg-amber-500"
                               : "bg-orange-400"
                         }`}
-                        style={{ width: `${widthPct}%` }}
+                        style={{ left: `${offsetPct}%`, width: `${widthPct}%` }}
                       />
                     </div>
                     <div className="flex items-center justify-end gap-1.5">

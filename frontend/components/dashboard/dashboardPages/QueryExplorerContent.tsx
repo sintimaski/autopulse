@@ -7,15 +7,17 @@ import { CardSpinner } from "../../ui/CardSpinner";
 import { buildDashboardNetworkError } from "../../../utils/dashboardFetchErrors";
 import { buildQueryExplorerExecutePayload } from "../../../utils/queryExplorerExecute";
 import { parseQueryExplorerResponse } from "../../../utils/dashboardResponseGuards";
+import { copyTextToClipboard } from "../clipboard";
 import { useDashboardData } from "../DashboardDataContext";
 import { dashboardSessionJsonPost } from "../dashboardSessionFetch";
 import type { QueryExplorerResponse } from "../dashboardTypes";
 import {
+  isJobTypedQuery,
   JOB_FAILURES_STARTER_SQL,
   QUERY_EXPLORER_JOB_FAILURES_PRESET,
   QUERY_EXPLORER_TEMPLATES,
 } from "../queryExplorerPresets";
-import { ChartColumn, Layers, Play, Terminal } from "lucide-react";
+import { ChartColumn, Copy, Layers, Play, Terminal } from "lucide-react";
 import { Banner, Chip, ConsoleButton, Kbd, Panel, Toggle } from "../../ui/console";
 
 const DEFAULT_QUERY = [
@@ -39,13 +41,20 @@ export function QueryExplorerContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QueryExplorerResponse | null>(null);
+  const [lastRunQuery, setLastRunQuery] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState("");
   const jobFailuresPresetAppliedRef = useRef(false);
+  const gutterRef = useRef<HTMLPreElement>(null);
   const activeTemplate = useMemo(
     () => QUERY_EXPLORER_TEMPLATES.find((item) => item.id === templateId),
     [templateId],
   );
   const lineCount = useMemo(() => query.split("\n").length, [query]);
+  const showJobTypeHint = useMemo(
+    () => Boolean(data) && data?.rows.length === 0 && lastRunQuery !== null && isJobTypedQuery(lastRunQuery),
+    [data, lastRunQuery],
+  );
 
   useEffect(() => {
     const preset = (searchParams.get("preset") ?? "").trim().toLowerCase();
@@ -63,6 +72,8 @@ export function QueryExplorerContent() {
   const execute = async () => {
     setLoading(true);
     setError(null);
+    setCopyStatus(null);
+    const submittedQuery = query;
     try {
       const body = buildQueryExplorerExecutePayload({
         query,
@@ -91,18 +102,22 @@ export function QueryExplorerContent() {
             : `Query failed (${response.status})`;
         setError(detail);
         setData(null);
+        setLastRunQuery(null);
         return;
       }
       const parsed = parseQueryExplorerResponse(raw);
       if (!parsed) {
         setError("Dashboard returned an unexpected query result shape.");
         setData(null);
+        setLastRunQuery(null);
         return;
       }
       setData(parsed);
+      setLastRunQuery(submittedQuery);
     } catch (err) {
       setError(buildDashboardNetworkError(err));
       setData(null);
+      setLastRunQuery(null);
     } finally {
       setLoading(false);
     }
@@ -114,6 +129,33 @@ export function QueryExplorerContent() {
     if (picked) {
       setQuery(picked.sql);
     }
+  };
+
+  const copyResults = async (format: "json" | "csv") => {
+    if (!data) {
+      return;
+    }
+    let payload: string;
+    if (format === "json") {
+      const objects = data.rows.map((row) =>
+        Object.fromEntries(data.columns.map((column, index) => [column, row[index] ?? null])),
+      );
+      payload = JSON.stringify(objects, null, 2);
+    } else {
+      const escapeCsv = (value: unknown): string => {
+        const text = value === null || value === undefined ? "" : String(value);
+        return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+      };
+      const lines = [
+        data.columns.map(escapeCsv).join(","),
+        ...data.rows.map((row) => row.map(escapeCsv).join(",")),
+      ];
+      payload = lines.join("\n");
+    }
+    const ok = await copyTextToClipboard(payload);
+    setCopyStatus(
+      ok ? `Copied ${data.rows.length} row${data.rows.length === 1 ? "" : "s"} as ${format.toUpperCase()}` : "Copy failed",
+    );
   };
 
   return (
@@ -223,10 +265,11 @@ export function QueryExplorerContent() {
               </>
             }
           >
-            <div className="relative font-mono text-[13px] leading-[1.7]">
+            <div className="relative overflow-hidden font-mono text-[13px] leading-[1.7]">
               <pre
+                ref={gutterRef}
                 aria-hidden
-                className="pointer-events-none absolute left-0 top-0 select-none border-r border-slate-200/80 bg-slate-50/70 py-3 text-right text-slate-400 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-neutral-600"
+                className="pointer-events-none absolute left-0 top-0 h-full select-none overflow-hidden border-r border-slate-200/80 bg-slate-50/70 py-3 text-right text-slate-400 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-neutral-600"
                 style={{ width: "3rem" }}
               >
                 {Array.from({ length: lineCount }, (_, index) => (
@@ -239,6 +282,11 @@ export function QueryExplorerContent() {
                 id="query-explorer-sql"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                onScroll={(event) => {
+                  if (gutterRef.current) {
+                    gutterRef.current.scrollTop = event.currentTarget.scrollTop;
+                  }
+                }}
                 onKeyDown={(event) => {
                   if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
                     event.preventDefault();
@@ -247,7 +295,7 @@ export function QueryExplorerContent() {
                 }}
                 aria-label="SQL query for Query Explorer"
                 spellCheck={false}
-                className="block min-h-[13rem] w-full resize-y bg-transparent py-3 pl-14 pr-3 text-slate-900 outline-none dark:text-neutral-100"
+                className="relative block min-h-[13rem] w-full resize-y bg-transparent py-3 pl-14 pr-3 text-slate-900 outline-none dark:text-neutral-100"
               />
             </div>
           </Panel>
@@ -269,41 +317,104 @@ export function QueryExplorerContent() {
                   ? `${data.rows.length} row${data.rows.length === 1 ? "" : "s"}${data.truncated ? " (truncated)" : ""}`
                   : "Run a query to see results"
             }
-            actions={data && data.truncated ? <Chip tone="accent">truncated</Chip> : undefined}
+            actions={
+              <>
+                {data && data.truncated ? <Chip tone="accent">truncated</Chip> : null}
+                {data && data.rows.length > 0 ? (
+                  <>
+                    <ConsoleButton
+                      variant="secondary"
+                      size="xs"
+                      icon={Copy}
+                      onClick={() => void copyResults("json")}
+                    >
+                      Copy JSON
+                    </ConsoleButton>
+                    <ConsoleButton
+                      variant="secondary"
+                      size="xs"
+                      icon={Copy}
+                      onClick={() => void copyResults("csv")}
+                    >
+                      Copy CSV
+                    </ConsoleButton>
+                  </>
+                ) : null}
+              </>
+            }
           >
+            <div aria-live="polite" className="sr-only">
+              {loading
+                ? "Running query."
+                : copyStatus
+                  ? copyStatus
+                  : data
+                    ? `Query returned ${data.rows.length} row${data.rows.length === 1 ? "" : "s"}${data.truncated ? ", truncated" : ""}.`
+                    : ""}
+            </div>
             {loading ? (
               <CardSpinner className="m-3.5" label="Running query…" description="Waiting for DuckDB results." />
-            ) : data ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-[12px]">
-                  <thead className="border-b border-slate-200/80 bg-slate-50/70 text-[10px] uppercase tracking-wide text-slate-400 dark:border-neutral-800 dark:bg-neutral-950/40 dark:text-neutral-500">
-                    <tr>
-                      {data.columns.map((column) => (
-                        <th key={column} className="px-3 py-1.5 font-semibold">
-                          {column}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
-                    {data.rows.map((row, rowIdx) => (
-                      <tr key={`${rowIdx}-${row.length}`} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40">
-                        {row.map((cell, cellIdx) => (
-                          <td
-                            key={`${rowIdx}-${cellIdx}`}
-                            className="px-3 py-1.5 font-mono text-slate-600 dark:text-neutral-300"
-                          >
-                            {cell === null ? (
-                              <span className="text-slate-300 dark:text-neutral-600">null</span>
-                            ) : (
-                              String(cell)
-                            )}
-                          </td>
+            ) : data && data.rows.length > 0 ? (
+              <>
+                {copyStatus ? (
+                  <p className="border-b border-slate-200/80 px-3 py-1.5 text-[11px] text-slate-500 dark:border-neutral-800 dark:text-neutral-400">
+                    {copyStatus}
+                  </p>
+                ) : null}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-left text-[12px]">
+                    <caption className="sr-only">
+                      Query results — {data.rows.length} row{data.rows.length === 1 ? "" : "s"}
+                      {data.truncated ? " (truncated)" : ""}, {data.columns.length} column
+                      {data.columns.length === 1 ? "" : "s"}.
+                    </caption>
+                    <thead className="border-b border-slate-200/80 bg-slate-50/70 text-[10px] uppercase tracking-wide text-slate-400 dark:border-neutral-800 dark:bg-neutral-950/40 dark:text-neutral-500">
+                      <tr>
+                        {data.columns.map((column) => (
+                          <th key={column} scope="col" className="px-3 py-1.5 font-semibold">
+                            {column}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                      {data.rows.map((row, rowIdx) => (
+                        <tr key={`${rowIdx}-${row.length}`} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40">
+                          {row.map((cell, cellIdx) => (
+                            <td
+                              key={`${rowIdx}-${cellIdx}`}
+                              className="px-3 py-1.5 font-mono text-slate-600 dark:text-neutral-300"
+                            >
+                              {cell === null ? (
+                                <span className="text-slate-300 dark:text-neutral-600">null</span>
+                              ) : (
+                                String(cell)
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : data ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+                <span className="flex size-11 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-neutral-800 dark:text-neutral-500">
+                  <ChartColumn className="size-5" aria-hidden />
+                </span>
+                <p className="text-[13px] font-medium text-slate-700 dark:text-neutral-200">No rows returned</p>
+                {showJobTypeHint ? (
+                  <p className="max-w-sm text-[12px] text-slate-400 dark:text-neutral-500">
+                    This query filters on <span className="font-mono">type = &apos;job&apos;</span> rows, which
+                    only exist when your app uses background-job instrumentation. A request-only project will
+                    return zero rows here — wire up job tracking in the SDK to populate it.
+                  </p>
+                ) : (
+                  <p className="max-w-xs text-[12px] text-slate-400 dark:text-neutral-500">
+                    The query ran successfully but matched no rows in the scoped window.
+                  </p>
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">

@@ -382,25 +382,6 @@ class DashboardLogQueryValidationResponse(BaseModel):
     error: str | None = None
 
 
-class DashboardLogQueryItem(BaseModel):
-    id: int
-    timestamp: datetime
-    method: str
-    path: str
-    status_code: int
-    latency_ms: float
-    service_name: str
-    environment: str
-    request_id: str | None = None
-
-
-class DashboardLogQueryPageResponse(BaseModel):
-    server_now: datetime
-    query: str
-    next_cursor: str | None
-    items: list[DashboardLogQueryItem]
-
-
 class DashboardQueryExplorerRequest(BaseModel):
     query: str
     from_timestamp: datetime | None = None
@@ -866,7 +847,7 @@ class DashboardIncidentShareCreate(BaseModel):
         description="Full incident notebook document (cells JSON), same shape as local export.",
     )
     title: str | None = Field(default=None, max_length=200)
-    access_mode: Literal["organization", "restricted"]
+    access_mode: Literal["private", "organization", "restricted"]
     allowed_user_ids: list[UUID] | None = None
     expires_in_days: int = Field(default=7, ge=1, le=90)
 
@@ -878,6 +859,8 @@ class DashboardIncidentShareCreate(BaseModel):
             if len(self.allowed_user_ids) > 200:
                 raise ValueError("too many allowed_user_ids")
         else:
+            # ``private`` (creator-only) and ``organization`` never carry an
+            # explicit allowed-user list.
             self.allowed_user_ids = None
         return self
 

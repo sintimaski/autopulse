@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import exists
 
@@ -377,6 +377,25 @@ async def revoke_dashboard_api_key(
     )
     if existing is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found")
+    # Never revoke the project's last active key — that would silently break ingestion.
+    # The dashboard guards this client-side too, but enforce it server-side as the source of truth.
+    other_active_keys = await session.scalar(
+        select(func.count())
+        .select_from(ApiKey)
+        .where(
+            ApiKey.project_id == auth_session.project_id,
+            ApiKey.revoked_at.is_(None),
+            ApiKey.key_id != payload.key_id,
+        )
+    )
+    if not other_active_keys:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Cannot revoke the project's only active API key — "
+                "issue or rotate a replacement first."
+            ),
+        )
     existing.revoked_at = datetime.now(tz=UTC)
     session.add(
         GovernanceAuditEvent(

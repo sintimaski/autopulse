@@ -786,6 +786,11 @@ def test_dashboard_api_key_lifecycle_owner_flow(
         assert rotate_response.json()["revoked_key_id"] == issued_key_id
         replacement = rotate_response.json()["replacement_key_id"]
 
+        # Issue a second key so the project keeps a live key while we revoke.
+        second_issue = client.post("/dashboard/auth/api-keys/issue")
+        assert second_issue.status_code == 200
+        second_key_id = second_issue.json()["key_id"]
+
         revoke_response = client.post(
             "/dashboard/auth/api-keys/revoke",
             json={"key_id": replacement},
@@ -793,6 +798,13 @@ def test_dashboard_api_key_lifecycle_owner_flow(
         assert revoke_response.status_code == 200
         assert revoke_response.json()["key_id"] == replacement
         assert revoke_response.json()["revoked_at"] is not None
+
+        # The project's last active key cannot be revoked (would silently break ingestion).
+        last_key_revoke = client.post(
+            "/dashboard/auth/api-keys/revoke",
+            json={"key_id": second_key_id},
+        )
+        assert last_key_revoke.status_code == 409
 
 
 def test_dashboard_api_key_lifecycle_emits_governance_audit_events(
@@ -826,6 +838,10 @@ def test_dashboard_api_key_lifecycle_emits_governance_audit_events(
         replacement_key_id = rotate.json()["replacement_key_id"]
         replacement_raw_key = rotate.json()["replacement_api_key"]
 
+        # A second key keeps the project's last-active-key guard from blocking the revoke.
+        second_issue = client.post("/dashboard/auth/api-keys/issue")
+        assert second_issue.status_code == 200
+
         revoke = client.post(
             "/dashboard/auth/api-keys/revoke",
             json={"key_id": replacement_key_id},
@@ -836,6 +852,7 @@ def test_dashboard_api_key_lifecycle_emits_governance_audit_events(
     assert [event["action"] for event in events] == [
         "api_key_issued",
         "api_key_rotated",
+        "api_key_issued",
         "api_key_revoked",
     ]
     for event in events:

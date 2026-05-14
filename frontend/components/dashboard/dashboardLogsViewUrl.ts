@@ -57,7 +57,7 @@ export function parseLogsClientSearchParams(searchParams: URLSearchParams): Pers
 
   const dirRaw = searchParams.get("logs_sort_dir");
   let sortDir: SortDir = DEFAULT_LOGS_VIEW_CLIENT.sortDir;
-  if (dirRaw === "asc" || dirRaw === "desc") {
+  if (dirRaw === "asc" || dirRaw === "desc" || dirRaw === "none") {
     sortDir = dirRaw;
   }
 

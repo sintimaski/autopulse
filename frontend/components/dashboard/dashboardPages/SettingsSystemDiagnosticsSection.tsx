@@ -154,7 +154,13 @@ export function SettingsSystemDiagnosticsSection({
               Copy diagnostics JSON
             </button>
             {systemDiagnosticsMessage ? (
-              <p className="text-sm text-slate-600 dark:text-neutral-300">{systemDiagnosticsMessage}</p>
+              <p
+                className="text-sm text-slate-600 dark:text-neutral-300"
+                role="status"
+                aria-live="polite"
+              >
+                {systemDiagnosticsMessage}
+              </p>
             ) : null}
           </div>
           <details className="mt-3 overflow-hidden rounded-lg border border-slate-200 dark:border-neutral-700">

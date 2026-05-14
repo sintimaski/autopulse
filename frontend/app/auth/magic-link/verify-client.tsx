@@ -100,13 +100,22 @@ export function MagicLinkVerifyClient() {
               Signed in.
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => router.replace("/dashboard")}
-              className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-slate-950"
-            >
-              Back to dashboard
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => router.replace("/auth/login")}
+                className="rounded-lg bg-orange-500 px-3 py-2 text-sm font-medium text-slate-950"
+              >
+                Request new link
+              </button>
+              <button
+                type="button"
+                onClick={() => router.replace("/dashboard")}
+                className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm font-medium text-slate-100"
+              >
+                Back to dashboard
+              </button>
+            </div>
           )}
         </div>
       </div>

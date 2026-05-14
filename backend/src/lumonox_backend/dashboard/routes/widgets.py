@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import ProjectContext, authenticate_dashboard_project
+from lumonox_backend.core.config import get_settings
 from lumonox_backend.dashboard.params import (
     FROM_TIMESTAMP_QUERY,
     TO_TIMESTAMP_QUERY,
@@ -87,7 +88,11 @@ async def get_dashboard_widgets(
         for item in points
     ]
     merged_definitions, merged_points = merge_studio_showcase_widgets(
-        mapped_definitions, mapped_points, resolved_from, resolved_to
+        mapped_definitions,
+        mapped_points,
+        resolved_from,
+        resolved_to,
+        demo_enabled=get_settings().studio_showcase_demo_enabled,
     )
     return DashboardWidgetsResponse(
         server_now=server_now,

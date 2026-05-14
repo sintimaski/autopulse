@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lumonox_backend.auth import (
@@ -117,6 +117,13 @@ async def list_incident_shares(
             .where(
                 DashboardIncidentShare.project_id == context.project_id,
                 DashboardIncidentShare.revoked_at.is_(None),
+                # ``private`` rows are creator-only drafts: only their creator
+                # may see them listed. ``organization``/``restricted`` rows
+                # stay visible to every org member with project access.
+                or_(
+                    DashboardIncidentShare.access_mode != "private",
+                    DashboardIncidentShare.created_by_user_id == auth.user_id,
+                ),
             )
             .order_by(desc(DashboardIncidentShare.updated_at))
             .limit(limit)
@@ -309,7 +316,13 @@ async def redeem_incident_share(
             status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to use this share"
         )
 
-    if row.access_mode == "restricted":
+    if row.access_mode == "private":
+        # Creator-only draft: not shareable until promoted to another mode.
+        if auth.user_id != row.created_by_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed to use this share"
+            )
+    elif row.access_mode == "restricted":
         allowed_raw = row.allowed_user_ids or []
         allowed = {UUID(str(x)) for x in allowed_raw}
         if auth.user_id not in allowed:

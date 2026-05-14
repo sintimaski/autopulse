@@ -205,6 +205,9 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const [diagnosisTimeline, setDiagnosisTimeline] = useState<DiagnosisTimelineResponse | null>(null);
   const [diagnosisFailures, setDiagnosisFailures] = useState<DiagnosisFailureRoutesResponse | null>(null);
   const [diagnosisErrorGroupEvents, setDiagnosisErrorGroupEvents] = useState<DiagnosisErrorGroupEventsResponse | null>(null);
+  // Which error group the "event evidence" panel reflects. `null` falls back to the
+  // most-recent group; set explicitly when the user expands a grouped-errors row.
+  const [diagnosisEvidenceGroupKey, setDiagnosisEvidenceGroupKey] = useState<string | null>(null);
   const [recentJobFailures, setRecentJobFailures] = useState<RecentJobFailuresResponse | null>(null);
   const [alertSettings, setAlertSettings] = useState<AlertSettings | null>(null);
   const [apiKeys, setApiKeys] = useState<DashboardApiKeyItem[]>([]);
@@ -998,6 +1001,28 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     }
   }, [hasDashboardSession]);
 
+  const refreshOnboardingStatus = useCallback(async (): Promise<boolean> => {
+    if (!hasDashboardSession) {
+      return false;
+    }
+    let response: Response;
+    try {
+      response = await dashboardSessionFetch("/dashboard/auth/onboarding-status");
+    } catch {
+      return false;
+    }
+    if (!response.ok) {
+      return false;
+    }
+    const raw: unknown = await response.json();
+    const payload = parseDashboardOnboardingStatusResponse(raw);
+    if (!payload) {
+      return false;
+    }
+    setOnboardingStatus(payload);
+    return true;
+  }, [hasDashboardSession]);
+
   const setActiveDashboardProject = useCallback(
     async (projectId: string): Promise<boolean> => {
       if (!hasDashboardSession) {
@@ -1607,14 +1632,11 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
   const onSortHeader = useCallback(
     (key: SortKey) => {
       if (sortKey === key) {
-        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        // Cycle the active column through asc → desc → none → asc.
+        setSortDir((d) => (d === "asc" ? "desc" : d === "desc" ? "none" : "asc"));
       } else {
         setSortKey(key);
-        setSortDir(
-          key === "timestamp" || key === "status_code" || key === "latency_ms"
-            ? "desc"
-            : "asc",
-        );
+        setSortDir("asc");
       }
     },
     [sortKey],
@@ -1635,22 +1657,29 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       return true;
     });
 
-    rows = [...rows].sort((a, b) => {
-      const va = a[sortKey];
-      const vb = b[sortKey];
-      if (sortKey === "timestamp") {
-        const ta = new Date(va as string).getTime();
-        const tb = new Date(vb as string).getTime();
-        return sortDir === "asc" ? ta - tb : tb - ta;
-      }
-      if (sortKey === "log_message") {
-        return compareValues(a.log_message ?? "", b.log_message ?? "", sortDir);
-      }
-      return compareValues(va as string | number, vb as string | number, sortDir);
-    });
+    // Apply the user's column sort only for an absolute (frozen) window, and
+    // only when a direction is active (the header cycles asc → desc → none).
+    // While the feed is rolling, rows keep arriving and re-sorting a
+    // live-updating list under the user is disorienting — keep the natural
+    // newest-first server order instead.
+    if (absoluteWindow !== null && sortDir !== "none") {
+      rows = [...rows].sort((a, b) => {
+        const va = a[sortKey];
+        const vb = b[sortKey];
+        if (sortKey === "timestamp") {
+          const ta = new Date(va as string).getTime();
+          const tb = new Date(vb as string).getTime();
+          return sortDir === "asc" ? ta - tb : tb - ta;
+        }
+        if (sortKey === "log_message") {
+          return compareValues(a.log_message ?? "", b.log_message ?? "", sortDir);
+        }
+        return compareValues(va as string | number, vb as string | number, sortDir);
+      });
+    }
 
     return rows;
-  }, [rawItems, pathQuery, envTags, serviceTags, sortKey, sortDir]);
+  }, [rawItems, pathQuery, envTags, serviceTags, sortKey, sortDir, absoluteWindow]);
 
   const topFailingRoutes = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1688,7 +1717,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
-    const groupKey = recentErrorsPreview[0]?.group_key;
+    const groupKey = diagnosisEvidenceGroupKey ?? recentErrorsPreview[0]?.group_key;
     if (!groupKey) {
       queueMicrotask(() => {
         setDiagnosisErrorGroupEvents(null);
@@ -1758,6 +1787,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     hasDashboardSession,
     dashboardRoutePath,
     recentErrorsPreview,
+    diagnosisEvidenceGroupKey,
     toIsoWindow,
     windowMinutes,
     method,
@@ -1830,9 +1860,20 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     [overview, requests],
   );
 
+  // Drive the spike/outage heuristic preview from the project's *saved* alert
+  // thresholds (falling back to MVP defaults only when settings haven't loaded),
+  // so the Alerts page preview matches what the alerts job will actually evaluate.
   const operationalSignals = useMemo(
-    () => computeOperationalSignals(overview, M5_ALERT_DEFAULTS),
-    [overview],
+    () =>
+      computeOperationalSignals(overview, {
+        errorSpikeRatioThreshold:
+          alertSettings?.error_spike_ratio_threshold ?? M5_ALERT_DEFAULTS.errorSpikeRatioThreshold,
+        errorSpikeMinRequests:
+          alertSettings?.error_spike_min_requests ?? M5_ALERT_DEFAULTS.errorSpikeMinRequests,
+        outageMinRequests:
+          alertSettings?.outage_min_requests ?? M5_ALERT_DEFAULTS.outageMinRequests,
+      }),
+    [overview, alertSettings],
   );
 
   const homeSliceValue = useMemo(
@@ -1904,10 +1945,19 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       diagnosisTimeline,
       diagnosisFailures,
       diagnosisErrorGroupEvents,
+      diagnosisEvidenceGroupKey,
+      setDiagnosisEvidenceGroupKey,
       errorGroups,
       recentJobFailures,
     }),
-    [diagnosisTimeline, diagnosisFailures, diagnosisErrorGroupEvents, errorGroups, recentJobFailures],
+    [
+      diagnosisTimeline,
+      diagnosisFailures,
+      diagnosisErrorGroupEvents,
+      diagnosisEvidenceGroupKey,
+      errorGroups,
+      recentJobFailures,
+    ],
   );
 
   const alertsSliceValue = useMemo(
@@ -2033,6 +2083,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setActiveDashboardProject,
       signOutDashboard,
       completeOnboarding,
+      refreshOnboardingStatus,
       issueApiKey,
       rotateApiKey,
       revokeApiKey,
@@ -2166,6 +2217,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
       setActiveDashboardProject,
       signOutDashboard,
       completeOnboarding,
+      refreshOnboardingStatus,
       issueApiKey,
       rotateApiKey,
       revokeApiKey,

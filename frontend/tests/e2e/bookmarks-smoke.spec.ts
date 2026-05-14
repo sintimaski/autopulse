@@ -8,5 +8,9 @@ test("bookmarks page loads after sign-in", async ({ page }) => {
 
   await page.goto("/lumonox/ui/bookmarks");
   await expect(page).toHaveURL(/\/lumonox\/ui\/bookmarks/);
-  await expect(page.getByRole("heading", { name: "Bookmarks" })).toBeVisible();
+  // Scope to #main-content: the AppShell renders its own <h1> page title, so an
+  // unscoped "Bookmarks" heading match is ambiguous (strict-mode violation).
+  await expect(
+    page.locator("#main-content").getByRole("heading", { name: "Bookmarks", exact: true }),
+  ).toBeVisible();
 });

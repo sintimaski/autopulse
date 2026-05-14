@@ -209,6 +209,8 @@ export type DashboardDataContextValue = {
   signOutDashboard: () => Promise<void>;
   /** Persists project onboarding completion after first ingest (server-validated). */
   completeOnboarding: () => Promise<boolean>;
+  /** Re-fetches authoritative onboarding status (key issued / first event received). */
+  refreshOnboardingStatus: () => Promise<boolean>;
   issueApiKey: () => Promise<boolean>;
   rotateApiKey: (keyId: string) => Promise<boolean>;
   revokeApiKey: (keyId: string) => Promise<boolean>;
@@ -304,6 +306,10 @@ export type DashboardDiagnosisSliceValue = {
   diagnosisTimeline: DiagnosisTimelineResponse | null;
   diagnosisFailures: DiagnosisFailureRoutesResponse | null;
   diagnosisErrorGroupEvents: DiagnosisErrorGroupEventsResponse | null;
+  /** Error group the event-evidence panel reflects (`null` = most-recent group). */
+  diagnosisEvidenceGroupKey: string | null;
+  /** Select which error group the event-evidence panel loads events for. */
+  setDiagnosisEvidenceGroupKey: (groupKey: string | null) => void;
   errorGroups: ErrorGroupsResponse | null;
   recentJobFailures: RecentJobFailuresResponse | null;
 };

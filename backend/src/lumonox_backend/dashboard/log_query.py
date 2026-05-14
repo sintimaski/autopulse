@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import base64
-import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
 
 from fastapi import HTTPException
 from sqlalchemy.sql import ColumnElement
 
-from lumonox_backend.dashboard.time_window import as_utc_datetime
 from lumonox_backend.models import Event
 
 LOG_QUERY_SQL_RE = re.compile(
@@ -96,24 +92,6 @@ def parse_log_query(query: str) -> ParsedLogQuery:
         order_desc=order_desc,
         limit=limit,
     )
-
-
-def decode_log_cursor(cursor: str | None) -> tuple[datetime, int] | None:
-    if not cursor:
-        return None
-    try:
-        decoded = base64.urlsafe_b64decode(cursor.encode("utf-8")).decode("utf-8")
-        raw = json.loads(decoded)
-        timestamp = as_utc_datetime(datetime.fromisoformat(str(raw["timestamp"])))
-        event_id = int(raw["id"])
-        return timestamp, event_id
-    except Exception as exc:  # pragma: no cover - defensive parsing
-        raise HTTPException(status_code=422, detail="Invalid cursor") from exc
-
-
-def encode_log_cursor(timestamp: datetime, event_id: int) -> str:
-    payload = {"timestamp": as_utc_datetime(timestamp).isoformat(), "id": event_id}
-    return base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("utf-8")
 
 
 def apply_log_query_filters(filters: list[ColumnElement[bool]], where_clauses: list[str]) -> None:

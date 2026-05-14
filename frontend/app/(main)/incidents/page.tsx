@@ -7,7 +7,10 @@ import { useRouter } from "next/navigation";
 export default function IncidentsRedirectPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/incident/?saved_incidents=1");
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const params = new URLSearchParams(search);
+    params.set("saved_incidents", "1");
+    router.replace(`/incident/?${params.toString()}`);
   }, [router]);
   return (
     <div className="p-8 text-center text-sm text-slate-600 dark:text-neutral-400">Opening incident workspace…</div>

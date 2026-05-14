@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import case, func, literal, or_, select
@@ -457,6 +458,35 @@ async def get_dashboard_overview(
     )
 
 
+async def _load_alerts_timeline(
+    session: AsyncSession,
+    *,
+    project_id: UUID,
+    resolved_from: datetime,
+    resolved_to: datetime,
+) -> list[DashboardAlertTimelineItem]:
+    """Alert dispatches in the window. Lives in the relational DB regardless of event store,
+    so both the DuckDB and SQL overview-extended paths share this."""
+    alert_rows = await session.execute(
+        select(AlertDispatch.triggered_at, AlertDispatch.alert_type, AlertDispatch.status)
+        .where(
+            AlertDispatch.project_id == project_id,
+            AlertDispatch.triggered_at >= resolved_from,
+            AlertDispatch.triggered_at <= resolved_to,
+        )
+        .order_by(AlertDispatch.triggered_at.asc(), AlertDispatch.id.asc())
+        .limit(200)
+    )
+    return [
+        DashboardAlertTimelineItem(
+            triggered_at=as_utc_datetime(triggered_at),
+            alert_type=str(alert_type),
+            status=str(status),
+        )
+        for triggered_at, alert_type, status in alert_rows
+    ]
+
+
 @router.get("/overview/extended", response_model=DashboardOverviewExtendedResponse)
 async def get_dashboard_overview_extended(
     context: Annotated[ProjectContext, Depends(authenticate_dashboard_project)],
@@ -500,6 +530,12 @@ async def get_dashboard_overview_extended(
             store=read_store,
             duckdb_read_operation="overview_extended",
         )
+        alerts_timeline = await _load_alerts_timeline(
+            session,
+            project_id=context.project_id,
+            resolved_from=resolved_from,
+            resolved_to=resolved_to,
+        )
         return DashboardOverviewExtendedResponse(
             server_now=server_now,
             from_timestamp=resolved_from,
@@ -515,7 +551,7 @@ async def get_dashboard_overview_extended(
                 DashboardErrorTypeBreakdownItem(error_type=item["error_type"], count=item["count"])
                 for item in data["error_type_breakdown"]
             ],
-            alerts_timeline=[],
+            alerts_timeline=alerts_timeline,
             service_breakdown=[
                 DashboardBreakdownItem(**item) for item in data["service_breakdown"]
             ],
@@ -635,24 +671,12 @@ async def get_dashboard_overview_extended(
         rows_result.sort(key=lambda row: (row.error_count, row.request_count), reverse=True)
         return rows_result[:8]
 
-    alert_rows = await session.execute(
-        select(AlertDispatch.triggered_at, AlertDispatch.alert_type, AlertDispatch.status)
-        .where(
-            AlertDispatch.project_id == context.project_id,
-            AlertDispatch.triggered_at >= resolved_from,
-            AlertDispatch.triggered_at <= resolved_to,
-        )
-        .order_by(AlertDispatch.triggered_at.asc(), AlertDispatch.id.asc())
-        .limit(200)
+    alerts_timeline = await _load_alerts_timeline(
+        session,
+        project_id=context.project_id,
+        resolved_from=resolved_from,
+        resolved_to=resolved_to,
     )
-    alerts_timeline = [
-        DashboardAlertTimelineItem(
-            triggered_at=as_utc_datetime(triggered_at),
-            alert_type=str(alert_type),
-            status=str(status),
-        )
-        for triggered_at, alert_type, status in alert_rows
-    ]
 
     return DashboardOverviewExtendedResponse(
         server_now=server_now,

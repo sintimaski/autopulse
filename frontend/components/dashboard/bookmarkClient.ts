@@ -1,5 +1,6 @@
 "use client";
 
+import { dashboardNavHrefs } from "./dashboardNavConfig";
 import { buildApiUrl } from "./dashboardTypes";
 
 export type DashboardBookmarkItem = {
@@ -37,6 +38,43 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
     throw new Error(detail || `Request failed (${response.status})`);
   }
   return parsed as T;
+}
+
+/**
+ * Known in-app dashboard route prefixes. A bookmark whose `pathname` does not
+ * match one of these is treated as foreign/unrecognized and is not rendered as
+ * a navigable link (mirrors the `safeUrl` guard in IncidentMarkdownBody.tsx).
+ */
+const KNOWN_DASHBOARD_ROUTES: readonly string[] = [
+  ...dashboardNavHrefs(),
+  "/dashboard",
+  "/diagnosis",
+  "/requests",
+  "/incident",
+  "/bookmarks",
+  "/alerts",
+  "/query-explorer",
+  "/traces",
+  "/settings",
+  "/onboarding",
+  "/w",
+];
+
+/**
+ * True when a bookmark `pathname` points at a recognized in-app dashboard route.
+ * Only same-origin absolute paths are accepted (must start with `/`); a known
+ * route also matches its sub-paths (e.g. `/incident/abc`, `/w/proj/...`).
+ */
+export function isKnownDashboardRoute(pathname: string): boolean {
+  const path = pathname?.trim() ?? "";
+  if (!path.startsWith("/") || path.startsWith("//")) {
+    return false;
+  }
+  // Strip any accidentally-included query/hash before matching the path.
+  const clean = path.split(/[?#]/, 1)[0];
+  return KNOWN_DASHBOARD_ROUTES.some(
+    (route) => clean === route || clean.startsWith(`${route}/`),
+  );
 }
 
 export async function fetchDashboardBookmarks(): Promise<DashboardBookmarkItem[]> {

@@ -55,7 +55,8 @@ function normalizeLogsClient(raw: unknown): PersistedLogsClientSlice | null {
   const groupBy = typeof o.groupBy === "string" && GROUP_VALUES.has(o.groupBy) ? (o.groupBy as GroupBy) : "none";
   const sortKey =
     typeof o.sortKey === "string" && SORT_KEY_SET.has(o.sortKey) ? (o.sortKey as SortKey) : "timestamp";
-  const sortDir = o.sortDir === "asc" || o.sortDir === "desc" ? o.sortDir : "desc";
+  const sortDir =
+    o.sortDir === "asc" || o.sortDir === "desc" || o.sortDir === "none" ? o.sortDir : "desc";
   const envTags = Array.isArray(o.envTags) ? o.envTags.filter((t): t is string => typeof t === "string") : [];
   const serviceTags = Array.isArray(o.serviceTags)
     ? o.serviceTags.filter((t): t is string => typeof t === "string")

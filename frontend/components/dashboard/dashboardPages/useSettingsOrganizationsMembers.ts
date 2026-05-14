@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   parseDashboardMembershipItemsPayload,
@@ -12,7 +12,11 @@ import {
   dashboardSessionJsonPut,
 } from "../dashboardSessionFetch";
 import type { DashboardMembershipItem, DashboardOrganizationSummary } from "../dashboardTypes";
+import type { MembershipRole } from "../dashboardRoleHelpers";
 import { PROTECTED_OWNER_EMAIL, isProtectedOwnerEmail } from "./settingsContentUtils";
+
+/** How long the inline "Confirm" affordance stays armed before reverting. */
+const CONFIRM_WINDOW_MS = 4000;
 
 export function useSettingsOrganizationsMembers(sessionProjectId: string | null) {
   const [organizations, setOrganizations] = useState<DashboardOrganizationSummary[]>([]);
@@ -22,11 +26,32 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
   const [selectedOrganizationId, setSelectedOrganizationId] = useState<string | null>(null);
   const [members, setMembers] = useState<DashboardMembershipItem[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<"owner" | "member">("member");
+  const [inviteRole, setInviteRole] = useState<MembershipRole>("member");
   const [orgMessage, setOrgMessage] = useState<string | null>(null);
-  const [membersLoadState, setMembersLoadState] = useState<"idle" | "loading" | "ready">("idle");
+  const [membersLoadState, setMembersLoadState] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
-  const [memberBulkRole, setMemberBulkRole] = useState<"" | "owner" | "member">("");
+  const [memberBulkRole, setMemberBulkRole] = useState<"" | MembershipRole>("");
+  // Two-click inline confirm: first Apply arms this, second Apply runs it.
+  const [memberBulkConfirmCount, setMemberBulkConfirmCount] = useState<number | null>(null);
+  const memberConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelMemberBulkConfirm = useCallback(() => {
+    if (memberConfirmTimerRef.current) {
+      clearTimeout(memberConfirmTimerRef.current);
+      memberConfirmTimerRef.current = null;
+    }
+    setMemberBulkConfirmCount(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (memberConfirmTimerRef.current) {
+        clearTimeout(memberConfirmTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadMembers = useCallback(async (organizationId: string) => {
     try {
@@ -41,6 +66,13 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     } catch {
       setMembers([]);
     }
+  }, []);
+
+  // Bumping this token re-runs the organizations-loading effect — used by the
+  // Active project section's retry affordance after a failed fetch.
+  const [organizationsReloadToken, setOrganizationsReloadToken] = useState(0);
+  const reloadOrganizations = useCallback(() => {
+    setOrganizationsReloadToken((token) => token + 1);
   }, []);
 
   useEffect(() => {
@@ -79,6 +111,13 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     return () => {
       cancelled = true;
     };
+  }, [organizationsReloadToken]);
+
+  // Bumping this token re-runs the members-loading effect — used by the
+  // section's retry affordance after a failed fetch.
+  const [membersReloadToken, setMembersReloadToken] = useState(0);
+  const reloadMembers = useCallback(() => {
+    setMembersReloadToken((token) => token + 1);
   }, []);
 
   useEffect(() => {
@@ -92,11 +131,12 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
           const response = await dashboardSessionFetch(
             `/dashboard/organizations/${selectedOrganizationId}/members`,
           );
-          if (!response.ok || cancelled) {
+          if (cancelled) {
+            return;
+          }
+          if (!response.ok) {
             setMembers([]);
-            if (!cancelled) {
-              setMembersLoadState("ready");
-            }
+            setMembersLoadState("error");
             return;
           }
           const raw: unknown = await response.json();
@@ -108,7 +148,7 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
         } catch {
           if (!cancelled) {
             setMembers([]);
-            setMembersLoadState("ready");
+            setMembersLoadState("error");
           }
         }
       })();
@@ -120,7 +160,7 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     return () => {
       cancelled = true;
     };
-  }, [selectedOrganizationId]);
+  }, [selectedOrganizationId, membersReloadToken]);
 
   const accessibleProjects = useMemo(() => {
     const rows: { id: string; label: string }[] = [];
@@ -149,30 +189,46 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
 
   const onSelectedOrganizationIdChange = useCallback(
     (value: string) => {
+      cancelMemberBulkConfirm();
       setSelectedMemberIds(new Set());
       setMemberBulkRole("");
       setSelectedOrganizationId(value);
       const nextOrg = organizations.find((o) => o.organization_id === value);
+      // Admins cannot assign owner/admin — clamp the invite role when switching orgs.
       if (nextOrg?.role === "admin") {
-        setInviteRole((r) => (r === "owner" ? "member" : r));
+        setInviteRole((r) => (r === "owner" || r === "admin" ? "member" : r));
       }
     },
-    [organizations],
+    [cancelMemberBulkConfirm, organizations],
   );
 
-  const toggleMemberSelected = useCallback((userId: string) => {
-    setSelectedMemberIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) {
-        next.delete(userId);
-      } else {
-        next.add(userId);
-      }
-      return next;
-    });
-  }, []);
+  const toggleMemberSelected = useCallback(
+    (userId: string) => {
+      cancelMemberBulkConfirm();
+      setSelectedMemberIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(userId)) {
+          next.delete(userId);
+        } else {
+          next.add(userId);
+        }
+        return next;
+      });
+    },
+    [cancelMemberBulkConfirm],
+  );
+
+  // Changing the chosen role invalidates any armed inline confirm.
+  const changeMemberBulkRole = useCallback(
+    (role: "" | MembershipRole) => {
+      cancelMemberBulkConfirm();
+      setMemberBulkRole(role);
+    },
+    [cancelMemberBulkConfirm],
+  );
 
   const toggleSelectAllMembers = useCallback(() => {
+    cancelMemberBulkConfirm();
     const ids = members.map((m) => m.user_id);
     setSelectedMemberIds((prev) => {
       const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
@@ -181,7 +237,7 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
       }
       return new Set(ids);
     });
-  }, [members]);
+  }, [cancelMemberBulkConfirm, members]);
 
   const allMemberIdsSelectable = members.map((m) => m.user_id);
   const allMembersSelected =
@@ -192,8 +248,8 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
       return;
     }
     const email = inviteEmail.trim();
-    if (inviteRole === "member" && isProtectedOwnerEmail(email)) {
-      setOrgMessage(`${PROTECTED_OWNER_EMAIL} cannot be invited as a member.`);
+    if (inviteRole !== "owner" && isProtectedOwnerEmail(email)) {
+      setOrgMessage(`${PROTECTED_OWNER_EMAIL} can only hold the owner role.`);
       return;
     }
     try {
@@ -217,19 +273,30 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     if (!selectedOrganizationId || !memberBulkRole || selectedMemberIds.size === 0) {
       return;
     }
-    const label = memberBulkRole === "owner" ? "Promote to owner" : "Demote to member";
-    if (!window.confirm(`${label} for ${selectedMemberIds.size} selected member(s)?`)) {
+    // First Apply click arms the inline confirm; second click within the
+    // window actually runs the bulk action. Non-blocking, no window.confirm.
+    if (memberBulkConfirmCount !== selectedMemberIds.size) {
+      setMemberBulkConfirmCount(selectedMemberIds.size);
+      if (memberConfirmTimerRef.current) {
+        clearTimeout(memberConfirmTimerRef.current);
+      }
+      memberConfirmTimerRef.current = setTimeout(() => {
+        memberConfirmTimerRef.current = null;
+        setMemberBulkConfirmCount(null);
+      }, CONFIRM_WINDOW_MS);
       return;
     }
+    cancelMemberBulkConfirm();
     let ok = 0;
     let skipped = 0;
-    let failed = 0;
+    const failedEmails: string[] = [];
     for (const userId of selectedMemberIds) {
       const member = members.find((m) => m.user_id === userId);
       if (!member) {
         continue;
       }
-      if (memberBulkRole === "member" && isProtectedOwnerEmail(member.email)) {
+      // The protected owner address can only ever hold the owner role.
+      if (memberBulkRole !== "owner" && isProtectedOwnerEmail(member.email)) {
         skipped += 1;
         continue;
       }
@@ -244,10 +311,10 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
         if (response.ok) {
           ok += 1;
         } else {
-          failed += 1;
+          failedEmails.push(member.email);
         }
       } catch {
-        failed += 1;
+        failedEmails.push(member.email);
       }
     }
     await loadMembers(selectedOrganizationId);
@@ -260,11 +327,19 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     if (skipped) {
       parts.push(`Skipped ${skipped} (protected address).`);
     }
-    if (failed) {
-      parts.push(`${failed} failed.`);
+    if (failedEmails.length) {
+      parts.push(`${failedEmails.length} failed (${failedEmails.join(", ")}).`);
     }
     setOrgMessage(parts.join(" ") || "No changes applied.");
-  }, [loadMembers, memberBulkRole, members, selectedMemberIds, selectedOrganizationId]);
+  }, [
+    cancelMemberBulkConfirm,
+    loadMembers,
+    memberBulkConfirmCount,
+    memberBulkRole,
+    members,
+    selectedMemberIds,
+    selectedOrganizationId,
+  ]);
 
   return {
     organizations,
@@ -274,6 +349,8 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     selectedOrganization,
     members,
     membersLoadState,
+    reloadMembers,
+    reloadOrganizations,
     inviteEmail,
     setInviteEmail,
     inviteRole,
@@ -281,7 +358,9 @@ export function useSettingsOrganizationsMembers(sessionProjectId: string | null)
     orgMessage,
     setOrgMessage,
     memberBulkRole,
-    setMemberBulkRole,
+    setMemberBulkRole: changeMemberBulkRole,
+    memberBulkConfirmCount,
+    cancelMemberBulkConfirm,
     selectedMemberIds,
     setSelectedMemberIds,
     loadMembers,

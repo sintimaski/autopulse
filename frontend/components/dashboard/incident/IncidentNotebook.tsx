@@ -507,11 +507,16 @@ export function IncidentNotebook({
     }[]
   >([]);
   const [publishedSharesLoad, setPublishedSharesLoad] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [revokingShareId, setRevokingShareId] = useState<string | null>(null);
+  const [publishedSharesError, setPublishedSharesError] = useState<string | null>(null);
   const flowChecklistStorageKey = `${storageKey}:flow-checklist.v1`;
   const skipFirstNotebookPersistRef = useRef(false);
   const [autosaveStatus, setAutosaveStatus] = useState<
     "idle" | "dirty" | "saving" | "saved" | "error"
   >("idle");
+  // Two-click inline confirm for the destructive "Apply starter template" action
+  // (replaces the blocking window.confirm). null = not confirming.
+  const [starterTemplateConfirm, setStarterTemplateConfirm] = useState(false);
   const inFlightPatchRef = useRef(false);
   const pendingPatchRef = useRef(false);
   const docRef = useRef<IncidentNotebookDocument>(doc);
@@ -614,6 +619,32 @@ export function IncidentNotebook({
   useEffect(() => {
     void loadPublishedShares();
   }, [loadPublishedShares]);
+
+  const revokeShare = useCallback(async (id: string) => {
+    setPublishedSharesError(null);
+    setRevokingShareId(id);
+    try {
+      const res = await dashboardSessionFetch(`/dashboard/incident-shares/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok && res.status !== 204) {
+        const raw: unknown = await res.json().catch(() => ({}));
+        const detail =
+          typeof raw === "object" && raw && "detail" in raw && typeof (raw as { detail: unknown }).detail === "string"
+            ? (raw as { detail: string }).detail
+            : `Revoke failed (${res.status})`;
+        setPublishedSharesError(detail);
+        return;
+      }
+      // The list endpoint never returns revoked rows, so drop it locally
+      // instead of refetching.
+      setPublishedShares((prev) => prev.filter((row) => row.id !== id));
+    } catch (e) {
+      setPublishedSharesError(buildDashboardNetworkError(e));
+    } finally {
+      setRevokingShareId(null);
+    }
+  }, []);
 
   const createDbShare = useCallback(async () => {
     setShareMessage(null);
@@ -910,9 +941,7 @@ export function IncidentNotebook({
   );
 
   const applyStarterTemplate = useCallback(() => {
-    if (!window.confirm("Replace notebook with the incident starter template?")) {
-      return;
-    }
+    setStarterTemplateConfirm(false);
     setDoc({
       version: 1,
       cells: [
@@ -1036,13 +1065,32 @@ export function IncidentNotebook({
         <div className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-neutral-400">Templates</span>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-800 shadow-sm hover:bg-orange-100 dark:border-orange-900/40 dark:bg-orange-950/40 dark:text-orange-200 dark:hover:bg-orange-950/60"
-              onClick={applyStarterTemplate}
-            >
-              Apply starter template
-            </button>
+            {starterTemplateConfirm ? (
+              <span className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-800 shadow-sm hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/60"
+                  onClick={applyStarterTemplate}
+                >
+                  Confirm — this replaces current content
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
+                  onClick={() => setStarterTemplateConfirm(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-800 shadow-sm hover:bg-orange-100 dark:border-orange-900/40 dark:bg-orange-950/40 dark:text-orange-200 dark:hover:bg-orange-950/60"
+                onClick={() => setStarterTemplateConfirm(true)}
+              >
+                Apply starter template
+              </button>
+            )}
             <button
               type="button"
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700"
@@ -1439,7 +1487,10 @@ export function IncidentNotebook({
                           </button>
                         </div>
                         {sqlOutputs[cell.id]?.error ? (
-                          <p className="mt-2 rounded-lg border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+                          <p
+                            role="alert"
+                            className="mt-2 rounded-lg border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200"
+                          >
                             {sqlOutputs[cell.id]?.error}
                           </p>
                         ) : null}
@@ -1448,7 +1499,11 @@ export function IncidentNotebook({
                         ) : null}
                         {sqlOutputs[cell.id]?.data ? (
                           <div className="mt-2">
-                            <p className="text-[11px] text-slate-500 dark:text-neutral-400">
+                            <p
+                              role="status"
+                              aria-live="polite"
+                              className="text-[11px] text-slate-500 dark:text-neutral-400"
+                            >
                               {sqlOutputs[cell.id]!.data!.rows.length} row(s)
                               {sqlOutputs[cell.id]!.data!.truncated ? " (truncated)" : ""}
                             </p>
@@ -1603,7 +1658,15 @@ export function IncidentNotebook({
           >
             {shareBusy ? "Creating…" : "Create share link"}
           </button>
-          {shareMessage ? <p className="mt-2 text-[11px] text-slate-600 dark:text-neutral-400">{shareMessage}</p> : null}
+          {shareMessage ? (
+            <p
+              role="status"
+              aria-live="polite"
+              className="mt-2 text-[11px] text-slate-600 dark:text-neutral-400"
+            >
+              {shareMessage}
+            </p>
+          ) : null}
           {lastCreatedShareUrl ? (
             <div className="mt-2">
               <p className="text-[10px] font-semibold uppercase text-slate-500 dark:text-neutral-400">Copy URL</p>
@@ -1648,20 +1711,33 @@ export function IncidentNotebook({
             Metadata only (id, expiry, access). Notebook content lives in each share row; reopen the link to load it
             again.
           </p>
+          {publishedSharesError ? (
+            <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400" role="alert">
+              {publishedSharesError}
+            </p>
+          ) : null}
           {publishedSharesLoad === "loading" ? (
-            <p className="mt-2 text-[11px] text-slate-500">Loading…</p>
+            <p role="status" aria-live="polite" className="mt-2 text-[11px] text-slate-500">
+              Loading…
+            </p>
           ) : publishedSharesLoad === "error" ? (
-            <p className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">Could not load shares.</p>
+            <p role="alert" className="mt-2 text-[11px] text-rose-600 dark:text-rose-400">
+              Could not load shares.
+            </p>
           ) : publishedShares.length === 0 ? (
-            <p className="mt-2 text-[11px] text-slate-500">No published shares yet.</p>
+            <p role="status" aria-live="polite" className="mt-2 text-[11px] text-slate-500">
+              No published shares yet.
+            </p>
           ) : (
             <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-[11px] text-slate-700 dark:text-neutral-200">
               {publishedShares.map((row) => {
+                // The list endpoint only ever returns non-revoked rows, so the
+                // state here is just Active vs Expired; revoking removes the row.
                 const exp = Date.parse(row.expires_at);
                 const now = Date.now();
                 const expired = Number.isFinite(exp) && exp <= now;
-                const revoked = Boolean(row.revoked_at);
-                const state = revoked ? "Revoked" : expired ? "Expired" : "Active";
+                const state = expired ? "Expired" : "Active";
+                const revoking = revokingShareId === row.id;
                 return (
                   <li
                     key={row.id}
@@ -1687,6 +1763,17 @@ export function IncidentNotebook({
                     </div>
                     <div className="mt-0.5 text-slate-500 dark:text-neutral-500">
                       Expires {Number.isFinite(exp) ? new Date(exp).toLocaleString() : row.expires_at}
+                    </div>
+                    <div className="mt-1 flex justify-end">
+                      <button
+                        type="button"
+                        disabled={revoking}
+                        onClick={() => void revokeShare(row.id)}
+                        className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-medium text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/50 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/70"
+                      >
+                        <Trash2 className="size-3" aria-hidden />
+                        {revoking ? "Revoking…" : "Revoke"}
+                      </button>
                     </div>
                   </li>
                 );

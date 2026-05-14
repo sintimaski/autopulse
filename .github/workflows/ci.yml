@@ -204,6 +204,9 @@ jobs:
       LUMONOX_EVENT_STORE: duckdb
       LUMONOX_DUCKDB_PATH: ./.lumonox/e2e-events.duckdb
       LUMONOX_FRONTEND_STATIC_DIR: frontend/out
+      # `lx_showcase` is dev/demo-only and off by default; the widget-gallery
+      # smoke specs (`/w/lx_showcase`) need it enabled in this test environment.
+      LUMONOX_STUDIO_SHOWCASE_DEMO: "true"
       DASHBOARD_AUTH_ENABLED: "true"
       DASHBOARD_AUTH_ALLOWED_EMAIL: e2e@example.com
       DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN: "true"

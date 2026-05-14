@@ -8,10 +8,9 @@ export const PAGE_META: Record<string, { title: string; subtitle: string }> = {
     title: "Widgets",
     subtitle: "This URL forwards to the studio layout lab.",
   },
-  "/w/lx_showcase": {
-    title: "Widget layout lab",
-    subtitle: "Every widget type with varied sections, column spans, and row spans.",
-  },
+  // No entry for the studio route `/w/lx_showcase`: `DashboardLayoutClient` resolves
+  // studio-route title/subtitle from the backend `DashboardStudioNavPage.page_title` /
+  // `page_subtitle` (single source of truth) before falling back to `PAGE_META`.
   "/widgets-showroom": {
     title: "Widgets",
     subtitle: "This URL forwards to /w/lx_showcase.",

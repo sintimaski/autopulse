@@ -145,7 +145,11 @@ async def oidc_login_callback(
     settings = get_settings()
     post_login = (settings.dashboard_oidc_post_login_redirect or "").strip()
     if not post_login:
-        post_login = "http://localhost:3000/lumonox/ui/"
+        # Fail closed: when no post-login redirect is configured, never send the user
+        # to a hard-coded localhost dev URL. The dashboard UI is always mounted at
+        # `/lumonox/ui/` on this same origin, so a relative redirect there is correct
+        # for every deployment.
+        post_login = "/lumonox/ui/"
     if not settings.dashboard_oidc_enabled:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC login is disabled")
     secret = settings.dashboard_oidc_state_secret or ""

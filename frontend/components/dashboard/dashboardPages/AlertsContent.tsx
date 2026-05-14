@@ -4,9 +4,16 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import type { AlertDispatchItem, AlertSettings } from "../dashboardTypes";
+import type {
+  AlertChannelCapability,
+  AlertDispatchItem,
+  AlertSettings,
+  DashboardAlertTestResponse,
+} from "../dashboardTypes";
 import { buildApiUrl } from "../dashboardTypes";
 import { useDashboardData } from "../DashboardDataContext";
+import { dashboardSessionFetch } from "../dashboardSessionFetch";
+import { parseDashboardAlertTestResponse } from "../../../utils/dashboardResponseGuards";
 import { canManageProjectAlertsAndRetention } from "../dashboardRoleHelpers";
 import { buildScopedQuery } from "../dashboardQueryState";
 import { CardSpinner } from "../../ui/CardSpinner";
@@ -112,6 +119,22 @@ function RuleCard({
   );
 }
 
+/** Map a channel-readiness capability to a StatusPill tone. */
+function channelCapabilityTone(
+  capability: AlertChannelCapability,
+): "healthy" | "warning" | "neutral" {
+  if (!capability.enabled) {
+    return "neutral";
+  }
+  if (capability.status === "active") {
+    return "healthy";
+  }
+  if (capability.status === "unavailable") {
+    return "warning";
+  }
+  return "neutral";
+}
+
 export function AlertsContent() {
   const d = useDashboardData();
   const canEditAlertPolicy = canManageProjectAlertsAndRetention(d.sessionMembershipRole);
@@ -139,6 +162,36 @@ export function AlertsContent() {
   const canAckDispatches = d.sessionMembershipRole !== "viewer";
   const [ackingIds, setAckingIds] = useState<Set<number>>(new Set());
   const [localAcks, setLocalAcks] = useState<Record<number, AlertDispatchItem>>({});
+  const [ackError, setAckError] = useState<string | null>(null);
+  // Send-test-alert lives here too (not just Settings) — alerts are the MVP definition
+  // of done, so "verify delivery" belongs on the alerts home.
+  const [testAlertSending, setTestAlertSending] = useState(false);
+  const [testAlertResult, setTestAlertResult] = useState<DashboardAlertTestResponse | null>(null);
+  const [testAlertError, setTestAlertError] = useState<string | null>(null);
+
+  const sendTestAlert = useCallback(async () => {
+    setTestAlertSending(true);
+    setTestAlertError(null);
+    setTestAlertResult(null);
+    try {
+      const response = await dashboardSessionFetch("/dashboard/alert-test", { method: "POST" });
+      if (!response.ok) {
+        throw new Error(`Test alert failed (${response.status})`);
+      }
+      const raw: unknown = await response.json();
+      const body = parseDashboardAlertTestResponse(raw);
+      if (!body) {
+        throw new Error("Test alert returned an unexpected response.");
+      }
+      setTestAlertResult(body);
+    } catch (error) {
+      setTestAlertError(
+        error instanceof Error ? error.message : "Could not send test alert — network error.",
+      );
+    } finally {
+      setTestAlertSending(false);
+    }
+  }, []);
 
   const errorRateSeries = useMemo(
     () =>
@@ -156,6 +209,7 @@ export function AlertsContent() {
 
   const acknowledgeDispatch = useCallback(async (dispatchId: number) => {
     setAckingIds((prev) => new Set(prev).add(dispatchId));
+    setAckError(null);
     try {
       const res = await fetch(
         buildApiUrl(`/dashboard/alert-dispatches/${dispatchId}/acknowledge`),
@@ -164,7 +218,11 @@ export function AlertsContent() {
       if (res.ok) {
         const updated: AlertDispatchItem = await res.json();
         setLocalAcks((prev) => ({ ...prev, [dispatchId]: updated }));
+      } else {
+        setAckError(`Could not acknowledge dispatch #${dispatchId} (${res.status}).`);
       }
+    } catch {
+      setAckError(`Could not acknowledge dispatch #${dispatchId} — network error.`);
     } finally {
       setAckingIds((prev) => {
         const next = new Set(prev);
@@ -174,12 +232,15 @@ export function AlertsContent() {
     }
   }, []);
 
+  const dispatchesLoaded = alertsSlice.alertDispatches !== null;
   const recentDispatches = alertsSlice.alertDispatches?.items ?? [];
   const mergedDispatches = recentDispatches.map((dispatch) => localAcks[dispatch.id] ?? dispatch);
   const visibleDispatches = showFailedOnly
     ? mergedDispatches.filter((dispatch) => dispatch.status === "failed")
     : mergedDispatches;
   const failedCount = mergedDispatches.filter((dispatch) => dispatch.status === "failed").length;
+  const dispatchesTotal = alertsSlice.alertDispatches?.total ?? mergedDispatches.length;
+  const dispatchesTruncated = dispatchesTotal > mergedDispatches.length;
   const diagnosisParams = buildScopedQuery({
     isAbsoluteWindow: d.isAbsoluteWindow,
     windowMinutes: d.windowMinutes,
@@ -202,6 +263,29 @@ export function AlertsContent() {
     sqlFilterEnabled: d.sqlFilterEnabled,
   }).toString();
   const diagnosisBaseHref = `/diagnosis?${diagnosisParams}`;
+
+  // A dispatch row links to /diagnosis scoped to that dispatch's own evaluation
+  // window (window_start..window_end) rather than the current dashboard scope.
+  const dispatchDiagnosisHref = (dispatch: AlertDispatchItem) =>
+    `/diagnosis?${buildScopedQuery({
+      isAbsoluteWindow: true,
+      windowMinutes: d.windowMinutes,
+      windowFromTimestamp: dispatch.window_start,
+      windowToTimestamp: dispatch.window_end,
+      method: "ALL",
+      statusClass: "ALL",
+      minLatencyMs: "",
+      maxLatencyMs: "",
+      pathQuery: "",
+      serverEnvironmentQuery: "",
+      serverServiceQuery: "",
+      requestLimit: d.requestLimit,
+      requestPage: 0,
+      errorGroupLimit: d.errorGroupLimit,
+      errorGroupPage: 0,
+      errorGroupSort: "count",
+      correlationRequestId: "",
+    }).toString()}#grouped-errors`;
 
   const goToDiagnosisGrouped = () => {
     d.setErrorGroupSort("count");
@@ -248,7 +332,7 @@ export function AlertsContent() {
         <Panel
           icon={Activity}
           title="Error rate"
-          subtitle="Current scope vs spike threshold"
+          subtitle="Current dashboard window vs saved threshold"
           actions={
             <StatusPill tone={errorSpikeCandidate ? "danger" : "healthy"}>
               {errorSpikeCandidate ? "over threshold" : "within threshold"}
@@ -276,7 +360,7 @@ export function AlertsContent() {
         <Panel
           icon={Flame}
           title="Spike candidates"
-          subtitle="Error-spike heuristic preview"
+          subtitle="Preview over the current dashboard window"
           actions={
             <StatusPill tone={errorSpikeCandidate ? "warning" : "healthy"}>
               {errorSpikeCandidate ? "1 candidate" : "none"}
@@ -304,7 +388,7 @@ export function AlertsContent() {
         <Panel
           icon={Server}
           title="Outage candidates"
-          subtitle="Zero-traffic outage heuristic"
+          subtitle="Preview over the current dashboard window"
           actions={
             <StatusPill tone={outageCandidate ? "danger" : "healthy"}>
               {outageCandidate ? "1 candidate" : "none"}
@@ -330,6 +414,15 @@ export function AlertsContent() {
           </div>
         </Panel>
       </section>
+      <p className="-mt-2 text-[11px] text-slate-500 dark:text-neutral-500">
+        These panels apply your saved spike/outage thresholds to the{" "}
+        <span className="font-medium">current dashboard time window</span> as a quick sanity check.
+        The alerts job itself evaluates over its own configured windows
+        {form
+          ? ` (spike: ${form.error_spike_window_minutes}m, outage: ${form.outage_window_minutes}m)`
+          : ""}
+        , so live results can differ.
+      </p>
 
       <Tabs
         active={tab}
@@ -474,14 +567,16 @@ export function AlertsContent() {
                     key={hours}
                     size="xs"
                     variant="secondary"
-                    disabled={!canEditAlertPolicy}
-                    onClick={() =>
-                      updateForm({
+                    disabled={!canEditAlertPolicy || d.alertSettingsSaving}
+                    onClick={async () => {
+                      setFormError(null);
+                      await d.saveAlertSettings({
+                        ...form,
                         notifications_snoozed_until: new Date(
                           Date.now() + hours * 3_600_000,
                         ).toISOString(),
-                      })
-                    }
+                      });
+                    }}
                   >
                     {hours}h
                   </ConsoleButton>
@@ -489,8 +584,14 @@ export function AlertsContent() {
                 <ConsoleButton
                   size="xs"
                   variant="ghost"
-                  disabled={!canEditAlertPolicy}
-                  onClick={() => updateForm({ notifications_snoozed_until: null })}
+                  disabled={!canEditAlertPolicy || d.alertSettingsSaving}
+                  onClick={async () => {
+                    setFormError(null);
+                    await d.saveAlertSettings({
+                      ...form,
+                      notifications_snoozed_until: null,
+                    });
+                  }}
                 >
                   Clear snooze
                 </ConsoleButton>
@@ -508,13 +609,18 @@ export function AlertsContent() {
               </div>
               {form.notifications_snoozed_until ? (
                 <p className="text-[11px] text-slate-500 dark:text-neutral-400">
-                  Snoozed until <span className="font-mono">{form.notifications_snoozed_until}</span>
+                  Snoozed until{" "}
+                  <span className="font-mono">
+                    {new Date(form.notifications_snoozed_until).toLocaleString()}
+                  </span>
                 </p>
               ) : null}
               {form.last_notifications_acknowledged_at ? (
                 <p className="text-[11px] text-slate-400 dark:text-neutral-500">
                   Last acknowledged{" "}
-                  <span className="font-mono">{form.last_notifications_acknowledged_at}</span>
+                  <span className="font-mono">
+                    {new Date(form.last_notifications_acknowledged_at).toLocaleString()}
+                  </span>
                 </p>
               ) : null}
             </Panel>
@@ -529,10 +635,18 @@ export function AlertsContent() {
                 {d.alertSettingsSaving ? "Saving…" : "Save alert settings"}
               </ConsoleButton>
               {formError ? (
-                <p className="text-[12px] text-rose-600 dark:text-rose-300">{formError}</p>
+                <p role="alert" className="text-[12px] text-rose-600 dark:text-rose-300">
+                  {formError}
+                </p>
               ) : null}
               {d.alertSettingsMessage ? (
-                <p className="text-[12px] text-emerald-600 dark:text-emerald-300">{d.alertSettingsMessage}</p>
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="text-[12px] text-emerald-600 dark:text-emerald-300"
+                >
+                  {d.alertSettingsMessage}
+                </p>
               ) : null}
             </div>
 
@@ -540,19 +654,71 @@ export function AlertsContent() {
               <Panel
                 icon={Mail}
                 title="Delivery channels"
-                subtitle="Email, Slack, Discord and webhooks"
-                bodyClassName="p-3.5"
+                subtitle="Server-side readiness — configure URLs / addresses in Settings"
+                bodyClassName="flex flex-col gap-3 p-3.5"
               >
-                <p className="text-[12px] text-slate-600 dark:text-neutral-300">
-                  Configure delivery channels, check server readiness, and send a test alert on{" "}
+                <ul className="flex flex-col gap-1.5">
+                  {d.alertCapabilities.length === 0 ? (
+                    <li className="text-[12px] text-slate-500 dark:text-neutral-400">
+                      Channel readiness is unavailable.
+                    </li>
+                  ) : (
+                    d.alertCapabilities.map((channel) => (
+                      <li
+                        key={channel.channel}
+                        className="flex items-center justify-between gap-2 text-[12px]"
+                      >
+                        <span className="font-medium capitalize text-slate-700 dark:text-neutral-200">
+                          {channel.channel}
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-500 dark:text-neutral-400">
+                            {channel.reason}
+                          </span>
+                          <StatusPill tone={channelCapabilityTone(channel)}>
+                            {channel.enabled ? channel.status : "off"}
+                          </StatusPill>
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
+                <div className="flex flex-wrap items-center gap-2">
+                  <ConsoleButton
+                    size="sm"
+                    variant="primary"
+                    icon={Send}
+                    disabled={!canAckDispatches || testAlertSending}
+                    onClick={sendTestAlert}
+                  >
+                    {testAlertSending ? "Sending…" : "Send test alert"}
+                  </ConsoleButton>
                   <Link
                     href="/settings#alert-delivery"
-                    className="font-medium text-orange-700 hover:underline dark:text-orange-300"
+                    className="text-[12px] font-medium text-orange-700 hover:underline dark:text-orange-300"
                   >
-                    Settings → Alert delivery
+                    Configure channels →
                   </Link>
-                  .
-                </p>
+                </div>
+                {testAlertResult ? (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    className={`text-[12px] ${
+                      testAlertResult.status === "sent"
+                        ? "text-emerald-600 dark:text-emerald-300"
+                        : "text-amber-600 dark:text-amber-300"
+                    }`}
+                  >
+                    Test alert {testAlertResult.status} via {testAlertResult.delivered_via}
+                    {testAlertResult.reason_message ? ` — ${testAlertResult.reason_message}` : ""}.
+                  </p>
+                ) : null}
+                {testAlertError ? (
+                  <p role="alert" className="text-[12px] text-rose-600 dark:text-rose-300">
+                    {testAlertError}
+                  </p>
+                ) : null}
               </Panel>
               <Panel
                 icon={RotateCw}
@@ -616,7 +782,9 @@ export function AlertsContent() {
                 onChange={setShowFailedOnly}
                 label="Failed only"
               />
-              <Chip tone="muted">{visibleDispatches.length} shown</Chip>
+              <Chip tone="muted">
+                {visibleDispatches.length} of {dispatchesTotal} shown
+              </Chip>
             </>
           }
           footer={
@@ -624,10 +792,31 @@ export function AlertsContent() {
               {failedCount > 0
                 ? `${failedCount} failed dispatch${failedCount === 1 ? "" : "es"} in window`
                 : "No failed dispatches in window"}
+              {dispatchesTruncated
+                ? ` · showing the most recent ${mergedDispatches.length} of ${dispatchesTotal} — narrow the time window to see older alerts`
+                : ""}
             </span>
           }
         >
-          {visibleDispatches.length === 0 ? (
+          {ackError ? (
+            <p
+              role="alert"
+              className="border-b border-rose-200/70 bg-rose-50/70 px-3.5 py-2 text-[12px] text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300"
+            >
+              {ackError}
+            </p>
+          ) : null}
+          {!dispatchesLoaded ? (
+            d.loading && !d.errorMessage ? (
+              <div className="p-4">
+                <CardSpinner size="compact" label="Loading dispatch history…" />
+              </div>
+            ) : (
+              <p role="alert" className="px-3.5 py-6 text-center text-[13px] text-rose-600 dark:text-rose-300">
+                {d.errorMessage ?? "Could not load dispatch history for this scope."}
+              </p>
+            )
+          ) : visibleDispatches.length === 0 ? (
             <p className="px-3.5 py-6 text-center text-[13px] text-slate-500 dark:text-neutral-400">
               No matching alerts in the selected time window.
             </p>
@@ -648,8 +837,14 @@ export function AlertsContent() {
                 <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
                   {visibleDispatches.map((dispatch) => (
                     <tr key={dispatch.id} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40">
-                      <td className="whitespace-nowrap px-3 py-2 font-mono text-slate-500 dark:text-neutral-400">
-                        {new Date(dispatch.triggered_at).toLocaleString()}
+                      <td className="whitespace-nowrap px-3 py-2 font-mono">
+                        <Link
+                          href={dispatchDiagnosisHref(dispatch)}
+                          className="text-orange-700 hover:underline dark:text-orange-300"
+                          title="Open grouped errors for this dispatch's window"
+                        >
+                          {new Date(dispatch.triggered_at).toLocaleString()}
+                        </Link>
                       </td>
                       <td className="px-3 py-2">
                         <Chip tone="accent">{dispatch.alert_type}</Chip>

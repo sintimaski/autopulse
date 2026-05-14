@@ -12,6 +12,8 @@ type SettingsActiveProjectSectionProps = {
   activeProjectBusy: boolean;
   activeProjectMessage: string | null;
   onActiveProjectChange: (nextId: string) => void | Promise<void>;
+  /** Retry affordance for a failed organizations/projects fetch. */
+  onReloadProjects?: () => void;
 };
 
 export function SettingsActiveProjectSection({
@@ -22,6 +24,7 @@ export function SettingsActiveProjectSection({
   activeProjectBusy,
   activeProjectMessage,
   onActiveProjectChange,
+  onReloadProjects = () => {},
 }: SettingsActiveProjectSectionProps) {
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -40,7 +43,15 @@ export function SettingsActiveProjectSection({
         {organizationsLoadState === "loading" ? (
           <InlineDataSpinner label="Loading projects..." />
         ) : organizationsLoadState === "error" ? (
-          <p className="text-sm text-rose-700 dark:text-rose-300">Could not load projects for this account.</p>
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-sm text-rose-700 dark:text-rose-300" role="alert">
+              Could not load projects for this account. Check your connection and dashboard API availability, then
+              retry.
+            </p>
+            <button type="button" onClick={onReloadProjects} className="ap-btn">
+              Retry
+            </button>
+          </div>
         ) : accessibleProjects.length === 0 ? (
           <p className="text-sm text-slate-600 dark:text-neutral-400">No projects found.</p>
         ) : accessibleProjects.length === 1 ? (
@@ -66,7 +77,13 @@ export function SettingsActiveProjectSection({
           </label>
         )}
         {activeProjectMessage ? (
-          <p className="mt-3 text-sm text-slate-600 dark:text-neutral-300">{activeProjectMessage}</p>
+          <p
+            className="mt-3 text-sm text-slate-600 dark:text-neutral-300"
+            role="status"
+            aria-live="polite"
+          >
+            {activeProjectMessage}
+          </p>
         ) : null}
       </div>
     </section>

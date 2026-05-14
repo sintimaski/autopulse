@@ -26,17 +26,19 @@ function parseListPayload(raw: unknown): IncidentShareListRow[] {
     }
     const rec = item as Record<string, unknown>;
     const id = typeof rec.id === "string" ? rec.id : "";
+    // Only `id` is required to keep a row — a missing display field (timestamps,
+    // access mode) must never silently drop an incident from the list.
     const created_at = typeof rec.created_at === "string" ? rec.created_at : "";
     const updated_at = typeof rec.updated_at === "string" ? rec.updated_at : "";
     const expires_at = typeof rec.expires_at === "string" ? rec.expires_at : "";
-    const access_mode = typeof rec.access_mode === "string" ? rec.access_mode : "";
+    const access_mode = typeof rec.access_mode === "string" ? rec.access_mode : "unknown";
     const title =
       rec.title === null || rec.title === undefined
         ? null
         : typeof rec.title === "string"
           ? rec.title
           : null;
-    if (!id || !created_at || !updated_at || !expires_at || !access_mode) {
+    if (!id) {
       continue;
     }
     rows.push({ id, title, created_at, updated_at, expires_at, access_mode });
@@ -213,7 +215,8 @@ export function SavedIncidentsModalPanel({
                       <h3 className="text-sm font-semibold text-slate-900 dark:text-neutral-50">{label}</h3>
                     )}
                     <p className="mt-1 font-mono text-[11px] text-slate-500 dark:text-neutral-500">
-                      Updated {row.updated_at.slice(0, 19)}Z · Expires {row.expires_at.slice(0, 10)}
+                      Updated {row.updated_at ? `${row.updated_at.slice(0, 19)}Z` : "unknown"} · Expires{" "}
+                      {row.expires_at ? row.expires_at.slice(0, 10) : "unknown"}
                     </p>
                     <p className="mt-0.5 text-[11px] text-slate-500 dark:text-neutral-500">
                       Access: <span className="font-medium text-slate-700 dark:text-neutral-300">{row.access_mode}</span>

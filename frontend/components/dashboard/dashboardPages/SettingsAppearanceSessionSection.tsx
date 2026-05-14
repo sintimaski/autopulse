@@ -62,7 +62,13 @@ export function SettingsAppearanceSessionSection({
           ))}
         </div>
         {themeMessage ? (
-          <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">{themeMessage}</p>
+          <p
+            className="mt-2 text-sm text-slate-600 dark:text-neutral-300"
+            role="status"
+            aria-live="polite"
+          >
+            {themeMessage}
+          </p>
         ) : null}
       </section>
 
