@@ -46,6 +46,7 @@ ENV LUMONOX_DATA_DIR=/home/user/data \
     LUMONOX_DEMO_EMAIL=demo@lumonox.dev \
     LUMONOX_DEMO_PORT=8000 \
     LUMONOX_DEMO_BACKFILL_HOURS=4 \
+    LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS=0.3 \
     LUMONOX_DEMO_LIVE_INTERVAL_SECONDS=25
 
 # Must match LUMONOX_DEMO_PORT and the `app_port:` value in the Space README frontmatter.

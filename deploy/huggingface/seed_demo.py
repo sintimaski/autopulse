@@ -220,10 +220,13 @@ def _post_events(
     base_url: str,
     api_key: str,
     events: list[dict[str, object]],
+    *,
+    pause_between_chunks: float = 0.0,
 ) -> int:
     headers = {"Authorization": f"Bearer {api_key}"}
     accepted = 0
-    for start in range(0, len(events), _INGEST_CHUNK):
+    chunk_starts = list(range(0, len(events), _INGEST_CHUNK))
+    for index, start in enumerate(chunk_starts):
         chunk = events[start : start + _INGEST_CHUNK]
         response = client.post(
             f"{base_url}/ingest",
@@ -233,6 +236,12 @@ def _post_events(
         response.raise_for_status()
         with contextlib.suppress(Exception):
             accepted += int(response.json().get("accepted", 0))
+        # Throttle the backfill burst so it never starves API reads on a small
+        # free-tier instance. Without this, a slow first-load /dashboard/auth/session
+        # check (racing the write burst) trips the dashboard's "could not reach the
+        # server" timeout. The live trickle posts <=2 chunks so it leaves this at 0.
+        if pause_between_chunks > 0 and index < len(chunk_starts) - 1:
+            time.sleep(pause_between_chunks)
     return accepted
 
 
@@ -270,6 +279,7 @@ def _run_backfill() -> None:
     base_url = _api_base()
 
     hours = max(1, int(os.getenv("LUMONOX_DEMO_BACKFILL_HOURS", "4")))
+    chunk_pause = max(0.0, float(os.getenv("LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS", "0.3")))
     window_seconds = 600  # contiguous 10-minute windows, no gaps
     rng = random.Random(20260514)
     now = datetime.now(tz=UTC)
@@ -285,7 +295,9 @@ def _run_backfill() -> None:
                 rng=rng,
                 max_events=1600,
             )
-            total += _post_events(client, base_url, api_key, events)
+            total += _post_events(
+                client, base_url, api_key, events, pause_between_chunks=chunk_pause
+            )
             window_end += timedelta(seconds=window_seconds)
 
     print(f"[seed] backfilled ~{total} events across the last {hours}h")
