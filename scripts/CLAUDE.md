@@ -14,4 +14,5 @@ Synthetic-stack specifics:
 
 - `scripts/run_synthetic_stack.sh` (backend :8000 + synthetic app :8001 + default Next sidecar :3000) and `scripts/run_remote_stack.sh` are **DuckDB-first** local integration paths — keep `LUMONOX_EVENT_STORE=duckdb` explicit in defaults.
 - `run_synthetic_stack.sh` always runs `npm --prefix frontend run build`; `LUMONOX_FRONTEND_MODE=static` vs sidecar only affects how the UI is served afterward.
+- `scripts/run_synthetic_django_stack.sh` is the Django-fixture variant: it only overrides the synthetic-app slot (`LUMONOX_SYNTHETIC_APP_*` env vars) and `exec`s `run_synthetic_stack.sh`. Keep it a thin delegating wrapper — do not fork the backend/storage launch logic into it.
 - Export `LUMONOX_DATA_DIR` (repo root) plus an absolute `LUMONOX_DUCKDB_PATH`. Do not silently switch these scripts to SQLite or `/tmp` for "convenience" (see `.cursor/rules/lumonox-data-dir-testing.mdc`).

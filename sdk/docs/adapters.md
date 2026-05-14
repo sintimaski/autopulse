@@ -166,23 +166,28 @@ adapter:
   path.
 - **No public-API drift.** `from lumonox import monitor, lumonox,
   capture_background_job` is part of the SDK's stability contract.
-  A Django adapter should expose its own `monitor(app, …)` factory; the
-  top-level `lumonox(app, …)` convenience should remain FastAPI-focused
-  until product strategy explicitly broadens it.
+  Each adapter exposes its own `monitor(...)` factory under
+  `lumonox.<framework>` (the Django adapter's is `monitor(**kwargs)` —
+  no `app` argument, since Django middleware has no `app.state`
+  analogue); the top-level `lumonox(app, …)` convenience stays
+  FastAPI-focused until product strategy explicitly broadens it.
 
 ## Why this layout
 
-Today `lumonox-sdk` ships exactly one framework adapter, and `fastapi`
-is a required dependency because that is the framework it instruments
-(see `.cursor/rules/lumonox-product.mdc`: Lumonox is FastAPI-native).
-The core/adapter split exists for two reasons:
+`lumonox-sdk` is FastAPI-native: `fastapi` is a required dependency
+because that is the primary framework it instruments (see
+`.cursor/rules/lumonox-product.mdc`). The Django adapter ships as an
+opt-in `[django]` extra so the default install line and dependency set
+stay unchanged for existing FastAPI users. The core/adapter split is
+what makes that work:
 
 - **Readability.** Framework-independent primitives (queue, transport,
   scrubbing, infrastructure metrics, correlation) are reachable from
   one place and can be tested without instantiating a FastAPI app.
-- **Optionality.** If a second adapter is ever shipped, the only new
-  module is `lumonox.<framework>.middleware`. Required dependencies
-  stay required (`fastapi` cannot move to an extra without a default-
-  install regression — see `docs/plans/sdk-install-ease.md`
-  no-regression table); a future adapter would add its own framework
-  dep alongside.
+- **Optionality.** A new adapter is one module —
+  `lumonox.<framework>.middleware` — plus an optional extra for its
+  framework dependency. The required deps stay required (`fastapi`
+  cannot move to an extra without a default-install regression — see
+  `docs/plans/sdk-install-ease.md` no-regression table); each opt-in
+  adapter brings its own framework dep via its extra (`[django]` →
+  `django>=4.2`).

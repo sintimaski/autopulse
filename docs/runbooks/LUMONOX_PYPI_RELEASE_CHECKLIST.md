@@ -5,7 +5,7 @@ The repository ships **two** PyPI distributions:
 | PyPI project | Path | Purpose |
 | --- | --- | --- |
 | `lumonox` | `backend/pyproject.toml` | FastAPI app + ingest + **bundled** static dashboard (`lumonox_backend/dashboard_static/`) |
-| `lumonox-sdk` | `sdk/pyproject.toml` | Import package **`lumonox`** for app instrumentation (`pip install lumonox-sdk`) |
+| `lumonox-sdk` | `sdk/pyproject.toml` | Import package **`lumonox`** for app instrumentation (`pip install lumonox-sdk`); FastAPI middleware + opt-in Django adapter via the `[django]` extra |
 
 Workflows: `.github/workflows/publish-lumonox-pypi.yml` and `.github/workflows/publish-lumonox-sdk-pypi.yml`.
 

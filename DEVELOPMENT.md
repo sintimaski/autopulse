@@ -151,7 +151,8 @@ Next.js dashboard
 SDK:
 
 - Python.
-- FastAPI / Starlette middleware.
+- FastAPI / Starlette middleware (primary; Lumonox is FastAPI-native).
+- Opt-in Django async/ASGI middleware adapter, shipped behind the `[django]` extra; reuses the same `lumonox.core.*` send path so behavior and `LUMONOX_*` knobs are identical. WSGI Django is out of scope for v1. See `sdk/docs/adapters.md`.
 - `asyncio.Queue` for bounded buffering.
 - `httpx.AsyncClient` for background delivery.
 

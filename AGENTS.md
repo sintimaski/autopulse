@@ -38,7 +38,7 @@ Guidance for AI coding agents and humans pairing with them in this repository.
 
 | Path | Purpose |
 |------|---------|
-| `sdk/` | Python SDK and FastAPI middleware |
+| `sdk/` | Python SDK: FastAPI middleware + opt-in Django adapter (`[django]` extra) |
 | `backend/` | FastAPI ingestion, dashboard API, workers |
 | `frontend/` | Next.js dashboard |
 | `agents/` | Agent/human workflow markdown |

@@ -53,6 +53,31 @@ export LUMONOX_API_KEY="<project ingest key from dashboard>"
 
 🔑 Copy the ingest key from the dashboard (project settings / onboarding).
 
+### Instrument your Django app 🐍
+
+Lumonox is FastAPI-native, but ships an opt-in async middleware adapter for **Django** (ASGI). Install the `[django]` extra, add the middleware, and wire `monitor()` + `wrap_asgi()` in `asgi.py`:
+
+```bash
+pip install "lumonox-sdk[django]"
+```
+
+```python
+# settings.py
+MIDDLEWARE = [
+    "lumonox.django.middleware.LumonoxMiddleware",
+    # ... your other middleware ...
+]
+
+# asgi.py
+from django.core.asgi import get_asgi_application
+from lumonox.django import monitor, wrap_asgi
+
+monitor(api_key="...", ingest_url="https://your-host/ingest", service_name="my-django-app")
+application = wrap_asgi(get_asgi_application())
+```
+
+The same `LUMONOX_*` env vars apply. `wrap_asgi()` drives the SDK dispatcher off the ASGI lifespan. The adapter is **async/ASGI-only** (classic synchronous WSGI Django is out of scope for v1). Details: [sdk/docs/adapters.md](./sdk/docs/adapters.md).
+
 ### Run the Lumonox API from another repo 🖥️
 
 Two **PyPI** install lines. The **`lumonox`** wheel exposes **`from lumonox import mount_on_app`** (and `lumonox_backend` for the full package tree).
@@ -60,7 +85,7 @@ Two **PyPI** install lines. The **`lumonox`** wheel exposes **`from lumonox impo
 | What you need | One line |
 |-----------------|----------|
 | **API + pre-built dashboard** (wheel bundles static UI; published on pushes to `main` via `.github/workflows/publish-lumonox-pypi.yml` after PyPI trusted publishing is set up) | `pip install lumonox` or `uv add lumonox` |
-| **Same as above + FastAPI SDK** (`from lumonox import lumonox` in your app) | `pip install "lumonox-sdk[stack]"` or `uv add "lumonox-sdk[stack]"` |
+| **Same as above + app SDK** (`from lumonox import lumonox` for FastAPI; add the `[django]` extra for Django) | `pip install "lumonox-sdk[stack]"` or `uv add "lumonox-sdk[stack]"` |
 
 **Git** (always works; pin `main` to a tag or commit SHA in production):
 
@@ -150,9 +175,10 @@ lumonox(
 | Use case                          | What to run                                 | When to use                                                                                                                                                          |
 | --------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **🏗️ Full local stack**          | `./scripts/run_synthetic_stack.sh`          | End-to-end demo or integration work: API on `:8000`, synthetic FastAPI app on `:8001`, dashboard (static mount or Next sidecar per `LUMONOX_FRONTEND_MODE`).       |
+| **🐍 Full local stack (Django)**  | `./scripts/run_synthetic_django_stack.sh`   | Same stack with the synthetic **Django** app on `:8001` instead of FastAPI — exercises the `lumonox.django` adapter. Thin wrapper that delegates to `run_synthetic_stack.sh`.       |
 | **🖥️ Backend only**              | `uv run python -m lumonox_backend.main` (requires **`lumonox`**; [install](./backend/README.md#install-outside-the-monorepo) if you are not in this repo) | Run the ingest + dashboard API without the Next dev server—automation, headless testing, or pairing with your own UI.                                                |
 | **🔥 API + Next with hot reload** | Backend + `npm --prefix frontend run dev`   | Frontend iteration: HMR on the dashboard while the API serves JSON; point `NEXT_PUBLIC_LUMONOX_API_BASE_URL` (and related `NEXT_PUBLIC_`* vars) at the API origin. |
-| **📈 Synthetic load**             | `./scripts/examples/synthetic_load_demo.sh` | Generate realistic mixed traffic against the sample app; override `BASE_URL`, `DURATION_MINUTES`, `TARGET_REQUESTS`, `ROLE_MODE`, or `SCENARIO` as needed.           |
+| **📈 Synthetic load**             | `./scripts/examples/synthetic_load_demo.sh` (FastAPI) · `./scripts/examples/synthetic_django_load_demo.sh` (Django) | Generate mixed traffic against the sample app. The FastAPI driver supports `BASE_URL`, `DURATION_MINUTES`, `TARGET_REQUESTS`, `ROLE_MODE`, `SCENARIO`; the Django driver is a lighter curl loop (`BASE_URL`, `TARGET_REQUESTS`, `SLEEP_SECONDS`).           |
 
 
 ---

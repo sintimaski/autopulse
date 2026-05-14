@@ -10,6 +10,7 @@ alwaysApply: false
 - Keep hot path async/non-blocking and dependency-light; preserve bounded queue/drop behavior.
 - Preserve silent-failure defaults (except explicit debug modes) and scrub sensitive data before send.
 - Keep public API stable and typed; align names and behavior with `DEVELOPMENT.md`.
+- Framework adapters live as `lumonox.<framework>.middleware` (FastAPI is primary; Django ships behind the `[django]` extra) and reuse the framework-agnostic `lumonox.core.*` send path — never fork the dispatcher / scrubbing / event-shape / config-builder logic per adapter. See `sdk/docs/adapters.md` for the adapter contract.
 - Run deterministic targeted SDK tests under `sdk/tests/` for touched behavior.
 
 ## Rule self-review

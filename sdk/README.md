@@ -1,6 +1,6 @@
 # Lumonox SDK (Python)
 
-Lumonox SDK instruments a FastAPI app and sends request/error events to Lumonox with safe defaults.
+Lumonox SDK instruments a **FastAPI** app (or a **Django** ASGI app via the opt-in `[django]` extra) and sends request/error events to Lumonox with safe defaults.
 
 ## Install
 
@@ -136,7 +136,7 @@ Each batch includes `sdk_version` resolved from installed distribution metadata 
 
 ### Compatibility
 
-The SDK targets current **FastAPI** / **Starlette** / **httpx** versions pinned by this repo’s lockfile. When upgrading major versions in your app, run your test suite against the Lumonox SDK release you deploy; treat minor/patch Lumonox bumps as drop-in unless release notes say otherwise.
+The SDK targets current **FastAPI** / **Starlette** / **httpx** versions pinned by this repo’s lockfile. The optional Django adapter targets **`django>=4.2`** (LTS) and is **async/ASGI-only** — classic synchronous WSGI Django is out of scope for v1. `fastapi` stays a required dependency even when you only use the Django adapter (it backs the FastAPI-native default install); `django` is pulled in only by the `[django]` extra. When upgrading major versions in your app, run your test suite against the Lumonox SDK release you deploy; treat minor/patch Lumonox bumps as drop-in unless release notes say otherwise.
 
 ## Request correlation IDs
 

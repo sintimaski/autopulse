@@ -5,7 +5,7 @@ Canonical **install names** on PyPI:
 | Distribution | PyPI project | One-line install | What you get |
 |----------------|--------------|------------------|----------------|
 | **API + bundled dashboard** | [**lumonox**](https://pypi.org/project/lumonox/) | `pip install lumonox` | FastAPI ingest + dashboard APIs + static UI under `/lumonox/ui/` — use **`from lumonox import mount_on_app`** (or **`lumonox_backend`** for internals) |
-| **FastAPI SDK only** | [**lumonox-sdk**](https://pypi.org/project/lumonox-sdk/) | `pip install lumonox-sdk` | `from lumonox import lumonox` — send-only instrumentation |
+| **App SDK (send-only)** | [**lumonox-sdk**](https://pypi.org/project/lumonox-sdk/) | `pip install lumonox-sdk` | `from lumonox import lumonox` — FastAPI middleware; add the **`[django]`** extra (`pip install "lumonox-sdk[django]"`) for the opt-in Django ASGI adapter |
 | **API + UI + SDK** | same two projects | `pip install "lumonox-sdk[stack]"` | Installs **`lumonox`** as a dependency of the SDK extra |
 
 ## Project pages (links)

@@ -78,7 +78,7 @@ When work was substantive **and** one or more `.cursor/rules/*.mdc` files materi
 
 | Path | Purpose |
 |------|---------|
-| `sdk/` | Python SDK + FastAPI middleware (PyPI: `lumonox-sdk`) |
+| `sdk/` | Python SDK (PyPI: `lumonox-sdk`): FastAPI middleware + opt-in Django adapter (`[django]` extra). Core/adapter split — see `sdk/docs/adapters.md` |
 | `backend/` | FastAPI ingestion, dashboard API, workers (PyPI: `lumonox`) |
 | `frontend/` | Next.js dashboard; default delivery is the **static export** (`npm run build` → `frontend/out/`) mounted at `/lumonox/ui/` by the backend |
 | `scripts/` | Local stack and ops scripts |
