@@ -11,7 +11,7 @@
 FROM node:22-slim AS frontend
 # Bump this to ship newer FE changes to the demo without waiting for a wheel release.
 # Use a commit SHA or branch name. ``main`` tracks the latest pushed code.
-ARG LUMONOX_FRONTEND_REF=main
+ARG LUMONOX_FRONTEND_REF=0dfe9f7f1f1ebc765c2a2f0b67ab2cc0c4535044
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*

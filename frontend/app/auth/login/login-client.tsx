@@ -68,9 +68,9 @@ export function LoginClient() {
       }
       const payload = parsed as DashboardMagicLinkRequestResponse;
 
-      // Demo shortcut: when the server exposes dev_token and the email matches the
-      // configured demo account, complete verification inline — no email required.
-      if (payload.dev_token && DEMO_EMAIL && trimmed.toLowerCase() === DEMO_EMAIL) {
+      // When the server exposes dev_token (DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN=true),
+      // complete verification inline — no email required.
+      if (payload.dev_token) {
         setState("signing_in");
         try {
           const verifyResponse = await fetch(buildApiUrl("/dashboard/auth/magic-link/verify"), {
