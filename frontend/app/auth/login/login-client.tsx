@@ -1,13 +1,17 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { buildApiUrl } from "../../../components/dashboard/dashboardTypes";
 import type { DashboardMagicLinkRequestResponse } from "../../../components/dashboard/dashboardTypes";
 
-type RequestState = "idle" | "sending" | "sent" | "error";
+type RequestState = "idle" | "sending" | "sent" | "signing_in" | "error";
+
+const DEMO_EMAIL = (process.env.NEXT_PUBLIC_DEMO_EMAIL ?? "").trim().toLowerCase() || null;
 
 export function LoginClient() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<RequestState>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -15,8 +19,8 @@ export function LoginClient() {
   const [ssoMessage, setSsoMessage] = useState<string | null>(null);
   const [ssoLoading, setSsoLoading] = useState(false);
 
-  const requestMagicLink = async () => {
-    const trimmed = email.trim();
+  const requestMagicLink = async (emailOverride?: string) => {
+    const trimmed = (emailOverride ?? email).trim();
     if (!trimmed) {
       return;
     }
@@ -54,6 +58,32 @@ export function LoginClient() {
         return;
       }
       const payload = parsed as DashboardMagicLinkRequestResponse;
+
+      // Demo shortcut: when the server exposes dev_token and the email matches the
+      // configured demo account, complete verification inline — no email required.
+      if (payload.dev_token && DEMO_EMAIL && trimmed.toLowerCase() === DEMO_EMAIL) {
+        setState("signing_in");
+        try {
+          const verifyResponse = await fetch(buildApiUrl("/dashboard/auth/magic-link/verify"), {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token: payload.dev_token }),
+          });
+          if (verifyResponse.ok) {
+            router.push("/dashboard");
+            router.refresh();
+          } else {
+            setState("error");
+            setMessage("Demo sign-in failed. Please try again.");
+          }
+        } catch {
+          setState("error");
+          setMessage("Demo sign-in failed. Please try again.");
+        }
+        return;
+      }
+
       const showDevHints = process.env.NODE_ENV === "development";
       if (showDevHints && payload.dev_magic_link_url) {
         setDevLink(payload.dev_magic_link_url);
@@ -133,7 +163,15 @@ export function LoginClient() {
           Sign in to your dashboard
         </h1>
 
-        {state === "sent" ? (
+        {state === "signing_in" ? (
+          <div className="mt-6 flex items-center gap-3 text-sm text-slate-500 dark:text-neutral-400">
+            <div
+              className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-slate-300 border-t-orange-400 dark:border-neutral-600 dark:border-t-orange-400 motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            Signing you into the demo…
+          </div>
+        ) : state === "sent" ? (
           <div className="mt-4 space-y-4">
             <div
               className="rounded-lg border border-emerald-400/40 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-100"
@@ -215,6 +253,24 @@ export function LoginClient() {
               >
                 {message}
               </p>
+            ) : null}
+            {DEMO_EMAIL ? (
+              <div className="mt-4 border-t border-slate-200/80 pt-4 dark:border-neutral-800">
+                <p className="mb-2 text-xs text-slate-500 dark:text-neutral-400">
+                  Just exploring? Use the shared demo account — no email required.
+                </p>
+                <button
+                  type="button"
+                  className="ap-btn w-full px-4 py-2"
+                  disabled={state === "sending"}
+                  onClick={() => {
+                    setEmail(DEMO_EMAIL);
+                    void requestMagicLink(DEMO_EMAIL);
+                  }}
+                >
+                  Try the demo
+                </button>
+              </div>
             ) : null}
           </>
         )}

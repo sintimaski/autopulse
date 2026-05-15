@@ -21,7 +21,9 @@ RUN git clone --depth 50 https://github.com/sintimaski/lumonox.git . \
 WORKDIR /src/frontend
 # Same-origin API base — the dashboard is mounted on its own API host at /lumonox/ui/.
 # NEXT_PUBLIC_* is inlined at build time; this matches the upstream publish-workflow fix.
-ENV NEXT_PUBLIC_LUMONOX_API_BASE_URL=""
+# NEXT_PUBLIC_DEMO_EMAIL enables the "Try Demo" button and auto-verify flow in the login page.
+ENV NEXT_PUBLIC_LUMONOX_API_BASE_URL="" \
+    NEXT_PUBLIC_DEMO_EMAIL=demo@lumonox.dev
 RUN npm ci && npm run build
 
 # ---- Stage 2: runtime ---------------------------------------------------------------
