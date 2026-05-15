@@ -1,35 +1,71 @@
-# Lumonox 🪄
+<div align="center">
 
-> Observability for FastAPI and Django apps in minutes: know what broke, when, and which requests caused it.
+# 🪄 Lumonox
+
+#### Observability for FastAPI and Django apps in minutes — know what broke, when, and which requests caused it.
+
+[![PyPI – lumonox](https://img.shields.io/pypi/v/lumonox?label=lumonox&color=3776AB&logo=pypi&logoColor=white)](https://pypi.org/project/lumonox/)
+[![PyPI – lumonox-sdk](https://img.shields.io/pypi/v/lumonox-sdk?label=lumonox-sdk&color=3776AB&logo=pypi&logoColor=white)](https://pypi.org/project/lumonox-sdk/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://pypi.org/project/lumonox/)
+[![CI](https://img.shields.io/github/actions/workflow/status/sintimaski/lumonox/ci.yml?branch=main&label=CI&logo=githubactions&logoColor=white)](https://github.com/sintimaski/lumonox/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/sintimaski/lumonox?color=brightgreen)](./LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/sintimaski/lumonox?style=social)](https://github.com/sintimaski/lumonox/stargazers)
+
+<br />
+
+[![Live demo](https://img.shields.io/badge/▶%20Live%20demo-Hugging%20Face%20Space-FF9D00?style=for-the-badge)](https://sintimaski-lumonox-demo.hf.space)
+[![Quickstart](https://img.shields.io/badge/⚡%20Quickstart-3%20steps-2EA043?style=for-the-badge)](#quickstart)
+[![Docs](https://img.shields.io/badge/📖%20Docs-DEVELOPMENT.md-1F6FEB?style=for-the-badge)](./DEVELOPMENT.md)
+
+<br />
+
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Django](https://img.shields.io/badge/Django-092E20?logo=django&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-FFF000?logo=duckdb&logoColor=black)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
+
+<br /><br />
+
+<a href="https://sintimaski-lumonox-demo.hf.space"><img alt="Lumonox dashboard overview" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" width="900" /></a>
+
+</div>
+
+---
+
+> **Self-hosted, MIT-licensed.** Lumonox is a complete observability stack — Python SDK, FastAPI ingest API, and Next.js dashboard — that you run on your own infrastructure. One wheel ships the API with the dashboard bundled inside. Issues, forks, and contributions are welcome.
 
 Lumonox gives Python teams a fast path to useful production visibility without observability-infra overhead. It instruments both **FastAPI** and **Django** apps — and the Lumonox API itself is a FastAPI service under the hood.
 
-> **Status — open-source portfolio project.** Lumonox is a complete, working observability product built solo, end to end: Python SDK, FastAPI ingest API, and Next.js dashboard. It is not operated as a hosted commercial service — you self-host it (one wheel ships the API with the dashboard baked in). Issues, forks, and contributions are welcome.
-
 > **▶️ Try it live:** a seeded, self-refreshing demo runs at **[sintimaski-lumonox-demo.hf.space](https://sintimaski-lumonox-demo.hf.space)** — sign in with `demo@lumonox.dev` (the magic link is shown inline, no email needed). Setup notes: [`docs/ops/HUGGINGFACE_SPACE.md`](./docs/ops/HUGGINGFACE_SPACE.md).
 
-### Highlights
+---
 
-- **Instant visibility:** add one middleware call to capture requests and errors without blocking app traffic.
-- **Request correlation:** SDK middleware honors **`X-Request-ID`** / **`X-Correlation-ID`**, echoes **`X-Request-ID`** when missing, and the dashboard can pivot Overview → Diagnosis → Requests with a shared **`correlation`** scope (including **`job`** rows tied to the same id).
-- **Fast diagnosis UI:** dashboard answers "what broke, when, and why" in seconds.
-- **Custom + built-in insights:** add your own widgets next to system diagnostics.
-- **Self-hosted control:** tune auth, retention, storage, and alerting for your environment.
+## Highlights ✨
 
-<img width="1440" height="813" alt="Lumonox dashboard overview" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" />
+|   |   |
+| :--- | :--- |
+| 🚀 **Drop-in middleware** | One call instruments your FastAPI or async Django app. The SDK is bounded and async — a misconfigured Lumonox cannot block your hot path. |
+| 🔍 **Five-second triage** | Overview → Diagnosis → Requests with a shared **`correlation`** scope across requests, errors, and background jobs (honors `X-Request-ID` / `X-Correlation-ID`). |
+| 📊 **Custom widgets** | Push your own KPIs from your SDK code. Seven built-in chart types, rendered next to Lumonox traffic and errors — no separate dashboard builder to learn. |
+| 📣 **Multi-channel alerts** | Error spike + outage detection to email (SMTP, Resend, Postmark, sendmail), Slack, Discord, or generic webhooks. |
+| 🔐 **Self-hosted control** | Magic-link or OIDC auth, multi-project organisations, 4-role RBAC (viewer / member / admin / owner), configurable retention and storage. |
+| 📦 **One install, one process** | `pip install lumonox` — the Next.js dashboard is bundled inside the Python wheel. Postgres + DuckDB, or all-SQLite for trivial deploys. |
 
 ---
 
 ## Contents
 
 - ▶️ [Live demo](https://sintimaski-lumonox-demo.hf.space)
-- ✨ [Quickstart](#quickstart)
+- ✨ [Highlights](#highlights)
+- 🚀 [Quickstart](#quickstart)
 - 🧱 [Under the hood](#under-the-hood)
 - 📊 [Custom dashboard widgets](#custom-dashboard-widgets)
 - ⚙️ [Runtime modes](#runtime-modes)
 - 🔐 [Auth and options](#auth-and-options)
 - 🌍 [Environment reference](#environment-reference)
 - 🛠️ [Develop Lumonox from this repo](#develop-lumonox-from-this-repo)
+- 🤝 [Contributing](#contributing)
 - 📦 [PyPI publishing & install links](./docs/ops/PYPI_PUBLISHING.md)
 - 📄 [License](#license)
 
@@ -352,6 +388,27 @@ On success the final line is `[release-gates] all checks passed`. Optional: set 
 
 ---
 
+## Contributing 🤝
+
+Issues, fixes, docs improvements, and platform-compat patches are welcome.
+
+- 🐛 **Bugs / questions:** [GitHub Issues](https://github.com/sintimaski/lumonox/issues).
+- 🧭 **Workflow:** [`AGENTS.md`](./AGENTS.md) is the development playbook for humans and agents alike. Product scope and architecture live in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
+- ✅ **Before opening a PR:** run `make ci` (or `make release-gates` for the full bar). Frontend changes also need `npm run build` in `frontend/`.
+- 🍴 **Forking it for your own stack?** Start with [Develop Lumonox from this repo](#develop-lumonox-from-this-repo-).
+
+---
+
 ## License 📄
 
 Lumonox is released under the [MIT License](./LICENSE) — use it, fork it, learn from it.
+
+---
+
+<div align="center">
+
+[Demo](https://sintimaski-lumonox-demo.hf.space) · [PyPI](https://pypi.org/project/lumonox/) · [Issues](https://github.com/sintimaski/lumonox/issues) · [DEVELOPMENT.md](./DEVELOPMENT.md) · [AGENTS.md](./AGENTS.md)
+
+<sub>Open source. MIT licensed. ⭐ Star it if you find it useful.</sub>
+
+</div>
