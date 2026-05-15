@@ -51,7 +51,7 @@ twine upload dist/pypi-sdk/*
 
 **On `main`:** the SDK workflow runs when `sdk/pyproject.toml`, `sdk/src/**`, `sdk/README.md`, or `sdk/LICENSE` change. The **`lumonox`** publish workflow runs when `backend/pyproject.toml`, `backend/src/**`, or `frontend/**` change. Both upload **only when** the corresponding `[project] version` is **not already** on PyPI.
 
-**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve **`lumonox>=0.2.9`** (see `sdk/pyproject.toml` **`[project.optional-dependencies]`**).
+**`lumonox-sdk[stack]` on PyPI:** publish **`lumonox`** first (or same release train) so the extra can resolve the pinned **`lumonox`** floor (see `sdk/pyproject.toml` **`[project.optional-dependencies]`**).
 
 **One-time on PyPI:** create projects **`lumonox-sdk`** and **`lumonox`**, add trusted publishers for each workflow, then merge version bumps or run workflows manually.
 

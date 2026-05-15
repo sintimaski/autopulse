@@ -197,10 +197,11 @@ Keep mitigations aligned with `DEVELOPMENT.md` engineering-risk guidance.
 Tracked but intentionally deferred from MVP completion:
 
 - Background jobs and cron monitoring depth improvements.
-- Smarter sampling and richer route/status/error filtering.
-- Slack/Discord notifications.
+- Smarter (adaptive) request sampling and richer route/status/error filtering.
 - Local sidecar agent exploration.
-- WebSocket-driven live dashboard updates.
+- WebSocket-driven live dashboard updates **on by default** (the WS path ships behind `LUMONOX_DASHBOARD_REALTIME_ENABLED` / `LUMONOX_DASHBOARD_REALTIME_WS_ENABLED`, both off by default).
 - Any distributed tracing, custom dashboard builders, or complex alert-rule systems.
+
+Already shipped beyond MVP (no longer deferred): Slack / Discord / generic webhook alert channels (see `backend/ALERT_DELIVERY_RUNBOOK.md`), Django ASGI SDK adapter (`lumonox-sdk[django]`), per-request trace context, release/git markers, incident worksheet, operator pipeline health surface.
 
 These are evaluated after MVP validation, not during MVP delivery.

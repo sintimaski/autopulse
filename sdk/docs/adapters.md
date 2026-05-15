@@ -18,8 +18,9 @@ under `lumonox.<framework>.middleware`.
 src/lumonox/
   __init__.py            # public API + lazy re-exports (unchanged surface)
   core/                  # framework-agnostic implementation
-    config.py            # _MonitorConfig dataclass
+    config.py            # _MonitorConfig dataclass + build_monitor_config()
     dispatcher.py        # _EventDispatcher (queue + transport + retries + circuit breaker)
+    dotenv.py            # .env auto-discovery for LUMONOX_* keys (no new deps)
     env.py               # LUMONOX_* env-var parsers
     events.py            # event-shape helpers (timestamp, error hash, batch split, widgets)
     infrastructure.py    # InfrastructureSampler (psutil counters)
@@ -28,6 +29,7 @@ src/lumonox/
     runtime_context.py   # correlation-id contextvars
     sampling.py          # request sampling
     scrubbing.py         # DEFAULT_SCRUB_KEYS + _scrub_value
+    tracing.py           # per-request trace context (W3C traceparent continue / start)
   fastapi/               # FastAPI / Starlette adapter
     __init__.py          # exposes ``monitor``
     middleware.py        # _LumonoxMiddleware + _resolve_route_path + monitor()
