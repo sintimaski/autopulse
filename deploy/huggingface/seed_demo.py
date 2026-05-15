@@ -466,11 +466,22 @@ def _run_backfill() -> None:
     window_seconds = 600  # contiguous 10-minute windows, no gaps
     rng = random.Random(20260514)
     now = datetime.now(tz=UTC)
-    window_end = now - timedelta(hours=hours) + timedelta(seconds=window_seconds)
+
+    # Build the window list newest-first so the dashboard's default 60-minute view
+    # has data on the very first poll after the first chunks land. Without this,
+    # backfill goes oldest→newest and visitors who arrive mid-backfill see an empty
+    # recent window even though events are actively being ingested.
+    window_ends: list[datetime] = []
+    w = now
+    cutoff = now - timedelta(hours=hours)
+    while w > cutoff:
+        window_ends.append(w)
+        w -= timedelta(seconds=window_seconds)
 
     total = 0
+    errors = 0
     with httpx.Client(timeout=30.0) as client:
-        while window_end <= now:
+        for window_end in window_ends:
             events = _generate_window(
                 window_end=window_end,
                 duration_seconds=window_seconds,
@@ -480,10 +491,22 @@ def _run_backfill() -> None:
                 # so the morning + evening surges aren't clipped down to the plateau.
                 max_events=3200,
             )
-            total += _post_events(
-                client, base_url, api_key, events, pause_between_chunks=chunk_pause
-            )
-            window_end += timedelta(seconds=window_seconds)
+            try:
+                total += _post_events(
+                    client, base_url, api_key, events, pause_between_chunks=chunk_pause
+                )
+            except httpx.HTTPError as exc:
+                errors += 1
+                print(
+                    f"[seed] backfill chunk failed (window_end={window_end.isoformat()}): "
+                    f"{type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                )
+                if errors >= 5:
+                    print("[seed] too many consecutive backfill errors — aborting", file=sys.stderr)
+                    break
+            else:
+                errors = 0  # reset streak on success
 
     print(f"[seed] backfilled ~{total} events across the last {hours}h")
 
