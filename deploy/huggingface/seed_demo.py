@@ -31,6 +31,7 @@ import os
 import random
 import sys
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -303,6 +304,74 @@ def _diurnal_multiplier(when: datetime) -> float:
     return hourly
 
 
+def _hex32() -> str:
+    """32-char lowercase hex — matches the W3C trace_id format the dashboard expects."""
+    return uuid.uuid4().hex
+
+
+def _hex16() -> str:
+    """16-char lowercase hex — matches the W3C span_id format."""
+    return uuid.uuid4().hex[:16]
+
+
+def _augment_with_trace_context(
+    events: list[dict[str, object]],
+    *,
+    rng: random.Random,
+    child_span_chance: float,
+) -> list[dict[str, object]]:
+    """Stamp each event with trace_id/span_id and emit correlated downstream spans.
+
+    Most events become single-span traces (one trace, one event). A configurable
+    fraction get a downstream "call" span on a *different* service with the same
+    ``trace_id`` and ``parent_span_id`` pointing back at the original — so the
+    dashboard's Traces page surfaces both trivial and multi-service traces.
+
+    The dashboard's ``/dashboard/traces/*`` SQL reads ``trace_id`` and ``span_name``
+    out of the event payload (see ``backend/.../dashboard/routes/traces.py``); the
+    backend's ``IngestEvent`` schema accepts them as top-level fields and moves them
+    into the payload at persist time.
+    """
+    out: list[dict[str, object]] = []
+    services = list(_SERVICES)
+    for ev in events:
+        trace_id = _hex32()
+        span_id = _hex16()
+        method = str(ev.get("method", "GET"))
+        path = str(ev.get("path", "/")).split("?", 1)[0]
+        parent = dict(ev)
+        parent["trace_id"] = trace_id
+        parent["span_id"] = span_id
+        parent["span_name"] = f"{method} {path}"
+        out.append(parent)
+
+        if rng.random() >= child_span_chance:
+            continue
+        parent_service = str(ev.get("service_name", services[0]))
+        downstream = [s for s in services if s != parent_service]
+        if not downstream:
+            continue
+        child = dict(ev)
+        child["trace_id"] = trace_id
+        child["span_id"] = _hex16()
+        child["parent_span_id"] = span_id
+        child["service_name"] = rng.choice(downstream)
+        child_offset_ms = rng.randint(20, 200)
+        ts_raw = str(ev.get("timestamp", ""))
+        try:
+            ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+            ts = ts + timedelta(milliseconds=child_offset_ms)
+            child["timestamp"] = ts.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        except ValueError:
+            pass  # fall back to the parent's timestamp
+        # Downstream call is usually faster than the parent (it's only one hop).
+        parent_latency = float(ev.get("latency_ms", 100.0))
+        child["latency_ms"] = round(max(1.0, parent_latency * rng.uniform(0.35, 0.85)), 2)
+        child["span_name"] = f"call {child['service_name']}"
+        out.append(child)
+    return out
+
+
 def _generate_window(
     *,
     window_end: datetime,
@@ -332,7 +401,11 @@ def _generate_window(
         error_burst_chance=0.11,
         max_events=max_events,
     )
-    return events
+    child_chance = max(
+        0.0,
+        min(1.0, float(os.getenv("LUMONOX_DEMO_TRACE_CHILD_SPAN_CHANCE", "0.4"))),
+    )
+    return _augment_with_trace_context(events, rng=rng, child_span_chance=child_chance)
 
 
 # --------------------------------------------------------------------------------------

@@ -24,11 +24,26 @@ Run at image build time (see ``Dockerfile``); both steps are idempotent.
 
 from __future__ import annotations
 
+import os
 import pathlib
 
 import lumonox_backend
 
-_STATIC = pathlib.Path(lumonox_backend.__file__).parent / "dashboard_static"
+
+def _resolve_static_dir() -> pathlib.Path:
+    """Where the patcher writes — the runtime-served dashboard.
+
+    Honors ``LUMONOX_FRONTEND_STATIC_DIR`` when set (the demo's multi-stage Dockerfile
+    points this at the freshly-built export), otherwise falls back to the wheel's
+    bundled ``dashboard_static`` next to ``lumonox_backend``.
+    """
+    override = (os.getenv("LUMONOX_FRONTEND_STATIC_DIR") or "").strip()
+    if override:
+        return pathlib.Path(override)
+    return pathlib.Path(lumonox_backend.__file__).parent / "dashboard_static"
+
+
+_STATIC = _resolve_static_dir()
 
 _BAKED_IN_API_ORIGIN = "http://127.0.0.1:8000"
 

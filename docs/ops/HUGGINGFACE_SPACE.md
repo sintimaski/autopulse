@@ -11,10 +11,10 @@ a few files, no monorepo checkout required on the Space side.
 
 | File | Role |
 |------|------|
-| `deploy/huggingface/Dockerfile` | `pip install lumonox==<pinned>` — the wheel bundles the FastAPI ingest + dashboard API, the Next.js dashboard static export, and the Alembic migrations. Runs `patch_dashboard.py`, sets demo runtime env, runs as UID 1000 (Spaces requirement). |
-| `deploy/huggingface/patch_dashboard.py` | build-time patches to the wheel's bundled dashboard: rewrite the baked-in API origin to same-origin, and inject auto sign-in. See "Why the dashboard is patched" below. |
+| `deploy/huggingface/Dockerfile` | **Two-stage build.** Stage 1 (`node:22-slim`) clones the repo and runs `npm run build` so the demo can ship UI changes ahead of the next wheel release (controlled by `LUMONOX_FRONTEND_REF`). Stage 2 (`python:3.11-slim`) installs the published `lumonox` wheel for the backend and overlays the freshly-built dashboard via `LUMONOX_FRONTEND_STATIC_DIR`. Runs `patch_dashboard.py`, sets demo runtime env, runs as UID 1000 (Spaces requirement). |
+| `deploy/huggingface/patch_dashboard.py` | build-time patches to the runtime-served dashboard (honors `LUMONOX_FRONTEND_STATIC_DIR`): inject auto sign-in for the shared demo account, and — as belt-and-suspenders for older wheels — rewrite any baked-in `http://127.0.0.1:8000` API origin to same-origin. See "Why the dashboard is patched" below. |
 | `deploy/huggingface/entrypoint.sh` | bootstrap demo tenant + migrations → start the API (`uvicorn`, `--proxy-headers`) → backfill history → run the live trickle. `wait`s on the API so the container lifecycle follows it. |
-| `deploy/huggingface/seed_demo.py` | `--bootstrap` (org / project / dashboard user + owner membership / ingest key, idempotent), `--backfill` (POSTs recent synthetic history to `/ingest`), `--live` (loops POSTing fresh batches). Depends only on the installed `lumonox` package. |
+| `deploy/huggingface/seed_demo.py` | `--bootstrap` (org / project / dashboard user + owner membership / ingest key, idempotent), `--backfill` (POSTs recent synthetic history to `/ingest` — request/error events on a diurnal curve, augmented with W3C trace context including ~40% multi-service traces so the Traces page is populated), `--live` (loops POSTing fresh batches). Depends only on the installed `lumonox` package. |
 
 Key runtime choices (set as `ENV` in the Dockerfile):
 
@@ -27,6 +27,11 @@ Key runtime choices (set as `ENV` in the Dockerfile):
   + `DASHBOARD_AUTH_MAGIC_LINK_DEV_EXPOSE_TOKEN=true`. Only the demo email can sign in. The
   injected auto sign-in script (see below) completes the magic-link flow for every visitor,
   so they land straight on the shared pre-seeded project — no form to fill in.
+- **Alerts (playable):** `ALERT_SENDER_MODE=composite` + `ALERT_EMAIL_PROVIDER=file`. When
+  a visitor configures alert delivery in Settings, dispatches are *real* — Slack / Discord /
+  generic webhooks go out if a URL is set; email is written to the local outbox file. The
+  Alert Dispatches table on the dashboard reflects each attempt. Real email delivery would
+  need a Resend / SendGrid API key (`ALERT_EMAIL_API_KEY`), not set in the demo.
 - **`INGEST_REQUIRE_HTTPS=false`** — the seed POSTs to `http://127.0.0.1:8000/ingest`
   inside the container; the public origin is still HTTPS via the Spaces TLS proxy.
 - **Storage** is SQLite + DuckDB under `LUMONOX_DATA_DIR=/home/user/data`. The Spaces
@@ -109,9 +114,15 @@ Once the Space shows **Running**:
 
 - **Demo behavior changes:** edit `entrypoint.sh` / `seed_demo.py` / `patch_dashboard.py`
   here, re-upload.
+- **Frontend ref:** `LUMONOX_FRONTEND_REF` (Docker build arg, default `main`). Use a
+  commit SHA or tag to pin the dashboard build; bump it to ship newer FE changes to the
+  demo without waiting for a `lumonox` wheel release.
 - **Tuning knobs** (override as Space *Variables*, no rebuild needed for some):
   `LUMONOX_DEMO_BACKFILL_HOURS` (default `24` — one full diurnal cycle so the day/night
   curve and the morning/evening rush-hour peaks are visible on a 1d/2d Overview window),
+  `LUMONOX_DEMO_TRACE_CHILD_SPAN_CHANCE` (default `0.4` — share of seeded events that
+  emit a correlated downstream span on a different service so the Traces page shows
+  multi-service traces, not just trivial single-span ones),
   `LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS`
   (default `0.3` — pause between backfill `POST /ingest` chunks so the seed burst never
   starves API reads on the free-tier instance; raise it if first-load feels slow),

@@ -13,20 +13,9 @@ set -euo pipefail
 
 PORT="${LUMONOX_DEMO_PORT:-8000}"
 
-# Defensive pin for the dashboard static export. lumonox 0.3.1+ auto-discovers the
-# bundled export (lumonox_backend/dashboard_static/) on its own; on 0.2.12–0.3.0 the
-# wheel's discovery looked one directory too deep and /lumonox/ui/ silently 404'd.
-# LUMONOX_FRONTEND_STATIC_DIR is the highest-priority lookup path, so setting it keeps
-# the demo correct regardless of which pinned wheel is in use.
-if [[ -z "${LUMONOX_FRONTEND_STATIC_DIR:-}" ]]; then
-  STATIC_DIR="$(python -c 'import lumonox_backend, pathlib, sys; p = pathlib.Path(lumonox_backend.__file__).parent / "dashboard_static"; sys.stdout.write(str(p) if (p / "index.html").is_file() else "")')"
-  if [[ -n "${STATIC_DIR}" ]]; then
-    export LUMONOX_FRONTEND_STATIC_DIR="${STATIC_DIR}"
-    echo "[entrypoint] dashboard static export: ${STATIC_DIR}"
-  else
-    echo "[entrypoint] WARNING: bundled dashboard_static not found in the lumonox wheel" >&2
-  fi
-fi
+# LUMONOX_FRONTEND_STATIC_DIR is set in the Dockerfile to the freshly-built dashboard
+# from the multi-stage build (/opt/lumonox-dashboard). Log it for visibility.
+echo "[entrypoint] dashboard static export: ${LUMONOX_FRONTEND_STATIC_DIR:-<unset>}"
 
 echo "[entrypoint] bootstrapping demo tenant + running migrations…"
 python seed_demo.py --bootstrap
