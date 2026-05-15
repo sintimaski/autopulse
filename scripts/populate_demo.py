@@ -22,9 +22,11 @@ import random
 import sys
 import time
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
+
+UTC = timezone.utc
 
 _SERVICES: tuple[str, ...] = ("checkout-api", "payments-worker", "search-api")
 _ENVIRONMENTS: tuple[str, ...] = ("production", "staging")

@@ -50,6 +50,9 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 # ``timezone.utc`` even though ruff's py311 target-version would prefer the alias.
 # See ``docs/plans/sdk-install-ease.md`` Phase 1.
 "sdk/src/lumonox/**/*.py" = ["UP017"]
+# scripts/ may be run with any Python >=3.9 (e.g. the system interpreter); keep
+# ``timezone.utc`` for the same reason.
+"scripts/*.py" = ["UP017"]
 
 [tool.ruff.format]
 quote-style = "double"
