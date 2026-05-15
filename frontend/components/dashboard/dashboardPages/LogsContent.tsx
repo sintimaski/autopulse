@@ -253,9 +253,9 @@ export function LogsContent() {
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Request evidence flow</h2>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-neutral-100">Request evidence</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-              1) Scope in the header, 2) refine here, 3) open rows for request evidence.
+              Refine the scope, then open rows for full request details.
             </p>
           </div>
           <button
@@ -395,14 +395,14 @@ export function LogsContent() {
         <div className="mt-4 min-w-0" data-ap-dashboard-scope-anchor>
         {d.rawItems.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-            No requests in this time window yet. Send a request from your app, or finish{" "}
+            No requests in this window. Send traffic, or finish{" "}
             <Link
               href="/onboarding"
               className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
             >
-              Onboarding
-            </Link>{" "}
-            to connect the SDK, then refresh.
+              onboarding
+            </Link>
+            .
           </p>
         ) : d.filteredSorted.length === 0 ? (
           <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">

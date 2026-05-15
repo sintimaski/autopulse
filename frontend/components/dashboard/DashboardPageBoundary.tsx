@@ -70,20 +70,15 @@ export function ApiKeyMissing() {
           "detail" in parsed
             ? String((parsed as { detail: unknown }).detail)
             : raw.slice(0, 240);
-        setMessage(
-          `Request failed (${response.status}). ${detail || "See browser Network tab and backend logs."} ` +
-            "Typical fixes: set DASHBOARD_AUTH_ALLOWED_EMAIL to this address (or use dev allowlist), " +
-            "ensure ALERT_EMAIL_PROVIDER + keys/outbox for delivery, add your UI origin to CORS_ALLOW_ORIGINS " +
-            "if the API is on another host/port, and set NEXT_PUBLIC_LUMONOX_API_BASE_URL to the API origin " +
-            "(e.g. http://127.0.0.1:8000 for standalone backend; leave unset for same-origin /dashboard paths)." +
-            (response.status === 404 && isAbsoluteOriginOnlyApiBase()
-              ? " 404 here often means an extra path segment (e.g. …/lumonox/dashboard/…): use http://127.0.0.1:8000 with no /lumonox prefix for the default backend."
-              : ""),
-        );
+        const hint =
+          response.status === 404 && isAbsoluteOriginOnlyApiBase()
+            ? " Check NEXT_PUBLIC_LUMONOX_API_BASE_URL — drop any /lumonox path prefix."
+            : "";
+        setMessage(`Request failed (${response.status}). ${detail || "See backend logs."}${hint}`);
         return;
       }
       if (!parsed || typeof parsed !== "object" || parsed === null || !("accepted" in parsed)) {
-        setMessage("Unexpected response from server (not JSON). Check API base URL and backend logs.");
+        setMessage("Unexpected response. Check API base URL and backend logs.");
         return;
       }
       const okPayload = parsed as DashboardMagicLinkRequestResponse;
@@ -93,16 +88,16 @@ export function ApiKeyMissing() {
       } else if (okPayload.dev_token && showDevAuthHints) {
         setMessage(`Dev token: ${okPayload.dev_token}`);
       } else {
-        setMessage("If the email is allowed, check your inbox for the sign-in link.");
+        setMessage("If the email is allowed, check your inbox.");
       }
     } catch (err) {
       const hint =
         err instanceof TypeError
-          ? "Network error (wrong API URL, CORS, or server down). For static UI on the API host use NEXT_PUBLIC_LUMONOX_API_BASE_URL=http://127.0.0.1:8000 (origin only) or leave unset for same-origin /dashboard calls."
+          ? "Network error — wrong API URL, CORS, or server down."
           : err instanceof Error
             ? err.message
             : String(err);
-      setMessage(`Unable to reach sign-in API. ${hint}`);
+      setMessage(`Sign-in API unreachable. ${hint}`);
     } finally {
       setLoading(false);
     }
@@ -114,15 +109,7 @@ export function ApiKeyMissing() {
         <p className="text-sm font-medium uppercase tracking-widest text-slate-400/90">Lumonox</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight">Dashboard sign in</h1>
         <p className="mt-3 text-sm leading-relaxed text-slate-300">
-          Enter your email for a magic link. Session-first.
-          {isApiSubpathDashboard() ? (
-            <>
-              {" "}
-              Static UI reads <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.7rem]">.env.lumonox</code> (see onboarding).
-            </>
-          ) : (
-            <> SDK keys are for your app, not this screen.</>
-          )}
+          Enter your email to receive a magic link.
         </p>
         {sessionIssue === "unauthorized" ? (
           <p
@@ -130,7 +117,7 @@ export function ApiKeyMissing() {
             role="status"
             aria-live="polite"
           >
-            Your dashboard session has ended. Request a new magic link below.
+            Your session ended — request a new magic link.
           </p>
         ) : null}
         {sessionIssue === "network" ? (
@@ -139,8 +126,7 @@ export function ApiKeyMissing() {
             role="alert"
             aria-live="polite"
           >
-            Could not reach the server to verify your session. Check the API URL, VPN, and that the
-            backend is running.
+            Can’t reach the server. Check the API URL and that the backend is running.
           </p>
         ) : null}
         <div className="mt-5 space-y-3">

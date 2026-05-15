@@ -51,8 +51,7 @@ export function SettingsAlertDeliverySection({
       {alertDeliveryDraft ? (
         <>
           <p className="mt-1 text-sm text-slate-500 dark:text-neutral-400">
-            Turn project alerts on, set where notifications go (email, Slack/Discord webhooks via env, or generic
-            webhooks), then save. Heuristic thresholds (error spikes, cooldown) stay on the{" "}
+            Enable alerts and choose where notifications go. Thresholds and cooldown live on the{" "}
             <Link
               href="/alerts"
               className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
@@ -117,8 +116,7 @@ export function SettingsAlertDeliverySection({
                 />
               </label>
               <span className="mt-2 block text-xs text-slate-500 dark:text-neutral-400">
-                SMTP, Resend, SendGrid, etc. are configured on the Lumonox server (environment variables), not in this
-                form—you only choose who receives mail. See readiness below.
+                Email provider (SMTP, Resend, etc.) is set via server env. Readiness below.
               </span>
             </div>
             <label className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-sm text-slate-700 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200">

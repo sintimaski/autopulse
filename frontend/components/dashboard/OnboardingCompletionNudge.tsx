@@ -65,8 +65,7 @@ export function OnboardingCompletionNudge() {
         <div>
           <p className="font-semibold">Finish onboarding</p>
           <p className="mt-0.5 text-xs text-orange-900/80 dark:text-orange-100/80">
-            Issue a key, send your first event, then mark onboarding complete. This banner hides after ingest
-            succeeds or when you dismiss it for this project in this browser.
+            Issue a key and send your first event. This hides once events arrive.
           </p>
         </div>
         <div className="flex gap-2">

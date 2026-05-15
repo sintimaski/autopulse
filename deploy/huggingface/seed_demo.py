@@ -245,6 +245,64 @@ def _post_events(
     return accepted
 
 
+# Hour-of-day rate multipliers (UTC, 24-element lookup, anchored ~UTC business day so
+# the curve maps to "9am" / "5pm" peaks for a European service). Models a deep-night
+# trough, two clearly visible commute peaks at 09:00 and 17:00 UTC, a small lunch dip,
+# and an evening decline. Peaks are intentionally ~1.4× the daytime plateau so they
+# survive the existing spike / error-burst noise (~25% jitter) and the morning- and
+# evening-rush shape is actually visible on the dashboard's hourly chart.
+_HOUR_OF_DAY_MULTIPLIERS: tuple[float, ...] = (
+    0.15,
+    0.12,
+    0.10,
+    0.10,
+    0.12,
+    0.18,  # 00..05 UTC — deep-night trough
+    0.32,
+    0.55,
+    0.90,
+    1.30,
+    0.95,
+    0.72,  # 06..11 UTC — ramp + sharp 09:00 commute peak
+    0.68,
+    0.75,
+    0.80,
+    0.85,
+    0.95,
+    1.30,  # 12..17 UTC — lunch dip, ramp, sharp 17:00 peak
+    0.92,
+    0.65,
+    0.45,
+    0.32,
+    0.22,
+    0.17,  # 18..23 UTC — evening decline back to night
+)
+
+# Weekends are noticeably lighter for B2B-shaped traffic; SaaS apps still see weekend
+# usage, just less of it. Applied as a flat multiplier on top of the hourly curve.
+_WEEKEND_MULTIPLIER: float = 0.55
+
+
+def _diurnal_multiplier(when: datetime) -> float:
+    """Return a 0..1 traffic multiplier for ``when`` (day/night + rush + weekend).
+
+    Linearly interpolates between adjacent hour buckets so the curve is continuous —
+    a 600s window straddling 08:55 reads like a real ramp into the 09:00 peak instead
+    of jumping at the hour boundary.
+    """
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    when_utc = when.astimezone(UTC)
+    hour_float = when_utc.hour + when_utc.minute / 60.0 + when_utc.second / 3600.0
+    lo = int(hour_float) % 24
+    hi = (lo + 1) % 24
+    frac = hour_float - int(hour_float)
+    hourly = _HOUR_OF_DAY_MULTIPLIERS[lo] * (1.0 - frac) + _HOUR_OF_DAY_MULTIPLIERS[hi] * frac
+    if when_utc.weekday() >= 5:  # Saturday=5, Sunday=6
+        hourly *= _WEEKEND_MULTIPLIER
+    return hourly
+
+
 def _generate_window(
     *,
     window_end: datetime,
@@ -255,10 +313,17 @@ def _generate_window(
 ) -> list[dict[str, object]]:
     from lumonox_backend.ingestion.scenario_events import generate_scenario_events
 
+    # Apply the diurnal curve so traffic looks like a real service: quiet overnight,
+    # busy in business hours, with morning and evening commute peaks. Sample the curve
+    # at the window's *midpoint* — events fill ``window_end - duration .. window_end``
+    # and we want the multiplier to reflect the hour those events actually land in,
+    # otherwise a window with ``window_end = 09:00`` (peak) would lift the 08:00 bucket.
+    window_midpoint = window_end - timedelta(seconds=duration_seconds / 2)
+    effective_rate = max(0.1, base_rate_per_second * _diurnal_multiplier(window_midpoint))
     events, _stats = generate_scenario_events(
         now=window_end,
         duration_seconds=duration_seconds,
-        base_rate_per_second=base_rate_per_second,
+        base_rate_per_second=effective_rate,
         rng=rng,
         service_names=_SERVICES,
         environments=_ENVIRONMENTS,
@@ -278,7 +343,7 @@ def _run_backfill() -> None:
     api_key = _load_or_create_raw_key()
     base_url = _api_base()
 
-    hours = max(1, int(os.getenv("LUMONOX_DEMO_BACKFILL_HOURS", "4")))
+    hours = max(1, int(os.getenv("LUMONOX_DEMO_BACKFILL_HOURS", "24")))
     chunk_pause = max(0.0, float(os.getenv("LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS", "0.3")))
     window_seconds = 600  # contiguous 10-minute windows, no gaps
     rng = random.Random(20260514)
@@ -293,7 +358,9 @@ def _run_backfill() -> None:
                 duration_seconds=window_seconds,
                 base_rate_per_second=2.2,
                 rng=rng,
-                max_events=1600,
+                # Headroom for the rush-hour peaks (multiplier ~1.30 × spike inflation)
+                # so the morning + evening surges aren't clipped down to the plateau.
+                max_events=3200,
             )
             total += _post_events(
                 client, base_url, api_key, events, pause_between_chunks=chunk_pause

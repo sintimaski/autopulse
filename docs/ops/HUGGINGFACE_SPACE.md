@@ -110,7 +110,9 @@ Once the Space shows **Running**:
 - **Demo behavior changes:** edit `entrypoint.sh` / `seed_demo.py` / `patch_dashboard.py`
   here, re-upload.
 - **Tuning knobs** (override as Space *Variables*, no rebuild needed for some):
-  `LUMONOX_DEMO_BACKFILL_HOURS` (default `4`), `LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS`
+  `LUMONOX_DEMO_BACKFILL_HOURS` (default `24` — one full diurnal cycle so the day/night
+  curve and the morning/evening rush-hour peaks are visible on a 1d/2d Overview window),
+  `LUMONOX_DEMO_BACKFILL_CHUNK_PAUSE_SECONDS`
   (default `0.3` — pause between backfill `POST /ingest` chunks so the seed burst never
   starves API reads on the free-tier instance; raise it if first-load feels slow),
   `LUMONOX_DEMO_LIVE_INTERVAL_SECONDS` (default `25`), `LUMONOX_DEMO_EMAIL`,

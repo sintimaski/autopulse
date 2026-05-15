@@ -356,30 +356,27 @@ export function DiagnosisContent() {
         <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
           {d.errorMessage ?? (
             <>
-              The diagnosis view needs recent traffic to rank incidents. Missing slices:{" "}
+              Needs recent traffic. Missing:{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5 text-xs dark:bg-neutral-800">
                 {missing.join(", ")}
               </code>
+              . Populates as events arrive —{" "}
+              <Link
+                href="/onboarding"
+                className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+              >
+                resume onboarding
+              </Link>{" "}
+              or{" "}
+              <Link
+                href={buildRequestsPageHref(scopedState)}
+                className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
+              >
+                open Requests
+              </Link>
               .
             </>
           )}
-        </p>
-        <p className="mt-2 text-sm text-slate-600 dark:text-neutral-300">
-          Once your app sends events, this view will populate automatically. You can also{" "}
-          <Link
-            href="/onboarding"
-            className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
-          >
-            resume onboarding
-          </Link>{" "}
-          or{" "}
-          <Link
-            href={buildRequestsPageHref(scopedState)}
-            className="font-medium text-orange-700 underline-offset-2 hover:underline dark:text-orange-300"
-          >
-            open Requests
-          </Link>{" "}
-          if evidence arrived outside this scope.
         </p>
       </section>
       </>
@@ -528,8 +525,7 @@ export function DiagnosisContent() {
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-neutral-50">When it broke</h2>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-neutral-400">
-          Requests and errors per minute across the selected window, and the routes driving failures
-          (server-side aggregates over the full window — not just the loaded request sample).
+          Requests and errors per minute, plus the routes driving failures.
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <ChartPanel title="Error timeline" description="Requests vs errors per minute in this window.">
@@ -583,15 +579,14 @@ export function DiagnosisContent() {
       <section className="rounded-2xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-900/[0.06] dark:bg-neutral-900 dark:ring-white/[0.08]">
         <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-neutral-50">Quick diagnosis</h2>
         <p className="mt-1.5 text-sm text-slate-600 dark:text-neutral-400">
-          Recent grouped errors from the loaded request sample ({requests.limit} rows). For
-          window-wide failing routes see “Failures by route” above. Full request rows live on{" "}
+          Recent grouped errors from the loaded sample ({requests.limit} rows). Full rows on{" "}
           <Link
             href={buildRequestsPageHref(scopedState)}
             className="font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
           >
             Requests
-          </Link>{" "}
-          (same time window and filters).
+          </Link>
+          .
         </p>
         <div className="mt-4">
           <div className="rounded-xl bg-slate-50/60 p-4 ring-1 ring-slate-900/[0.04] dark:bg-neutral-800/40 dark:ring-white/[0.05]">

@@ -24,10 +24,9 @@ export function SettingsExcludeLumonoxTrafficSection({
         </p>
       ) : null}
       <p className="mt-2 text-sm font-medium text-slate-700 dark:text-neutral-200">
-        When enabled, requests to <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/lumonox/*</code>,{" "}
-        <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/dashboard/*</code>, and{" "}
-        <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/ingest</code> are omitted from analytics,
-        logs, SQL queries, and alert evaluation so console and ingest noise does not skew your app metrics.
+        Hides Lumonox’s own traffic (<code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/lumonox/*</code>,{" "}
+        <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/dashboard/*</code>,{" "}
+        <code className="rounded bg-white/80 px-1 font-mono text-xs dark:bg-neutral-950/80">/ingest</code>) from analytics, logs, and alerts, so console noise doesn’t skew your app metrics.
       </p>
       <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-orange-200/80 bg-white/90 p-4 dark:border-orange-900/50 dark:bg-neutral-950/50">
         <input
