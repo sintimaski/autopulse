@@ -250,7 +250,7 @@ export function VolumeChart({
           borderRadius: 3,
           borderSkipped: false,
           categoryPercentage: 1,
-          barPercentage: 1,
+          barPercentage: 0.85,
           maxBarThickness: 56,
         },
       ],
