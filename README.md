@@ -27,7 +27,9 @@
 
 <br /><br />
 
-<a href="https://sintimaski-lumonox-demo.hf.space"><img alt="Lumonox dashboard overview" src="https://github.com/user-attachments/assets/6d0ca05d-418e-47eb-86ec-3f367cbff8d1" width="900" /></a>
+<a href="https://sintimaski-lumonox-demo.hf.space"><img width="1270" height="720" alt="overview12-ezgif com-optimize" src="https://github.com/user-attachments/assets/fde6ac8b-83c8-4f8f-a9c3-cd5f92910cf6" />
+
+</a>
 
 </div>
 
