@@ -1,6 +1,6 @@
-# Lumonox 🚀
+# Lumonox 🪄
 
-> ⚡ Observability for FastAPI and Django apps in minutes: know what broke, when, and which requests caused it.
+> Observability for FastAPI and Django apps in minutes: know what broke, when, and which requests caused it.
 
 Lumonox gives Python teams a fast path to useful production visibility without observability-infra overhead. It instruments both **FastAPI** and **Django** apps — and the Lumonox API itself is a FastAPI service under the hood.
 
