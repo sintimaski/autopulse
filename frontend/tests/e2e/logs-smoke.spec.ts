@@ -9,7 +9,7 @@ test("logs page loads after sign-in", async ({ page }) => {
   await page.goto("/lumonox/ui/logs");
   await expect(page).toHaveURL(/\/lumonox\/ui\/logs/);
   const heading = page
-    .getByRole("heading", { name: "Request evidence flow" })
+    .getByRole("heading", { name: "Request evidence" })
     .or(page.getByRole("heading", { name: "No request data for this view" }));
   await expect(heading).toBeVisible();
 });
