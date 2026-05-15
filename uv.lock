@@ -785,7 +785,7 @@ wheels = [
 
 [[package]]
 name = "lumonox"
-version = "0.3.1"
+version = "0.3.2"
 source = { editable = "backend" }
 dependencies = [
     { name = "aiosqlite" },

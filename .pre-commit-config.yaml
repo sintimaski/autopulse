@@ -56,3 +56,17 @@ repos:
         language: system
         pass_filenames: false
         files: ^frontend/
+      - id: frontend-test
+        name: frontend-test
+        entry: npm --prefix frontend run test
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+      - id: pytest
+        name: pytest
+        entry: uv run pytest -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

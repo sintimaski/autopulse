@@ -572,6 +572,7 @@ export function DashboardDataProvider({ children }: { children: ReactNode }) {
     minLatencyMs,
     maxLatencyMs,
     pathQuery,
+    correlationRequestId,
     serverEnvironmentQuery,
     serverServiceQuery,
     sqlFilterEnabled,
