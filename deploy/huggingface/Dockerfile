@@ -31,7 +31,7 @@ FROM python:3.11-slim
 
 # Pinned Lumonox wheel (the API + Alembic migrations come from here; the dashboard is
 # overridden by the stage-1 build via LUMONOX_FRONTEND_STATIC_DIR below).
-ARG LUMONOX_VERSION=0.3.1
+ARG LUMONOX_VERSION=0.3.2
 
 RUN pip install --no-cache-dir "lumonox==${LUMONOX_VERSION}"
 
