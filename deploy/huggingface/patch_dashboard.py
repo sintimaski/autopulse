@@ -84,7 +84,7 @@ _AUTOLOGIN_SCRIPT = """<script id="lx-demo-autologin">
         });
         if (verified.ok) {
           await verified.text().catch(function () {}); // drain before navigating
-          location.reload();
+          location.replace("/lumonox/ui/dashboard/");
           return;
         }
       }

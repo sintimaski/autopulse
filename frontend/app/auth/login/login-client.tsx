@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { buildApiUrl } from "../../../components/dashboard/dashboardTypes";
 import type { DashboardMagicLinkRequestResponse } from "../../../components/dashboard/dashboardTypes";
@@ -18,6 +18,15 @@ export function LoginClient() {
   const [devLink, setDevLink] = useState<string | null>(null);
   const [ssoMessage, setSsoMessage] = useState<string | null>(null);
   const [ssoLoading, setSsoLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(buildApiUrl("/dashboard/auth/session"), { credentials: "include" })
+      .then((r) => r.json())
+      .then((session: { authenticated?: boolean }) => {
+        if (session?.authenticated) router.replace("/dashboard");
+      })
+      .catch(() => {});
+  }, [router]);
 
   const requestMagicLink = async (emailOverride?: string) => {
     const trimmed = (emailOverride ?? email).trim();
