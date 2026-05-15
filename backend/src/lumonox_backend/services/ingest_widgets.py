@@ -35,9 +35,10 @@ def extract_dashboard_widget_rows(
     for row in rows:
         payload = row.payload if isinstance(row.payload, dict) else {}
         widget_payload = payload.get("dashboard_widgets")
-        if not isinstance(widget_payload, dict):
-            continue
-        definitions = widget_payload.get("definitions")
+        if isinstance(widget_payload, dict):
+            definitions = widget_payload.get("definitions")
+        else:
+            definitions = None
         if isinstance(definitions, list):
             for item in definitions:
                 if not isinstance(item, dict):
@@ -73,7 +74,7 @@ def extract_dashboard_widget_rows(
                     "config": item.get("config") if isinstance(item.get("config"), dict) else {},
                     "updated_at": row.timestamp,
                 }
-        datapoints = widget_payload.get("points")
+        datapoints = widget_payload.get("points") if isinstance(widget_payload, dict) else None
         if isinstance(datapoints, list):
             for point in datapoints:
                 if remaining <= 0:

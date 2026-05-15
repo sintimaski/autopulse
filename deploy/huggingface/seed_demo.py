@@ -372,6 +372,47 @@ def _augment_with_trace_context(
     return out
 
 
+def _simulate_infra_metrics(when: datetime, rng: random.Random) -> dict[str, float]:
+    """Generate plausible host/app infrastructure metrics correlated with the diurnal curve."""
+    traffic = _diurnal_multiplier(when)
+    host_cpu = min(95.0, max(5.0, 14.0 + 56.0 * traffic + rng.gauss(0, 4.5)))
+    proc_cpu = min(80.0, max(1.0, 6.0 + 28.0 * traffic + rng.gauss(0, 3.0)))
+    host_mem = min(88.0, max(32.0, 56.0 + rng.gauss(0, 4.0)))
+    proc_mem = min(22.0, max(3.0, 11.0 + rng.gauss(0, 2.0)))
+    # RSS assuming ~8 GB total host RAM
+    proc_rss = (proc_mem / 100.0) * 8.0 * 1024 * 1024 * 1024
+    disk_pct = min(72.0, max(22.0, 45.0 + rng.gauss(0, 2.5)))
+    net_scale_mb = 2.5 + 22.0 * traffic
+    net_recv = max(0.0, net_scale_mb * rng.uniform(0.75, 1.35)) * 1024 * 1024
+    net_sent = max(0.0, net_scale_mb * 0.45 * rng.uniform(0.75, 1.35)) * 1024 * 1024
+    return {
+        "host_cpu_percent": round(host_cpu, 2),
+        "host_memory_used_percent": round(host_mem, 2),
+        "process_cpu_percent": round(proc_cpu, 2),
+        "process_memory_percent": round(proc_mem, 2),
+        "process_memory_rss_bytes": round(proc_rss),
+        "disk_used_percent": round(disk_pct, 2),
+        "network_bytes_recv": round(net_recv),
+        "network_bytes_sent": round(net_sent),
+    }
+
+
+def _make_infra_event(timestamp: datetime, rng: random.Random) -> dict[str, object]:
+    """Create a request event carrying an ``infrastructure_metrics`` snapshot."""
+    return {
+        "type": "request",
+        "timestamp": timestamp.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+        "service_name": rng.choice(_SERVICES),
+        "environment": rng.choice(_ENVIRONMENTS),
+        "method": "GET",
+        "path": "/health",
+        "status_code": 200,
+        "latency_ms": round(rng.uniform(1.0, 8.0), 2),
+        "request_id": f"infra-{uuid.uuid4().hex[:12]}",
+        "infrastructure_metrics": _simulate_infra_metrics(timestamp, rng),
+    }
+
+
 def _generate_window(
     *,
     window_end: datetime,
@@ -405,7 +446,11 @@ def _generate_window(
         0.0,
         min(1.0, float(os.getenv("LUMONOX_DEMO_TRACE_CHILD_SPAN_CHANCE", "0.4"))),
     )
-    return _augment_with_trace_context(events, rng=rng, child_span_chance=child_chance)
+    events = _augment_with_trace_context(events, rng=rng, child_span_chance=child_chance)
+    # Append one infra snapshot per window so the Infrastructure section charts
+    # have historical data across the full backfill range.
+    events.append(_make_infra_event(window_midpoint, rng))
+    return events
 
 
 # --------------------------------------------------------------------------------------
